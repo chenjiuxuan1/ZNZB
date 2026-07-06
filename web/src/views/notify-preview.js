@@ -29,14 +29,12 @@ export function renderNotifyPreview(root) {
     <div class="notify-layout">
       <section class="panel">
         <h2 class="panel-title">巡检摘要</h2>
+        ${renderAutoSummary(draft)}
+        <h2 class="panel-title section-title">发送设置</h2>
         <div class="form-grid">
-          ${field("checkedAt", "巡检时间", draft.checkedAt)}
-          ${field("checkedCardCount", "检查卡片数", draft.checkedCardCount)}
-          ${field("dataQualityAnomalyCount", "数据质量异常数", draft.dataQualityAnomalyCount)}
-          ${field("maxAnomalies", "单国家最多展示卡片组", draft.maxAnomalies)}
-          ${field("botId", "TV bot_id", draft.botId)}
+          ${field("botId", "TV bot_id", draft.botId, null, { placeholder: "必填：粘贴要接收测试消息的 TV bot_id" })}
         </div>
-        <p class="muted">测试发送会使用本地 <code>alerts.webhookUrl</code> 配置，只把预览文案发送到你填写的 TV bot_id。</p>
+        <p class="muted">正常测试只需要填写 TV bot_id。TV webhook 使用服务端 <code>TV_ALERT_WEBHOOK_URL</code> 或 <code>alerts.webhookUrl</code> 配置自动识别。</p>
         <div class="detail-header compact-header">
           <h2 class="panel-title">异常明细</h2>
           <button id="add-anomaly">新增异常</button>
@@ -44,6 +42,15 @@ export function renderNotifyPreview(root) {
         <div class="anomaly-editor">
           ${draft.anomalies.map((anomaly, index) => renderAnomalyEditor(anomaly, index)).join("")}
         </div>
+        <details class="advanced compact">
+          <summary>高级：调整自动摘要字段</summary>
+          <div class="form-grid advanced-form">
+            ${field("checkedAt", "巡检时间", draft.checkedAt)}
+            ${field("checkedCardCount", "检查卡片数", draft.checkedCardCount)}
+            ${field("dataQualityAnomalyCount", "数据质量异常数", draft.dataQualityAnomalyCount)}
+            ${field("maxAnomalies", "单国家最多展示卡片组", draft.maxAnomalies)}
+          </div>
+        </details>
         <details class="advanced compact">
           <summary>高级：查看本次预览 result JSON</summary>
           <pre class="code">${escapeHtml(json(buildResultFromDraft(draft)))}</pre>
@@ -57,6 +64,7 @@ export function renderNotifyPreview(root) {
         <p id="notify-test-status" class="muted"></p>
         <div id="preview-body">
           ${state.notifyError ? `<p class="error">${escapeHtml(state.notifyError)}</p>` : ""}
+          ${state.notifyPreviewLoading ? `<p class="muted">正在根据当前草稿生成 TV 文案...</p>` : ""}
           ${state.notifyPreview ? renderMessages(state.notifyPreview.messages || []) : `<p class="muted">填写左侧内容后点击“生成预览”。</p>`}
         </div>
       </section>
@@ -78,20 +86,7 @@ export function renderNotifyPreview(root) {
       renderNotifyPreview(root);
     });
   });
-  root.querySelector("#build-preview").addEventListener("click", async () => {
-    try {
-      updateDraftFromDom(root, draft);
-      state.notifyError = "";
-      state.notifyPreview = await apiPost("/api/notify-preview", {
-        result: buildResultFromDraft(draft),
-        options: { maxAnomalies: Number(draft.maxAnomalies || 50) },
-      });
-    } catch (error) {
-      state.notifyPreview = null;
-      state.notifyError = error.payload?.errors?.join("\n") || error.message;
-    }
-    renderNotifyPreview(root);
-  });
+  root.querySelector("#build-preview").addEventListener("click", async () => generatePreview(root, draft));
   root.querySelector("#load-real-preview").addEventListener("click", async () => {
     try {
       state.notifyError = "";
@@ -115,12 +110,36 @@ export function renderNotifyPreview(root) {
       status.className = result.sent ? "success" : "error";
       status.textContent = result.sent
         ? `测试消息已发送到 TV bot_id：${result.botId}`
-        : `未发送：${result.reason || "webhook 未配置或发送失败"}`;
+        : sendFailureText(result.reason);
     } catch (error) {
       status.className = "error";
       status.textContent = error.payload?.errors?.join("\n") || error.message;
     }
   });
+
+  if (draft.sourceLabel && !state.notifyPreview && !state.notifyError && !state.notifyPreviewLoading) {
+    generatePreview(root, draft);
+  }
+}
+
+async function generatePreview(root, draft) {
+  try {
+    updateDraftFromDom(root, draft);
+    state.notifyError = "";
+    state.notifyPreviewLoading = true;
+    state.notifyPreview = null;
+    renderNotifyPreview(root);
+    state.notifyPreview = await apiPost("/api/notify-preview", {
+      result: buildResultFromDraft(draft),
+      options: { maxAnomalies: Number(draft.maxAnomalies || 50) },
+    });
+  } catch (error) {
+    state.notifyPreview = null;
+    state.notifyError = error.payload?.errors?.join("\n") || error.message;
+  } finally {
+    state.notifyPreviewLoading = false;
+  }
+  renderNotifyPreview(root);
 }
 
 function getDraft() {
@@ -188,14 +207,34 @@ function renderAnomalyEditor(anomaly, index) {
   `;
 }
 
-function field(key, label, value, anomalyIndex = null) {
+function renderAutoSummary(draft) {
+  return `
+    <div class="auto-summary">
+      ${summaryItem("巡检时间", formatDisplayTime(draft.checkedAt))}
+      ${summaryItem("检查卡片数", draft.checkedCardCount)}
+      ${summaryItem("异常数量", draft.anomalies.length)}
+      ${summaryItem("数据质量异常数", draft.dataQualityAnomalyCount)}
+    </div>
+  `;
+}
+
+function summaryItem(label, value) {
+  return `
+    <div class="info-item">
+      <span>${label}</span>
+      <strong>${escapeHtml(value ?? "-")}</strong>
+    </div>
+  `;
+}
+
+function field(key, label, value, anomalyIndex = null, options = {}) {
   const anomalyAttrs = anomalyIndex === null
     ? `data-summary-field="${key}"`
     : `data-draft-field="${key}" data-anomaly-field="${key}"`;
   return `
     <div class="field">
       <label>${label}</label>
-      <input ${anomalyAttrs} value="${escapeHtml(value ?? "")}">
+      <input ${anomalyAttrs} value="${escapeHtml(value ?? "")}" ${options.placeholder ? `placeholder="${escapeHtml(options.placeholder)}"` : ""}>
     </div>
   `;
 }
@@ -251,6 +290,28 @@ function firstPreviewMessage() {
     return messages[0].body;
   }
   throw new Error("请先点击“生成预览”，再测试发送。");
+}
+
+function sendFailureText(reason) {
+  if (reason === "webhook not configured") {
+    return "未发送：服务端 TV webhook 未配置。请在启动服务前设置 TV_ALERT_WEBHOOK_URL，或在 config/public-monitor.config.json 的 alerts.webhookUrl 配置固定地址。你当前填写的 bot_id 没问题。";
+  }
+  return `未发送：${reason || "webhook 未配置或发送失败"}`;
+}
+
+function formatDisplayTime(value) {
+  const date = value ? new Date(value) : new Date();
+  if (!Number.isFinite(date.getTime())) {
+    return value || "-";
+  }
+  return date.toLocaleString("zh-CN", {
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function renderMessages(messages) {

@@ -293,6 +293,17 @@ th {
   gap: 10px;
 }
 
+.auto-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.advanced-form {
+  margin-top: 12px;
+}
+
 .field label {
   display: block;
   color: #475467;
@@ -832,6 +843,7 @@ th {
   .split,
   .country-grid,
   .trial-compare,
+  .auto-summary,
   .inventory-layout,
   .rules-layout,
   .sandbox-layout,
