@@ -95,12 +95,14 @@ export function renderSandbox(root) {
     state.selected.dashboardUuid = event.target.value;
     state.selected.cardId = "";
     state.sandboxRows = null;
+    resetSandboxSort();
     clearSandboxFeedback();
     renderSandbox(root);
   });
   root.querySelector("#card-select")?.addEventListener("change", (event) => {
     state.selected.cardId = event.target.value;
     state.sandboxRows = null;
+    resetSandboxSort();
     clearSandboxFeedback();
     renderSandbox(root);
   });
@@ -168,12 +170,34 @@ export function renderSandbox(root) {
     }
     renderSandbox(root);
   });
+  root.querySelectorAll("[data-sort-column]").forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleSandboxSort(button.dataset.sortColumn);
+      renderSandbox(root);
+    });
+  });
 }
 
 function clearSandboxFeedback() {
   state.sandboxResult = null;
   state.sandboxStatus = null;
   state.sandboxError = "";
+}
+
+function resetSandboxSort() {
+  state.sandboxSort = {
+    column: "",
+    direction: "asc",
+  };
+}
+
+function toggleSandboxSort(column) {
+  if (!column) return;
+  const current = state.sandboxSort || {};
+  state.sandboxSort = {
+    column,
+    direction: current.column === column && current.direction === "asc" ? "desc" : "asc",
+  };
 }
 
 function buildSuccessStatus(result) {
@@ -266,18 +290,32 @@ function renderDataTable(rows, { maxRows = 12, maxColumns = 12 } = {}) {
     return `<p class="muted">暂无返回数据。</p>`;
   }
   const columns = collectColumns(rows).slice(0, maxColumns);
+  const sortedRows = sortRows(rows, state.sandboxSort);
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>
+        <thead><tr>${columns.map((column) => `<th>${renderSortHeader(column)}</th>`).join("")}</tr></thead>
         <tbody>
-          ${rows.slice(0, maxRows).map((row) => `
+          ${sortedRows.slice(0, maxRows).map((row) => `
             <tr>${columns.map((column) => `<td>${escapeHtml(formatCell(row[column]))}</td>`).join("")}</tr>
           `).join("")}
         </tbody>
       </table>
     </div>
     ${buildTableLimitHint(rows, columns, maxRows, maxColumns)}
+  `;
+}
+
+function renderSortHeader(column) {
+  const active = state.sandboxSort?.column === column;
+  const direction = active ? state.sandboxSort.direction : "";
+  const icon = active ? (direction === "asc" ? "↑" : "↓") : "↕";
+  const title = active ? `按 ${column} ${direction === "asc" ? "升序" : "降序"} 排序` : `点击按 ${column} 排序`;
+  return `
+    <button class="sort-header ${active ? "active" : ""}" data-sort-column="${escapeHtml(column)}" title="${escapeHtml(title)}">
+      <span>${escapeHtml(column)}</span>
+      <span aria-hidden="true">${icon}</span>
+    </button>
   `;
 }
 
@@ -350,7 +388,52 @@ function buildTableLimitHint(rows, columns, maxRows, maxColumns) {
   const columnText = allColumns.length > columns.length
     ? `；仅展示前 ${columns.length} 列，共 ${allColumns.length} 列`
     : `；共 ${allColumns.length} 列`;
-  return `<p class="muted">${rowText}${columnText}。</p>`;
+  const sortText = state.sandboxSort?.column ? `；当前按 ${state.sandboxSort.column} ${state.sandboxSort.direction === "asc" ? "升序" : "降序"} 排序` : "";
+  return `<p class="muted">${rowText}${columnText}${escapeHtml(sortText)}。</p>`;
+}
+
+function sortRows(rows, sort = {}) {
+  if (!sort?.column) {
+    return [...rows];
+  }
+  const direction = sort.direction === "desc" ? -1 : 1;
+  return [...rows].sort((left, right) => compareValues(left?.[sort.column], right?.[sort.column]) * direction);
+}
+
+function compareValues(left, right) {
+  if (left === right) return 0;
+  if (left === null || left === undefined || left === "") return 1;
+  if (right === null || right === undefined || right === "") return -1;
+
+  const leftNumber = toFiniteNumber(left);
+  const rightNumber = toFiniteNumber(right);
+  if (leftNumber !== null && rightNumber !== null) {
+    return leftNumber - rightNumber;
+  }
+
+  const leftDate = toDateTime(left);
+  const rightDate = toDateTime(right);
+  if (leftDate !== null && rightDate !== null) {
+    return leftDate - rightDate;
+  }
+
+  return String(left).localeCompare(String(right), "zh-Hans", { numeric: true, sensitivity: "base" });
+}
+
+function toFiniteNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normalized = value.trim().replace(/,/g, "");
+  if (!/^-?\d+(\.\d+)?%?$/.test(normalized)) return null;
+  const number = Number(normalized.replace(/%$/, ""));
+  return Number.isFinite(number) ? number : null;
+}
+
+function toDateTime(value) {
+  if (typeof value !== "string") return null;
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?$/.test(value.trim())) return null;
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? null : time;
 }
 
 function infoItem(label, value) {

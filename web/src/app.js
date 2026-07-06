@@ -1,11 +1,11 @@
 import { apiGet } from "./api.js";
 import { setRoute, state } from "./state.js";
-import { renderCountries } from "./views/countries.js?v=20260706-ui7";
-import { renderDashboard } from "./views/dashboard.js?v=20260706-ui7";
-import { renderInventory } from "./views/inventory.js?v=20260706-ui7";
-import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui7";
-import { renderRules } from "./views/rules.js?v=20260706-ui7";
-import { renderSandbox } from "./views/sandbox.js?v=20260706-ui7";
+import { renderCountries } from "./views/countries.js?v=20260706-ui8";
+import { renderDashboard } from "./views/dashboard.js?v=20260706-ui8";
+import { renderInventory } from "./views/inventory.js?v=20260706-ui8";
+import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui8";
+import { renderRules } from "./views/rules.js?v=20260706-ui8";
+import { renderSandbox } from "./views/sandbox.js?v=20260706-ui8";
 
 const routes = [
   { path: "/dashboard", label: "总览", render: renderDashboard },

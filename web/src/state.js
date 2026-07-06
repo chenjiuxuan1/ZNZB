@@ -8,6 +8,10 @@ export const state = {
   sandboxRows: null,
   sandboxStatus: null,
   sandboxError: "",
+  sandboxSort: {
+    column: "",
+    direction: "asc",
+  },
   notifyPreview: null,
   notifyDraft: null,
   selected: {

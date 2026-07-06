@@ -699,6 +699,35 @@ th {
   white-space: nowrap;
 }
 
+.sort-header {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.sort-header span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sort-header.active {
+  color: #1d4ed8;
+}
+
+.sort-header.active span:last-child {
+  color: #1d4ed8;
+}
+
 .result-box {
   margin-top: 14px;
 }
