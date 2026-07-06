@@ -157,6 +157,39 @@ test("platform api runs scoped batch check", async () => {
   assert.ok(result.anomalyCount >= 1);
 });
 
+test("platform api runs scoped batch check and sends TV notification", async () => {
+  const rootDir = await makeFixture();
+  const captured = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-05", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async (config, message, metadata) => {
+      captured.push({ config, message, metadata });
+      return { sent: true, status: 200 };
+    },
+  });
+
+  const result = await api.runBatchCheckAndNotify({
+    countryCode: "INE",
+    maxCards: 1,
+    webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+    botId: "tv-bot-001",
+    mentions: "strongliu@kn.group,jerrycai@kn.group",
+  });
+
+  assert.equal(result.checkedCardCount, 1);
+  assert.equal(result.notification.sent, true);
+  assert.equal(result.notification.botId, "tv-bot-001");
+  assert.deepEqual(result.notification.mentions, ["strongliu@kn.group", "jerrycai@kn.group"]);
+  assert.equal(captured[0].config.alerts.webhookUrl, "https://tv-service-alert.kuainiu.chat/alert/v2/array");
+  assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
+  assert.ok(captured[0].message.includes("公共报表巡检"));
+});
+
 test("platform api validates and saves rules", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

@@ -197,6 +197,50 @@ export function createPlatformApi({
       });
     },
 
+    async runBatchCheckAndNotify(body = {}) {
+      const result = await this.runBatchCheck(body);
+      const rules = await readJsonFile(resolve("rules"), { alerts: {} });
+      const botId = String(body.botId || "").trim();
+      if (!botId) {
+        throw badRequest("TV bot_id is required", ["请填写 TV bot_id。"]);
+      }
+      const alerts = {
+        ...(rules.alerts || {}),
+        channel: "tv",
+        webhookUrl: resolveWebhookUrl(body.webhookUrl, rules.alerts?.webhookUrl),
+        botId,
+        mentions: normalizeMentions(body.mentions),
+      };
+      if (!alerts.webhookUrl) {
+        throw badRequest("TV webhook is required", ["请填写 TV webhook 地址。"]);
+      }
+      const messages = buildPublicCheckMessages(result, alerts);
+      const results = [];
+      for (const message of messages) {
+        results.push(
+          await notifyTextFn({ ...rules, alerts }, message.body, {
+            title: message.title,
+            severity: result.anomalyCount > 0 ? "warning" : "info",
+            timestamp: result.checkedAt,
+            anomalyCount: message.anomalyCount ?? result.anomalyCount,
+            checkedCardCount: result.checkedCardCount,
+          }),
+        );
+      }
+      return {
+        ...result,
+        notification: {
+          sent: results.some((item) => item.sent),
+          sentMessages: messages.length,
+          results,
+          botId,
+          mentions: alerts.mentions,
+          webhookUrl: alerts.webhookUrl,
+          sentAt: new Date().toISOString(),
+        },
+      };
+    },
+
     async getNotifyPreview(resultOverride = null, optionOverride = {}) {
       const rules = await readJsonFile(resolve("rules"), { alerts: {} });
       const result = resultOverride || await readJsonFile(resolve("result"), {
