@@ -164,10 +164,7 @@ export function createPlatformApi({
       });
       const countryCode = String(body.countryCode || "").trim();
       const dashboardUuid = String(body.dashboardUuid || "").trim();
-      const maxCards = body.maxCards === undefined || body.maxCards === null || body.maxCards === ""
-        ? null
-        : clampPositiveInteger(body.maxCards, 20, 1, Number.MAX_SAFE_INTEGER);
-      const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards });
+      const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid });
       const queryCardFn = async (_client, dashboard, card, parameters = []) => {
         const client = metabaseClientFactory(dashboard);
         try {
@@ -318,8 +315,7 @@ function normalizeMentions(value) {
     .filter(Boolean);
 }
 
-function filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards }) {
-  let remainingCards = maxCards ?? Number.MAX_SAFE_INTEGER;
+function filterBatchInventory(inventory, { countryCode, dashboardUuid }) {
   const dashboards = [];
   for (const dashboard of inventory.dashboards || []) {
     const code = dashboard.countryCode || dashboard.country?.code || "";
@@ -329,11 +325,7 @@ function filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards 
     if (dashboardUuid && dashboard.uuid !== dashboardUuid) {
       continue;
     }
-    if (remainingCards <= 0) {
-      break;
-    }
-    const cards = (dashboard.cards || []).slice(0, remainingCards);
-    remainingCards -= cards.length;
+    const cards = dashboard.cards || [];
     if (cards.length) {
       dashboards.push({ ...dashboard, cards });
     }
@@ -344,14 +336,6 @@ function filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards 
     dashboardCount: dashboards.length,
     totalCardCount: dashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0),
   };
-}
-
-function clampPositiveInteger(value, fallback, min, max) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    return fallback;
-  }
-  return Math.max(min, Math.min(max, Math.floor(number)));
 }
 
 function resolveWebhookUrl(frontendWebhookUrl, configuredWebhookUrl) {

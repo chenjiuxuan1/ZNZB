@@ -30,7 +30,7 @@ export function renderBatchCheck(root) {
     </div>
     <div class="notice">
       <strong>巡检范围</strong>
-      <span>卡片数会按当前国家和看板范围自动计算；选择“全部国家 + 该范围全部看板”即可一次巡检所有看板。</span>
+      <span>选择国家后会扫描该国家清单里的全部已发现公共看板；选择“全部国家 + 该范围全部看板”即可一次巡检所有国家看板。</span>
     </div>
     <section class="panel batch-controls">
       <h2 class="panel-title">巡检范围</h2>
@@ -45,12 +45,12 @@ export function renderBatchCheck(root) {
         <label>
           看板范围
           <select id="batch-dashboard">
-            <option value="">该国家全部看板</option>
+            <option value="">该国家全部已发现看板</option>
             ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboard === dashboard ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
           </select>
         </label>
         <label>
-          本次巡检卡片数
+          本次完整巡检卡片数
           <input id="batch-card-count" value="${escapeHtml(selectedCardCount)}" readonly>
         </label>
       </div>

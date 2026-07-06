@@ -157,6 +157,54 @@ test("platform api runs scoped batch check", async () => {
   assert.ok(result.anomalyCount >= 1);
 });
 
+test("platform api scans every card for selected country even when maxCards is provided", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboardCount: 2,
+      dashboards: [
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          title: "OKR",
+          uuid: "dash-1",
+          url: "https://data.example/public/dashboard/dash-1",
+          cards: [
+            { title: "规模", cardId: 1, dashcardId: 2 },
+          ],
+        },
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          title: "核心链路准实时监控",
+          uuid: "dash-2",
+          url: "https://data.example/public/dashboard/dash-2",
+          cards: [
+            { title: "注册数", cardId: 3, dashcardId: 4 },
+          ],
+        },
+      ],
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+
+  const result = await api.runBatchCheck({
+    countryCode: "INE",
+    maxCards: 1,
+  });
+
+  assert.equal(result.dashboardCount, 2);
+  assert.equal(result.checkedCardCount, 2);
+});
+
 test("platform api runs scoped batch check and sends TV notification", async () => {
   const rootDir = await makeFixture();
   const captured = [];
