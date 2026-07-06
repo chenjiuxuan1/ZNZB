@@ -149,6 +149,43 @@ test("buildPublicCheckMessage shows zero missing data explicitly", () => {
   assert.match(message, /🟡 数据波动异常（1条）/);
 });
 
+test("buildPublicCheckMessage lists scanned dashboards for healthy checks", () => {
+  const message = buildPublicCheckMessage({
+    checkedAt: "2026-07-06T08:20:00.000Z",
+    dashboardCount: 2,
+    checkedCardCount: 12,
+    anomalyCount: 0,
+    checkedCards: [
+      {
+        countryCode: "PK",
+        countryName: "巴基斯坦",
+        dashboardTitle: "公共报表-核心链路",
+        cardTitle: "注册数",
+      },
+      {
+        countryCode: "PK",
+        countryName: "巴基斯坦",
+        dashboardTitle: "公共报表-核心链路",
+        cardTitle: "放款金额",
+      },
+      {
+        countryCode: "PH",
+        countryName: "菲律宾",
+        dashboardTitle: "公共报表-贷后监控",
+        cardTitle: "逾期率",
+      },
+    ],
+    anomalies: [],
+  });
+
+  assert.match(message, /• 检查范围：12张卡片/);
+  assert.match(message, /• 覆盖看板：2个/);
+  assert.match(message, /🧭 巡检看板/);
+  assert.match(message, /• 巴基斯坦\(PK\) \/ 公共报表-核心链路：2张卡片/);
+  assert.match(message, /• 菲律宾\(PH\) \/ 公共报表-贷后监控：1张卡片/);
+  assert.match(message, /✅ 本次巡检未发现异常。/);
+});
+
 test("buildPublicCheckMessage includes data quality current anomaly counts", () => {
   const message = buildPublicCheckMessage({
     checkedAt: "2026-06-09T07:42:40.806Z",

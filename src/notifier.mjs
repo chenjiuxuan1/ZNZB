@@ -161,6 +161,7 @@ function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAno
   lines.push(`• 异常数量：${result.anomalyCount || anomalies.length}条`);
   lines.push(`• 数据缺失：${missingAnomalies.length}条`);
   lines.push(`• 数据波动：${fluctuationAnomalies.length}条`);
+  appendCheckedDashboardSummary(lines, result);
   appendDataQualitySummary(lines, result.dataQuality);
 
   if (anomalies.length === 0 && !hasDataQualityIssue(result.dataQuality)) {
@@ -225,6 +226,64 @@ function buildCountryPublicCheckMessage(result, group, options = {}) {
   appendDashboardLinks(lines, group.anomalies);
 
   return lines.join("\n");
+}
+
+function appendCheckedDashboardSummary(lines, result) {
+  const dashboardGroups = groupCheckedCardsByDashboard(result.checkedCards || []);
+  const dashboardCount = Number(result.dashboardCount || dashboardGroups.length || 0);
+
+  if (dashboardCount > 0) {
+    lines.push(`• 覆盖看板：${dashboardCount}个`);
+  }
+
+  if (dashboardGroups.length === 0) {
+    return;
+  }
+
+  const maxDashboards = 12;
+  lines.push("");
+  lines.push("🧭 巡检看板");
+
+  for (const group of dashboardGroups.slice(0, maxDashboards)) {
+    const countryLabel = formatCountryLabel(group);
+    const location = [countryLabel, group.dashboardTitle || "未知看板"].filter(Boolean).join(" / ");
+    lines.push(`• ${location}：${group.cardCount}张卡片`);
+  }
+
+  if (dashboardGroups.length > maxDashboards) {
+    const hiddenCardCount = dashboardGroups
+      .slice(maxDashboards)
+      .reduce((sum, group) => sum + group.cardCount, 0);
+    lines.push(`• 另有${dashboardGroups.length - maxDashboards}个看板、${hiddenCardCount}张卡片未展示`);
+  }
+}
+
+function groupCheckedCardsByDashboard(checkedCards) {
+  const groups = new Map();
+
+  for (const card of checkedCards || []) {
+    const key = [
+      card.countryCode || card.countryName || "",
+      card.dashboardTitle || "",
+    ].join("\u0000");
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        countryCode: card.countryCode,
+        countryName: card.countryName,
+        dashboardTitle: card.dashboardTitle || "未知看板",
+        cardCount: 0,
+      });
+    }
+
+    groups.get(key).cardCount += 1;
+  }
+
+  return [...groups.values()].sort((left, right) => {
+    const leftLabel = [formatCountryLabel(left), left.dashboardTitle].filter(Boolean).join("/");
+    const rightLabel = [formatCountryLabel(right), right.dashboardTitle].filter(Boolean).join("/");
+    return leftLabel.localeCompare(rightLabel, "zh-CN");
+  });
 }
 
 function appendDataQualitySummary(lines, dataQuality) {
