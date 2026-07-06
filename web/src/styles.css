@@ -739,6 +739,11 @@ th {
   gap: 5px;
 }
 
+.result-summary button {
+  justify-self: flex-start;
+  margin-top: 6px;
+}
+
 .result-summary.ok {
   background: #ecfdf3;
   color: #047857;

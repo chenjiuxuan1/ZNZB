@@ -1,5 +1,5 @@
 import { apiPost } from "../api.js";
-import { findSelectedCard, findSelectedDashboard, findSelectedRule, state } from "../state.js";
+import { findSelectedCard, findSelectedDashboard, findSelectedRule, setRoute, state } from "../state.js";
 import {
   describeRule,
   escapeHtml,
@@ -176,6 +176,11 @@ export function renderSandbox(root) {
       renderSandbox(root);
     });
   });
+  root.querySelector("#use-sandbox-for-notify")?.addEventListener("click", () => {
+    state.notifyDraft = buildNotifyDraftFromSandbox(state.sandboxResult);
+    state.notifyPreview = null;
+    setRoute("/notify-preview");
+  });
 }
 
 function clearSandboxFeedback() {
@@ -327,6 +332,7 @@ function renderResult(result) {
     <div class="result-summary ${result.matched ? "danger" : "ok"}">
       <strong>${result.matched ? "会生成告警" : "不会生成告警"}</strong>
       <span>${result.source === "metabase" ? "真实只读试跑" : "离线试跑"}读取 ${result.rowCount} 行数据，产出 ${messages.length} 条规则消息。这里仅用于调试规则，不会写入巡检结果，也不会发送通知。</span>
+      <button id="use-sandbox-for-notify">带入通知预览</button>
     </div>
     ${result.source === "metabase" ? `
       <div class="info-grid single live-request">
@@ -341,6 +347,36 @@ function renderResult(result) {
       </ul>
     ` : `<p class="muted">这组样例 rows 在当前规则下没有异常消息。</p>`}
   `;
+}
+
+function buildNotifyDraftFromSandbox(result) {
+  const dashboard = result?.dashboard || {};
+  const card = result?.card || {};
+  const rule = result?.rule || {};
+  const messages = result?.messages || [];
+  return {
+    sourceLabel: result?.source === "metabase" ? "来自真实只读试跑" : "来自离线试跑",
+    checkedAt: new Date().toISOString(),
+    checkedCardCount: 1,
+    dataQualityAnomalyCount: 0,
+    maxAnomalies: 50,
+    botId: state.notifyDraft?.botId || defaultBotId(),
+    anomalies: messages.map((message) => ({
+      countryCode: dashboard.countryCode || dashboard.country?.code || "",
+      countryName: dashboard.countryName || dashboard.country?.name || "",
+      dashboardTitle: dashboard.title || dashboard.sourcePanelTitle || rule.dashboardTitle || "",
+      cardTitle: card.title || "",
+      type: rule.type || "requiredDatePresent",
+      message,
+      dashboardUrl: dashboard.url || dashboard.publicUrl || "",
+    })),
+  };
+}
+
+function defaultBotId() {
+  return state.rulesConfig?.alerts?.botId && state.rulesConfig.alerts.botId !== "<hidden>"
+    ? state.rulesConfig.alerts.botId
+    : "";
 }
 
 function renderAccessedRows(result, rows) {

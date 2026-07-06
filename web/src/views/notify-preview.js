@@ -25,6 +25,7 @@ export function renderNotifyPreview(root) {
         <button class="primary" id="build-preview">生成预览</button>
       </div>
     </div>
+    ${draft.sourceLabel ? `<div class="notice"><strong>${escapeHtml(draft.sourceLabel)}</strong><span>已把最近一次规则试跑结果转换为通知预览草稿。你可以继续编辑左侧明细，再生成 TV 文案或测试发送。</span></div>` : ""}
     <div class="notify-layout">
       <section class="panel">
         <h2 class="panel-title">巡检摘要</h2>
@@ -55,6 +56,7 @@ export function renderNotifyPreview(root) {
         </div>
         <p id="notify-test-status" class="muted"></p>
         <div id="preview-body">
+          ${state.notifyError ? `<p class="error">${escapeHtml(state.notifyError)}</p>` : ""}
           ${state.notifyPreview ? renderMessages(state.notifyPreview.messages || []) : `<p class="muted">填写左侧内容后点击“生成预览”。</p>`}
         </div>
       </section>
@@ -77,15 +79,27 @@ export function renderNotifyPreview(root) {
     });
   });
   root.querySelector("#build-preview").addEventListener("click", async () => {
-    updateDraftFromDom(root, draft);
-    state.notifyPreview = await apiPost("/api/notify-preview", {
-      result: buildResultFromDraft(draft),
-      options: { maxAnomalies: Number(draft.maxAnomalies || 50) },
-    });
+    try {
+      updateDraftFromDom(root, draft);
+      state.notifyError = "";
+      state.notifyPreview = await apiPost("/api/notify-preview", {
+        result: buildResultFromDraft(draft),
+        options: { maxAnomalies: Number(draft.maxAnomalies || 50) },
+      });
+    } catch (error) {
+      state.notifyPreview = null;
+      state.notifyError = error.payload?.errors?.join("\n") || error.message;
+    }
     renderNotifyPreview(root);
   });
   root.querySelector("#load-real-preview").addEventListener("click", async () => {
-    state.notifyPreview = await apiPost("/api/notify-preview", {});
+    try {
+      state.notifyError = "";
+      state.notifyPreview = await apiPost("/api/notify-preview", {});
+    } catch (error) {
+      state.notifyPreview = null;
+      state.notifyError = error.payload?.errors?.join("\n") || error.message;
+    }
     renderNotifyPreview(root);
   });
   root.querySelector("#send-tv-test").addEventListener("click", async () => {

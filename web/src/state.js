@@ -14,6 +14,7 @@ export const state = {
   },
   notifyPreview: null,
   notifyDraft: null,
+  notifyError: "",
   selected: {
     countryCode: "",
     dashboardUuid: "",
