@@ -200,10 +200,12 @@ test("platform api sends TV notify test with explicit bot id", async () => {
   const result = await api.sendNotifyTest({
     botId: "tv-bot-001",
     message: "测试消息",
+    mentions: "strongliu@kn.group,jerrycai@kn.group",
   });
 
   assert.equal(result.sent, true);
   assert.equal(captured.config.alerts.channel, "tv");
   assert.equal(captured.config.alerts.botId, "tv-bot-001");
+  assert.deepEqual(captured.config.alerts.mentions, ["strongliu@kn.group", "jerrycai@kn.group"]);
   assert.equal(captured.message, "测试消息");
 });

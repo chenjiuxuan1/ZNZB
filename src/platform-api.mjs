@@ -21,6 +21,7 @@ const FILES = {
   inventory: "config/discovered-public-dashboards.ready.json",
   result: "config/public-check-result.ready.json",
 };
+const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 
 export function createPlatformApi({
   rootDir = process.cwd(),
@@ -179,7 +180,9 @@ export function createPlatformApi({
       const alerts = {
         ...(rules.alerts || {}),
         channel: "tv",
+        webhookUrl: process.env.TV_ALERT_WEBHOOK_URL || rules.alerts?.webhookUrl || DEFAULT_TV_WEBHOOK_URL,
         botId,
+        mentions: normalizeMentions(body.mentions),
       };
       const result = await notifyTextFn({ ...rules, alerts }, message, {
         title: body.title || "值班平台 TV 测试",
@@ -193,6 +196,19 @@ export function createPlatformApi({
       };
     },
   };
+}
+
+function normalizeMentions(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (!value) {
+    return [];
+  }
+  return String(value)
+    .split(/[\n,，;；]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 export function flattenInventory(inventory) {

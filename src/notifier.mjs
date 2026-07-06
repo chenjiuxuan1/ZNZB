@@ -821,9 +821,11 @@ export function buildWebhookPayload(channel, message, metadata = {}, alertConfig
         text: message,
       };
     case "tv": {
+      const mentions = normalizeMentions(alertConfig.mentions);
       return {
         botId: resolveEnvString(alertConfig.botId),
         message,
+        ...(mentions.length ? { mentions } : {}),
       };
     }
     case "generic":
@@ -833,6 +835,19 @@ export function buildWebhookPayload(channel, message, metadata = {}, alertConfig
     default:
       throw new Error(`Unsupported alert channel: ${channel}`);
   }
+}
+
+function normalizeMentions(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (!value) {
+    return [];
+  }
+  return String(value)
+    .split(/[\n,，;；]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function resolveEnvString(value) {

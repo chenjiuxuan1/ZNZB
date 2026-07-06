@@ -33,8 +33,9 @@ export function renderNotifyPreview(root) {
         <h2 class="panel-title section-title">发送设置</h2>
         <div class="form-grid">
           ${field("botId", "TV bot_id", draft.botId, null, { placeholder: "必填：粘贴要接收测试消息的 TV bot_id" })}
+          ${field("mentions", "提醒人 mentions", draft.mentions, null, { placeholder: "可选：邮箱，多个用逗号或换行分隔" })}
         </div>
-        <p class="muted">正常测试只需要填写 TV bot_id。TV webhook 使用服务端 <code>TV_ALERT_WEBHOOK_URL</code> 或 <code>alerts.webhookUrl</code> 配置自动识别。</p>
+        <p class="muted">正常测试只需要填写 TV bot_id；mentions 可选。TV webhook 默认使用 <code>https://tv-service-alert.kuainiu.chat/alert/v2/array</code>，也可由服务端 <code>TV_ALERT_WEBHOOK_URL</code> 覆盖。</p>
         <div class="detail-header compact-header">
           <h2 class="panel-title">异常明细</h2>
           <button id="add-anomaly">新增异常</button>
@@ -105,6 +106,7 @@ export function renderNotifyPreview(root) {
       const result = await apiPost("/api/notify-test", {
         botId: draft.botId,
         message,
+        mentions: draft.mentions,
         title: "值班平台测试发送",
       });
       status.className = result.sent ? "success" : "error";
@@ -152,6 +154,7 @@ function getDraft() {
     checkedCardCount: summary.checkedCardCount || 0,
     dataQualityAnomalyCount: summary.dataQualityAnomalyCount || 0,
     maxAnomalies: 50,
+    mentions: "",
     botId: state.rulesConfig?.alerts?.botId && state.rulesConfig.alerts.botId !== "<hidden>"
       ? state.rulesConfig.alerts.botId
       : "",

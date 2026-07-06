@@ -25,6 +25,24 @@ test("buildWebhookPayload supports TV alert payload", () => {
   });
 });
 
+test("buildWebhookPayload supports TV mentions", () => {
+  const payload = buildWebhookPayload(
+    "tv",
+    "测试消息",
+    {},
+    {
+      botId: "bot-001",
+      mentions: "strongliu@kn.group,jerrycai@kn.group",
+    },
+  );
+
+  assert.deepEqual(payload, {
+    botId: "bot-001",
+    message: "测试消息",
+    mentions: ["strongliu@kn.group", "jerrycai@kn.group"],
+  });
+});
+
 test("buildPublicCheckMessage includes dashboard, context, card and exact message", () => {
   const message = buildPublicCheckMessage(
     {

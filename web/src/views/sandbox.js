@@ -360,6 +360,7 @@ function buildNotifyDraftFromSandbox(result) {
     checkedCardCount: 1,
     dataQualityAnomalyCount: 0,
     maxAnomalies: 50,
+    mentions: state.notifyDraft?.mentions || "",
     botId: state.notifyDraft?.botId || defaultBotId(),
     anomalies: messages.map((message) => ({
       countryCode: dashboard.countryCode || dashboard.country?.code || "",
