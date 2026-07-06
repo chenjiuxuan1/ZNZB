@@ -6,6 +6,8 @@ export const state = {
   rulesConfig: null,
   sandboxResult: null,
   sandboxRows: null,
+  sandboxStatus: null,
+  sandboxError: "",
   notifyPreview: null,
   notifyDraft: null,
   selected: {

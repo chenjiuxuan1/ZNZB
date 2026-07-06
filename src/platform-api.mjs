@@ -103,7 +103,8 @@ export function createPlatformApi({
       if (!validation.ok) {
         throw badRequest("Invalid sandbox request", validation.errors);
       }
-      const raw = evaluateRowsAgainstRule(body.rows, body.rule);
+      const rule = applyDashboardRuleDefaults(body.rule, body.dashboard);
+      const raw = evaluateRowsAgainstRule(body.rows, rule);
       const messages = normalizeRuleMessages(raw);
       return {
         ok: true,
@@ -112,7 +113,7 @@ export function createPlatformApi({
         rowCount: body.rows.length,
         dashboard: body.dashboard || null,
         card: body.card || null,
-        rule: body.rule,
+        rule,
       };
     },
 
@@ -120,7 +121,7 @@ export function createPlatformApi({
       validateLiveSandboxRequest(body);
       const dashboard = body.dashboard;
       const card = body.card;
-      const rule = body.rule;
+      const rule = applyDashboardRuleDefaults(body.rule, dashboard);
       const client = metabaseClientFactory(dashboard);
       const parameters = mergeParameters(buildDefaultCardParameters(dashboard, card), rule.parameters || []);
       const rows = await client.queryDashcardJson({
@@ -285,6 +286,17 @@ function preserveHiddenSecrets(next = {}, previous = {}, fields = []) {
     }
   }
   return merged;
+}
+
+function applyDashboardRuleDefaults(rule = {}, dashboard = {}) {
+  const timezone = rule.timezone === "dashboard" || !rule.timezone
+    ? dashboard?.timezone || dashboard?.country?.timezone || "Asia/Jakarta"
+    : rule.timezone;
+
+  return {
+    ...rule,
+    timezone,
+  };
 }
 
 function validateLiveSandboxRequest(body) {

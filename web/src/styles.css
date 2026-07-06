@@ -321,6 +321,90 @@ th {
   white-space: nowrap;
 }
 
+.trial-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.trial-compare article,
+.sandbox-status {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.trial-compare h2 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.trial-compare p {
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.sandbox-status {
+  margin-bottom: 14px;
+}
+
+.sandbox-status strong,
+.sandbox-status span,
+.sandbox-status small {
+  display: block;
+}
+
+.sandbox-status strong {
+  font-size: 15px;
+}
+
+.sandbox-status span {
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 4px;
+}
+
+.sandbox-status small {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.sandbox-status.idle {
+  background: #f8fafc;
+}
+
+.sandbox-status.loading {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.sandbox-status.success {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: #047857;
+}
+
+.sandbox-status.error {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.sandbox-status.error pre {
+  background: #111827;
+  border-radius: 8px;
+  color: #e5e7eb;
+  margin: 10px 0 0;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
 .country-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -671,6 +755,7 @@ th {
   .grid.cols-2,
   .split,
   .country-grid,
+  .trial-compare,
   .inventory-layout,
   .rules-layout,
   .sandbox-layout,

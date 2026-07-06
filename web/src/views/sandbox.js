@@ -26,14 +26,25 @@ export function renderSandbox(root) {
         <p class="page-note">在本机用已缓存的 Metabase sampleRows 试跑当前规则，判断这条规则是否会产生告警；不访问线上 API，不发送通知。</p>
       </div>
       <div class="button-group">
-        <button id="run-sandbox">离线试跑</button>
-        <button class="primary" id="run-live-sandbox">真实只读试跑</button>
+        <button id="run-sandbox">离线试跑（不联网）</button>
+        <button class="primary" id="run-live-sandbox">真实只读试跑（访问 Metabase）</button>
       </div>
     </div>
     <div class="notice">
       <strong>两种试跑</strong>
-      <span>“离线试跑”只用左侧缓存 sampleRows；“真实只读试跑”会临时访问 Metabase public dashcard JSON 拉最新 rows，再跑同一条规则。两者都只输出是否会告警和规则消息，不保存结果，不发送 TV/webhook。</span>
+      <span>两种试跑都会执行当前选择的规则，只判断“是否会生成告警消息”。这里不保存巡检结果，不修改看板，不发送 TV/webhook。</span>
     </div>
+    <div class="trial-compare">
+      <article>
+        <h2>离线试跑</h2>
+        <p>数据来自本机 inventory 里缓存的 sampleRows，完全不访问线上 Metabase。适合先验证规则逻辑、手动改 rows 后复现边界场景。</p>
+      </article>
+      <article>
+        <h2>真实只读试跑</h2>
+        <p>临时访问 Metabase public dashcard JSON 拉取该卡片最新 rows，再用同一条规则判断。只读访问，不会修改 Metabase 看板，也不会发送通知。</p>
+      </article>
+    </div>
+    ${renderSandboxStatus()}
     <div class="toolbar wide-toolbar">
       <label>
         看板
@@ -84,41 +95,144 @@ export function renderSandbox(root) {
     state.selected.dashboardUuid = event.target.value;
     state.selected.cardId = "";
     state.sandboxRows = null;
-    state.sandboxResult = null;
+    clearSandboxFeedback();
     renderSandbox(root);
   });
   root.querySelector("#card-select")?.addEventListener("change", (event) => {
     state.selected.cardId = event.target.value;
     state.sandboxRows = null;
-    state.sandboxResult = null;
+    clearSandboxFeedback();
     renderSandbox(root);
   });
   root.querySelector("#rule-select")?.addEventListener("change", (event) => {
     state.selected.ruleIndex = Number(event.target.value);
-    state.sandboxResult = null;
+    clearSandboxFeedback();
     renderSandbox(root);
   });
   root.querySelector("#run-sandbox")?.addEventListener("click", async () => {
-    const edited = root.querySelector("#sandbox-rows-json")?.value;
-    const nextRows = edited ? JSON.parse(edited) : rows;
-    state.sandboxRows = nextRows;
-    state.sandboxResult = await apiPost("/api/sandbox/evaluate", {
-      dashboard,
-      card,
-      rule,
-      rows: nextRows,
-    });
+    try {
+      const edited = root.querySelector("#sandbox-rows-json")?.value;
+      const nextRows = edited ? JSON.parse(edited) : rows;
+      state.sandboxRows = nextRows;
+      state.sandboxResult = null;
+      state.sandboxError = "";
+      state.sandboxStatus = {
+        type: "loading",
+        title: "正在离线试跑",
+        detail: "使用左侧 sampleRows 和当前规则在本机计算，不访问线上服务。",
+      };
+      renderSandbox(root);
+      state.sandboxResult = await apiPost("/api/sandbox/evaluate", {
+        dashboard,
+        card,
+        rule,
+        rows: nextRows,
+      });
+      state.sandboxStatus = buildSuccessStatus(state.sandboxResult);
+    } catch (error) {
+      state.sandboxResult = null;
+      state.sandboxError = formatSandboxError(error);
+      state.sandboxStatus = {
+        type: "error",
+        title: "离线试跑失败",
+        detail: "通常是高级区 rows JSON 格式不正确，或当前看板、卡片、规则没有选完整。",
+      };
+    }
     renderSandbox(root);
   });
   root.querySelector("#run-live-sandbox")?.addEventListener("click", async () => {
-    state.sandboxResult = await apiPost("/api/sandbox/evaluate-live", {
-      dashboard,
-      card,
-      rule,
-    });
-    state.sandboxRows = state.sandboxResult.rows || [];
+    try {
+      state.sandboxResult = null;
+      state.sandboxError = "";
+      state.sandboxStatus = {
+        type: "loading",
+        title: "正在真实只读试跑",
+        detail: "正在访问 Metabase public dashcard JSON 拉取最新 rows，只读取数据，不修改看板。",
+      };
+      renderSandbox(root);
+      state.sandboxResult = await apiPost("/api/sandbox/evaluate-live", {
+        dashboard,
+        card,
+        rule,
+      });
+      state.sandboxRows = state.sandboxResult.rows || [];
+      state.sandboxStatus = buildSuccessStatus(state.sandboxResult);
+    } catch (error) {
+      state.sandboxResult = null;
+      state.sandboxError = formatSandboxError(error);
+      state.sandboxStatus = {
+        type: "error",
+        title: "真实只读试跑失败",
+        detail: "常见原因是 Metabase public 链接不可访问、卡片参数不完整、网络超时，或服务端无法解析返回内容。",
+      };
+    }
     renderSandbox(root);
   });
+}
+
+function clearSandboxFeedback() {
+  state.sandboxResult = null;
+  state.sandboxStatus = null;
+  state.sandboxError = "";
+}
+
+function buildSuccessStatus(result) {
+  const mode = result.source === "metabase" ? "真实只读试跑" : "离线试跑";
+  return {
+    type: "success",
+    title: `${mode}完成：${result.matched ? "会生成告警" : "不会生成告警"}`,
+    detail: `读取 ${result.rowCount || 0} 行数据，产出 ${(result.messages || []).length} 条规则消息。`,
+  };
+}
+
+function formatSandboxError(error) {
+  if (error instanceof SyntaxError) {
+    return `rows JSON 格式错误：${error.message}`;
+  }
+  if (error?.payload?.errors?.length) {
+    return error.payload.errors.join("\n");
+  }
+  return error?.message || "未知错误";
+}
+
+function renderSandboxStatus() {
+  if (state.sandboxStatus?.type === "loading") {
+    return statusBox(state.sandboxStatus, "正在执行，完成后会自动刷新这里和右侧试跑结果。");
+  }
+  if (state.sandboxStatus?.type === "success") {
+    return statusBox(state.sandboxStatus, "结果只用于调试，不会写入巡检结果，也不会发送通知。");
+  }
+  if (state.sandboxStatus?.type === "error") {
+    return `
+      <div class="sandbox-status error">
+        <div>
+          <strong>${escapeHtml(state.sandboxStatus.title)}</strong>
+          <span>${escapeHtml(state.sandboxStatus.detail)}</span>
+          <pre>${escapeHtml(state.sandboxError || "-")}</pre>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="sandbox-status idle">
+      <div>
+        <strong>点击按钮后这里会显示试跑反馈</strong>
+        <span>离线试跑看规则逻辑是否命中；真实只读试跑看 Metabase 当前返回 rows 是否会触发同一条告警规则。</span>
+      </div>
+    </div>
+  `;
+}
+
+function statusBox(status, extra) {
+  return `
+    <div class="sandbox-status ${escapeHtml(status.type)}">
+      <div>
+        <strong>${escapeHtml(status.title)}</strong>
+        <span>${escapeHtml(status.detail || "")}</span>
+        <small>${escapeHtml(extra)}</small>
+      </div>
+    </div>
+  `;
 }
 
 function renderRuleSummary(rule, countries) {
