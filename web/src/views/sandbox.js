@@ -258,24 +258,32 @@ function renderRowsTable(rows) {
   if (!rows?.length) {
     return `<p class="muted">当前卡片没有缓存样例行，可在高级区手动输入 rows 后试跑。</p>`;
   }
-  const columns = Object.keys(rows[0] || {}).slice(0, 8);
+  return renderDataTable(rows, { maxRows: 6, maxColumns: 8 });
+}
+
+function renderDataTable(rows, { maxRows = 12, maxColumns = 12 } = {}) {
+  if (!rows?.length) {
+    return `<p class="muted">暂无返回数据。</p>`;
+  }
+  const columns = collectColumns(rows).slice(0, maxColumns);
   return `
     <div class="table-wrap">
       <table>
         <thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>
         <tbody>
-          ${rows.slice(0, 6).map((row) => `
+          ${rows.slice(0, maxRows).map((row) => `
             <tr>${columns.map((column) => `<td>${escapeHtml(formatCell(row[column]))}</td>`).join("")}</tr>
           `).join("")}
         </tbody>
       </table>
     </div>
-    ${rows.length > 6 ? `<p class="muted">仅展示前 6 行，共 ${rows.length} 行。</p>` : ""}
+    ${buildTableLimitHint(rows, columns, maxRows, maxColumns)}
   `;
 }
 
 function renderResult(result) {
   const messages = result.messages || [];
+  const rows = Array.isArray(result.rows) ? result.rows : state.sandboxRows || [];
   return `
     <h3 class="section-title">试跑结果</h3>
     <div class="result-summary ${result.matched ? "danger" : "ok"}">
@@ -288,12 +296,61 @@ function renderResult(result) {
         ${infoItem("参数数量", String(result.request?.parameterCount || 0))}
       </div>
     ` : ""}
+    ${renderAccessedRows(result, rows)}
     ${messages.length ? `
       <ul class="plain-list">
         ${messages.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}
       </ul>
     ` : `<p class="muted">这组样例 rows 在当前规则下没有异常消息。</p>`}
   `;
+}
+
+function renderAccessedRows(result, rows) {
+  const sourceName = result.source === "metabase" ? "Metabase 本次返回数据" : "本次使用 sampleRows";
+  const sourceDesc = result.source === "metabase"
+    ? "下面是这次真实只读访问 Metabase 后拿到并用于规则判断的 rows。"
+    : "下面是这次离线试跑实际用于规则判断的 rows。";
+  const columns = collectColumns(rows);
+  return `
+    <section class="accessed-data">
+      <div class="accessed-data-header">
+        <div>
+          <h3>${escapeHtml(sourceName)}</h3>
+          <p>${escapeHtml(sourceDesc)}</p>
+        </div>
+        <div class="data-meta">
+          <span>${rows.length} 行</span>
+          <span>${columns.length} 列</span>
+        </div>
+      </div>
+      ${renderDataTable(rows, { maxRows: 20, maxColumns: 14 })}
+      <details class="advanced compact">
+        <summary>查看完整 rows JSON</summary>
+        <pre class="code">${escapeHtml(json(rows))}</pre>
+      </details>
+    </section>
+  `;
+}
+
+function collectColumns(rows = []) {
+  const columns = [];
+  for (const row of rows) {
+    for (const key of Object.keys(row || {})) {
+      if (!columns.includes(key)) {
+        columns.push(key);
+      }
+    }
+  }
+  return columns;
+}
+
+function buildTableLimitHint(rows, columns, maxRows, maxColumns) {
+  const rowText = rows.length > maxRows ? `仅展示前 ${maxRows} 行，共 ${rows.length} 行` : `共 ${rows.length} 行`;
+  const allColumns = collectColumns(rows);
+  const columnText = allColumns.length > columns.length
+    ? `；仅展示前 ${columns.length} 列，共 ${allColumns.length} 列`
+    : `；共 ${allColumns.length} 列`;
+  return `<p class="muted">${rowText}${columnText}。</p>`;
 }
 
 function infoItem(label, value) {

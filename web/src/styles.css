@@ -720,6 +720,48 @@ th {
   color: #c2410c;
 }
 
+.accessed-data {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.accessed-data-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.accessed-data-header h3 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.accessed-data-header p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 4px 0 0;
+}
+
+.data-meta {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.data-meta span {
+  background: #f1f5f9;
+  border-radius: 999px;
+  color: #475467;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
 .button-group {
   display: flex;
   gap: 8px;
