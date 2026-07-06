@@ -58,7 +58,7 @@ async function handleApi(request, response, url) {
   }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});
-    return sendJson(response, 200, await api.getNotifyPreview(body?.result || null));
+    return sendJson(response, 200, await api.getNotifyPreview(body?.result || null, body?.options || {}));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }

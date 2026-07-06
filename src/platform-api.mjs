@@ -104,7 +104,7 @@ export function createPlatformApi({ rootDir = process.cwd() } = {}) {
       };
     },
 
-    async getNotifyPreview(resultOverride = null) {
+    async getNotifyPreview(resultOverride = null, optionOverride = {}) {
       const rules = await readJsonFile(resolve("rules"), { alerts: {} });
       const result = resultOverride || await readJsonFile(resolve("result"), {
         checkedAt: new Date().toISOString(),
@@ -113,7 +113,7 @@ export function createPlatformApi({ rootDir = process.cwd() } = {}) {
         anomalies: [],
       });
       return {
-        messages: buildPublicCheckMessages(result, rules.alerts || {}),
+        messages: buildPublicCheckMessages(result, { ...(rules.alerts || {}), ...optionOverride }),
       };
     },
   };

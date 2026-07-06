@@ -1,63 +1,101 @@
-import { state, json } from "../state.js";
+import { state } from "../state.js";
+import { compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
 
 export function renderInventory(root) {
   const dashboards = state.inventory?.dashboards || [];
-  const selected = dashboards[0] || null;
-  const cards = selected?.cards || [];
+  const countries = state.countries?.countries || [];
+  const countryCodes = [...new Set(dashboards.map((dashboard) => dashboard.countryCode || dashboard.country?.code).filter(Boolean))];
+  const selectedCountry = state.selected.countryCode || countryCodes[0] || "";
+  const countryDashboards = dashboards.filter((dashboard) => (dashboard.countryCode || dashboard.country?.code) === selectedCountry);
+  const selectedDashboard = countryDashboards.find((dashboard) => dashboard.uuid === state.selected.dashboardUuid) || countryDashboards[0] || null;
+  const cards = selectedDashboard?.cards || [];
+
   root.innerHTML = `
     <div class="page-header">
       <div>
         <h1 class="page-title">看板与卡片</h1>
-        <p class="page-note">直接浏览 Metabase inventory。本 MVP 不通过 Grafana 目录页跳转发现。</p>
+        <p class="page-note">按国家查看 Metabase inventory。这里展示的是已发现的 Metabase 看板与卡片，不再通过 Grafana 目录页跳转发现。</p>
       </div>
     </div>
-    <div class="split">
+    <div class="notice">
+      <strong>怎么读</strong>
+      <span>先选国家，再选看板；右侧会展示该看板下的卡片、字段、样例行和查询状态。用于确认“规则会检查哪些卡片”。</span>
+    </div>
+    <div class="country-tabs">
+      ${countryCodes.map((code) => `
+        <button class="${code === selectedCountry ? "active" : ""}" data-country-code="${escapeHtml(code)}">
+          ${escapeHtml(countryLabel(code, countries))}
+          <span>${dashboards.filter((dashboard) => dashboard.countryCode === code).length}</span>
+        </button>
+      `).join("")}
+    </div>
+    <div class="inventory-layout">
       <section class="panel">
-        <h2 class="panel-title">Dashboard</h2>
-        <table>
-          <thead><tr><th>国家</th><th>标题</th><th>卡片</th></tr></thead>
-          <tbody>
-            ${dashboards.map((dashboard, index) => `
-              <tr class="${index === 0 ? "selected" : ""}">
-                <td>${dashboard.countryName || dashboard.countryCode || "-"}</td>
-                <td>${dashboard.title || dashboard.sourcePanelTitle || "-"}</td>
-                <td>${dashboard.cards?.length || 0}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
+        <h2 class="panel-title">${escapeHtml(countryLabel(selectedCountry, countries))} 的看板</h2>
+        <div class="dashboard-list">
+          ${countryDashboards.map((dashboard) => `
+            <button class="dashboard-row ${dashboard === selectedDashboard ? "selected" : ""}" data-dashboard-uuid="${escapeHtml(dashboard.uuid || "")}">
+              <span>
+                <strong>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "-")}</strong>
+                <small>${escapeHtml(dashboard.url || "无 URL")}</small>
+              </span>
+              <b>${dashboard.cards?.length || 0} 张卡片</b>
+            </button>
+          `).join("") || `<p class="muted">该国家暂无看板。</p>`}
+        </div>
       </section>
       <section class="panel">
-        <h2 class="panel-title">Card 明细</h2>
-        ${cards.length ? `
-          <table>
-            <thead><tr><th>标题</th><th>cardId</th><th>dashcardId</th><th>列</th><th>状态</th></tr></thead>
-            <tbody>
-              ${cards.map((card) => `
-                <tr>
-                  <td>${card.title || "-"}</td>
-                  <td>${card.cardId || "-"}</td>
-                  <td>${card.dashcardId || "-"}</td>
-                  <td>${(card.columns || []).slice(0, 5).join(", ")}</td>
-                  <td><span class="badge ${card.queryStatus === "ok" ? "ok" : "warn"}">${card.queryStatus || "unknown"}</span></td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-          <h3 class="panel-title" style="margin-top:14px">首张卡片样例 rows</h3>
-          <pre class="code">${escapeHtml(json(cards[0].sampleRows || []))}</pre>
-        ` : `<p class="muted">暂无卡片。</p>`}
+        ${selectedDashboard ? renderDashboardDetail(selectedDashboard, cards) : `<p class="muted">请选择一个看板。</p>`}
       </section>
     </div>
   `;
+
+  root.querySelectorAll("[data-country-code]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selected.countryCode = button.dataset.countryCode;
+      state.selected.dashboardUuid = "";
+      renderInventory(root);
+    });
+  });
+  root.querySelectorAll("[data-dashboard-uuid]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selected.dashboardUuid = button.dataset.dashboardUuid;
+      renderInventory(root);
+    });
+  });
 }
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[char]));
+function renderDashboardDetail(dashboard, cards) {
+  return `
+    <div class="detail-header">
+      <div>
+        <h2 class="panel-title">${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "-")}</h2>
+        <p class="muted">${escapeHtml(dashboard.countryName || dashboard.countryCode || "-")} · ${cards.length} 张卡片</p>
+      </div>
+      ${dashboard.url ? `<a class="link-button" href="${escapeHtml(dashboard.url)}" target="_blank" rel="noreferrer">打开 Metabase</a>` : ""}
+    </div>
+    <div class="card-list">
+      ${cards.map((card) => renderCard(card)).join("") || `<p class="muted">暂无卡片。</p>`}
+    </div>
+    <details class="advanced compact">
+      <summary>高级：查看首张卡片 sampleRows</summary>
+      <pre class="code">${escapeHtml(json(cards[0]?.sampleRows || []))}</pre>
+    </details>
+  `;
+}
+
+function renderCard(card) {
+  return `
+    <article class="card-row">
+      <div>
+        <h3>${escapeHtml(card.title || "-")}</h3>
+        <p>${escapeHtml(compactList(card.columns || [], 6))}</p>
+      </div>
+      <div class="card-meta">
+        <span>cardId ${escapeHtml(card.cardId || "-")}</span>
+        <span>dashcardId ${escapeHtml(card.dashcardId || "-")}</span>
+        <span class="badge ${card.queryStatus === "ok" ? "ok" : "warn"}">${escapeHtml(card.queryStatus || "unknown")}</span>
+      </div>
+    </article>
+  `;
 }

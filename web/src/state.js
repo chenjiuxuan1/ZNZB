@@ -5,7 +5,9 @@ export const state = {
   inventory: null,
   rulesConfig: null,
   sandboxResult: null,
+  sandboxRows: null,
   notifyPreview: null,
+  notifyDraft: null,
   selected: {
     countryCode: "",
     dashboardUuid: "",
