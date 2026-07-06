@@ -135,6 +135,28 @@ test("platform api evaluates live sandbox through readonly Metabase client", asy
   assert.equal(result.request.parameterCount, 0);
 });
 
+test("platform api runs scoped batch check", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-05", "注册数": 10 }];
+      },
+    }),
+  });
+
+  const result = await api.runBatchCheck({
+    countryCode: "INE",
+    maxCards: 1,
+  });
+
+  assert.equal(result.checkedCardCount, 1);
+  assert.equal(result.dashboardCount, 1);
+  assert.equal(result.dataQualityAnomalyCount, 0);
+  assert.ok(result.anomalyCount >= 1);
+});
+
 test("platform api validates and saves rules", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

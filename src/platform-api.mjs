@@ -3,6 +3,7 @@ import path from "node:path";
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
 import {
   buildDefaultCardParameters,
+  checkPublicDashboards,
   evaluateRowsAgainstRule,
   mergeParameters,
 } from "./metabase-public-monitor.mjs";
@@ -154,6 +155,48 @@ export function createPlatformApi({
       };
     },
 
+    async runBatchCheck(body = {}) {
+      const inventory = await readJsonFile(resolve("inventory"), { dashboards: [] });
+      const ruleConfig = await readJsonFile(resolve("rules"), {
+        builtInChecks: { queryError: true, noData: true },
+        rules: [],
+      });
+      const countryCode = String(body.countryCode || "").trim();
+      const dashboardUuid = String(body.dashboardUuid || "").trim();
+      const maxCards = clampPositiveInteger(body.maxCards, 20, 1, 200);
+      const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards });
+      const queryCardFn = async (_client, dashboard, card, parameters = []) => {
+        const client = metabaseClientFactory(dashboard);
+        try {
+          const rows = await client.queryDashcardJson({
+            cardId: card.cardId,
+            dashboardUuid: dashboard.uuid,
+            dashcardId: card.dashcardId,
+            parameters,
+          });
+          return {
+            ok: true,
+            rows: Array.isArray(rows) ? rows : [],
+            error: null,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            rows: [],
+            error: error.message,
+          };
+        }
+      };
+      return checkPublicDashboards({
+        inventory: filteredInventory,
+        ruleConfig: {
+          ...ruleConfig,
+          dataQuality: { ...(ruleConfig.dataQuality || {}), enabled: false },
+        },
+        queryCardFn,
+      });
+    },
+
     async getNotifyPreview(resultOverride = null, optionOverride = {}) {
       const rules = await readJsonFile(resolve("rules"), { alerts: {} });
       const result = resultOverride || await readJsonFile(resolve("result"), {
@@ -209,6 +252,42 @@ function normalizeMentions(value) {
     .split(/[\n,，;；]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards }) {
+  let remainingCards = maxCards;
+  const dashboards = [];
+  for (const dashboard of inventory.dashboards || []) {
+    const code = dashboard.countryCode || dashboard.country?.code || "";
+    if (countryCode && code !== countryCode) {
+      continue;
+    }
+    if (dashboardUuid && dashboard.uuid !== dashboardUuid) {
+      continue;
+    }
+    if (remainingCards <= 0) {
+      break;
+    }
+    const cards = (dashboard.cards || []).slice(0, remainingCards);
+    remainingCards -= cards.length;
+    if (cards.length) {
+      dashboards.push({ ...dashboard, cards });
+    }
+  }
+  return {
+    ...inventory,
+    dashboards,
+    dashboardCount: dashboards.length,
+    totalCardCount: dashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0),
+  };
+}
+
+function clampPositiveInteger(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, Math.floor(number)));
 }
 
 function resolveWebhookUrl(frontendWebhookUrl, configuredWebhookUrl) {

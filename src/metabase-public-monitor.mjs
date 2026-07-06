@@ -5,22 +5,24 @@ import { readJsonFile, writeJsonFile } from "./utils.mjs";
 
 export async function checkPublicDashboards({
   dataQualityFn = collectDataQualityMetrics,
+  inventory = null,
   inventoryFile,
+  ruleConfig = null,
   outputFile,
   rulesFile,
   queryCardFn = queryCard,
 }) {
-  const inventory = await readJsonFile(path.resolve(inventoryFile));
-  const ruleConfig = await readJsonFile(path.resolve(rulesFile), {
+  const inventoryData = inventory || await readJsonFile(path.resolve(inventoryFile));
+  const ruleConfigData = ruleConfig || await readJsonFile(path.resolve(rulesFile), {
     builtInChecks: { queryError: true, noData: true },
     rules: [],
   });
   const anomalies = [];
   const checkedCards = [];
-  const rules = ruleConfig.rules || [];
-  const shouldRunBuiltIns = ruleConfig.builtInChecks?.queryError !== false || ruleConfig.builtInChecks?.noData !== false;
+  const rules = ruleConfigData.rules || [];
+  const shouldRunBuiltIns = ruleConfigData.builtInChecks?.queryError !== false || ruleConfigData.builtInChecks?.noData !== false;
 
-  for (const dashboard of inventory.dashboards || []) {
+  for (const dashboard of inventoryData.dashboards || []) {
     const client = new MetabasePublicClient({
       baseUrl: new URL(dashboard.url).origin,
       requestTimeoutSeconds: 30,
@@ -39,7 +41,7 @@ export async function checkPublicDashboards({
         checkedCards.push(summarizeCardResult(dashboard, card, cardResult, queryGroup.context));
 
         if (shouldRunBuiltIns) {
-          anomalies.push(...evaluateBuiltIns(ruleConfig, dashboard, card, cardResult));
+          anomalies.push(...evaluateBuiltIns(ruleConfigData, dashboard, card, cardResult));
         }
 
         anomalies.push(...evaluateRules(queryGroup.rules, dashboard, card, cardResult));
@@ -47,13 +49,13 @@ export async function checkPublicDashboards({
     }
   }
 
-  const dataQuality = ruleConfig.dataQuality?.enabled
-    ? await dataQualityFn({ config: ruleConfig.dataQuality })
+  const dataQuality = ruleConfigData.dataQuality?.enabled
+    ? await dataQualityFn({ config: ruleConfigData.dataQuality })
     : null;
 
   const result = {
     checkedAt: new Date().toISOString(),
-    dashboardCount: inventory.dashboardCount,
+    dashboardCount: inventoryData.dashboardCount,
     checkedCardCount: checkedCards.length,
     anomalyCount: anomalies.length,
     dataQualityAnomalyCount: countDataQualityIssues(dataQuality),

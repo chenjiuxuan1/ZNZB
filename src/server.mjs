@@ -59,6 +59,9 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/sandbox/evaluate-live") {
     return sendJson(response, 200, await api.evaluateLiveSandbox(await readBody(request)));
   }
+  if (method === "POST" && url.pathname === "/api/batch-check") {
+    return sendJson(response, 200, await api.runBatchCheck(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});
     return sendJson(response, 200, await api.getNotifyPreview(body?.result || null, body?.options || {}));

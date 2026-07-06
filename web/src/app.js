@@ -1,11 +1,12 @@
 import { apiGet } from "./api.js";
 import { setRoute, state } from "./state.js";
-import { renderCountries } from "./views/countries.js?v=20260706-ui12";
-import { renderDashboard } from "./views/dashboard.js?v=20260706-ui12";
-import { renderInventory } from "./views/inventory.js?v=20260706-ui12";
-import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui12";
-import { renderRules } from "./views/rules.js?v=20260706-ui12";
-import { renderSandbox } from "./views/sandbox.js?v=20260706-ui12";
+import { renderCountries } from "./views/countries.js?v=20260706-ui13";
+import { renderDashboard } from "./views/dashboard.js?v=20260706-ui13";
+import { renderInventory } from "./views/inventory.js?v=20260706-ui13";
+import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui13";
+import { renderRules } from "./views/rules.js?v=20260706-ui13";
+import { renderSandbox } from "./views/sandbox.js?v=20260706-ui13";
+import { renderBatchCheck } from "./views/batch-check.js?v=20260706-ui13";
 
 const routes = [
   { path: "/dashboard", label: "总览", render: renderDashboard },
@@ -13,6 +14,7 @@ const routes = [
   { path: "/inventory", label: "看板与卡片", render: renderInventory },
   { path: "/rules", label: "规则配置", render: renderRules },
   { path: "/sandbox", label: "规则试跑", render: renderSandbox },
+  { path: "/batch-check", label: "批量巡检", render: renderBatchCheck },
   { path: "/notify-preview", label: "通知预览", render: renderNotifyPreview },
 ];
 
