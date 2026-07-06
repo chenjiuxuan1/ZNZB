@@ -1,0 +1,1870 @@
+{
+  "checkedAt": "2026-06-09T09:38:57.342Z",
+  "dashboardCount": 8,
+  "checkedCardCount": 39,
+  "anomalyCount": 75,
+  "anomalies": [
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「注册数」从 10 到 34，波动 +240.0%（注册日期 2026-06-08 对比 2026-06-07，APP=THA080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审进件」从 4 到 13，波动 +225.0%（注册日期 2026-06-08 对比 2026-06-07，APP=THA080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审通过」从 4 到 11，波动 +175.0%（注册日期 2026-06-08 对比 2026-06-07，APP=THA080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「放款」从 3 到 8，波动 +166.7%（注册日期 2026-06-08 对比 2026-06-07，APP=THA080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「注册数」从 1 到 2，波动 +100.0%（注册日期 2026-06-07 对比 2026-06-06，APP=THA066）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「注册数」从 3 到 5，波动 +66.7%（注册日期 2026-06-08 对比 2026-06-07，APP=wattuk）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审进件」从 2 到 3，波动 +50.0%（注册日期 2026-06-08 对比 2026-06-07，APP=THA063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「注册数」从 20 到 11，波动 -45.0%（注册日期 2026-06-08 对比 2026-06-07，APP=cherry）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「注册数」从 13 到 8，波动 -38.5%（注册日期 2026-06-08 对比 2026-06-07，APP=THA053）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分期限对比- 入催率",
+      "cardId": 3609,
+      "dashcardId": 4270,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 29.6% 到 0.0%，绝对变化 -29.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=15天*1期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分期限对比- 入催率",
+      "cardId": 3609,
+      "dashcardId": 4270,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 51.4% 到 18.4%，绝对变化 -33.0个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*3期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分期限对比- 入催率",
+      "cardId": 3609,
+      "dashcardId": 4270,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 29.6% 到 0.0%，绝对变化 -29.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=15天*1期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分期限对比- 入催率",
+      "cardId": 3609,
+      "dashcardId": 4270,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 51.4% 到 18.4%，绝对变化 -33.0个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*3期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D3」从 32.6% 到 0.0%，绝对变化 -32.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*2期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D7」从 32.6% 到 0.0%，绝对变化 -32.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*2期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 29.6% 到 0.0%，绝对变化 -29.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=15天*1期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D1」从 32.6% 到 11.1%，绝对变化 -21.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*2期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 51.4% 到 18.4%，绝对变化 -33.0个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*3期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D1」从 28.6% 到 15.4%，绝对变化 -13.2个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*3期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D3」从 32.6% 到 0.0%，绝对变化 -32.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*2期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D7」从 32.6% 到 0.0%，绝对变化 -32.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*2期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 29.6% 到 0.0%，绝对变化 -29.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=15天*1期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D1」从 32.6% 到 11.1%，绝对变化 -21.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*2期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 51.4% 到 18.4%，绝对变化 -33.0个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*3期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3616,
+      "dashcardId": 4271,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D1」从 28.6% 到 15.4%，绝对变化 -13.2个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*3期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 22.6% 到 7.2%，绝对变化 -15.4个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=tha066）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 16.4% 到 27.4%，绝对变化 +11.0个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=wattuk）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 53.3% 到 27.5%，绝对变化 -25.9个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 22.1% 到 11.6%，绝对变化 -10.5个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 30.8% 到 17.3%，绝对变化 -13.4个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=tha062）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 22.6% 到 7.2%，绝对变化 -15.4个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=tha066）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 16.4% 到 27.4%，绝对变化 +11.0个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=wattuk）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 53.3% 到 27.5%，绝对变化 -25.9个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 22.1% 到 11.6%，绝对变化 -10.5个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3618,
+      "dashcardId": 4272,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 30.8% 到 17.3%，绝对变化 -13.4个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=tha062）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- D7",
+      "cardId": 3610,
+      "dashcardId": 4273,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D7」从 58.2% 到 9.3%，绝对变化 -48.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- D7",
+      "cardId": 3610,
+      "dashcardId": 4273,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D7」从 15.2% 到 4.4%，绝对变化 -10.8个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- D7",
+      "cardId": 3610,
+      "dashcardId": 4273,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D7」从 32.0% 到 17.6%，绝对变化 -14.4个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha071）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- D7",
+      "cardId": 3610,
+      "dashcardId": 4273,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D7」从 58.2% 到 9.3%，绝对变化 -48.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- D7",
+      "cardId": 3610,
+      "dashcardId": 4273,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D7」从 15.2% 到 4.4%，绝对变化 -10.8个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- D7",
+      "cardId": 3610,
+      "dashcardId": 4273,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D7」从 32.0% 到 17.6%，绝对变化 -14.4个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha071）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D1」从 11.8% 到 41.7%，绝对变化 +29.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=cherry）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D1」从 13.1% 到 0.0%，绝对变化 -13.1个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=wattuk）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D3」从 58.2% 到 9.3%，绝对变化 -48.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D7」从 58.2% 到 9.3%，绝对变化 -48.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D3」从 15.2% 到 4.4%，绝对变化 -10.8个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D7」从 15.2% 到 4.4%，绝对变化 -10.8个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 22.6% 到 7.2%，绝对变化 -15.4个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha066）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 16.4% 到 27.4%，绝对变化 +11.0个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=wattuk）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D1」从 52.2% 到 18.6%，绝对变化 -33.6个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D1」从 17.6% 到 7.0%，绝对变化 -10.6个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 53.3% 到 27.5%，绝对变化 -25.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D3」从 33.1% 到 17.2%，绝对变化 -15.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha072）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 22.1% 到 11.6%，绝对变化 -10.5个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D7」从 32.0% 到 17.6%，绝对变化 -14.4个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha071）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 30.8% 到 17.3%，绝对变化 -13.4个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha062）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D3」从 32.0% 到 18.7%，绝对变化 -13.3个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha071）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D1」从 11.8% 到 41.7%，绝对变化 +29.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=cherry）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D1」从 13.1% 到 0.0%，绝对变化 -13.1个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=wattuk）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D3」从 58.2% 到 9.3%，绝对变化 -48.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D7」从 58.2% 到 9.3%，绝对变化 -48.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D3」从 15.2% 到 4.4%，绝对变化 -10.8个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D7」从 15.2% 到 4.4%，绝对变化 -10.8个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 22.6% 到 7.2%，绝对变化 -15.4个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha066）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 16.4% 到 27.4%，绝对变化 +11.0个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=wattuk）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D1」从 52.2% 到 18.6%，绝对变化 -33.6个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D1」从 17.6% 到 7.0%，绝对变化 -10.6个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 53.3% 到 27.5%，绝对变化 -25.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha080）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D3」从 33.1% 到 17.2%，绝对变化 -15.9个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha072）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 22.1% 到 11.6%，绝对变化 -10.5个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha063）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D7」从 32.0% 到 17.6%，绝对变化 -14.4个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha071）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 30.8% 到 17.3%，绝对变化 -13.4个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha062）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3617,
+      "dashcardId": 4274,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D3」从 32.0% 到 18.7%，绝对变化 -13.3个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=tha071）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分期限对比- D7",
+      "cardId": 3613,
+      "dashcardId": 4275,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D7」从 32.6% 到 0.0%，绝对变化 -32.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*2期）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "cardTitle": "分期限对比- D7",
+      "cardId": 3613,
+      "dashcardId": 4275,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「D7」从 32.6% 到 0.0%，绝对变化 -32.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=7天*2期）"
+    }
+  ],
+  "checkedCards": [
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数 ",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数 ",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 378,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 378,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 415,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=到期日期",
+      "rowCount": 44,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=到期日期",
+      "rowCount": 44,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分期限对比- 入催率",
+      "context": "统计口径=放款日期",
+      "rowCount": 450,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分期限对比- 入催率",
+      "context": "统计口径=到期日期",
+      "rowCount": 450,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分产品对比- 明细",
+      "context": "统计口径=放款日期",
+      "rowCount": 450,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分产品对比- 明细",
+      "context": "统计口径=到期日期",
+      "rowCount": 450,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分APP对比- 入催率",
+      "context": "统计口径=放款日期",
+      "rowCount": 546,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分APP对比- 入催率",
+      "context": "统计口径=到期日期",
+      "rowCount": 546,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分APP对比- D7",
+      "context": "统计口径=放款日期",
+      "rowCount": 546,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分APP对比- D7",
+      "context": "统计口径=到期日期",
+      "rowCount": 546,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分APP对比- 明细",
+      "context": "统计口径=放款日期",
+      "rowCount": 546,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分APP对比- 明细",
+      "context": "统计口径=到期日期",
+      "rowCount": 546,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分期限对比- D7",
+      "context": "统计口径=放款日期",
+      "rowCount": 450,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "分期限对比- D7",
+      "context": "统计口径=到期日期",
+      "rowCount": 450,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    }
+  ]
+}

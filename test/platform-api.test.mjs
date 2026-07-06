@@ -1,0 +1,158 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import {
+  createPlatformApi,
+  flattenInventory,
+} from "../src/platform-api.mjs";
+
+async function makeFixture() {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "duty-platform-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({
+      countries: [{ code: "ID", name: "印尼", timezone: "Asia/Jakarta", status: "ready" }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/public-monitor.config.json"),
+    JSON.stringify({
+      alerts: { channel: "tv", webhookUrl: "${TV_ALERT_WEBHOOK_URL}" },
+      rules: [
+        { type: "requiredDatePresent", dashboardTitle: "OKR", cardTitles: ["规模"], dateColumn: "统计日期" },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboardCount: 1,
+      dashboards: [
+        {
+          countryCode: "ID",
+          countryName: "印尼",
+          title: "OKR",
+          uuid: "dash-1",
+          url: "https://data.example/public/dashboard/dash-1",
+          cards: [
+            {
+              title: "规模",
+              cardId: 1,
+              dashcardId: 2,
+              columns: ["统计日期", "注册数"],
+              sampleRows: [{ "统计日期": "2026-07-06", "注册数": 10 }],
+              queryStatus: "ok",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/public-check-result.ready.json"),
+    JSON.stringify({
+      checkedAt: "2026-07-06T00:00:00.000Z",
+      anomalyCount: 0,
+      checkedCardCount: 1,
+      anomalies: [],
+    }),
+  );
+  return rootDir;
+}
+
+test("flattenInventory returns dashboard and card counts", () => {
+  const flat = flattenInventory({
+    dashboards: [
+      { title: "A", cards: [{ title: "C1" }, { title: "C2" }] },
+      { title: "B", cards: [] },
+    ],
+  });
+
+  assert.equal(flat.dashboardCount, 2);
+  assert.equal(flat.cardCount, 2);
+});
+
+test("platform api returns summary and inventory", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  const summary = await api.getSummary();
+  assert.equal(summary.countryCount, 1);
+  assert.equal(summary.dashboardCount, 1);
+  assert.equal(summary.cardCount, 1);
+  assert.equal(summary.ruleCount, 1);
+
+  const inventory = await api.getInventory({ countryCode: "ID", q: "规模" });
+  assert.equal(inventory.dashboards.length, 1);
+  assert.equal(inventory.dashboards[0].cards.length, 1);
+});
+
+test("platform api evaluates sandbox rules", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  const result = await api.evaluateSandbox({
+    dashboard: { title: "OKR" },
+    card: { title: "规模" },
+    rule: { type: "requiredDatePresent", dateColumn: "统计日期", requiredDate: "2026-07-06" },
+    rows: [{ "统计日期": "2026-07-06" }],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.matched, false);
+  assert.deepEqual(result.messages, []);
+});
+
+test("platform api validates and saves rules", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  const next = await api.saveRulesConfig({
+    rules: [{ type: "notEmpty", dashboardTitle: "OKR", cardTitles: ["规模"] }],
+  });
+
+  assert.equal(next.rules.length, 1);
+  const saved = JSON.parse(await fs.readFile(path.join(rootDir, "config/public-monitor.config.json"), "utf8"));
+  assert.equal(saved.rules[0].type, "notEmpty");
+});
+
+test("platform api keeps hidden secret placeholders from overwriting stored values", async () => {
+  const rootDir = await makeFixture();
+  const rulesPath = path.join(rootDir, "config/public-monitor.config.json");
+  await fs.writeFile(
+    rulesPath,
+    JSON.stringify({
+      alerts: { webhookUrl: "plain-secret-webhook", botId: "plain-secret-bot" },
+      gateway: { token: "plain-secret-token" },
+      rules: [{ type: "notEmpty", dashboardTitle: "OKR", cardTitles: ["规模"] }],
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const visible = await api.getRulesConfig();
+  assert.equal(visible.alerts.webhookUrl, "<hidden>");
+  assert.equal(visible.gateway.token, "<hidden>");
+
+  await api.saveRulesConfig({
+    ...visible,
+    rules: [{ type: "rowCountAtLeast", dashboardTitle: "OKR", cardTitles: ["规模"], minRows: 1 }],
+  });
+
+  const saved = JSON.parse(await fs.readFile(rulesPath, "utf8"));
+  assert.equal(saved.alerts.webhookUrl, "plain-secret-webhook");
+  assert.equal(saved.alerts.botId, "plain-secret-bot");
+  assert.equal(saved.gateway.token, "plain-secret-token");
+  assert.equal(saved.rules[0].type, "rowCountAtLeast");
+});
+
+test("platform api generates notify preview", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  const preview = await api.getNotifyPreview();
+  assert.ok(preview.messages.length >= 1);
+  assert.ok(preview.messages[0].body.includes("公共报表巡检"));
+});

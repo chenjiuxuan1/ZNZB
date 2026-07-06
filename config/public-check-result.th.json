@@ -1,0 +1,1027 @@
+{
+  "checkedAt": "2026-06-10T09:02:45.670Z",
+  "dashboardCount": 8,
+  "checkedCardCount": 27,
+  "anomalyCount": 36,
+  "anomalies": [
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2733,
+      "dashcardId": 3315,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 234 到 192，波动 -17.9%（Asia/Bangkok 09:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2733,
+      "dashcardId": 3315,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 214 到 249，波动 +16.4%（Asia/Bangkok 13:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 212601.15 到 322487.88，波动 +51.7%（Asia/Bangkok 05:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 78432.37 到 43653.85，波动 -44.3%（Asia/Bangkok 00:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 625426.17 到 844760.15，波动 +35.1%（Asia/Bangkok 07:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 51631.92 到 34028.57，波动 -34.1%（Asia/Bangkok 01:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 765797.25 到 553051.38，波动 -27.8%（Asia/Bangkok 10:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 565191.54 到 447730.92，波动 -20.8%（Asia/Bangkok 14:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 784496.07 到 930748.5，波动 +18.6%（Asia/Bangkok 08:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 69358.46 到 82256.54，波动 +18.6%（Asia/Bangkok 04:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "还有 2 条同类异常被省略"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 8956.35 到 69263.52，波动 +673.3%（Asia/Bangkok 02:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 50347.93 到 196274.65，波动 +289.8%（Asia/Bangkok 04:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 417935.73 到 632835.55，波动 +51.4%（Asia/Bangkok 13:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 56224.15 到 84265.02，波动 +49.9%（Asia/Bangkok 03:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 844065.68 到 1220018.7，波动 +44.5%（Asia/Bangkok 07:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 143364.41 到 94014.76，波动 -34.4%（Asia/Bangkok 00:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 84873.5 到 59929.89，波动 -29.4%（Asia/Bangkok 01:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 888501.2 到 644943.36，波动 -27.4%（Asia/Bangkok 10:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "还有 3 条同类异常被省略"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 15587.91 到 2352.37，波动 -84.9%（Asia/Bangkok 03:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 78616.33 到 136241.51，波动 +73.3%（Asia/Bangkok 07:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 2264.97 到 3680.63，波动 +62.5%（Asia/Bangkok 02:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 148071.54 到 225391.46，波动 +52.2%（Asia/Bangkok 13:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 21468.06 到 11481.74，波动 -46.5%（Asia/Bangkok 00:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 70594.75 到 99080.62，波动 +40.4%（Asia/Bangkok 06:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 145469.91 到 203738.4，波动 +40.1%（Asia/Bangkok 11:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 9328.23 到 12979.12，波动 +39.1%（Asia/Bangkok 04:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "还有 6 条同类异常被省略"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2736,
+      "dashcardId": 3316,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 202 到 165，波动 -18.3%（Asia/Bangkok 14:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2736,
+      "dashcardId": 3316,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 188 到 154，波动 -18.1%（Asia/Bangkok 09:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-启动次数 ",
+      "cardId": 2983,
+      "dashcardId": 3621,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 147 到 100，波动 -32.0%（Asia/Bangkok 12:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-启动次数 ",
+      "cardId": 2983,
+      "dashcardId": 3621,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 110 到 142，波动 +29.1%（Asia/Bangkok 08:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-启动次数 ",
+      "cardId": 2983,
+      "dashcardId": 3621,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 115 到 90，波动 -21.7%（Asia/Bangkok 06:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-启动次数 ",
+      "cardId": 2983,
+      "dashcardId": 3621,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 131 到 154，波动 +17.6%（Asia/Bangkok 07:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「放款」从 151 到 111，波动 -26.5%（注册日期 2026-06-09 对比 2026-06-08，APP=THA072）"
+    }
+  ],
+  "checkedCards": [
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数 ",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数 ",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 381,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 381,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 414,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=到期日期",
+      "rowCount": 44,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=到期日期",
+      "rowCount": 44,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    }
+  ]
+}

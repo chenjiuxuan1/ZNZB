@@ -1,0 +1,4314 @@
+{
+  "checkedAt": "2026-06-16T06:28:13.833Z",
+  "dashboardCount": 40,
+  "checkedCardCount": 189,
+  "anomalyCount": 84,
+  "dataQualityAnomalyCount": 5,
+  "anomalies": [
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/9f577bde-1784-4b79-a4c6-ceed5e2f1502",
+      "cardTitle": "入催数",
+      "cardId": 472,
+      "dashcardId": 559,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「老客共债入催数」从 66 到 36，波动 -45.5%（统计日期 2026-05-31 对比 2026-05-30）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/9f577bde-1784-4b79-a4c6-ceed5e2f1502",
+      "cardTitle": "D3入催率 ",
+      "cardId": 540,
+      "dashcardId": 569,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「老客D3逾期率」从 28.6% 到 6.7%，绝对变化 -21.9个百分点（统计日期 2026-05-28 对比 2026-05-27）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/9f577bde-1784-4b79-a4c6-ceed5e2f1502",
+      "cardTitle": "费率构成 - 新客",
+      "cardId": 1500,
+      "dashcardId": 1819,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「费率」从 75.9% 到 60.3%，绝对变化 -15.5个百分点（统计日期 2026-06-15 对比 2026-06-14，产品期限=30天*6期）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 5976200 到 13120563，波动 +119.5%（Asia/Jakarta 02:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 9680217 到 18065535，波动 +86.6%（Asia/Jakarta 03:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 15607227 到 24720674，波动 +58.4%（Asia/Jakarta 01:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 17701539 到 27568888，波动 +55.7%（Asia/Jakarta 04:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 434433850 到 194634010，波动 -55.2%（Asia/Jakarta 08:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2693,
+      "dashcardId": 3261,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「pass_num」从 175 到 1662，波动 +849.7%（Asia/Jakarta 06:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2686,
+      "dashcardId": 3260,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 175 到 1662，波动 +849.7%（Asia/Jakarta 06:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 84968 到 1979115，波动 +2229.2%（Asia/Jakarta 03:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 89001 到 1811843.5，波动 +1935.8%（Asia/Jakarta 01:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 411272 到 2970978，波动 +622.4%（Asia/Jakarta 01:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 1122831 到 6342789，波动 +464.9%（Asia/Jakarta 00:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 2166874 到 0，波动 -100.0%（Asia/Jakarta 03:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 13455589 到 25162029，波动 +87.0%（Asia/Jakarta 07:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 35541558 到 8168631，波动 -77.0%（Asia/Jakarta 11:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 1151747 到 1999240，波动 +73.6%（Asia/Jakarta 02:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "还有 4 条同类异常被省略"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 1370000 到 14970000，波动 +992.7%（Asia/Jakarta 09:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 1470000 到 7155000，波动 +386.7%（Asia/Jakarta 10:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 12510000 到 38780000，波动 +210.0%（Asia/Jakarta 12:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 3300000 到 7210000，波动 +118.5%（Asia/Jakarta 10:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 5440000 到 0，波动 -100.0%（Asia/Jakarta 09:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 60695000 到 17560000，波动 -71.1%（Asia/Jakarta 07:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/5fbc294f-0115-47be-a941-07ebe0ba7725",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1387,
+      "dashcardId": 1686,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审通过」从 5.2631579 到 0，波动 -100.0%（注册日期 2026-06-15 对比 2026-06-14，APP=phi013）"
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/5fbc294f-0115-47be-a941-07ebe0ba7725",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1387,
+      "dashcardId": 1686,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「放款」从 5.2631579 到 0，波动 -100.0%（注册日期 2026-06-15 对比 2026-06-14，APP=phi013）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2733,
+      "dashcardId": 3315,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 30235.11 到 75621.32，波动 +150.1%（Asia/Bangkok 00:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 80586.86 到 39640.58，波动 -50.8%（Asia/Bangkok 03:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2731,
+      "dashcardId": 3325,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 36535.55 到 55082，波动 +50.8%（Asia/Bangkok 01:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 21259.98 到 116047.4，波动 +445.8%（Asia/Bangkok 03:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 37497.25 到 194812.46，波动 +419.5%（Asia/Bangkok 01:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 22882.36 到 92324.18，波动 +303.5%（Asia/Bangkok 02:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2737,
+      "dashcardId": 3324,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 338449.47 到 555218.61，波动 +64.0%（Asia/Bangkok 05:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2730,
+      "dashcardId": 3323,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2732,
+      "dashcardId": 3322,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 7108.83 到 28492.98，波动 +300.8%（Asia/Bangkok 00:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 15396.74 到 3356.24，波动 -78.2%（Asia/Bangkok 01:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 3817 到 6696.15，波动 +75.4%（Asia/Bangkok 02:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2734,
+      "dashcardId": 3320,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 38170.21 到 19018.22，波动 -50.2%（Asia/Bangkok 04:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2738,
+      "dashcardId": 3319,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-通过次数",
+      "cardId": 2735,
+      "dashcardId": 3318,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2739,
+      "dashcardId": 3317,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2736,
+      "dashcardId": 3316,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "老客-启动次数 ",
+      "cardId": 2984,
+      "dashcardId": 3617,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "cardTitle": "新客-启动次数 ",
+      "cardId": 2983,
+      "dashcardId": 3621,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-16 缺少 10:30（Asia/Bangkok 13:26，期望按 2026-06-15 已有时间点对齐，截止 11:30）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「放款」从 111 到 58，波动 -47.7%（注册日期 2026-06-15 对比 2026-06-14，APP=THA072）"
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1369,
+      "dashcardId": 1664,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审通过」从 115 到 63，波动 -45.2%（注册日期 2026-06-15 对比 2026-06-14，APP=THA072）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2726,
+      "dashcardId": 3308,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 303263.04 到 470917.34，波动 +55.3%（Asia/Karachi 05:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2722,
+      "dashcardId": 3307,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 871500 到 286100，波动 -67.2%（Asia/Karachi 01:30，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2722,
+      "dashcardId": 3307,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 701300 到 1063000，波动 +51.6%（Asia/Karachi 02:00，stat_date 2026-06-16 对比 2026-06-15）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+      "cardTitle": "每日放款统计",
+      "cardId": 1626,
+      "dashcardId": 1972,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款金额」进度 29.1% 低于期望 47.6%（Asia/Karachi 11:26，2026-06-16=34033660，2026-06-15=116841400）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+      "cardTitle": "每日放款统计",
+      "cardId": 1626,
+      "dashcardId": 1972,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款笔数」进度 29.4% 低于期望 47.6%（Asia/Karachi 11:26，2026-06-16=1897，2026-06-15=6444）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+      "cardTitle": "GMV&笔数",
+      "cardId": 1629,
+      "dashcardId": 1974,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款金额」进度 29.1% 低于期望 47.6%（Asia/Karachi 11:26，2026-06-16=34033660，2026-06-15=116841400）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+      "cardTitle": "GMV&笔数",
+      "cardId": 1629,
+      "dashcardId": 1974,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款笔数」进度 29.4% 低于期望 47.6%（Asia/Karachi 11:26，2026-06-16=1897，2026-06-15=6444）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1f04f408-b7fe-4f84-a74a-ab7a7a8ea03d",
+      "cardTitle": "每期逾期率",
+      "cardId": 3659,
+      "dashcardId": 4313,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D1」从 26.7% 到 0.0%，绝对变化 -26.7个百分点（统计日期 2026-06-07 对比 2026-06-06）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1f04f408-b7fe-4f84-a74a-ab7a7a8ea03d",
+      "cardTitle": "每期逾期率-表",
+      "cardId": 3656,
+      "dashcardId": 4314,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「D1」从 26.7% 到 0.0%，绝对变化 -26.7个百分点（统计日期 2026-06-07 对比 2026-06-06）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/a5fa7b61-bf2e-4aea-941e-37c547a869c0",
+      "cardTitle": "放款金额",
+      "cardId": 1638,
+      "dashcardId": 2670,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「老客放款金额」从 1771700 到 2843800，波动 +60.5%（统计日期 2026-06-15 对比 2026-06-14）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/a5fa7b61-bf2e-4aea-941e-37c547a869c0",
+      "cardTitle": "放款金额",
+      "cardId": 1638,
+      "dashcardId": 2670,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「老客共债放款金额」从 14411340 到 22373680，波动 +55.3%（统计日期 2026-06-15 对比 2026-06-14）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/a5fa7b61-bf2e-4aea-941e-37c547a869c0",
+      "cardTitle": "放款金额",
+      "cardId": 1638,
+      "dashcardId": 2670,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「新客放款金额」从 5319300 到 7629000，波动 +43.4%（统计日期 2026-06-15 对比 2026-06-14）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/a5fa7b61-bf2e-4aea-941e-37c547a869c0",
+      "cardTitle": "进件规模",
+      "cardId": 1641,
+      "dashcardId": 3128,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「老客进件数」从 3074 到 4698，波动 +52.8%（统计日期 2026-06-15 对比 2026-06-14）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/a5fa7b61-bf2e-4aea-941e-37c547a869c0",
+      "cardTitle": "进件规模",
+      "cardId": 1641,
+      "dashcardId": 3128,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「老客共债进件数」从 20861 到 31270，波动 +49.9%（统计日期 2026-06-15 对比 2026-06-14）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/a5fa7b61-bf2e-4aea-941e-37c547a869c0",
+      "cardTitle": "进件规模",
+      "cardId": 1641,
+      "dashcardId": 3128,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「新客共债进件数」从 10409 到 15424，波动 +48.2%（统计日期 2026-06-15 对比 2026-06-14）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「放款」从 1 到 10，波动 +900.0%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX023）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审通过」从 2 到 19，波动 +850.0%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX023）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「放款」从 119 到 215，波动 +80.7%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX028）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审通过」从 171 到 296，波动 +73.1%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX028）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审进件」从 7 到 2，波动 -71.4%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX018）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「注册数」从 51 到 79，波动 +54.9%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX023）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审进件」从 1083 到 1664，波动 +53.6%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX028）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「正审进件」从 37 到 56，波动 +51.4%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX023）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/7d550e8e-a1c5-4864-b6b4-a8b101512781",
+      "cardTitle": "分app规模&转化",
+      "cardId": 1334,
+      "dashcardId": 1702,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「注册数」从 1622 到 2409，波动 +48.5%（注册日期 2026-06-15 对比 2026-06-14，APP=MEX028）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/099a3a68-b8fd-4780-ab4c-989e2fbc8347",
+      "cardTitle": "件均&费率",
+      "cardId": 1603,
+      "dashcardId": 1949,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「件均」从 3939.5045 到 4607.0226，波动 +16.9%（放款日期 2026-06-15 对比 2026-06-14）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/099a3a68-b8fd-4780-ab4c-989e2fbc8347",
+      "cardTitle": "GMV&笔数",
+      "cardId": 1600,
+      "dashcardId": 1950,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款笔数」进度 0.3% 低于期望 1.9%（America/Mexico_City 00:27，2026-06-16=30，2026-06-15=8598）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/099a3a68-b8fd-4780-ab4c-989e2fbc8347",
+      "cardTitle": "GMV&笔数",
+      "cardId": 1600,
+      "dashcardId": 1950,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款金额」进度 0.4% 低于期望 1.9%（America/Mexico_City 00:27，2026-06-16=143000，2026-06-15=39611180）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/099a3a68-b8fd-4780-ab4c-989e2fbc8347",
+      "cardTitle": "每日放款统计",
+      "cardId": 1606,
+      "dashcardId": 2016,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款笔数」进度 0.3% 低于期望 1.9%（America/Mexico_City 00:27，2026-06-16=30，2026-06-15=8598）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/099a3a68-b8fd-4780-ab4c-989e2fbc8347",
+      "cardTitle": "每日放款统计",
+      "cardId": 1606,
+      "dashcardId": 2016,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款金额」进度 0.4% 低于期望 1.9%（America/Mexico_City 00:27，2026-06-16=143000，2026-06-15=39611180）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/099a3a68-b8fd-4780-ab4c-989e2fbc8347",
+      "cardTitle": "每日放款统计",
+      "cardId": 1606,
+      "dashcardId": 2016,
+      "context": null,
+      "type": "completeDayChange",
+      "message": "完整日指标「件均」从 3939.5045 到 4607.0226，波动 +16.9%（放款日期 2026-06-15 对比 2026-06-14）"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心指标概览",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/97d33b72-450a-4251-8cea-14215f0c45a6",
+      "cardTitle": "未还占比",
+      "cardId": 758,
+      "dashcardId": 857,
+      "context": null,
+      "type": "requiredDatePresent",
+      "message": "数据新鲜度异常：到期日期 缺少 D-1 2026-06-15 的数据，当前最新日期是 2026-06-14"
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心指标概览",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/97d33b72-450a-4251-8cea-14215f0c45a6",
+      "cardTitle": "滚动回款率",
+      "cardId": 759,
+      "dashcardId": 858,
+      "context": null,
+      "type": "requiredDatePresent",
+      "message": "数据新鲜度异常：到期日期 缺少 D-1 2026-06-15 的数据，当前最新日期是 2026-06-14"
+    }
+  ],
+  "checkedCards": [
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催率",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "还款7日复借率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催数",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "单笔件均",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款件数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款金额",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件通过率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "成本",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "D3入催率 ",
+      "context": null,
+      "rowCount": 12,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成-总计",
+      "context": null,
+      "rowCount": 254,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率趋势",
+      "context": null,
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成 - 新客",
+      "context": null,
+      "rowCount": 130,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成 - 老客",
+      "context": null,
+      "rowCount": 253,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 74,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "整体趋势",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "规模&转化",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 62,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 62,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 262,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=到期日期",
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=到期日期",
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款件数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "还款7日复借率",
+      "context": "PH特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件通过率",
+      "context": "PH特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件规模",
+      "context": "PH特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "D3入催率 ",
+      "context": null,
+      "rowCount": 12,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款金额",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催数",
+      "context": null,
+      "rowCount": 23,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催率",
+      "context": null,
+      "rowCount": 23,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "成本",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "OKR",
+      "cardTitle": "规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数",
+      "context": null,
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "规模&转化",
+      "context": null,
+      "rowCount": 11,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 40,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by  期限",
+      "context": null,
+      "rowCount": 251,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=到期日期",
+      "rowCount": 46,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=到期日期",
+      "rowCount": 46,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PH",
+        "name": "菲律宾",
+        "timezone": "Asia/Manila"
+      },
+      "countryCode": "PH",
+      "countryName": "菲律宾",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数 ",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数 ",
+      "context": null,
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 380,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 380,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 412,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=到期日期",
+      "rowCount": 44,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=到期日期",
+      "rowCount": 44,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "每期逾期率",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "TH",
+        "name": "泰国",
+        "timezone": "Asia/Bangkok"
+      },
+      "countryCode": "TH",
+      "countryName": "泰国",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件通过率",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件规模",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款件数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款金额",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催数",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催率",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "规模",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "成本",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数 ",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数 ",
+      "context": null,
+      "rowCount": 60,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 301,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 301,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 367,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "PK特殊口径：统计口径=到期日期，D-1更新",
+      "rowCount": 23,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 22,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "PK特殊口径：统计口径=到期日期，D-1更新",
+      "rowCount": 23,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 22,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "成本",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催率",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催数",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款金额",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款件数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "D3入催率 ",
+      "context": null,
+      "rowCount": 12,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件通过率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "OKR",
+      "cardTitle": "还款7日复借率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数",
+      "context": null,
+      "rowCount": 47,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "整体趋势",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 179,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 179,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 123,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 123,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 123,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 131,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=到期日期",
+      "rowCount": 44,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=到期日期",
+      "rowCount": 44,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 41,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "MX",
+        "name": "墨西哥",
+        "timezone": "America/Mexico_City"
+      },
+      "countryCode": "MX",
+      "countryName": "墨西哥",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 41,
+      "ok": true,
+      "error": null
+    }
+  ],
+  "dataQuality": {
+    "checkedAt": "2026-06-16T06:28:13.833Z",
+    "countries": [
+      {
+        "countryCode": "ID",
+        "countryName": "印尼",
+        "timezone": "Asia/Jakarta",
+        "status": "error",
+        "error": "Expected JSON response but got text/html: <html>\n<head><title>401 Unauthorized</title></head>\n<body bgcolor=\"white\">\n<center><h1>401 Unauthorized</h1></center>\n<center>Sorry, the page you are looking for is unauthorized. Please contact the system administrator.</center>\n<hr><center"
+      },
+      {
+        "countryCode": "PH",
+        "countryName": "菲律宾",
+        "timezone": "Asia/Manila",
+        "status": "error",
+        "error": "Grafana request failed (401 Unauthorized): {\"type\":\"https://tools.ietf.org/html/rfc9110#section-15.5.2\",\"title\":\"Unauthorized\",\"detail\":\"You're not authorized to access this resource. Please log in to continue.\"}"
+      },
+      {
+        "countryCode": "TH",
+        "countryName": "泰国",
+        "timezone": "Asia/Bangkok",
+        "status": "error",
+        "error": "Grafana request failed (401 Unauthorized): {\"type\":\"https://tools.ietf.org/html/rfc9110#section-15.5.2\",\"title\":\"Unauthorized\",\"detail\":\"You're not authorized to access this resource. Please log in to continue.\"}"
+      },
+      {
+        "countryCode": "PK",
+        "countryName": "巴基斯坦",
+        "timezone": "Asia/Karachi",
+        "status": "error",
+        "error": "Grafana request failed (401 Unauthorized): {\"extra\":null,\"message\":\"Unauthorized\",\"messageId\":\"auth.unauthorized\",\"statusCode\":401,\"traceID\":\"\"}\n"
+      },
+      {
+        "countryCode": "MX",
+        "countryName": "墨西哥",
+        "timezone": "America/Mexico_City",
+        "status": "error",
+        "error": "Grafana request failed (401 Unauthorized): {\"type\":\"https://tools.ietf.org/html/rfc9110#section-15.5.2\",\"title\":\"Unauthorized\",\"detail\":\"You're not authorized to access this resource. Please log in to continue.\"}"
+      }
+    ]
+  }
+}

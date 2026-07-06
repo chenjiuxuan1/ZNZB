@@ -1,0 +1,53 @@
+{
+  "grafana": {
+    "dashboardUrl": "https://sr-monitor.empoweroceanin.com/d/aeqalqv4yq5fkf/7d32b5ce-c485-5a73-ab80-9841241ed4ba?orgId=1&refresh=2h",
+    "token": "${GRAFANA_SERVICE_ACCOUNT_TOKEN}",
+    "cookie": "${GRAFANA_COOKIE}",
+    "username": "${GRAFANA_BASIC_AUTH_USER}",
+    "password": "${GRAFANA_BASIC_AUTH_PASSWORD}",
+    "requestTimeoutSeconds": 15
+  },
+  "schedule": {
+    "intervalMinutes": 10
+  },
+  "browserAuth": {
+    "enabled": true,
+    "headless": true,
+    "apiHeadless": false,
+    "loginTimeoutSeconds": 45,
+    "storageStateFile": ".state/grafana-storage-state.json",
+    "userDataDir": ".state/chrome-profile",
+    "executablePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  },
+  "alerts": {
+    "channel": "console",
+    "webhookUrl": "${DUTY_BOT_WEBHOOK_URL}",
+    "sendRecovery": true
+  },
+  "timeRange": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "variables": {},
+  "builtInChecks": {
+    "queryError": true,
+    "noData": true
+  },
+  "rules": [
+    {
+      "panelTitle": "订单成功率",
+      "type": "latestValueOutsideRange",
+      "min": 0.99
+    },
+    {
+      "panelTitle": "失败订单数",
+      "type": "latestValueOutsideRange",
+      "max": 0
+    },
+    {
+      "panelTitle": "数据更新时间",
+      "type": "staleLatestTimestamp",
+      "maxAgeMinutes": 180
+    }
+  ]
+}

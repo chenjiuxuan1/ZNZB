@@ -1,0 +1,6 @@
+.env
+.state/
+node_modules/
+*.log
+tmp-*.png
+.DS_Store

@@ -1,0 +1,41 @@
+{
+  "name": "grafana-duty-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "login": "node ./src/cli.mjs login --config ./config/monitor.config.json",
+    "login:id": "node ./src/cli.mjs login --config ./config/monitor.id.json",
+    "login:ph": "node ./src/cli.mjs login --config ./config/monitor.ph.json",
+    "login:th": "node ./src/cli.mjs login --config ./config/monitor.th.json",
+    "login:pk": "node ./src/cli.mjs login --config ./config/monitor.pk.json",
+    "login:mx": "node ./src/cli.mjs login --config ./config/monitor.mx.json",
+    "discover": "node ./src/cli.mjs discover --config ./config/monitor.config.json --out ./config/discovered-panels.json",
+    "discover-public": "node ./src/cli.mjs discover-public --config ./config/monitor.config.json --input ./config/discovered-panels.json --out ./config/discovered-public-dashboards.json",
+    "discover:id": "node ./src/cli.mjs discover --config ./config/monitor.id.json --out ./config/discovered-panels.json",
+    "discover:ph": "node ./src/cli.mjs discover --config ./config/monitor.ph.json --out ./config/discovered-panels.ph.json",
+    "discover:th": "node ./src/cli.mjs discover --config ./config/monitor.th.json --out ./config/discovered-panels.th.json",
+    "discover:pk": "node ./src/cli.mjs discover --config ./config/monitor.pk.json --out ./config/discovered-panels.pk.json",
+    "discover:mx": "node ./src/cli.mjs discover --config ./config/monitor.mx.json --out ./config/discovered-panels.mx.json",
+    "discover-public:id": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.json --out ./config/discovered-public-dashboards.json",
+    "discover-public:ph": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.ph.json --out ./config/discovered-public-dashboards.ph.json",
+    "discover-public:th": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.th.json --out ./config/discovered-public-dashboards.th.json",
+    "discover-public:pk": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.pk.json --out ./config/discovered-public-dashboards.pk.json",
+    "discover-public:mx": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.mx.json --out ./config/discovered-public-dashboards.mx.json",
+    "check-public": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.json",
+    "check-public:ready": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.ready.json",
+    "check-public-gateway:ready": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.ready.json --query-mode gateway",
+    "check-public:pk": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.pk.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.pk.json",
+    "check-public-notify": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.json --notify --exit-zero",
+    "check-public-notify:ready": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.ready.json --notify --exit-zero",
+    "check-public-gateway-notify:ready": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.ready.json --query-mode gateway --notify --exit-zero",
+    "notify-test": "node ./src/cli.mjs notify-test --config ./config/public-monitor.config.json",
+    "check": "node ./src/cli.mjs check --config ./config/monitor.config.json",
+    "watch": "node ./src/cli.mjs watch --config ./config/monitor.config.json",
+    "platform": "node ./src/server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.60.0"
+  }
+}

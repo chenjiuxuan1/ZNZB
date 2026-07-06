@@ -1,0 +1,43 @@
+{
+  "builtInChecks": {
+    "queryError": true,
+    "noData": true
+  },
+  "alerts": {
+    "channel": "tv",
+    "webhookUrl": "${TV_ALERT_WEBHOOK_URL}",
+    "botId": "${TV_ALERT_BOT_ID}",
+    "textField": "message",
+    "sendWhenHealthy": true,
+    "maxAnomalies": 50
+  },
+  "dataQuality": {
+    "enabled": true,
+    "countriesFile": "./config/countries.config.json",
+    "panelTitlePattern": "当前异常数|异常数|current\\s*anomal",
+    "aggregation": "sum",
+    "requestTimeoutSeconds": 20
+  },
+  "rules": [
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "type": "latestValueOutsideRange",
+      "column": "注册~放款",
+      "min": 0.02
+    },
+    {
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "type": "rowCountOutsideRange",
+      "min": 1
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "type": "staleLatestDate",
+      "dateColumn": "统计日期",
+      "maxAgeDays": 2
+    }
+  ]
+}

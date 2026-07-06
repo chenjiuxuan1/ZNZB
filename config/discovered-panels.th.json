@@ -1,0 +1,127 @@
+{
+  "title": "核心报表监控仪表盘",
+  "uid": "aeqalqv4yq5fkf",
+  "timeRange": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "OKR",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/2a587423-5279-49b7-824f-7b62a8c884a3",
+          "url": "https://data.kuainiu.io/public/dashboard/2a587423-5279-49b7-824f-7b62a8c884a3"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 2,
+      "title": "核心链路准实时监控",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+          "url": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 3,
+      "title": "新客转化率(注册~放款)",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+          "url": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 4,
+      "title": "营销数据统计",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/50a4ee68-79fb-4053-90c0-55e39f4d560b",
+          "url": "https://data.kuainiu.io/public/dashboard/50a4ee68-79fb-4053-90c0-55e39f4d560b"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 6,
+      "title": "营销过程数据统计",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/15ee3492-f700-45be-959c-122962047c7b",
+          "url": "https://data.kuainiu.io/public/dashboard/15ee3492-f700-45be-959c-122962047c7b"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 5,
+      "title": "放款统计",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/be9e2e00-6d37-458e-974c-af5d14015fb5",
+          "url": "https://data.kuainiu.io/public/dashboard/be9e2e00-6d37-458e-974c-af5d14015fb5"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 7,
+      "title": "每期逾期率",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+          "url": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 8,
+      "title": "核心指标概览",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/12ccc679-e0a7-4f58-aa98-5bedada672e5",
+          "url": "https://data.kuainiu.io/public/dashboard/12ccc679-e0a7-4f58-aa98-5bedada672e5"
+        }
+      ],
+      "textPreview": null
+    }
+  ],
+  "country": {
+    "code": "TH",
+    "name": "泰国",
+    "timezone": "Asia/Bangkok"
+  }
+}

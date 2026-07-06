@@ -1,0 +1,696 @@
+{
+  "builtInChecks": {
+    "queryError": false,
+    "noData": false
+  },
+  "alerts": {
+    "channel": "tv",
+    "webhookUrl": "${TV_ALERT_WEBHOOK_URL}",
+    "botId": "${TV_ALERT_BOT_ID}",
+    "textField": "message",
+    "sendWhenHealthy": true,
+    "maxAnomalies": 50
+  },
+  "gateway": {
+    "enabled": false,
+    "baseUrl": "${BI_GATEWAY_BASE_URL}",
+    "token": "${BI_GATEWAY_TOKEN}",
+    "dashcardPath": "/api/bi-monitor/metabase/public-dashcard-json",
+    "requestTimeoutSeconds": 60
+  },
+  "dataQuality": {
+    "enabled": true,
+    "countriesFile": "./config/countries.config.json",
+    "panelTitlePattern": "当前异常数|异常数|current\\s*anomal",
+    "aggregation": "sum",
+    "requestTimeoutSeconds": 20
+  },
+  "rules": [
+    {
+      "type": "requiredDatePresent",
+      "dashboardTitle": "OKR",
+      "cardTitles": [
+        "转化漏斗",
+        "规模",
+        "还款7日复借率",
+        "单笔件均",
+        "放款件数",
+        "放款金额",
+        "进件通过率",
+        "进件规模",
+        "成本"
+      ],
+      "dateColumn": "统计日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 0,
+      "exclude": [
+        {
+          "countryCode": "PK",
+          "cardTitles": [
+            "进件通过率",
+            "进件规模",
+            "规模",
+            "转化漏斗",
+            "成本"
+          ]
+        },
+        {
+          "countryCode": "PH",
+          "cardTitles": [
+            "还款7日复借率",
+            "进件通过率",
+            "进件规模"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "requiredDatePresent",
+      "countryCode": "PK",
+      "dashboardTitle": "OKR",
+      "cardTitles": [
+        "进件通过率",
+        "进件规模",
+        "规模",
+        "转化漏斗",
+        "成本"
+      ],
+      "dateColumn": "统计日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 1,
+      "context": "PK特殊口径：D-1更新"
+    },
+    {
+      "type": "requiredDatePresent",
+      "countryCode": "PH",
+      "dashboardTitle": "OKR",
+      "cardTitles": [
+        "还款7日复借率",
+        "进件通过率",
+        "进件规模"
+      ],
+      "dateColumn": "统计日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 1,
+      "context": "PH特殊口径：D-1更新"
+    },
+    {
+      "type": "requiredDatePresent",
+      "dashboardTitle": "OKR",
+      "cardTitlePattern": "^费率",
+      "dateColumn": "统计日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 1
+    },
+    {
+      "type": "requiredDatePresent",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitlePattern": "^(新客|老客)-",
+      "timezone": "dashboard",
+      "requiredLagDays": 0
+    },
+    {
+      "type": "requiredDatePresent",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitles": [
+        "整体趋势",
+        "规模&转化",
+        "分app趋势",
+        "分app规模&转化"
+      ],
+      "dateColumn": "注册日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 0
+    },
+    {
+      "type": "requiredDatePresent",
+      "dashboardTitle": "放款统计",
+      "cardTitles": [
+        "每日放款统计",
+        "GMV&笔数",
+        "平均期限-天数 by 用户类型",
+        "件均 by 用户类型"
+      ],
+      "dateColumn": "放款日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 0
+    },
+    {
+      "type": "requiredDatePresent",
+      "dashboardTitle": "放款统计",
+      "cardTitlePattern": "费率",
+      "dateColumn": "放款日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 1
+    },
+    {
+      "type": "requiredDatePresent",
+      "dashboardTitles": [
+        "每期逾期率by日期",
+        "每期逾期率"
+      ],
+      "cardTitles": [
+        "每期逾期率",
+        "每期逾期率-表"
+      ],
+      "dateColumn": "统计日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 0,
+      "context": "统计口径=到期日期",
+      "exclude": [
+        {
+          "countryCode": "PK"
+        }
+      ],
+      "parameters": [
+        {
+          "id": "c28a0a",
+          "type": "string/=",
+          "target": [
+            "variable",
+            [
+              "template-tag",
+              "grant_due"
+            ]
+          ],
+          "value": [
+            "到期日期"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "requiredDatePresent",
+      "countryCode": "PK",
+      "dashboardTitles": [
+        "每期逾期率by日期",
+        "每期逾期率"
+      ],
+      "cardTitles": [
+        "每期逾期率",
+        "每期逾期率-表"
+      ],
+      "dateColumn": "统计日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 1,
+      "context": "PK特殊口径：统计口径=到期日期，D-1更新",
+      "parameters": [
+        {
+          "id": "c28a0a",
+          "type": "string/=",
+          "target": [
+            "variable",
+            [
+              "template-tag",
+              "grant_due"
+            ]
+          ],
+          "value": [
+            "到期日期"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "requiredDatePresent",
+      "dashboardTitle": "核心指标概览",
+      "cardTitles": [
+        "未还占比",
+        "滚动回款率"
+      ],
+      "dateColumn": "到期日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 1,
+      "parameters": [
+        {
+          "id": "52b3c4e6",
+          "type": "string/=",
+          "target": [
+            "variable",
+            [
+              "template-tag",
+              "date_type"
+            ]
+          ],
+          "value": [
+            "日"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "dateColumn": "统计日期",
+      "columns": [
+        "注册~进件",
+        "进件~通过",
+        "通过~放款",
+        "注册~放款"
+      ],
+      "timezone": "dashboard",
+      "minAbsDelta": 0.003,
+      "maxAnomaliesPerCard": 10,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.15,
+      "valueFormat": "percent"
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "OKR",
+      "cardTitles": [
+        "入催率",
+        "进件通过率",
+        "D3入催率 ",
+        "费率趋势"
+      ],
+      "dateColumn": "统计日期",
+      "columnPattern": "率|费率",
+      "timezone": "dashboard",
+      "minAbsDelta": 0.003,
+      "maxAnomaliesPerCard": 12,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.15,
+      "valueFormat": "percent"
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "OKR",
+      "cardTitles": [
+        "还款7日复借率"
+      ],
+      "dateColumn": "统计日期",
+      "columns": [
+        "还款~再进件",
+        "再进件~通过",
+        "通过~放款",
+        "还款~复借"
+      ],
+      "timezone": "dashboard",
+      "minAbsDelta": 0.003,
+      "maxAnomaliesPerCard": 10,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.15,
+      "valueFormat": "percent"
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "OKR",
+      "cardTitles": [
+        "规模",
+        "单笔件均",
+        "放款件数",
+        "放款金额",
+        "进件规模",
+        "成本"
+      ],
+      "dateColumn": "统计日期",
+      "columnPattern": "数|量|金额|件均|花费|成本",
+      "timezone": "dashboard",
+      "maxDropRate": 0.25,
+      "maxRiseRate": 0.4,
+      "correlatedChangeSuppressions": [
+        {
+          "columns": [
+            "放款成本",
+            "总花费",
+            "注册成本"
+          ],
+          "sameDirection": true,
+          "maxRelativeRateGap": 0.5
+        }
+      ],
+      "maxAnomaliesPerCard": 12,
+      "maxDateGapDays": 1
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "OKR",
+      "cardTitles": [
+        "入催数"
+      ],
+      "dateColumn": "统计日期",
+      "columnPattern": "入催数",
+      "timezone": "dashboard",
+      "maxDropRate": 0.25,
+      "maxRiseRate": 0.4,
+      "minAbsDelta": 20,
+      "minPrevious": 50,
+      "maxAnomaliesPerCard": 12,
+      "maxDateGapDays": 1
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "OKR",
+      "cardTitlePattern": "^费率构成",
+      "dateColumn": "统计日期",
+      "columns": [
+        "费率"
+      ],
+      "timezone": "dashboard",
+      "minAbsDelta": 0.003,
+      "maxAnomaliesPerCard": 10,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.15,
+      "valueFormat": "percent"
+    },
+    {
+      "type": "intradayTimePointCompleteness",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitlePattern": "^(新客|老客)-",
+      "dateColumn": "stat_date",
+      "timeColumn": "开始时间",
+      "columns": [
+        "repaid_amt",
+        "grant_amt",
+        "pass_num",
+        "freeze_num",
+        "launch_num",
+        "reg_cnt",
+        "ocr_num"
+      ],
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 30,
+      "allowedDelayMinutes": 60,
+      "expectedTimePointSource": "previousDay",
+      "ignoreDimensionColumns": [
+        "开始时间"
+      ],
+      "maxAnomaliesPerCard": 8
+    },
+    {
+      "type": "intradayTimePointChange",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitlePattern": "^(新客|老客)-",
+      "dateColumn": "stat_date",
+      "timeColumn": "开始时间",
+      "columns": [
+        "repaid_amt",
+        "grant_amt",
+        "pass_num",
+        "freeze_num",
+        "launch_num",
+        "reg_cnt",
+        "ocr_num"
+      ],
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 30,
+      "allowedDelayMinutes": 60,
+      "previousLagDays": 1,
+      "maxAbsChangeRate": 0.5,
+      "minPrevious": 100,
+      "ignoreDimensionColumns": [
+        "开始时间"
+      ],
+      "maxAnomaliesPerCard": 8
+    },
+    {
+      "type": "intradayTimePointCompleteness",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitlePattern": "^新客-",
+      "dateColumn": "日期",
+      "timeColumn": "开始时间",
+      "columns": [
+        "pass_num",
+        "freeze_num",
+        "launch_num",
+        "reg_cnt",
+        "ocr_num"
+      ],
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 30,
+      "allowedDelayMinutes": 60,
+      "expectedTimePointSource": "previousDay",
+      "ignoreDimensionColumns": [
+        "开始时间"
+      ],
+      "maxAnomaliesPerCard": 8
+    },
+    {
+      "type": "intradayTimePointChange",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitlePattern": "^新客-",
+      "dateColumn": "日期",
+      "timeColumn": "开始时间",
+      "columns": [
+        "pass_num",
+        "freeze_num",
+        "launch_num",
+        "reg_cnt",
+        "ocr_num"
+      ],
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 30,
+      "allowedDelayMinutes": 60,
+      "previousLagDays": 1,
+      "maxAbsChangeRate": 0.5,
+      "minPrevious": 100,
+      "ignoreDimensionColumns": [
+        "开始时间"
+      ],
+      "maxAnomaliesPerCard": 8
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitles": [
+        "整体趋势",
+        "规模&转化",
+        "分app规模&转化"
+      ],
+      "dateColumn": "注册日期",
+      "columns": [
+        "注册数",
+        "正审进件",
+        "正审通过",
+        "下单提现通过",
+        "放款"
+      ],
+      "timezone": "dashboard",
+      "maxDropRate": 0.25,
+      "maxRiseRate": 0.4,
+      "dimensionColumns": [
+        "APP",
+        "Applist_Level"
+      ],
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 1
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "dateColumn": "注册日期",
+      "columns": [
+        "注册-放款率"
+      ],
+      "timezone": "dashboard",
+      "minAbsDelta": 0.003,
+      "dimensionColumns": [
+        "APP"
+      ],
+      "maxAnomaliesPerCard": 10,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.15,
+      "valueFormat": "percent"
+    },
+    {
+      "type": "intradayProgress",
+      "countryCode": "ID",
+      "dashboardTitle": "放款统计",
+      "cardTitles": [
+        "每日放款统计",
+        "GMV&笔数"
+      ],
+      "dateColumn": "放款日期",
+      "columns": [
+        "放款笔数",
+        "放款金额"
+      ],
+      "timezone": "dashboard",
+      "expectedProgress": {
+        "05:00": 0,
+        "23:30": 1
+      },
+      "maxBelowExpectedRate": 0.35,
+      "maxAboveExpectedRate": 0.8,
+      "minPrevious": 100,
+      "maxAnomaliesPerCard": 10
+    },
+    {
+      "type": "intradayProgress",
+      "countryCodes": [
+        "PH",
+        "TH",
+        "PK",
+        "MX"
+      ],
+      "dashboardTitle": "放款统计",
+      "cardTitles": [
+        "每日放款统计",
+        "GMV&笔数"
+      ],
+      "dateColumn": "放款日期",
+      "columns": [
+        "放款笔数",
+        "放款金额"
+      ],
+      "timezone": "dashboard",
+      "expectedProgress": {
+        "00:00": 0,
+        "24:00": 1
+      },
+      "maxBelowExpectedRate": 0.35,
+      "maxAboveExpectedRate": 0.8,
+      "minPrevious": 100,
+      "maxAnomaliesPerCard": 10
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "放款统计",
+      "cardTitles": [
+        "每日放款统计",
+        "件均&费率"
+      ],
+      "dateColumn": "放款日期",
+      "columns": [
+        "件均",
+        "人均放款金额",
+        "平均费率",
+        "平均期限-天数"
+      ],
+      "timezone": "dashboard",
+      "maxAbsChangeRate": 0.15,
+      "minAbsDelta": 0.003,
+      "maxAnomaliesPerCard": 10,
+      "maxDateGapDays": 1
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "放款统计",
+      "cardTitlePattern": "by 用户类型",
+      "dateColumn": "放款日期",
+      "columnPattern": "放款金额|放款笔数|笔均放款金额|平均放款费率|平均放款天数",
+      "timezone": "dashboard",
+      "maxDropRate": 0.35,
+      "maxRiseRate": 0.6,
+      "dimensionColumns": [
+        "user_debt_status",
+        "product_period"
+      ],
+      "minPrevious": 100,
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 1
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitles": [
+        "每期逾期率by日期",
+        "每期逾期率"
+      ],
+      "cardTitles": [
+        "每期逾期率",
+        "每期逾期率-表"
+      ],
+      "dateColumn": "统计日期",
+      "columnPattern": "展期率|入催率|^D[137]|^D14|^D30",
+      "timezone": "dashboard",
+      "completeLagDays": 7,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.1,
+      "valueFormat": "percent",
+      "maxAnomaliesPerCard": 15,
+      "context": "统计口径=放款日期",
+      "parameters": [
+        {
+          "id": "c28a0a",
+          "type": "string/=",
+          "target": [
+            "variable",
+            [
+              "template-tag",
+              "grant_due"
+            ]
+          ],
+          "value": [
+            "放款日期"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitles": [
+        "每期逾期率by日期",
+        "每期逾期率"
+      ],
+      "cardTitles": [
+        "每期逾期率",
+        "每期逾期率-表"
+      ],
+      "dateColumn": "统计日期",
+      "columnPattern": "展期率|入催率|^D[137]|^D14|^D30",
+      "timezone": "dashboard",
+      "completeLagDays": 7,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.1,
+      "valueFormat": "percent",
+      "maxAnomaliesPerCard": 15,
+      "context": "统计口径=到期日期",
+      "parameters": [
+        {
+          "id": "c28a0a",
+          "type": "string/=",
+          "target": [
+            "variable",
+            [
+              "template-tag",
+              "grant_due"
+            ]
+          ],
+          "value": [
+            "到期日期"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "completeDayChange",
+      "dashboardTitle": "核心指标概览",
+      "cardTitles": [
+        "未还占比",
+        "滚动回款率"
+      ],
+      "dateColumn": "到期日期",
+      "columnPattern": "未还|^\\[",
+      "timezone": "dashboard",
+      "completeLagDays": 1,
+      "minAbsDelta": 0.003,
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.1,
+      "valueFormat": "percent",
+      "parameters": [
+        {
+          "id": "52b3c4e6",
+          "type": "string/=",
+          "target": [
+            "variable",
+            [
+              "template-tag",
+              "date_type"
+            ]
+          ],
+          "value": [
+            "日"
+          ]
+        }
+      ]
+    }
+  ]
+}

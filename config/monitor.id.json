@@ -1,0 +1,29 @@
+{
+  "country": {
+    "code": "ID",
+    "name": "印尼",
+    "timezone": "Asia/Jakarta"
+  },
+  "grafana": {
+    "dashboardUrl": "https://sr-monitor.empoweroceanin.com/d/aeqalqv4yq5fkf/7d32b5ce-c485-5a73-ab80-9841241ed4ba?orgId=1&refresh=2h",
+    "token": "${GRAFANA_SERVICE_ACCOUNT_TOKEN}",
+    "cookie": "${GRAFANA_COOKIE}",
+    "username": "${GRAFANA_BASIC_AUTH_USER}",
+    "password": "${GRAFANA_BASIC_AUTH_PASSWORD}",
+    "requestTimeoutSeconds": 20
+  },
+  "browserAuth": {
+    "enabled": true,
+    "headless": true,
+    "apiHeadless": true,
+    "loginTimeoutSeconds": 45,
+    "storageStateFile": ".state/grafana-storage-state.id.json",
+    "userDataDir": ".state/chrome-profile-id",
+    "executablePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  },
+  "timeRange": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "rules": []
+}

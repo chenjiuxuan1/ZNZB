@@ -1,0 +1,656 @@
+{
+  "checkedAt": "2026-06-09T03:52:12.520Z",
+  "dashboardCount": 8,
+  "checkedCardCount": 57,
+  "anomalyCount": 19,
+  "anomalies": [
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradaySameTimeChange",
+      "message": "同时间指标「grant_amt」从 187495000 到 131755000，波动 -29.7%（Asia/Jakarta 截止 10:00，stat_date 2026-06-09 对比 2026-06-08）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "每期逾期率",
+      "cardId": 3589,
+      "dashcardId": 4239,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 22.3% 到 33.3%，绝对变化 +10.9个百分点（统计日期 2026-05-24 对比 2026-05-23）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "每期逾期率-表",
+      "cardId": 3586,
+      "dashcardId": 4240,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 22.3% 到 33.3%，绝对变化 +10.9个百分点（统计日期 2026-05-24 对比 2026-05-23）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分期限对比- 入催率",
+      "cardId": 3593,
+      "dashcardId": 4241,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 13.7% 到 21.5%，绝对变化 +7.8个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=120天_5期_40%）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分期限对比- 入催率",
+      "cardId": 3593,
+      "dashcardId": 4241,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 26.5% 到 36.8%，绝对变化 +10.2个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=150天_4期_60%）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分期限对比- 入催率",
+      "cardId": 3593,
+      "dashcardId": 4241,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 13.7% 到 21.5%，绝对变化 +7.8个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=120天_5期_40%）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分期限对比- 入催率",
+      "cardId": 3593,
+      "dashcardId": 4241,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 26.5% 到 36.8%，绝对变化 +10.2个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=150天_4期_60%）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3596,
+      "dashcardId": 4244,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 13.7% 到 21.5%，绝对变化 +7.8个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=120天_5期_40%）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3596,
+      "dashcardId": 4244,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 26.5% 到 36.8%，绝对变化 +10.2个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=150天_4期_60%）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3596,
+      "dashcardId": 4244,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 13.7% 到 21.5%，绝对变化 +7.8个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=120天_5期_40%）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分产品对比- 明细",
+      "cardId": 3596,
+      "dashcardId": 4244,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 26.5% 到 36.8%，绝对变化 +10.2个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=150天_4期_60%）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3591,
+      "dashcardId": 4245,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 27.8% 到 56.5%，绝对变化 +28.7个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=ina002）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3591,
+      "dashcardId": 4245,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 21.9% 到 31.5%，绝对变化 +9.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=ina001）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3591,
+      "dashcardId": 4245,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 27.8% 到 56.5%，绝对变化 +28.7个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=ina002）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分APP对比- 入催率",
+      "cardId": 3591,
+      "dashcardId": 4245,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 21.9% 到 31.5%，绝对变化 +9.6个百分点（统计日期 2026-05-24 对比 2026-05-23，产品期限=ina001）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3587,
+      "dashcardId": 4247,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 27.8% 到 56.5%，绝对变化 +28.7个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=ina002）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3587,
+      "dashcardId": 4247,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 21.9% 到 31.5%，绝对变化 +9.6个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=ina001）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3587,
+      "dashcardId": 4247,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 27.8% 到 56.5%，绝对变化 +28.7个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=ina002）"
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1bb75c36-637a-45e8-acff-6a5029cf2464",
+      "cardTitle": "分APP对比- 明细",
+      "cardId": 3587,
+      "dashcardId": 4247,
+      "context": "统计口径=到期日期",
+      "type": "completeDayChange",
+      "message": "统计口径=到期日期：完整日指标「入催率」从 21.9% 到 31.5%，绝对变化 +9.6个百分点（统计日期 2026-05-24 对比 2026-05-23，APP=ina001）"
+    }
+  ],
+  "checkedCards": [
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催率",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "还款7日复借率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催数",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "单笔件均",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款件数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款金额",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件通过率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "成本",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "D3入催率 ",
+      "context": null,
+      "rowCount": 12,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成-总计",
+      "context": null,
+      "rowCount": 249,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率趋势",
+      "context": null,
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成 - 新客",
+      "context": null,
+      "rowCount": 120,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成 - 老客",
+      "context": null,
+      "rowCount": 249,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 69,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "整体趋势",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "规模&转化",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 62,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 62,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 256,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=到期日期",
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=到期日期",
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分期限对比- 入催率",
+      "context": "统计口径=放款日期",
+      "rowCount": 253,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分期限对比- 入催率",
+      "context": "统计口径=到期日期",
+      "rowCount": 253,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分产品对比- 明细",
+      "context": "统计口径=放款日期",
+      "rowCount": 253,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分产品对比- 明细",
+      "context": "统计口径=到期日期",
+      "rowCount": 253,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分APP对比- 入催率",
+      "context": "统计口径=放款日期",
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分APP对比- 入催率",
+      "context": "统计口径=到期日期",
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分APP对比- D7",
+      "context": "统计口径=放款日期",
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分APP对比- D7",
+      "context": "统计口径=到期日期",
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分APP对比- 明细",
+      "context": "统计口径=放款日期",
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分APP对比- 明细",
+      "context": "统计口径=到期日期",
+      "rowCount": 70,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分期限对比- D7",
+      "context": "统计口径=放款日期",
+      "rowCount": 253,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "分期限对比- D7",
+      "context": "统计口径=到期日期",
+      "rowCount": 253,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "countries": [
+    {
+      "code": "ID",
+      "name": "印尼",
+      "timezone": "Asia/Jakarta",
+      "grafanaDashboardUrl": "https://sr-monitor.empoweroceanin.com/d/aeqalqv4yq5fkf/7d32b5ce-c485-5a73-ab80-9841241ed4ba?orgId=1&refresh=2h",
+      "dataQualityDashboardUrl": "https://sr-monitor.empoweroceanin.com/d/cemqtffvojgu8a/d9b4ae1d-a69c-56ff-8302-fb85eea54d57?orgId=1&refresh=5m",
+      "monitorConfigFile": "./config/monitor.id.json",
+      "status": "ready"
+    },
+    {
+      "code": "PH",
+      "name": "菲律宾",
+      "timezone": "Asia/Manila",
+      "grafanaDashboardUrl": "https://sr-monitor.iloanmotor.com/d/aeqalqv4yq5fkf/47bef26?orgId=1&from=now-6h&to=now&timezone=browser&refresh=2h",
+      "dataQualityDashboardUrl": "https://sr-monitor.iloanmotor.com/d/cemqtffvojgu8a/3b172a3?orgId=1&refresh=5m",
+      "monitorConfigFile": "./config/monitor.ph.json",
+      "status": "ready"
+    },
+    {
+      "code": "TH",
+      "name": "泰国",
+      "timezone": "Asia/Bangkok",
+      "grafanaDashboardUrl": "https://sr-monitor.jsxjdk.com/d/aeqalqv4yq5fkf/47bef26?orgId=1&from=now-6h&to=now&timezone=browser&refresh=2h",
+      "dataQualityDashboardUrl": "https://sr-monitor.jsxjdk.com/d/cemqtffvojgu8a/d9b4ae1d-a69c-56ff-8302-fb85eea54d57?orgId=1&refresh=5m",
+      "monitorConfigFile": "./config/monitor.th.json",
+      "status": "ready"
+    },
+    {
+      "code": "PK",
+      "name": "巴基斯坦",
+      "timezone": "Asia/Karachi",
+      "grafanaDashboardUrl": "https://sr-monitor.wealthleaptech.com/d/aeqalqv4yq5fkf/47bef26?orgId=1&from=now-6h&to=now&timezone=browser&refresh=2h",
+      "dataQualityDashboardUrl": "https://sr-monitor.wealthleaptech.com/d/cemqtffvojgu8a/3b172a3?orgId=1&refresh=5m",
+      "monitorConfigFile": "./config/monitor.pk.json",
+      "status": "ready"
+    },
+    {
+      "code": "MX",
+      "name": "墨西哥",
+      "timezone": "America/Mexico_City",
+      "grafanaDashboardUrl": "https://sr-monitor.mxgbus.com/d/aeqalqv4yq5fkf/7d32b5ce-c485-5a73-ab80-9841241ed4ba?orgId=1&refresh=2h",
+      "dataQualityDashboardUrl": "https://sr-monitor.mxgbus.com/d/cemqtffvojgu8a/d9b4ae1d-a69c-56ff-8302-fb85eea54d57?orgId=1&refresh=5m",
+      "monitorConfigFile": "./config/monitor.mx.json",
+      "status": "ready"
+    }
+  ]
+}

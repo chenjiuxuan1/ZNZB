@@ -1,0 +1,29 @@
+{
+  "country": {
+    "code": "PK",
+    "name": "巴基斯坦",
+    "timezone": "Asia/Karachi"
+  },
+  "grafana": {
+    "dashboardUrl": "https://sr-monitor.wealthleaptech.com/d/aeqalqv4yq5fkf/47bef26?orgId=1&from=now-6h&to=now&timezone=browser&refresh=2h",
+    "token": "${GRAFANA_SERVICE_ACCOUNT_TOKEN}",
+    "cookie": "${GRAFANA_COOKIE}",
+    "username": "${GRAFANA_BASIC_AUTH_USER}",
+    "password": "${GRAFANA_BASIC_AUTH_PASSWORD}",
+    "requestTimeoutSeconds": 20
+  },
+  "browserAuth": {
+    "enabled": true,
+    "headless": true,
+    "apiHeadless": true,
+    "loginTimeoutSeconds": 45,
+    "storageStateFile": ".state/grafana-storage-state.pk.json",
+    "userDataDir": ".state/chrome-profile-pk",
+    "executablePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  },
+  "timeRange": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "rules": []
+}

@@ -1,0 +1,2861 @@
+{
+  "checkedAt": "2026-06-10T09:36:07.612Z",
+  "dashboardCount": 8,
+  "checkedCardCount": 45,
+  "anomalyCount": 128,
+  "anomalies": [
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 10436062 到 22843144，波动 +118.9%（Asia/Jakarta 00:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 45757370 到 16689608，波动 -63.5%（Asia/Jakarta 03:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 23315554 到 10156113，波动 -56.4%（Asia/Jakarta 01:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 125101460 到 185662960，波动 +48.4%（Asia/Jakarta 15:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 227723590 到 137814870，波动 -39.5%（Asia/Jakarta 12:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 148206120 到 203458910，波动 +37.3%（Asia/Jakarta 11:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 13561065 到 9272854，波动 -31.6%（Asia/Jakarta 02:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 48930933 到 35684290，波动 -27.1%（Asia/Jakarta 04:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 33792411 到 26086049，波动 -22.8%（Asia/Jakarta 04:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 133793840 到 164075790，波动 +22.6%（Asia/Jakarta 12:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 81575110 到 65141926，波动 -20.1%（Asia/Jakarta 05:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 205604980 到 165458690，波动 -19.5%（Asia/Jakarta 13:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 169562470 到 140250020，波动 -17.3%（Asia/Jakarta 14:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 32132793 到 37642210，波动 +17.1%（Asia/Jakarta 00:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2690,
+      "dashcardId": 3263,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 329241940 到 277714540，波动 -15.7%（Asia/Jakarta 08:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 52130000 到 75615000，波动 +45.1%（Asia/Jakarta 05:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 321015000 到 205480000，波动 -36.0%（Asia/Jakarta 11:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 290790000 到 205585000，波动 -29.3%（Asia/Jakarta 11:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 429185000 到 306750000，波动 -28.5%（Asia/Jakarta 07:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 226450000 到 177595000，波动 -21.6%（Asia/Jakarta 15:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 203190000 到 246510000，波动 +21.3%（Asia/Jakarta 14:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 282180000 到 223470000，波动 -20.8%（Asia/Jakarta 09:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 273210000 到 219800000，波动 -19.5%（Asia/Jakarta 13:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 285965000 到 231825000，波动 -18.9%（Asia/Jakarta 12:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 369425000 到 301015000，波动 -18.5%（Asia/Jakarta 10:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 287005000 到 236500000，波动 -17.6%（Asia/Jakarta 08:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2684,
+      "dashcardId": 3262,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 258380000 到 214295000，波动 -17.1%（Asia/Jakarta 10:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2693,
+      "dashcardId": 3261,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「pass_num」从 134 到 1598，波动 +1092.5%（Asia/Jakarta 05:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2693,
+      "dashcardId": 3261,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「pass_num」从 157 到 1490，波动 +849.0%（Asia/Jakarta 06:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2693,
+      "dashcardId": 3261,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「pass_num」从 2832 到 192，波动 -93.2%（Asia/Jakarta 06:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2693,
+      "dashcardId": 3261,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「pass_num」从 276 到 345，波动 +25.0%（Asia/Jakarta 15:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2693,
+      "dashcardId": 3261,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「pass_num」从 303 到 377，波动 +24.4%（Asia/Jakarta 11:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2693,
+      "dashcardId": 3261,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「pass_num」从 405 到 325，波动 -19.8%（Asia/Jakarta 12:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2686,
+      "dashcardId": 3260,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 135 到 1598，波动 +1083.7%（Asia/Jakarta 05:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2686,
+      "dashcardId": 3260,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 156 到 1490，波动 +855.1%（Asia/Jakarta 06:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2686,
+      "dashcardId": 3260,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 2832 到 192，波动 -93.2%（Asia/Jakarta 06:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2686,
+      "dashcardId": 3260,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 276 到 345，波动 +25.0%（Asia/Jakarta 15:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2686,
+      "dashcardId": 3260,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 302 到 376，波动 +24.5%（Asia/Jakarta 11:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2686,
+      "dashcardId": 3260,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 405 到 325，波动 -19.8%（Asia/Jakarta 12:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2686,
+      "dashcardId": 3260,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 293 到 343，波动 +17.1%（Asia/Jakarta 14:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-启动次数",
+      "cardId": 2685,
+      "dashcardId": 3259,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 308 到 219，波动 -28.9%（Asia/Jakarta 01:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-启动次数",
+      "cardId": 2685,
+      "dashcardId": 3259,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 296 到 351，波动 +18.6%（Asia/Jakarta 01:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-启动次数",
+      "cardId": 2685,
+      "dashcardId": 3259,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 221 到 184，波动 -16.7%（Asia/Jakarta 02:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "老客-启动次数",
+      "cardId": 2685,
+      "dashcardId": 3259,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 219 到 186，波动 -15.1%（Asia/Jakarta 03:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 148135 到 3687920，波动 +2389.6%（Asia/Jakarta 04:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 683635 到 5891325，波动 +761.8%（Asia/Jakarta 03:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 1844119 到 15311315，波动 +730.3%（Asia/Jakarta 06:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 788330.62 到 5636670，波动 +615.0%（Asia/Jakarta 05:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 7320349 到 22340952，波动 +205.2%（Asia/Jakarta 06:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 184056 到 525873，波动 +185.7%（Asia/Jakarta 02:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 2696905 到 433291，波动 -83.9%（Asia/Jakarta 01:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 3227854 到 519073，波动 -83.9%（Asia/Jakarta 00:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 11729272 到 1951595，波动 -83.4%（Asia/Jakarta 05:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 2920288 到 4800393，波动 +64.4%（Asia/Jakarta 00:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 3144817 到 1126549，波动 -64.2%（Asia/Jakarta 01:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 1109414 到 444645，波动 -59.9%（Asia/Jakarta 02:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 28711028 到 12533694，波动 -56.3%（Asia/Jakarta 11:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 15603547 到 22890596，波动 +46.7%（Asia/Jakarta 14:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 28787565 到 40638129，波动 +41.2%（Asia/Jakarta 13:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 16626383 到 23277381，波动 +40.0%（Asia/Jakarta 15:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 16556804 到 23138058，波动 +39.7%（Asia/Jakarta 07:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 3473291 到 2112171，波动 -39.2%（Asia/Jakarta 03:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 15926925 到 21996994，波动 +38.1%（Asia/Jakarta 13:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 18919869 到 25810579，波动 +36.4%（Asia/Jakarta 11:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 37861245 到 25290882，波动 -33.2%（Asia/Jakarta 09:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 31758238 到 38931870，波动 +22.6%（Asia/Jakarta 12:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 37246501 到 30439908，波动 -18.3%（Asia/Jakarta 09:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 37735932 到 43993357，波动 +16.6%（Asia/Jakarta 08:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 12052848 到 14017235，波动 +16.3%（Asia/Jakarta 07:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2689,
+      "dashcardId": 3257,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 23519512 到 27131212，波动 +15.4%（Asia/Jakarta 12:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 1070000 到 22010000，波动 +1957.0%（Asia/Jakarta 11:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 1585000 到 17610000，波动 +1011.0%（Asia/Jakarta 13:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 3675000 到 25410000，波动 +591.4%（Asia/Jakarta 08:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 3985000 到 14055000，波动 +252.7%（Asia/Jakarta 11:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 2970000 到 8140000，波动 +174.1%（Asia/Jakarta 14:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 44470000 到 121545000，波动 +173.3%（Asia/Jakarta 07:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 2355000 到 6370000，波动 +170.5%（Asia/Jakarta 14:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 9325000 到 23650000，波动 +153.6%（Asia/Jakarta 09:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 13670000 到 485000，波动 -96.5%（Asia/Jakarta 13:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 5405000 到 10255000，波动 +89.7%（Asia/Jakarta 15:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 16925000 到 1970000，波动 -88.4%（Asia/Jakarta 10:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 17825000 到 5000000，波动 -71.9%（Asia/Jakarta 12:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 34380000 到 12960000，波动 -62.3%（Asia/Jakarta 07:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 8860000 到 4070000，波动 -54.1%（Asia/Jakarta 12:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 8240000 到 3985000，波动 -51.6%（Asia/Jakarta 10:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 5970000 到 3270000，波动 -45.2%（Asia/Jakarta 05:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2694,
+      "dashcardId": 3256,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 27830000 到 23410000，波动 -15.9%（Asia/Jakarta 15:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 114 到 174，波动 +52.6%（Asia/Jakarta 01:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 169 到 102，波动 -39.6%（Asia/Jakarta 01:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 473 到 306，波动 -35.3%（Asia/Jakarta 15:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 370 到 255，波动 -31.1%（Asia/Jakarta 15:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 214 到 262，波动 +22.4%（Asia/Jakarta 14:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 157 到 122，波动 -22.3%（Asia/Jakarta 00:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 278 到 337，波动 +21.2%（Asia/Jakarta 14:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 238 到 286，波动 +20.2%（Asia/Jakarta 13:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 126 到 150，波动 +19.0%（Asia/Jakarta 07:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 229 到 186，波动 -18.8%（Asia/Jakarta 10:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 213 到 247，波动 +16.0%（Asia/Jakarta 12:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 221 到 256，波动 +15.8%（Asia/Jakarta 13:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2691,
+      "dashcardId": 3254,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「freeze_num」从 231 到 267，波动 +15.6%（Asia/Jakarta 11:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 168 到 251，波动 +49.4%（Asia/Jakarta 10:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 480 到 280，波动 -41.7%（Asia/Jakarta 15:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 241 到 341，波动 +41.5%（Asia/Jakarta 14:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 183 到 248，波动 +35.5%（Asia/Jakarta 11:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 186 到 236，波动 +26.9%（Asia/Jakarta 12:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 188 到 231，波动 +22.9%（Asia/Jakarta 14:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 189 到 230，波动 +21.7%（Asia/Jakarta 13:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 195 到 232，波动 +19.0%（Asia/Jakarta 13:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2688,
+      "dashcardId": 3253,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 160 到 134，波动 -16.3%（Asia/Jakarta 08:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 250 到 323，波动 +29.2%（Asia/Jakarta 01:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 1308 到 938，波动 -28.3%（Asia/Jakarta 15:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 890 到 1092，波动 +22.7%（Asia/Jakarta 14:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 387 到 308，波动 -20.4%（Asia/Jakarta 05:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 798 到 956，波动 +19.8%（Asia/Jakarta 11:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 269 到 321，波动 +19.3%（Asia/Jakarta 05:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 795 到 941，波动 +18.4%（Asia/Jakarta 13:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 188 到 222，波动 +18.1%（Asia/Jakarta 03:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 223 到 184，波动 -17.5%（Asia/Jakarta 03:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客-启动次数",
+      "cardId": 2687,
+      "dashcardId": 3252,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「launch_num」从 249 到 288，波动 +15.7%（Asia/Jakarta 02:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 134 到 178，波动 +32.8%（Asia/Jakarta 10:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 141 到 187，波动 +32.6%（Asia/Jakarta 14:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 122 到 157，波动 +28.7%（Asia/Jakarta 12:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 142 到 175，波动 +23.2%（Asia/Jakarta 11:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 145 到 176，波动 +21.4%（Asia/Jakarta 13:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 131 到 156，波动 +19.1%（Asia/Jakarta 11:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 145 到 171，波动 +17.9%（Asia/Jakarta 12:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 265 到 218，波动 -17.7%（Asia/Jakarta 15:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/8da6c3db-d80f-4e49-9a67-63b938f294ab",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2692,
+      "dashcardId": 3250,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 211 到 174，波动 -17.5%（Asia/Jakarta 15:30，日期 2026-06-10 对比 2026-06-09）"
+    }
+  ],
+  "checkedCards": [
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催率",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "还款7日复借率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催数",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "单笔件均",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款件数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款金额",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件通过率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件规模",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "成本",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "D3入催率 ",
+      "context": null,
+      "rowCount": 12,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成-总计",
+      "context": null,
+      "rowCount": 250,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率趋势",
+      "context": null,
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成 - 新客",
+      "context": null,
+      "rowCount": 120,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率构成 - 老客",
+      "context": null,
+      "rowCount": 250,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 80,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "整体趋势",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "规模&转化",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 62,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 62,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 258,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=到期日期",
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=到期日期",
+      "rowCount": 36,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 35,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "ID",
+        "name": "印尼",
+        "timezone": "Asia/Jakarta"
+      },
+      "countryCode": "ID",
+      "countryName": "印尼",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    }
+  ]
+}

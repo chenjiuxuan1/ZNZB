@@ -1,0 +1,127 @@
+{
+  "title": "核心报表监控仪表盘",
+  "uid": "aeqalqv4yq5fkf",
+  "timeRange": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "OKR",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/5100336b-0a01-4de4-b284-bf14ca61488d",
+          "url": "https://data.kuainiu.io/public/dashboard/5100336b-0a01-4de4-b284-bf14ca61488d"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 2,
+      "title": "核心链路准实时监控",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+          "url": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 3,
+      "title": "新客转化率(注册~放款)",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/b3af7cb7-7ac0-4208-a1f6-76ebec8db721",
+          "url": "https://data.kuainiu.io/public/dashboard/b3af7cb7-7ac0-4208-a1f6-76ebec8db721"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 4,
+      "title": "营销数据统计",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/784f57b7-ebb2-4f2a-ae7f-9d1bc7d6792d",
+          "url": "https://data.kuainiu.io/public/dashboard/784f57b7-ebb2-4f2a-ae7f-9d1bc7d6792d"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 6,
+      "title": "营销过程数据统计",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/b68f6831-4063-42b5-a000-8506551b5c9a",
+          "url": "https://data.kuainiu.io/public/dashboard/b68f6831-4063-42b5-a000-8506551b5c9a"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 5,
+      "title": "放款统计",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+          "url": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 7,
+      "title": "每期逾期率by日期",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/1f04f408-b7fe-4f84-a74a-ab7a7a8ea03d",
+          "url": "https://data.kuainiu.io/public/dashboard/1f04f408-b7fe-4f84-a74a-ab7a7a8ea03d"
+        }
+      ],
+      "textPreview": null
+    },
+    {
+      "id": 8,
+      "title": "核心指标概览",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/public/dashboard/cd6ee6e9-a4b4-4df3-bcc4-2c1d7c68a586",
+          "url": "https://data.kuainiu.io/public/dashboard/cd6ee6e9-a4b4-4df3-bcc4-2c1d7c68a586"
+        }
+      ],
+      "textPreview": null
+    }
+  ],
+  "country": {
+    "code": "PK",
+    "name": "巴基斯坦",
+    "timezone": "Asia/Karachi"
+  }
+}

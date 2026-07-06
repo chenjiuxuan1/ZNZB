@@ -1,0 +1,1075 @@
+{
+  "checkedAt": "2026-06-10T08:15:33.965Z",
+  "dashboardCount": 8,
+  "checkedCardCount": 37,
+  "anomalyCount": 30,
+  "anomalies": [
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2724,
+      "dashcardId": 3299,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2724,
+      "dashcardId": 3299,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 105 到 140，波动 +33.3%（Asia/Karachi 01:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客-注册次数",
+      "cardId": 2724,
+      "dashcardId": 3299,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「reg_cnt」从 104 到 120，波动 +15.4%（Asia/Karachi 01:30，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2726,
+      "dashcardId": 3308,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2726,
+      "dashcardId": 3308,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 843310.68 到 1124608.7，波动 +33.4%（Asia/Karachi 01:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2726,
+      "dashcardId": 3308,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 549825.89 到 716034.34，波动 +30.2%（Asia/Karachi 02:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2726,
+      "dashcardId": 3308,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 655660.42 到 510557.81，波动 -22.1%（Asia/Karachi 05:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-还款金额",
+      "cardId": 2726,
+      "dashcardId": 3308,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「repaid_amt」从 4192039 到 4973520，波动 +18.6%（Asia/Karachi 11:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2722,
+      "dashcardId": 3307,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2722,
+      "dashcardId": 3307,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 1479800 到 0，波动 -100.0%（Asia/Karachi 01:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2722,
+      "dashcardId": 3307,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 1023100 到 440300，波动 -57.0%（Asia/Karachi 01:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2722,
+      "dashcardId": 3307,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 800300 到 1015400，波动 +26.9%（Asia/Karachi 02:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2722,
+      "dashcardId": 3307,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 2942600 到 2309300，波动 -21.5%（Asia/Karachi 00:30，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-放款金额",
+      "cardId": 2722,
+      "dashcardId": 3307,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「grant_amt」从 745200 到 633300，波动 -15.0%（Asia/Karachi 05:00，stat_date 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-通过次数",
+      "cardId": 2721,
+      "dashcardId": 3306,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-进件次数",
+      "cardId": 2729,
+      "dashcardId": 3305,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客-还款金额",
+      "cardId": 2720,
+      "dashcardId": 3304,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客-放款金额",
+      "cardId": 2728,
+      "dashcardId": 3303,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客-通过次数",
+      "cardId": 2725,
+      "dashcardId": 3302,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客-进件次数",
+      "cardId": 2727,
+      "dashcardId": 3301,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2723,
+      "dashcardId": 3298,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客- OCR次数",
+      "cardId": 2723,
+      "dashcardId": 3298,
+      "context": null,
+      "type": "intradayTimePointChange",
+      "message": "同时间点指标「ocr_num」从 176 到 216，波动 +22.7%（Asia/Karachi 11:00，日期 2026-06-10 对比 2026-06-09）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "老客-启动次数 ",
+      "cardId": 2986,
+      "dashcardId": 3618,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：stat_date 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
+      "cardTitle": "新客-启动次数 ",
+      "cardId": 2985,
+      "dashcardId": 3619,
+      "context": null,
+      "type": "intradayTimePointCompleteness",
+      "message": "半小时点数据缺失：日期 2026-06-10 缺少 06:00、06:30、07:00、07:30、08:00、08:30、09:00、09:30、等11个点（Asia/Karachi 13:15，期望 00:00~12:00 每 30 分钟）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+      "cardTitle": "每日放款统计",
+      "cardId": 1626,
+      "dashcardId": 1972,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款笔数」进度 27.0% 低于期望 55.2%（Asia/Karachi 13:15，2026-06-10=1699，2026-06-09=6295）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+      "cardTitle": "每日放款统计",
+      "cardId": 1626,
+      "dashcardId": 1972,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款金额」进度 28.4% 低于期望 55.2%（Asia/Karachi 13:15，2026-06-10=32131000，2026-06-09=113242130）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+      "cardTitle": "GMV&笔数",
+      "cardId": 1629,
+      "dashcardId": 1974,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款笔数」进度 27.0% 低于期望 55.2%（Asia/Karachi 13:15，2026-06-10=1699，2026-06-09=6295）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
+      "cardTitle": "GMV&笔数",
+      "cardId": 1629,
+      "dashcardId": 1974,
+      "context": null,
+      "type": "intradayProgress",
+      "message": "当日指标「放款金额」进度 28.4% 低于期望 55.2%（Asia/Karachi 13:15，2026-06-10=32131000，2026-06-09=113242130）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1f04f408-b7fe-4f84-a74a-ab7a7a8ea03d",
+      "cardTitle": "每期逾期率",
+      "cardId": 3659,
+      "dashcardId": 4313,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 45.1% 到 33.3%，绝对变化 -11.8个百分点（统计日期 2026-06-02 对比 2026-06-01）"
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "dashboardUrl": "https://data.kuainiu.io/public/dashboard/1f04f408-b7fe-4f84-a74a-ab7a7a8ea03d",
+      "cardTitle": "每期逾期率-表",
+      "cardId": 3656,
+      "dashcardId": 4314,
+      "context": "统计口径=放款日期",
+      "type": "completeDayChange",
+      "message": "统计口径=放款日期：完整日指标「入催率」从 45.1% 到 33.3%，绝对变化 -11.8个百分点（统计日期 2026-06-02 对比 2026-06-01）"
+    }
+  ],
+  "checkedCards": [
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件通过率",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "进件规模",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款件数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "放款金额",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催数",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "入催率",
+      "context": null,
+      "rowCount": 15,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "规模",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "转化漏斗",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "OKR",
+      "cardTitle": "成本",
+      "context": "PK特殊口径：D-1更新",
+      "rowCount": 30,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-注册次数",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-还款金额",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-放款金额",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-通过次数",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-进件次数",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-还款金额",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-放款金额",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-通过次数",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-进件次数",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客- OCR次数",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "老客-启动次数 ",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心链路准实时监控",
+      "cardTitle": "新客-启动次数 ",
+      "context": null,
+      "rowCount": 55,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app趋势",
+      "context": null,
+      "rowCount": 295,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "新客转化率(注册~放款)",
+      "cardTitle": "分app规模&转化",
+      "context": null,
+      "rowCount": 295,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "每日放款统计",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均&费率",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "GMV&笔数",
+      "context": null,
+      "rowCount": 31,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "平均期限-天数 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "件均 by 用户类型",
+      "context": null,
+      "rowCount": 124,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "放款统计",
+      "cardTitle": "费率 by 期限",
+      "context": null,
+      "rowCount": 368,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "PK特殊口径：统计口径=到期日期，D-1更新",
+      "rowCount": 23,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率",
+      "context": "统计口径=放款日期",
+      "rowCount": 23,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "PK特殊口径：统计口径=到期日期，D-1更新",
+      "rowCount": 23,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "每期逾期率by日期",
+      "cardTitle": "每期逾期率-表",
+      "context": "统计口径=放款日期",
+      "rowCount": 23,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "未还占比",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    },
+    {
+      "country": {
+        "code": "PK",
+        "name": "巴基斯坦",
+        "timezone": "Asia/Karachi"
+      },
+      "countryCode": "PK",
+      "countryName": "巴基斯坦",
+      "dashboardTitle": "核心指标概览",
+      "cardTitle": "滚动回款率",
+      "context": null,
+      "rowCount": 42,
+      "ok": true,
+      "error": null
+    }
+  ]
+}
