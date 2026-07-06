@@ -180,7 +180,7 @@ export function createPlatformApi({
       const alerts = {
         ...(rules.alerts || {}),
         channel: "tv",
-        webhookUrl: process.env.TV_ALERT_WEBHOOK_URL || rules.alerts?.webhookUrl || DEFAULT_TV_WEBHOOK_URL,
+        webhookUrl: resolveWebhookUrl(body.webhookUrl, rules.alerts?.webhookUrl),
         botId,
         mentions: normalizeMentions(body.mentions),
       };
@@ -209,6 +209,22 @@ function normalizeMentions(value) {
     .split(/[\n,，;；]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function resolveWebhookUrl(frontendWebhookUrl, configuredWebhookUrl) {
+  const frontend = String(frontendWebhookUrl || "").trim();
+  if (frontend) {
+    return frontend;
+  }
+  const env = String(process.env.TV_ALERT_WEBHOOK_URL || "").trim();
+  if (env) {
+    return env;
+  }
+  const configured = String(configuredWebhookUrl || "").trim();
+  if (configured && !/^\$\{[^}]+\}$/.test(configured)) {
+    return configured;
+  }
+  return DEFAULT_TV_WEBHOOK_URL;
 }
 
 export function flattenInventory(inventory) {

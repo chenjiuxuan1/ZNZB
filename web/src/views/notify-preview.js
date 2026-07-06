@@ -11,6 +11,7 @@ const ANOMALY_TYPES = [
   "noData",
   "queryError",
 ];
+const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 
 export function renderNotifyPreview(root) {
   const draft = getDraft();
@@ -32,10 +33,11 @@ export function renderNotifyPreview(root) {
         ${renderAutoSummary(draft)}
         <h2 class="panel-title section-title">发送设置</h2>
         <div class="form-grid">
+          ${field("webhookUrl", "TV webhook 地址", draft.webhookUrl, null, { placeholder: DEFAULT_TV_WEBHOOK_URL })}
           ${field("botId", "TV bot_id", draft.botId, null, { placeholder: "必填：粘贴要接收测试消息的 TV bot_id" })}
           ${field("mentions", "提醒人 mentions", draft.mentions, null, { placeholder: "可选：邮箱，多个用逗号或换行分隔" })}
         </div>
-        <p class="muted">正常测试只需要填写 TV bot_id；mentions 可选。TV webhook 默认使用 <code>https://tv-service-alert.kuainiu.chat/alert/v2/array</code>，也可由服务端 <code>TV_ALERT_WEBHOOK_URL</code> 覆盖。</p>
+        <p class="muted">TV webhook 已默认填入 array 接口；需要切换环境或通道时，直接改这个地址即可。正常测试只必须填写 TV bot_id，mentions 可选。</p>
         <div class="detail-header compact-header">
           <h2 class="panel-title">异常明细</h2>
           <button id="add-anomaly">新增异常</button>
@@ -106,6 +108,7 @@ export function renderNotifyPreview(root) {
       const result = await apiPost("/api/notify-test", {
         botId: draft.botId,
         message,
+        webhookUrl: draft.webhookUrl,
         mentions: draft.mentions,
         title: "值班平台测试发送",
       });
@@ -154,6 +157,7 @@ function getDraft() {
     checkedCardCount: summary.checkedCardCount || 0,
     dataQualityAnomalyCount: summary.dataQualityAnomalyCount || 0,
     maxAnomalies: 50,
+    webhookUrl: DEFAULT_TV_WEBHOOK_URL,
     mentions: "",
     botId: state.rulesConfig?.alerts?.botId && state.rulesConfig.alerts.botId !== "<hidden>"
       ? state.rulesConfig.alerts.botId
@@ -297,7 +301,7 @@ function firstPreviewMessage() {
 
 function sendFailureText(reason) {
   if (reason === "webhook not configured") {
-    return "未发送：服务端 TV webhook 未配置。请在启动服务前设置 TV_ALERT_WEBHOOK_URL，或在 config/public-monitor.config.json 的 alerts.webhookUrl 配置固定地址。你当前填写的 bot_id 没问题。";
+    return "未发送：TV webhook 地址为空或不可用。请检查左侧 TV webhook 地址；默认应为 https://tv-service-alert.kuainiu.chat/alert/v2/array。你当前填写的 bot_id 没问题。";
   }
   return `未发送：${reason || "webhook 未配置或发送失败"}`;
 }
