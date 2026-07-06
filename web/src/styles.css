@@ -311,6 +311,10 @@ th {
   margin-bottom: 5px;
 }
 
+.wide-form-field {
+  grid-column: 1 / -1;
+}
+
 .message-preview {
   min-height: 220px;
 }

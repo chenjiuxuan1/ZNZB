@@ -15,6 +15,12 @@ export const state = {
   batchCheckResult: null,
   batchCheckStatus: null,
   batchCheckError: "",
+  batchMaxCards: 20,
+  batchNotifyConfig: {
+    webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+    botId: "",
+    mentions: "",
+  },
   notifyPreview: null,
   notifyDraft: null,
   notifyError: "",

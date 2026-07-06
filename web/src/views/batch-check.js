@@ -2,6 +2,8 @@ import { apiPost } from "../api.js";
 import { setRoute, state } from "../state.js";
 import { countryLabel, escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
 
+const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
+
 export function renderBatchCheck(root) {
   const countries = state.countries?.countries || [];
   const dashboards = state.inventory?.dashboards || [];
@@ -28,6 +30,7 @@ export function renderBatchCheck(root) {
       <span>默认最多检查 20 张卡片。建议先按单国家小批量验证，确认规则和通知文案稳定后，再扩大范围。</span>
     </div>
     <section class="panel batch-controls">
+      <h2 class="panel-title">巡检范围</h2>
       <div class="toolbar wide-toolbar">
         <label>
           国家
@@ -47,6 +50,22 @@ export function renderBatchCheck(root) {
           <input id="batch-max-cards" type="number" min="1" max="200" value="${escapeHtml(state.batchMaxCards || 20)}">
         </label>
       </div>
+      <h2 class="panel-title section-title">通知配置</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label>TV webhook 地址</label>
+          <input id="batch-webhook-url" value="${escapeHtml(getBatchNotifyConfig().webhookUrl)}" placeholder="${escapeHtml(DEFAULT_TV_WEBHOOK_URL)}">
+        </div>
+        <div class="field">
+          <label>TV bot_id</label>
+          <input id="batch-bot-id" value="${escapeHtml(getBatchNotifyConfig().botId)}" placeholder="必填：用于后续通知预览和测试发送">
+        </div>
+        <div class="field wide-form-field">
+          <label>提醒人 mentions</label>
+          <input id="batch-mentions" value="${escapeHtml(getBatchNotifyConfig().mentions)}" placeholder="可选：邮箱，多个用逗号或换行分隔">
+        </div>
+      </div>
+      <p class="muted">真实巡检只读取 Metabase 并生成结果，不会自动发送 TV；这里的发送配置会随结果带入“通知预览”，确认文案后再手动发送。</p>
       ${renderBatchStatus()}
     </section>
     ${result ? renderBatchResult(result) : `<p class="muted">选择范围后点击“开始真实只读巡检”。</p>`}
@@ -66,7 +85,22 @@ export function renderBatchCheck(root) {
   root.querySelector("#batch-max-cards")?.addEventListener("input", (event) => {
     state.batchMaxCards = event.target.value;
   });
+  root.querySelector("#batch-webhook-url")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
+  root.querySelector("#batch-bot-id")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
+  root.querySelector("#batch-mentions")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#run-batch-check")?.addEventListener("click", async () => {
+    updateBatchNotifyConfigFromDom(root);
+    const validationError = validateBatchNotifyConfig();
+    if (validationError) {
+      state.batchCheckStatus = {
+        type: "error",
+        title: "请先补全真实巡检配置",
+        detail: validationError,
+      };
+      state.batchCheckError = validationError;
+      renderBatchCheck(root);
+      return;
+    }
     state.batchCheckStatus = {
       type: "loading",
       title: "正在执行批量真实只读巡检",
@@ -84,8 +118,11 @@ export function renderBatchCheck(root) {
       state.batchCheckStatus = {
         type: "success",
         title: "批量巡检完成",
-        detail: `检查 ${state.batchCheckResult.checkedCardCount || 0} 张卡片，发现 ${state.batchCheckResult.anomalyCount || 0} 条异常。`,
+        detail: `检查 ${state.batchCheckResult.checkedCardCount || 0} 张卡片，发现 ${state.batchCheckResult.anomalyCount || 0} 条异常。通知配置已随结果准备好，可带入通知预览确认发送。`,
       };
+      state.notifyDraft = buildNotifyDraftFromBatch(state.batchCheckResult);
+      state.notifyPreview = null;
+      state.notifyError = "";
     } catch (error) {
       state.batchCheckResult = null;
       state.batchCheckError = error.payload?.errors?.join("\n") || error.message;
@@ -109,6 +146,41 @@ function clearBatchFeedback() {
   state.batchCheckResult = null;
   state.batchCheckStatus = null;
   state.batchCheckError = "";
+}
+
+function getBatchNotifyConfig() {
+  if (!state.batchNotifyConfig) {
+    state.batchNotifyConfig = {
+      webhookUrl: DEFAULT_TV_WEBHOOK_URL,
+      botId: defaultBotId(),
+      mentions: "",
+    };
+  }
+  if (!state.batchNotifyConfig.webhookUrl) {
+    state.batchNotifyConfig.webhookUrl = DEFAULT_TV_WEBHOOK_URL;
+  }
+  if (!state.batchNotifyConfig.botId) {
+    state.batchNotifyConfig.botId = defaultBotId();
+  }
+  return state.batchNotifyConfig;
+}
+
+function updateBatchNotifyConfigFromDom(root) {
+  const config = getBatchNotifyConfig();
+  config.webhookUrl = root.querySelector("#batch-webhook-url")?.value.trim() || "";
+  config.botId = root.querySelector("#batch-bot-id")?.value.trim() || "";
+  config.mentions = root.querySelector("#batch-mentions")?.value.trim() || "";
+}
+
+function validateBatchNotifyConfig() {
+  const config = getBatchNotifyConfig();
+  if (!config.webhookUrl) {
+    return "TV webhook 地址不能为空。默认可使用 https://tv-service-alert.kuainiu.chat/alert/v2/array。";
+  }
+  if (!config.botId) {
+    return "TV bot_id 不能为空。请先填写本次巡检结果后续要发送到的 TV bot_id。";
+  }
+  return "";
 }
 
 function renderBatchStatus() {
@@ -183,15 +255,16 @@ function renderBatchResult(result) {
 }
 
 function buildNotifyDraftFromBatch(result) {
+  const notifyConfig = getBatchNotifyConfig();
   return {
     sourceLabel: "来自批量真实只读巡检",
     checkedAt: result.checkedAt || new Date().toISOString(),
     checkedCardCount: result.checkedCardCount || 0,
     dataQualityAnomalyCount: result.dataQualityAnomalyCount || 0,
     maxAnomalies: state.notifyDraft?.maxAnomalies || 50,
-    webhookUrl: state.notifyDraft?.webhookUrl || "https://tv-service-alert.kuainiu.chat/alert/v2/array",
-    mentions: state.notifyDraft?.mentions || "",
-    botId: state.notifyDraft?.botId || defaultBotId(),
+    webhookUrl: notifyConfig.webhookUrl || DEFAULT_TV_WEBHOOK_URL,
+    mentions: notifyConfig.mentions || "",
+    botId: notifyConfig.botId || defaultBotId(),
     anomalies: result.anomalies || [],
   };
 }
