@@ -81,7 +81,7 @@ test("buildPublicCheckMessage separates missing data and fluctuations", () => {
         },
         {
           type: "completeDayChange",
-          countryCode: "ID",
+          countryCode: "INE",
           countryName: "印尼",
           dashboardTitle: "每期逾期率by日期",
           cardTitle: "每期逾期率",
@@ -97,12 +97,12 @@ test("buildPublicCheckMessage separates missing data and fluctuations", () => {
   assert.match(message, /• 数据波动：1条/);
   assert.match(message, /• 菲律宾\(PH\)：共1条，缺失1条，波动0条/);
   assert.match(message, /• 巴基斯坦\(PK\)：共1条，缺失1条，波动0条/);
-  assert.match(message, /• 印尼\(ID\)：共1条，缺失0条，波动1条/);
+  assert.match(message, /• 印尼\(INE\)：共1条，缺失0条，波动1条/);
   assert.match(message, /🚨【菲律宾\(PH\) 公共报表巡检异常】/);
   assert.match(message, /🔴 数据缺失异常（1条）/);
   assert.match(message, /缺少 D0 2026-06-09/);
   assert.match(message, /半小时点数据缺失/);
-  assert.match(message, /🚨【印尼\(ID\) 公共报表巡检异常】/);
+  assert.match(message, /🚨【印尼\(INE\) 公共报表巡检异常】/);
   assert.match(message, /🟡 数据波动异常（1条）/);
   assert.doesNotMatch(message, /<details>|<summary>|<\/details>/);
   assert.match(message, /最大波动：\+10\.9个百分点/);
@@ -118,7 +118,7 @@ test("buildPublicCheckMessage shows zero missing data explicitly", () => {
     anomalies: [
       {
         type: "completeDayChange",
-        countryCode: "ID",
+        countryCode: "INE",
         countryName: "印尼",
         dashboardTitle: "每期逾期率by日期",
         cardTitle: "每期逾期率",
@@ -139,7 +139,7 @@ test("buildPublicCheckMessage includes data quality current anomaly counts", () 
     dataQuality: {
       countries: [
         {
-          countryCode: "ID",
+          countryCode: "INE",
           countryName: "印尼",
           status: "ok",
           currentAnomalyCount: 3,
@@ -155,7 +155,7 @@ test("buildPublicCheckMessage includes data quality current anomaly counts", () 
     anomalies: [
       {
         type: "completeDayChange",
-        countryCode: "ID",
+        countryCode: "INE",
         countryName: "印尼",
         dashboardTitle: "每期逾期率by日期",
         cardTitle: "每期逾期率",
@@ -165,7 +165,7 @@ test("buildPublicCheckMessage includes data quality current anomaly counts", () 
   });
 
   assert.match(message, /🧪 数据质量当前异常/);
-  assert.match(message, /• 印尼\(ID\)：3条/);
+  assert.match(message, /• 印尼\(INE\)：3条/);
   assert.match(message, /• 菲律宾\(PH\)：获取失败（401 Unauthorized）/);
   assert.match(message, /• 数据质量当前异常：3条/);
 });
@@ -178,7 +178,7 @@ test("buildPublicCheckMessage shows both directions and time point for mixed int
     anomalies: [
       {
         type: "intradayTimePointChange",
-        countryCode: "ID",
+        countryCode: "INE",
         countryName: "印尼",
         dashboardTitle: "核心链路准实时监控",
         cardTitle: "新客-放款金额",
@@ -186,7 +186,7 @@ test("buildPublicCheckMessage shows both directions and time point for mixed int
       },
       {
         type: "intradayTimePointChange",
-        countryCode: "ID",
+        countryCode: "INE",
         countryName: "印尼",
         dashboardTitle: "核心链路准实时监控",
         cardTitle: "新客-放款金额",

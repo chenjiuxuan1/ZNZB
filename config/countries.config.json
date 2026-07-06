@@ -1,12 +1,12 @@
 {
   "countries": [
     {
-      "code": "ID",
+      "code": "INE",
       "name": "印尼",
       "timezone": "Asia/Jakarta",
       "grafanaDashboardUrl": "https://sr-monitor.empoweroceanin.com/d/aeqalqv4yq5fkf/7d32b5ce-c485-5a73-ab80-9841241ed4ba?orgId=1&refresh=2h",
       "dataQualityDashboardUrl": "https://sr-monitor.empoweroceanin.com/d/cemqtffvojgu8a/d9b4ae1d-a69c-56ff-8302-fb85eea54d57?orgId=1&refresh=5m",
-      "monitorConfigFile": "./config/monitor.id.json",
+      "monitorConfigFile": "./config/monitor.ine.json",
       "status": "ready"
     },
     {

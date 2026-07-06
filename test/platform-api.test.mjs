@@ -14,7 +14,7 @@ async function makeFixture() {
   await fs.writeFile(
     path.join(rootDir, "config/countries.config.json"),
     JSON.stringify({
-      countries: [{ code: "ID", name: "印尼", timezone: "Asia/Jakarta", status: "ready" }],
+      countries: [{ code: "INE", name: "印尼", timezone: "Asia/Jakarta", status: "ready" }],
     }),
   );
   await fs.writeFile(
@@ -32,7 +32,7 @@ async function makeFixture() {
       dashboardCount: 1,
       dashboards: [
         {
-          countryCode: "ID",
+          countryCode: "INE",
           countryName: "印尼",
           title: "OKR",
           uuid: "dash-1",
@@ -85,7 +85,7 @@ test("platform api returns summary and inventory", async () => {
   assert.equal(summary.cardCount, 1);
   assert.equal(summary.ruleCount, 1);
 
-  const inventory = await api.getInventory({ countryCode: "ID", q: "规模" });
+  const inventory = await api.getInventory({ countryCode: "INE", q: "规模" });
   assert.equal(inventory.dashboards.length, 1);
   assert.equal(inventory.dashboards[0].cards.length, 1);
 });

@@ -12,12 +12,12 @@ test("validateCountriesConfig accepts valid countries config", () => {
   const result = validateCountriesConfig({
     countries: [
       {
-        code: "ID",
+        code: "INE",
         name: "印尼",
         timezone: "Asia/Jakarta",
         grafanaDashboardUrl: "https://example.com/d/abc",
         dataQualityDashboardUrl: "https://example.com/d/quality",
-        monitorConfigFile: "./config/monitor.id.json",
+        monitorConfigFile: "./config/monitor.ine.json",
         status: "ready",
       },
     ],

@@ -37,7 +37,7 @@ export function renderRules(root, { reload }) {
           ${rules.map((rule, index) => `
             <button class="rule-row ${index === selectedIndex ? "selected" : ""}" data-rule-index="${index}">
               <span class="rule-index">#${index + 1}</span>
-              <span>
+              <span class="rule-row-summary">
                 <strong>${escapeHtml(ruleTypeLabel(rule.type))}</strong>
                 <small>${escapeHtml(ruleScope(rule, countries))}</small>
               </span>

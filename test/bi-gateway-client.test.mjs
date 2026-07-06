@@ -24,7 +24,7 @@ test("BiGatewayClient sends normalized dashboard query payload", async (t) => {
   });
   const rows = await client.queryPublicDashcardJson({
     dashboard: {
-      countryCode: "ID",
+      countryCode: "INE",
       countryName: "印尼",
       timezone: "Asia/Jakarta",
       sourcePanelTitle: "OKR",
@@ -47,7 +47,7 @@ test("BiGatewayClient sends normalized dashboard query payload", async (t) => {
   assert.equal(calls[0].options.headers.Authorization, "Bearer test-token");
 
   const payload = JSON.parse(calls[0].options.body);
-  assert.deepEqual(payload.country, { code: "ID", name: "印尼", timezone: "Asia/Jakarta" });
+  assert.deepEqual(payload.country, { code: "INE", name: "印尼", timezone: "Asia/Jakarta" });
   assert.equal(payload.dashboard.uuid, "dashboard-uuid");
   assert.equal(payload.card.cardId, 531);
   assert.deepEqual(payload.parameters, [{ id: "date", value: "past30days~" }]);

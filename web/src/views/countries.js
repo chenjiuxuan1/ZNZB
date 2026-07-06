@@ -52,7 +52,7 @@ function renderCountryCard(country, index) {
         <span class="badge ${country.status === "ready" ? "ok" : "warn"}">${escapeHtml(country.status || "unknown")}</span>
       </div>
       <div class="form-grid">
-        ${field(index, "code", "国家代码", country.code, "ID / PH / TH")}
+        ${field(index, "code", "国家代码", country.code, "INE / PH / TH")}
         ${field(index, "name", "国家名称", country.name, "印尼")}
         ${field(index, "timezone", "业务时区", country.timezone, "Asia/Jakarta")}
         ${field(index, "status", "状态", country.status, "ready")}

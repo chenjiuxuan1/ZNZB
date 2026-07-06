@@ -42,7 +42,7 @@ Content-Type: application/json
 {
   "taskName": "metabase-public-dashcard-json",
   "country": {
-    "code": "ID",
+    "code": "INE",
     "name": "印尼",
     "timezone": "Asia/Jakarta"
   },

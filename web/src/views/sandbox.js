@@ -22,14 +22,14 @@ export function renderSandbox(root) {
   root.innerHTML = `
     <div class="page-header">
       <div>
-        <h1 class="page-title">离线试跑</h1>
-        <p class="page-note">在本机用已缓存的 Metabase sampleRows 和规则引擎演练，不访问线上 API，不发送通知。</p>
+        <h1 class="page-title">规则告警试跑</h1>
+        <p class="page-note">在本机用已缓存的 Metabase sampleRows 试跑当前规则，判断这条规则是否会产生告警；不访问线上 API，不发送通知。</p>
       </div>
       <button class="primary" id="run-sandbox">执行试跑</button>
     </div>
     <div class="notice">
-      <strong>试跑作用</strong>
-      <span>用于验证“某个国家/看板/卡片 + 某条规则”会不会命中异常。它不会刷新真实数据，只用发现阶段缓存下来的样例 rows，适合调规则前先看判断逻辑。</span>
+      <strong>试跑后会得到什么</strong>
+      <span>点击“执行试跑”后，平台会把左侧样例 rows 交给所选规则引擎，输出“会生成告警 / 不会生成告警”、命中的规则消息和读取行数。它用于调试告警规则，不会保存结果，也不会推送 TV/webhook。</span>
     </div>
     <div class="toolbar wide-toolbar">
       <label>
@@ -71,7 +71,7 @@ export function renderSandbox(root) {
         <h2 class="panel-title">规则解释</h2>
         ${renderRuleSummary(rule, countries)}
         <div id="sandbox-result" class="result-box">
-          ${state.sandboxResult ? renderResult(state.sandboxResult) : `<p class="muted">选择看板、卡片和规则后，点击“执行试跑”查看是否命中。</p>`}
+          ${state.sandboxResult ? renderResult(state.sandboxResult) : `<p class="muted">选择看板、卡片和规则后，点击“执行试跑”查看这条规则是否会生成告警消息。</p>`}
         </div>
       </section>
     </div>
@@ -153,8 +153,8 @@ function renderResult(result) {
   return `
     <h3 class="section-title">试跑结果</h3>
     <div class="result-summary ${result.matched ? "danger" : "ok"}">
-      <strong>${result.matched ? "命中异常" : "未命中异常"}</strong>
-      <span>本次读取 ${result.rowCount} 行样例数据，产出 ${messages.length} 条规则消息。</span>
+      <strong>${result.matched ? "会生成告警" : "不会生成告警"}</strong>
+      <span>本次读取 ${result.rowCount} 行样例数据，产出 ${messages.length} 条规则消息。这里仅用于调试规则，不会写入巡检结果，也不会发送通知。</span>
     </div>
     ${messages.length ? `
       <ul class="plain-list">

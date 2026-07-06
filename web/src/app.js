@@ -1,18 +1,18 @@
 import { apiGet } from "./api.js";
 import { setRoute, state } from "./state.js";
-import { renderCountries } from "./views/countries.js?v=20260706-ui3";
-import { renderDashboard } from "./views/dashboard.js?v=20260706-ui3";
-import { renderInventory } from "./views/inventory.js?v=20260706-ui3";
-import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui3";
-import { renderRules } from "./views/rules.js?v=20260706-ui3";
-import { renderSandbox } from "./views/sandbox.js?v=20260706-ui3";
+import { renderCountries } from "./views/countries.js?v=20260706-ui4";
+import { renderDashboard } from "./views/dashboard.js?v=20260706-ui4";
+import { renderInventory } from "./views/inventory.js?v=20260706-ui4";
+import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui4";
+import { renderRules } from "./views/rules.js?v=20260706-ui4";
+import { renderSandbox } from "./views/sandbox.js?v=20260706-ui4";
 
 const routes = [
   { path: "/dashboard", label: "总览", render: renderDashboard },
   { path: "/countries", label: "国家配置", render: renderCountries },
   { path: "/inventory", label: "看板与卡片", render: renderInventory },
   { path: "/rules", label: "规则配置", render: renderRules },
-  { path: "/sandbox", label: "离线试跑", render: renderSandbox },
+  { path: "/sandbox", label: "规则试跑", render: renderSandbox },
   { path: "/notify-preview", label: "通知预览", render: renderNotifyPreview },
 ];
 

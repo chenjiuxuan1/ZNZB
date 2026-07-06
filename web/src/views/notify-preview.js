@@ -102,7 +102,7 @@ function getDraft() {
 function defaultAnomaly() {
   const firstCountry = state.countries?.countries?.[0] || {};
   return {
-    countryCode: firstCountry.code || "ID",
+    countryCode: firstCountry.code || "INE",
     countryName: firstCountry.name || "印尼",
     dashboardTitle: "OKR",
     cardTitle: "规模",

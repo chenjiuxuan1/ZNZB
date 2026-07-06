@@ -501,7 +501,7 @@
     },
     {
       "type": "intradayProgress",
-      "countryCode": "ID",
+      "countryCode": "INE",
       "dashboardTitle": "放款统计",
       "cardTitles": [
         "每日放款统计",

@@ -452,6 +452,16 @@ th {
   padding: 12px;
 }
 
+.rule-row {
+  align-items: center;
+}
+
+.rule-row-summary {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+
 .dashboard-row strong,
 .rule-row strong {
   display: block;

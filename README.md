@@ -14,7 +14,7 @@
 
 多国家入口配置在 `./config/countries.config.json`：
 
-- `ID` 印尼：已发现 public dashboard，可巡检。
+- `INE` 印尼：已发现 public dashboard，可巡检。
 - `PK` 巴基斯坦：已发现 public dashboard，可巡检。
 - `PH` 菲律宾：Grafana 网关当前返回 401，需要先完成网页登录态。
 - `TH` 泰国：Grafana 网关当前返回 401，需要先完成网页登录态。

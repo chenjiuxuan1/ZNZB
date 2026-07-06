@@ -268,7 +268,7 @@ Content-Type: application/json
       "id": "<PARAMETER_ID>",
       "type": "string/=",
       "target": ["variable", ["template-tag", "country"]],
-      "value": ["ID"]
+      "value": ["INE"]
     }
   ]
 }
