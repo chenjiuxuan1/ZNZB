@@ -25,11 +25,14 @@ export function renderSandbox(root) {
         <h1 class="page-title">规则告警试跑</h1>
         <p class="page-note">在本机用已缓存的 Metabase sampleRows 试跑当前规则，判断这条规则是否会产生告警；不访问线上 API，不发送通知。</p>
       </div>
-      <button class="primary" id="run-sandbox">执行试跑</button>
+      <div class="button-group">
+        <button id="run-sandbox">离线试跑</button>
+        <button class="primary" id="run-live-sandbox">真实只读试跑</button>
+      </div>
     </div>
     <div class="notice">
-      <strong>试跑后会得到什么</strong>
-      <span>点击“执行试跑”后，平台会把左侧样例 rows 交给所选规则引擎，输出“会生成告警 / 不会生成告警”、命中的规则消息和读取行数。它用于调试告警规则，不会保存结果，也不会推送 TV/webhook。</span>
+      <strong>两种试跑</strong>
+      <span>“离线试跑”只用左侧缓存 sampleRows；“真实只读试跑”会临时访问 Metabase public dashcard JSON 拉最新 rows，再跑同一条规则。两者都只输出是否会告警和规则消息，不保存结果，不发送 TV/webhook。</span>
     </div>
     <div class="toolbar wide-toolbar">
       <label>
@@ -60,7 +63,7 @@ export function renderSandbox(root) {
           ${infoItem("卡片", card?.title || "-")}
           ${infoItem("样例行数", String(rows.length))}
         </div>
-        <h3 class="section-title">样例 rows</h3>
+        <h3 class="section-title">${state.sandboxResult?.source === "metabase" ? "最近一次真实返回 rows" : "样例 rows"}</h3>
         ${renderRowsTable(rows)}
         <details class="advanced compact">
           <summary>高级：编辑本次试跑 rows</summary>
@@ -71,7 +74,7 @@ export function renderSandbox(root) {
         <h2 class="panel-title">规则解释</h2>
         ${renderRuleSummary(rule, countries)}
         <div id="sandbox-result" class="result-box">
-          ${state.sandboxResult ? renderResult(state.sandboxResult) : `<p class="muted">选择看板、卡片和规则后，点击“执行试跑”查看这条规则是否会生成告警消息。</p>`}
+          ${state.sandboxResult ? renderResult(state.sandboxResult) : `<p class="muted">选择看板、卡片和规则后，点击“离线试跑”或“真实只读试跑”查看这条规则是否会生成告警消息。</p>`}
         </div>
       </section>
     </div>
@@ -105,6 +108,15 @@ export function renderSandbox(root) {
       rule,
       rows: nextRows,
     });
+    renderSandbox(root);
+  });
+  root.querySelector("#run-live-sandbox")?.addEventListener("click", async () => {
+    state.sandboxResult = await apiPost("/api/sandbox/evaluate-live", {
+      dashboard,
+      card,
+      rule,
+    });
+    state.sandboxRows = state.sandboxResult.rows || [];
     renderSandbox(root);
   });
 }
@@ -154,8 +166,14 @@ function renderResult(result) {
     <h3 class="section-title">试跑结果</h3>
     <div class="result-summary ${result.matched ? "danger" : "ok"}">
       <strong>${result.matched ? "会生成告警" : "不会生成告警"}</strong>
-      <span>本次读取 ${result.rowCount} 行样例数据，产出 ${messages.length} 条规则消息。这里仅用于调试规则，不会写入巡检结果，也不会发送通知。</span>
+      <span>${result.source === "metabase" ? "真实只读试跑" : "离线试跑"}读取 ${result.rowCount} 行数据，产出 ${messages.length} 条规则消息。这里仅用于调试规则，不会写入巡检结果，也不会发送通知。</span>
     </div>
+    ${result.source === "metabase" ? `
+      <div class="info-grid single live-request">
+        ${infoItem("Metabase 请求", `${result.request?.baseUrl || "-"} / dashboard ${result.request?.dashboardUuid || "-"} / card ${result.request?.cardId || "-"}`)}
+        ${infoItem("参数数量", String(result.request?.parameterCount || 0))}
+      </div>
+    ` : ""}
     ${messages.length ? `
       <ul class="plain-list">
         ${messages.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}

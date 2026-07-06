@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { evaluateRowsAgainstRule } from "./metabase-public-monitor.mjs";
-import { buildPublicCheckMessages } from "./notifier.mjs";
+import { MetabasePublicClient } from "./metabase-public-client.mjs";
+import {
+  buildDefaultCardParameters,
+  evaluateRowsAgainstRule,
+  mergeParameters,
+} from "./metabase-public-monitor.mjs";
+import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import {
   normalizeRuleMessages,
@@ -17,7 +22,14 @@ const FILES = {
   result: "config/public-check-result.ready.json",
 };
 
-export function createPlatformApi({ rootDir = process.cwd() } = {}) {
+export function createPlatformApi({
+  rootDir = process.cwd(),
+  metabaseClientFactory = (dashboard) => new MetabasePublicClient({
+    baseUrl: new URL(dashboard.url).origin,
+    requestTimeoutSeconds: 30,
+  }),
+  notifyTextFn = notifyText,
+} = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
 
   return {
@@ -104,6 +116,42 @@ export function createPlatformApi({ rootDir = process.cwd() } = {}) {
       };
     },
 
+    async evaluateLiveSandbox(body) {
+      validateLiveSandboxRequest(body);
+      const dashboard = body.dashboard;
+      const card = body.card;
+      const rule = body.rule;
+      const client = metabaseClientFactory(dashboard);
+      const parameters = mergeParameters(buildDefaultCardParameters(dashboard, card), rule.parameters || []);
+      const rows = await client.queryDashcardJson({
+        cardId: card.cardId,
+        dashboardUuid: dashboard.uuid,
+        dashcardId: card.dashcardId,
+        parameters,
+      });
+      const safeRows = Array.isArray(rows) ? rows : [];
+      const raw = evaluateRowsAgainstRule(safeRows, rule);
+      const messages = normalizeRuleMessages(raw);
+      return {
+        ok: true,
+        source: "metabase",
+        matched: messages.length > 0,
+        messages,
+        rowCount: safeRows.length,
+        rows: safeRows,
+        request: {
+          baseUrl: new URL(dashboard.url).origin,
+          dashboardUuid: dashboard.uuid,
+          cardId: card.cardId,
+          dashcardId: card.dashcardId,
+          parameterCount: parameters.length,
+        },
+        dashboard,
+        card,
+        rule,
+      };
+    },
+
     async getNotifyPreview(resultOverride = null, optionOverride = {}) {
       const rules = await readJsonFile(resolve("rules"), { alerts: {} });
       const result = resultOverride || await readJsonFile(resolve("result"), {
@@ -114,6 +162,33 @@ export function createPlatformApi({ rootDir = process.cwd() } = {}) {
       });
       return {
         messages: buildPublicCheckMessages(result, { ...(rules.alerts || {}), ...optionOverride }),
+      };
+    },
+
+    async sendNotifyTest(body = {}) {
+      const rules = await readJsonFile(resolve("rules"), { alerts: {} });
+      const botId = String(body.botId || "").trim();
+      const message = String(body.message || "").trim();
+      if (!botId) {
+        throw badRequest("TV bot_id is required", ["请填写 TV bot_id。"]);
+      }
+      if (!message) {
+        throw badRequest("Message is required", ["请先生成或填写要测试发送的 TV 文案。"]);
+      }
+      const alerts = {
+        ...(rules.alerts || {}),
+        channel: "tv",
+        botId,
+      };
+      const result = await notifyTextFn({ ...rules, alerts }, message, {
+        title: body.title || "值班平台 TV 测试",
+        severity: "info",
+        timestamp: new Date().toISOString(),
+      });
+      return {
+        ...result,
+        botId,
+        sentAt: new Date().toISOString(),
       };
     },
   };
@@ -210,6 +285,21 @@ function preserveHiddenSecrets(next = {}, previous = {}, fields = []) {
     }
   }
   return merged;
+}
+
+function validateLiveSandboxRequest(body) {
+  if (!body || typeof body !== "object") {
+    throw badRequest("Invalid live sandbox request", ["请求体不能为空。"]);
+  }
+  if (!body.dashboard?.url || !body.dashboard?.uuid) {
+    throw badRequest("Invalid live sandbox request", ["请选择带 Metabase URL 和 uuid 的看板。"]);
+  }
+  if (!body.card?.cardId || !body.card?.dashcardId) {
+    throw badRequest("Invalid live sandbox request", ["请选择带 cardId 和 dashcardId 的卡片。"]);
+  }
+  if (!body.rule || typeof body.rule !== "object" || !body.rule.type) {
+    throw badRequest("Invalid live sandbox request", ["请选择要试跑的规则。"]);
+  }
 }
 
 function maskSecretReference(value) {

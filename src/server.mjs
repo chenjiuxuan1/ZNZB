@@ -56,9 +56,15 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/sandbox/evaluate") {
     return sendJson(response, 200, await api.evaluateSandbox(await readBody(request)));
   }
+  if (method === "POST" && url.pathname === "/api/sandbox/evaluate-live") {
+    return sendJson(response, 200, await api.evaluateLiveSandbox(await readBody(request)));
+  }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});
     return sendJson(response, 200, await api.getNotifyPreview(body?.result || null, body?.options || {}));
+  }
+  if (method === "POST" && url.pathname === "/api/notify-test") {
+    return sendJson(response, 200, await api.sendNotifyTest(await readBody(request, {})));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }

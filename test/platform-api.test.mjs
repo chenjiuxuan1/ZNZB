@@ -106,6 +106,35 @@ test("platform api evaluates sandbox rules", async () => {
   assert.deepEqual(result.messages, []);
 });
 
+test("platform api evaluates live sandbox through readonly Metabase client", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson(request) {
+        assert.equal(request.cardId, 1);
+        assert.equal(request.dashboardUuid, "dash-1");
+        assert.equal(request.dashcardId, 2);
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+  const inventory = await api.getInventory();
+  const dashboard = inventory.dashboards[0];
+  const card = dashboard.cards[0];
+
+  const result = await api.evaluateLiveSandbox({
+    dashboard,
+    card,
+    rule: { type: "requiredDatePresent", dateColumn: "统计日期", requiredDate: "2026-07-06" },
+  });
+
+  assert.equal(result.source, "metabase");
+  assert.equal(result.rowCount, 1);
+  assert.equal(result.matched, false);
+  assert.equal(result.request.parameterCount, 0);
+});
+
 test("platform api validates and saves rules", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });
@@ -155,4 +184,26 @@ test("platform api generates notify preview", async () => {
   const preview = await api.getNotifyPreview();
   assert.ok(preview.messages.length >= 1);
   assert.ok(preview.messages[0].body.includes("公共报表巡检"));
+});
+
+test("platform api sends TV notify test with explicit bot id", async () => {
+  const rootDir = await makeFixture();
+  let captured = null;
+  const api = createPlatformApi({
+    rootDir,
+    notifyTextFn: async (config, message, metadata) => {
+      captured = { config, message, metadata };
+      return { sent: true, status: 200 };
+    },
+  });
+
+  const result = await api.sendNotifyTest({
+    botId: "tv-bot-001",
+    message: "测试消息",
+  });
+
+  assert.equal(result.sent, true);
+  assert.equal(captured.config.alerts.channel, "tv");
+  assert.equal(captured.config.alerts.botId, "tv-bot-001");
+  assert.equal(captured.message, "测试消息");
 });
