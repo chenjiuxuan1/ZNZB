@@ -401,6 +401,9 @@
       "allowedDelayMinutes": 60,
       "previousLagDays": 1,
       "maxAbsChangeRate": 0.5,
+      "baselineLookbackDays": 30,
+      "baselineMinSamples": 7,
+      "baselineMaxAbsChangeRate": 0.5,
       "minPrevious": 100,
       "ignoreDimensionColumns": [
         "开始时间"
@@ -449,6 +452,9 @@
       "allowedDelayMinutes": 60,
       "previousLagDays": 1,
       "maxAbsChangeRate": 0.5,
+      "baselineLookbackDays": 30,
+      "baselineMinSamples": 7,
+      "baselineMaxAbsChangeRate": 0.5,
       "minPrevious": 100,
       "ignoreDimensionColumns": [
         "开始时间"

@@ -258,3 +258,25 @@ test("buildPublicCheckMessage shows both directions and time point for mixed int
   assert.match(message, /时间点：Asia\/Jakarta 09:30/);
   assert.match(message, /23,650,000 → 485,000/);
 });
+
+test("buildPublicCheckMessage includes baseline detail for intraday changes", () => {
+  const message = buildPublicCheckMessage({
+    checkedAt: "2026-07-06T09:35:48.906Z",
+    checkedCardCount: 1,
+    anomalyCount: 1,
+    anomalies: [
+      {
+        type: "intradayTimePointChange",
+        countryCode: "INE",
+        countryName: "印尼",
+        dashboardTitle: "核心链路准实时监控",
+        cardTitle: "老客-还款金额",
+        message: "同时间点指标「repaid_amt」从 123883310 到 405325890，波动 +227.2%；近30天同点中位数 150000000（样本26天），较基线 +170.2%（Asia/Jakarta 08:30，stat_date 2026-07-06 对比 2026-07-05）",
+      },
+    ],
+  });
+
+  assert.match(message, /最大波动：\+227\.2%/);
+  assert.match(message, /近30天基线：150,000,000（样本26天），较基线 \+170\.2%/);
+  assert.match(message, /123,883,310 → 405,325,890/);
+});

@@ -42,6 +42,7 @@ async function main() {
         inventoryFile: options.inventory || "./config/discovered-public-dashboards.json",
         outputFile: options.out,
         rulesFile,
+        baselineCacheFile: options["baseline-cache"] || "./config/public-check-baseline-cache.json",
         queryCardFn: buildPublicQueryCardFn(options, ruleConfig),
       });
       if (options.notify) {

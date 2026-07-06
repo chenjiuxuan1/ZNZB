@@ -666,6 +666,41 @@ test("evaluateRowsAgainstRule checks intraday time point change", () => {
   ]);
 });
 
+test("evaluateRowsAgainstRule adds monthly time point baseline details", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "日期": "2026-06-01", "开始时间": "00:30", "reg_cnt": 100 },
+      { "日期": "2026-06-02", "开始时间": "00:30", "reg_cnt": 100 },
+      { "日期": "2026-06-03", "开始时间": "00:30", "reg_cnt": 100 },
+      { "日期": "2026-06-04", "开始时间": "00:30", "reg_cnt": 100 },
+      { "日期": "2026-06-05", "开始时间": "00:30", "reg_cnt": 100 },
+      { "日期": "2026-06-06", "开始时间": "00:30", "reg_cnt": 100 },
+      { "日期": "2026-06-07", "开始时间": "00:30", "reg_cnt": 100 },
+      { "日期": "2026-06-08", "开始时间": "00:30", "reg_cnt": 180 },
+    ],
+    {
+      type: "intradayTimePointChange",
+      dateColumn: "日期",
+      timeColumn: "开始时间",
+      column: "reg_cnt",
+      timezone: "Asia/Jakarta",
+      now: "2026-06-07T17:30:00Z",
+      startTime: "00:30",
+      intervalMinutes: 30,
+      maxAbsChangeRate: 0.5,
+      baselineLookbackDays: 30,
+      baselineMinSamples: 7,
+      baselineMaxAbsChangeRate: 0.5,
+      minPrevious: 100,
+      ignoreDimensionColumns: ["开始时间"],
+    },
+  );
+
+  assert.deepEqual(result, [
+    "同时间点指标「reg_cnt」从 100 到 180，波动 +80.0%；近30天同点中位数 100（样本7天），较基线 +80.0%（Asia/Jakarta 00:30，日期 2026-06-08 对比 2026-06-07）",
+  ]);
+});
+
 test("evaluateRowsAgainstRule checks explicit empty data rule", () => {
   const result = evaluateRowsAgainstRule([], {
     type: "notEmpty",

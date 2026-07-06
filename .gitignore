@@ -3,4 +3,5 @@
 node_modules/
 *.log
 tmp-*.png
+config/public-check-baseline-cache.json
 .DS_Store

@@ -550,6 +550,11 @@ function appendCompactFluctuationSummary(lines, group, options = {}) {
 
 function appendFluctuationSummaryLines(lines, label, summary, options = {}) {
   lines.push(`   ${label}：${summary.change || "未知"}`);
+  if (summary.baseline) {
+    lines.push(
+      `   近${summary.baseline.lookbackDays}天基线：${summary.baseline.value}（样本${summary.baseline.sampleCount}天），较基线 ${summary.baseline.change}`,
+    );
+  }
   const displayContext = stripCommonComparisonFromContext(summary.context, options.comparisonContext);
   if (displayContext) {
     lines.push(`   时间点：${displayContext}`);
@@ -654,6 +659,7 @@ function summarizeFluctuationMessage(message = "") {
     || text.match(/绝对变化\s*([+-]?\d+(?:\.\d+)?)\s*个百分/);
   const numericChange = parseChangeNumber(changeMatch);
   const context = extractMessageContext(text);
+  const baseline = extractBaselineSummary(text);
 
   if (fromToMatch) {
     return {
@@ -663,6 +669,7 @@ function summarizeFluctuationMessage(message = "") {
       detail: "",
       numericChange,
       context,
+      baseline,
     };
   }
 
@@ -678,6 +685,7 @@ function summarizeFluctuationMessage(message = "") {
         : `进度${progressMatch[1]}，期望${progressMatch[3]}`,
       numericChange: Number.NaN,
       context,
+      baseline,
     };
   }
 
@@ -688,6 +696,23 @@ function summarizeFluctuationMessage(message = "") {
     detail: text,
     numericChange,
     context,
+    baseline,
+  };
+}
+
+function extractBaselineSummary(text = "") {
+  const match = String(text).match(
+    /近(\d+)天同点中位数\s*([0-9,.]+%?)（样本(\d+)天），较基线\s*([+-]?\d+(?:\.\d+)?%)/,
+  );
+  if (!match) {
+    return null;
+  }
+
+  return {
+    lookbackDays: Number(match[1]),
+    value: formatMetricValue(match[2]),
+    sampleCount: Number(match[3]),
+    change: match[4],
   };
 }
 

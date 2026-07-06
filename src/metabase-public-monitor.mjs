@@ -10,6 +10,7 @@ export async function checkPublicDashboards({
   ruleConfig = null,
   outputFile,
   rulesFile,
+  baselineCacheFile,
   queryCardFn = queryCard,
 }) {
   const inventoryData = inventory || await readJsonFile(path.resolve(inventoryFile));
@@ -17,6 +18,11 @@ export async function checkPublicDashboards({
     builtInChecks: { queryError: true, noData: true },
     rules: [],
   });
+  const baselineCache = baselineCacheFile
+    ? await readJsonFile(path.resolve(baselineCacheFile), { entries: [] })
+    : { entries: [] };
+  const baselineCacheEntries = new Map((baselineCache.entries || []).map((entry) => [entry.key, entry]));
+  const baselineCacheUpdates = new Map();
   const anomalies = [];
   const checkedCards = [];
   const rules = ruleConfigData.rules || [];
@@ -44,7 +50,11 @@ export async function checkPublicDashboards({
           anomalies.push(...evaluateBuiltIns(ruleConfigData, dashboard, card, cardResult));
         }
 
-        anomalies.push(...evaluateRules(queryGroup.rules, dashboard, card, cardResult));
+        anomalies.push(...evaluateRules(queryGroup.rules, dashboard, card, cardResult, {
+          baselineCacheEntries,
+          baselineCacheUpdates,
+          context: queryGroup.context,
+        }));
       }
     }
   }
@@ -66,6 +76,24 @@ export async function checkPublicDashboards({
 
   if (outputFile) {
     await writeJsonFile(path.resolve(outputFile), result);
+  }
+
+  if (baselineCacheFile && baselineCacheUpdates.size > 0) {
+    const mergedEntries = new Map(baselineCacheEntries);
+    for (const [key, entry] of baselineCacheUpdates) {
+      mergedEntries.set(key, entry);
+    }
+
+    const cutoffMs = Date.now() - 35 * 86_400_000;
+    const entries = [...mergedEntries.values()].filter((entry) => {
+      const timestampMs = Date.parse(entry.updatedAt || entry.baselineEndDate || "");
+      return !Number.isFinite(timestampMs) || timestampMs >= cutoffMs;
+    });
+
+    await writeJsonFile(path.resolve(baselineCacheFile), {
+      updatedAt: new Date().toISOString(),
+      entries,
+    });
   }
 
   return result;
@@ -274,7 +302,7 @@ function evaluateBuiltIns(config, dashboard, card, result) {
   return anomalies;
 }
 
-function evaluateRules(rules, dashboard, card, result) {
+function evaluateRules(rules, dashboard, card, result, options = {}) {
   if (!result.ok) {
     return [];
   }
@@ -283,6 +311,15 @@ function evaluateRules(rules, dashboard, card, result) {
     .filter((rule) => ruleMatchesCard(rule, dashboard, card))
     .flatMap((rule) => {
       const effectiveRule = applyDashboardRuleDefaults(rule, dashboard);
+      effectiveRule.baselineCacheEntries = options.baselineCacheEntries;
+      effectiveRule.baselineCacheUpdates = options.baselineCacheUpdates;
+      effectiveRule.baselineScope = {
+        countryCode: dashboard.countryCode || dashboard.country?.code || "",
+        countryName: dashboard.countryName || dashboard.country?.name || "",
+        dashboardTitle: dashboard.sourcePanelTitle || dashboard.title || "",
+        cardTitle: card.title || "",
+        context: options.context || effectiveRule.context || "",
+      };
       const messages = normalizeMessages(evaluateRowsAgainstRule(result.rows, effectiveRule));
       return messages.map((message) =>
         buildAnomaly(
@@ -835,6 +872,9 @@ function checkIntradayTimePointChange(rows, rule) {
   const previousDate = rule.previousDate || addDays(currentDate, -(rule.previousLagDays ?? 1));
   const expectedTimes = buildExpectedTimePointMinutes(rule, localNow);
   const maxAbsChangeRate = rule.maxAbsChangeRate ?? 0.15;
+  const baselineMaxAbsChangeRate = rule.baselineMaxAbsChangeRate ?? maxAbsChangeRate;
+  const baselineLookbackDays = rule.baselineLookbackDays ?? 30;
+  const baselineMinSamples = rule.baselineMinSamples ?? 7;
   const minPrevious = rule.minPrevious ?? 1;
   const series = buildIntradaySeries(
     rows,
@@ -865,12 +905,34 @@ function checkIntradayTimePointChange(rows, rule) {
 
         const changeRate = (current - previous) / Math.abs(previous);
         if (Math.abs(changeRate) > maxAbsChangeRate) {
+          const baseline = resolveTimePointBaseline({
+            item,
+            column,
+            time,
+            timeColumn,
+            currentDate,
+            previousDate,
+            lookbackDays: baselineLookbackDays,
+            minSamples: baselineMinSamples,
+            rule,
+          });
+          const hasBaseline = baseline && Number.isFinite(baseline.median) && baseline.sampleCount >= baselineMinSamples;
+          const baselineChangeRate = hasBaseline && Math.abs(baseline.median) >= minPrevious
+            ? (current - baseline.median) / Math.abs(baseline.median)
+            : Number.NaN;
+          if (hasBaseline && Number.isFinite(baselineChangeRate) && Math.abs(baselineChangeRate) <= baselineMaxAbsChangeRate) {
+            continue;
+          }
+
+          const baselineText = hasBaseline && Number.isFinite(baselineChangeRate)
+            ? `；近${baseline.lookbackDays}天同点中位数 ${formatNumber(baseline.median)}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(baselineChangeRate)}`
+            : "";
           messages.push({
-            absChangeRate: Math.abs(changeRate),
+            absChangeRate: Math.max(Math.abs(changeRate), Number.isFinite(baselineChangeRate) ? Math.abs(baselineChangeRate) : 0),
             message:
               `同时间点指标「${column}」从 ${formatNumber(previous)} 到 ${formatNumber(current)}，波动 ${formatSignedPercent(
                 changeRate,
-              )}` +
+              )}${baselineText}` +
               `（${timezone} ${formatHourLabel(time / 60)}，${dateColumn} ${currentDate} 对比 ${previousDate}${formatDimensionText(
                 item,
               )}）`,
@@ -886,6 +948,103 @@ function checkIntradayTimePointChange(rows, rule) {
       .map((item) => item.message),
     rule,
   );
+}
+
+function resolveTimePointBaseline({ item, column, time, timeColumn, currentDate, previousDate, lookbackDays, minSamples, rule }) {
+  if (!Number.isFinite(lookbackDays) || lookbackDays <= 0) {
+    return null;
+  }
+
+  const baselineEndDate = addDays(currentDate, -1);
+  const baselineStartDate = addDays(currentDate, -lookbackDays);
+  const key = buildBaselineCacheKey({
+    rule,
+    item,
+    column,
+    time,
+    currentDate,
+    baselineStartDate,
+    baselineEndDate,
+  });
+  const cached = rule.baselineCacheEntries?.get(key);
+  if (cached && Number(cached.sampleCount || 0) >= minSamples && Number.isFinite(Number(cached.median))) {
+    return {
+      ...cached,
+      median: Number(cached.median),
+      sampleCount: Number(cached.sampleCount),
+      lookbackDays: Number(cached.lookbackDays || lookbackDays),
+    };
+  }
+
+  const samples = [];
+  for (const [dateKey, rows] of item.rowsByDate.entries()) {
+    if (dateKey < baselineStartDate || dateKey > baselineEndDate || dateKey === currentDate) {
+      continue;
+    }
+    if (rule.excludePreviousFromBaseline === true && dateKey === previousDate) {
+      continue;
+    }
+
+    const values = sumRowsAtTime(rows, timeColumn, [column], time);
+    const value = values ? values[column] : Number.NaN;
+    if (Number.isFinite(value)) {
+      samples.push(value);
+    }
+  }
+
+  if (samples.length === 0) {
+    return null;
+  }
+
+  const baseline = {
+    key,
+    countryCode: rule.baselineScope?.countryCode || "",
+    countryName: rule.baselineScope?.countryName || "",
+    dashboardTitle: rule.baselineScope?.dashboardTitle || "",
+    cardTitle: rule.baselineScope?.cardTitle || "",
+    context: rule.baselineScope?.context || "",
+    column,
+    timeMinutes: time,
+    timeLabel: formatHourLabel(time / 60),
+    dimensionValues: item.dimensionValues || {},
+    currentDate,
+    baselineStartDate,
+    baselineEndDate,
+    lookbackDays,
+    sampleCount: samples.length,
+    median: median(samples),
+    updatedAt: new Date().toISOString(),
+  };
+
+  rule.baselineCacheUpdates?.set(key, baseline);
+  return baseline;
+}
+
+function buildBaselineCacheKey({ rule, item, column, time, currentDate, baselineStartDate, baselineEndDate }) {
+  return JSON.stringify({
+    countryCode: rule.baselineScope?.countryCode || "",
+    dashboardTitle: rule.baselineScope?.dashboardTitle || "",
+    cardTitle: rule.baselineScope?.cardTitle || "",
+    context: rule.baselineScope?.context || "",
+    dateColumn: rule.dateColumn || "",
+    timeColumn: rule.timeColumn || "",
+    column,
+    time,
+    currentDate,
+    baselineStartDate,
+    baselineEndDate,
+    dimensions: item.dimensionValues || {},
+  });
+}
+
+function median(values) {
+  const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
+  if (sorted.length === 0) {
+    return Number.NaN;
+  }
+
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 function pickLatestRow(rows, explicitDateColumn) {

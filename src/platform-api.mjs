@@ -21,6 +21,7 @@ const FILES = {
   rules: "config/public-monitor.config.json",
   inventory: "config/discovered-public-dashboards.ready.json",
   result: "config/public-check-result.ready.json",
+  baselineCache: "config/public-check-baseline-cache.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 
@@ -195,6 +196,7 @@ export function createPlatformApi({
           ...ruleConfig,
           dataQuality: { ...(ruleConfig.dataQuality || {}), enabled: false },
         },
+        baselineCacheFile: resolve("baselineCache"),
         queryCardFn,
       });
     },
