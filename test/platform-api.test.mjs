@@ -190,6 +190,33 @@ test("platform api runs scoped batch check and sends TV notification", async () 
   assert.ok(captured[0].message.includes("公共报表巡检"));
 });
 
+test("platform api skips TV notification when batch check is healthy", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async () => {
+      throw new Error("notifyTextFn should not be called for healthy batch checks");
+    },
+  });
+
+  const result = await api.runBatchCheckAndNotify({
+    countryCode: "INE",
+    webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+    botId: "tv-bot-001",
+  });
+
+  assert.equal(result.anomalyCount, 0);
+  assert.equal(result.notification.sent, false);
+  assert.equal(result.notification.skipped, true);
+  assert.equal(result.notification.reason, "no anomalies");
+  assert.equal(result.notification.sentMessages, 0);
+});
+
 test("platform api validates and saves rules", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

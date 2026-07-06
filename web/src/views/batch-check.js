@@ -3,16 +3,19 @@ import { state } from "../state.js";
 import { countryLabel, escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
 
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
+const ALL_COUNTRIES = "__all__";
 
 export function renderBatchCheck(root) {
   const countries = state.countries?.countries || [];
   const dashboards = state.inventory?.dashboards || [];
   const selectedCountry = state.selected.countryCode || countries[0]?.code || "";
+  const isAllCountries = selectedCountry === ALL_COUNTRIES;
   const countryDashboards = dashboards.filter((dashboard) => {
     const code = dashboard.countryCode || dashboard.country?.code || "";
-    return !selectedCountry || code === selectedCountry;
+    return isAllCountries || !selectedCountry || code === selectedCountry;
   });
   const selectedDashboard = countryDashboards.find((dashboard) => dashboard.uuid === state.selected.dashboardUuid) || null;
+  const selectedCardCount = countSelectedCards(countryDashboards, selectedDashboard);
   const result = state.batchCheckResult;
 
   root.innerHTML = `
@@ -26,8 +29,8 @@ export function renderBatchCheck(root) {
       </div>
     </div>
     <div class="notice">
-      <strong>安全范围</strong>
-      <span>默认最多检查 20 张卡片。建议先按单国家小批量验证，确认规则和通知文案稳定后，再扩大范围。</span>
+      <strong>巡检范围</strong>
+      <span>卡片数会按当前国家和看板范围自动计算；选择“全部国家 + 该范围全部看板”即可一次巡检所有看板。</span>
     </div>
     <section class="panel batch-controls">
       <h2 class="panel-title">巡检范围</h2>
@@ -35,6 +38,7 @@ export function renderBatchCheck(root) {
         <label>
           国家
           <select id="batch-country">
+            <option value="${ALL_COUNTRIES}" ${isAllCountries ? "selected" : ""}>全部国家</option>
             ${countries.map((country) => `<option value="${escapeHtml(country.code || "")}" ${country.code === selectedCountry ? "selected" : ""}>${escapeHtml(countryLabel(country, countries))}</option>`).join("")}
           </select>
         </label>
@@ -46,8 +50,8 @@ export function renderBatchCheck(root) {
           </select>
         </label>
         <label>
-          最多卡片数
-          <input id="batch-max-cards" type="number" min="1" max="200" value="${escapeHtml(state.batchMaxCards || 20)}">
+          本次巡检卡片数
+          <input id="batch-card-count" value="${escapeHtml(selectedCardCount)}" readonly>
         </label>
       </div>
       <h2 class="panel-title section-title">通知配置</h2>
@@ -65,7 +69,7 @@ export function renderBatchCheck(root) {
           <input id="batch-mentions" value="${escapeHtml(getBatchNotifyConfig().mentions)}" placeholder="可选：邮箱，多个用逗号或换行分隔">
         </div>
       </div>
-      <p class="muted">点击开始后会先只读访问 Metabase，再把本次巡检汇总和异常明细发送到上方 TV bot_id；mentions 会随消息一起提交。</p>
+      <p class="muted">点击开始后会先只读访问 Metabase；只有发现异常才会把本次巡检汇总和异常明细发送到上方 TV bot_id，健康结果不会发送 TV。</p>
       ${renderBatchStatus()}
     </section>
     ${result ? renderBatchResult(result) : `<p class="muted">选择范围并确认通知配置后，点击“开始巡检并发送 TV”。</p>`}
@@ -81,9 +85,6 @@ export function renderBatchCheck(root) {
     state.selected.dashboardUuid = event.target.value;
     clearBatchFeedback();
     renderBatchCheck(root);
-  });
-  root.querySelector("#batch-max-cards")?.addEventListener("input", (event) => {
-    state.batchMaxCards = event.target.value;
   });
   root.querySelector("#batch-webhook-url")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#batch-bot-id")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
@@ -111,18 +112,20 @@ export function renderBatchCheck(root) {
     renderBatchCheck(root);
     try {
       state.batchCheckResult = await apiPost("/api/batch-check-and-notify", {
-        countryCode: state.selected.countryCode || selectedCountry,
+        countryCode: isAllCountries ? "" : state.selected.countryCode || selectedCountry,
         dashboardUuid: state.selected.dashboardUuid || "",
-        maxCards: Number(state.batchMaxCards || 20),
         webhookUrl: getBatchNotifyConfig().webhookUrl,
         botId: getBatchNotifyConfig().botId,
         mentions: getBatchNotifyConfig().mentions,
       });
       const notification = state.batchCheckResult.notification || {};
+      const sentText = notification.sent
+        ? `已向 ${notification.botId || "TV bot"} 发送 ${notification.sentMessages || 0} 条消息。`
+        : "本次没有异常，已跳过 TV 发送。";
       state.batchCheckStatus = {
         type: "success",
-        title: "批量巡检完成，TV 通知已发送",
-        detail: `检查 ${state.batchCheckResult.checkedCardCount || 0} 张卡片，发现 ${state.batchCheckResult.anomalyCount || 0} 条异常；已向 ${notification.botId || "TV bot"} 发送 ${notification.sentMessages || 0} 条消息。`,
+        title: notification.sent ? "批量巡检完成，TV 通知已发送" : "批量巡检完成，无需发送 TV",
+        detail: `检查 ${state.batchCheckResult.checkedCardCount || 0} 张卡片，发现 ${state.batchCheckResult.anomalyCount || 0} 条异常；${sentText}`,
       };
     } catch (error) {
       state.batchCheckResult = null;
@@ -141,6 +144,13 @@ function clearBatchFeedback() {
   state.batchCheckResult = null;
   state.batchCheckStatus = null;
   state.batchCheckError = "";
+}
+
+function countSelectedCards(countryDashboards, selectedDashboard) {
+  if (selectedDashboard) {
+    return selectedDashboard.cards?.length || 0;
+  }
+  return countryDashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0);
 }
 
 function getBatchNotifyConfig() {
@@ -251,6 +261,14 @@ function renderBatchResult(result) {
 }
 
 function renderNotificationResult(notification) {
+  if (notification.skipped) {
+    return `
+      <div class="sandbox-status idle">
+        <strong>TV 通知未发送</strong>
+        <span>本次范围内没有规则异常，按配置跳过健康通知。</span>
+      </div>
+    `;
+  }
   if (!notification.sentMessages) {
     return "";
   }

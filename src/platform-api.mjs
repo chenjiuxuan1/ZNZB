@@ -163,7 +163,9 @@ export function createPlatformApi({
       });
       const countryCode = String(body.countryCode || "").trim();
       const dashboardUuid = String(body.dashboardUuid || "").trim();
-      const maxCards = clampPositiveInteger(body.maxCards, 20, 1, 200);
+      const maxCards = body.maxCards === undefined || body.maxCards === null || body.maxCards === ""
+        ? null
+        : clampPositiveInteger(body.maxCards, 20, 1, Number.MAX_SAFE_INTEGER);
       const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards });
       const queryCardFn = async (_client, dashboard, card, parameters = []) => {
         const client = metabaseClientFactory(dashboard);
@@ -199,6 +201,22 @@ export function createPlatformApi({
 
     async runBatchCheckAndNotify(body = {}) {
       const result = await this.runBatchCheck(body);
+      const anomalyCount = Number(result.anomalyCount || 0) + Number(result.dataQualityAnomalyCount || 0);
+      if (anomalyCount <= 0) {
+        return {
+          ...result,
+          notification: {
+            sent: false,
+            skipped: true,
+            reason: "no anomalies",
+            sentMessages: 0,
+            results: [],
+            botId: String(body.botId || "").trim(),
+            mentions: normalizeMentions(body.mentions),
+            sentAt: null,
+          },
+        };
+      }
       const rules = await readJsonFile(resolve("rules"), { alerts: {} });
       const botId = String(body.botId || "").trim();
       if (!botId) {
@@ -220,7 +238,7 @@ export function createPlatformApi({
         results.push(
           await notifyTextFn({ ...rules, alerts }, message.body, {
             title: message.title,
-            severity: result.anomalyCount > 0 ? "warning" : "info",
+            severity: anomalyCount > 0 ? "warning" : "info",
             timestamp: result.checkedAt,
             anomalyCount: message.anomalyCount ?? result.anomalyCount,
             checkedCardCount: result.checkedCardCount,
@@ -299,7 +317,7 @@ function normalizeMentions(value) {
 }
 
 function filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards }) {
-  let remainingCards = maxCards;
+  let remainingCards = maxCards ?? Number.MAX_SAFE_INTEGER;
   const dashboards = [];
   for (const dashboard of inventory.dashboards || []) {
     const code = dashboard.countryCode || dashboard.country?.code || "";
