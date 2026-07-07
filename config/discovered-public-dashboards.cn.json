@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-07-07T00:00:00.000Z",
+  "country": {
+    "code": "CN",
+    "name": "中国",
+    "timezone": "Asia/Shanghai"
+  },
+  "sourceDashboard": {
+    "title": "核心报表监控仪表盘",
+    "uid": ""
+  },
+  "dashboardCount": 0,
+  "totalCardCount": 0,
+  "dashboards": []
+}

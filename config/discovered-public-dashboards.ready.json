@@ -25,6 +25,11 @@
       "code": "MX",
       "name": "墨西哥",
       "timezone": "America/Mexico_City"
+    },
+    {
+      "code": "CN",
+      "name": "中国",
+      "timezone": "Asia/Shanghai"
     }
   ],
   "sourceDashboard": {

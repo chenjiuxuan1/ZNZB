@@ -4,7 +4,9 @@ import { compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
 export function renderInventory(root) {
   const dashboards = state.inventory?.dashboards || [];
   const countries = state.countries?.countries || [];
-  const countryCodes = [...new Set(dashboards.map((dashboard) => dashboard.countryCode || dashboard.country?.code).filter(Boolean))];
+  const configuredCountryCodes = countries.map((country) => country.code).filter(Boolean);
+  const inventoryCountryCodes = dashboards.map((dashboard) => dashboard.countryCode || dashboard.country?.code).filter(Boolean);
+  const countryCodes = [...new Set([...configuredCountryCodes, ...inventoryCountryCodes])];
   const selectedCountry = state.selected.countryCode || countryCodes[0] || "";
   const countryDashboards = dashboards.filter((dashboard) => (dashboard.countryCode || dashboard.country?.code) === selectedCountry);
   const selectedDashboard = countryDashboards.find((dashboard) => dashboard.uuid === state.selected.dashboardUuid) || countryDashboards[0] || null;
@@ -41,7 +43,7 @@ export function renderInventory(root) {
               </span>
               <b>${dashboard.cards?.length || 0} 张卡片</b>
             </button>
-          `).join("") || `<p class="muted">该国家暂无看板。</p>`}
+          `).join("") || `<p class="muted">该国家暂无公共看板清单。国家配置已存在，但还没有可巡检的 public dashboard UUID。</p>`}
         </div>
       </section>
       <section class="panel">

@@ -22,6 +22,7 @@
     "discover-public:th": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.th.json --out ./config/discovered-public-dashboards.th.json",
     "discover-public:pk": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.pk.json --out ./config/discovered-public-dashboards.pk.json",
     "discover-public:mx": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.mx.json --out ./config/discovered-public-dashboards.mx.json",
+    "discover-public:cn": "node ./src/cli.mjs discover-public --input ./config/discovered-panels.cn.json --out ./config/discovered-public-dashboards.cn.json",
     "check-public": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.json",
     "check-public:ready": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.ready.json",
     "check-public-gateway:ready": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.ready.json --query-mode gateway",
