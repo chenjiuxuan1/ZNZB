@@ -218,7 +218,7 @@ export function buildPublicCheckMessages(result, options = {}) {
 
   messages.push({
     title: alertCount > 0 ? `公共报表巡检异常 ${alertCount} 条` : "公共报表巡检正常",
-    body: buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups),
+    body: buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options),
     anomalyCount: alertCount,
   });
 
@@ -237,7 +237,7 @@ export function buildPublicCheckMessages(result, options = {}) {
   return messages;
 }
 
-function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups) {
+function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {
   const anomalies = result.anomalies || [];
   const lines = [];
 
@@ -250,7 +250,10 @@ function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAno
   lines.push(`• 异常数量：${result.anomalyCount || anomalies.length}条`);
   lines.push(`• 数据缺失：${missingAnomalies.length}条`);
   lines.push(`• 数据波动：${fluctuationAnomalies.length}条`);
-  appendCheckedDashboardSummary(lines, result);
+  appendCheckedDashboardSummary(lines, result, {
+    includeList: anomalies.length === 0 && !hasDataQualityIssue(result.dataQuality),
+    maxDashboards: options.maxHealthySummaryDashboards || 12,
+  });
   appendDataQualitySummary(lines, result.dataQuality);
 
   if (anomalies.length === 0 && !hasDataQualityIssue(result.dataQuality)) {
@@ -271,18 +274,24 @@ function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAno
     const { missingAnomalies: countryMissing, fluctuationAnomalies: countryFluctuation } = classifyPublicAnomalies(
       group.anomalies,
     );
+    const dashboardCount = groupAnomaliesByDashboard(group.anomalies).length;
+    const cardCount = groupAnomaliesByReportCard(group.anomalies).length;
     lines.push(
-      `• ${group.label}：共${group.anomalies.length}条，缺失${countryMissing.length}条，波动${countryFluctuation.length}条`,
+      `• ${group.label}：共${group.anomalies.length}条，缺失${countryMissing.length}条，波动${countryFluctuation.length}条，涉及${dashboardCount}个看板/${cardCount}张卡片`,
     );
   }
+
+  appendTopAnomalyDashboardSummary(lines, anomalies, options.maxSummaryAnomalyDashboards || 5);
+  appendTopSevereAnomalies(lines, anomalies, options.maxSummaryTopAnomalies || 5);
+
   lines.push("");
-  lines.push("后续每个国家各发1条聚合明细。");
+  lines.push("后续每个异常国家各发1条聚合明细；总览只展示 Top 项，完整细节请看对应国家消息。");
 
   return lines.join("\n");
 }
 
 function buildCountryPublicCheckMessage(result, group, options = {}) {
-  const maxGroupsPerCategory = Number(options.maxGroupsPerCountryCategory || options.maxGroupsPerCategory || options.maxAnomalies || 50);
+  const maxGroupsPerCategory = Number(options.maxGroupsPerCountryCategory || options.maxGroupsPerCategory || options.maxAnomalies || 8);
   const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(group.anomalies);
   const anomalyCardCount = groupAnomaliesByReportCard(group.anomalies).length;
   const qualityMetric = findDataQualityMetric(result.dataQuality, group);
@@ -317,7 +326,7 @@ function buildCountryPublicCheckMessage(result, group, options = {}) {
   return lines.join("\n");
 }
 
-function appendCheckedDashboardSummary(lines, result) {
+function appendCheckedDashboardSummary(lines, result, options = {}) {
   const dashboardGroups = groupCheckedCardsByDashboard(result.checkedCards || []);
   const dashboardCount = Number(result.dashboardCount || dashboardGroups.length || 0);
 
@@ -329,7 +338,11 @@ function appendCheckedDashboardSummary(lines, result) {
     return;
   }
 
-  const maxDashboards = 12;
+  if (options.includeList === false) {
+    return;
+  }
+
+  const maxDashboards = Number(options.maxDashboards || 12);
   lines.push("");
   lines.push("🧭 巡检看板");
 
@@ -345,6 +358,110 @@ function appendCheckedDashboardSummary(lines, result) {
       .reduce((sum, group) => sum + group.cardCount, 0);
     lines.push(`• 另有${dashboardGroups.length - maxDashboards}个看板、${hiddenCardCount}张卡片未展示`);
   }
+}
+
+function appendTopAnomalyDashboardSummary(lines, anomalies, limit) {
+  const groups = groupAnomaliesByDashboard(anomalies)
+    .sort((left, right) => {
+      return right.items.length - left.items.length || maxGroupSeverity({ items: right.items }) - maxGroupSeverity({ items: left.items });
+    });
+
+  if (groups.length === 0) {
+    return;
+  }
+
+  lines.push("");
+  lines.push(`🧭 异常看板 Top ${Math.min(limit, groups.length)}`);
+  for (const group of groups.slice(0, limit)) {
+    const { missingAnomalies: missing, fluctuationAnomalies: fluctuation } = classifyPublicAnomalies(group.items);
+    const cardCount = groupAnomaliesByReportCard(group.items).length;
+    const top = summarizeTopAnomaly(group.items);
+    lines.push(
+      `• ${formatCountryLabel(group)} / ${group.dashboardTitle || "未知看板"}：${group.items.length}条，${cardCount}张卡片，缺失${missing.length}、波动${fluctuation.length}${top ? `，最大${top}` : ""}`,
+    );
+  }
+
+  if (groups.length > limit) {
+    const hiddenCount = groups.slice(limit).reduce((sum, group) => sum + group.items.length, 0);
+    lines.push(`• 另有${groups.length - limit}个异常看板、${hiddenCount}条异常未在总览展开`);
+  }
+}
+
+function appendTopSevereAnomalies(lines, anomalies, limit) {
+  const items = [...(anomalies || [])]
+    .sort((left, right) => extractAnomalySeverity(right.message) - extractAnomalySeverity(left.message))
+    .slice(0, limit);
+
+  if (items.length === 0) {
+    return;
+  }
+
+  lines.push("");
+  lines.push(`🔎 最严重异常 Top ${items.length}`);
+  for (const anomaly of items) {
+    lines.push(`• ${formatCompactAnomalySummary(anomaly)}`);
+  }
+}
+
+function groupAnomaliesByDashboard(anomalies) {
+  const groups = new Map();
+
+  for (const anomaly of anomalies || []) {
+    const key = [
+      anomaly.countryCode || anomaly.countryName || "",
+      anomaly.dashboardTitle || "",
+    ].join("\u0000");
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        countryCode: anomaly.countryCode,
+        countryName: anomaly.countryName,
+        dashboardTitle: anomaly.dashboardTitle,
+        items: [],
+      });
+    }
+
+    groups.get(key).items.push(anomaly);
+  }
+
+  return [...groups.values()];
+}
+
+function summarizeTopAnomaly(anomalies) {
+  const top = [...(anomalies || [])]
+    .sort((left, right) => extractAnomalySeverity(right.message) - extractAnomalySeverity(left.message))[0];
+  if (!top?.message) {
+    return "";
+  }
+
+  const summary = summarizeFluctuationMessage(top.message);
+  if (summary.change) {
+    return summary.change;
+  }
+
+  return top.message.slice(0, 36);
+}
+
+function formatCompactAnomalySummary(anomaly) {
+  const location = [
+    formatCountryLabel(anomaly),
+    anomaly.dashboardTitle,
+    anomaly.cardTitle || anomaly.cardName,
+  ].filter(Boolean).join(" / ");
+  const summary = summarizeFluctuationMessage(anomaly.message || "");
+  const details = [];
+
+  if (summary.change) {
+    details.push(summary.change);
+  }
+  if (summary.from !== "" && summary.to !== "") {
+    details.push(`${summary.from} → ${summary.to}`);
+  }
+  if (summary.context) {
+    details.push(summary.context);
+  }
+
+  return `${location || "未知卡片"}：${details.join("，") || String(anomaly.message || "").slice(0, 80)}`;
 }
 
 function groupCheckedCardsByDashboard(checkedCards) {

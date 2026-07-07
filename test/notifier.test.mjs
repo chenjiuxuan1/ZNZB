@@ -279,6 +279,57 @@ test("buildPublicCheckMessage lists scanned dashboards for healthy checks", () =
   assert.match(message, /✅ 本次巡检未发现异常。/);
 });
 
+test("buildPublicCheckMessage summarizes multi-country anomalies without listing all checked dashboards", () => {
+  const message = buildPublicCheckMessage({
+    checkedAt: "2026-07-07T08:31:00.000Z",
+    dashboardCount: 8,
+    checkedCardCount: 45,
+    anomalyCount: 3,
+    checkedCards: [
+      { countryCode: "INE", countryName: "印尼", dashboardTitle: "放款统计", cardTitle: "件均" },
+      { countryCode: "INE", countryName: "印尼", dashboardTitle: "核心链路准实时监控", cardTitle: "老客-还款金额" },
+      { countryCode: "PH", countryName: "菲律宾", dashboardTitle: "OKR", cardTitle: "进件规模" },
+    ],
+    anomalies: [
+      {
+        type: "intradayTimePointChange",
+        countryCode: "INE",
+        countryName: "印尼",
+        dashboardTitle: "核心链路准实时监控",
+        cardTitle: "老客-还款金额",
+        message: "同时间点指标「repaid_amt」从 123883310 到 405325890，波动 +227.2%（Asia/Jakarta 08:30，stat_date 2026-07-07 对比 2026-07-06）",
+      },
+      {
+        type: "completeDayChange",
+        countryCode: "INE",
+        countryName: "印尼",
+        dashboardTitle: "放款统计",
+        cardTitle: "放款金额",
+        message: "完整日指标「grant_amt」从 100000 到 50000，波动 -50.0%（统计日期 2026-07-06 对比 2026-07-05）",
+      },
+      {
+        type: "requiredDatePresent",
+        countryCode: "PH",
+        countryName: "菲律宾",
+        dashboardTitle: "OKR",
+        cardTitle: "进件规模",
+        message: "数据新鲜度异常：统计日期 缺少 D-1 2026-07-06 的数据，当前最新日期是 2026-07-05",
+      },
+    ],
+  });
+
+  const summary = message.split("🚨【")[0];
+  assert.match(summary, /• 覆盖看板：8个/);
+  assert.doesNotMatch(summary, /🧭 巡检看板/);
+  assert.match(summary, /🌏 国家分布/);
+  assert.match(summary, /• 印尼\(INE\)：共2条，缺失0条，波动2条，涉及2个看板\/2张卡片/);
+  assert.match(summary, /• 菲律宾\(PH\)：共1条，缺失1条，波动0条，涉及1个看板\/1张卡片/);
+  assert.match(summary, /🧭 异常看板 Top 3/);
+  assert.match(summary, /核心链路准实时监控：1条，1张卡片，缺失0、波动1，最大\+227\.2%/);
+  assert.match(summary, /🔎 最严重异常 Top 3/);
+  assert.match(summary, /后续每个异常国家各发1条聚合明细；总览只展示 Top 项/);
+});
+
 test("buildPublicCheckMessage includes data quality current anomaly counts", () => {
   const message = buildPublicCheckMessage({
     checkedAt: "2026-06-09T07:42:40.806Z",
