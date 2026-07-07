@@ -137,6 +137,8 @@ export function createPlatformApi({
 
       const startedAt = now.toISOString();
       const nextRunAt = schedule.nextRunAt;
+      const historyRunId = randomUUID();
+      const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
       try {
         const countryRuns = [];
         for (const countryConfig of enabledCountryConfigs) {
@@ -151,6 +153,7 @@ export function createPlatformApi({
               chatId: countryConfig.chatId,
               recipientEmails: countryConfig.recipientEmails,
               mentions: countryConfig.mentions,
+              detailUrl,
             });
             countryRuns.push({
               countryCode: countryConfig.countryCode,
@@ -178,6 +181,7 @@ export function createPlatformApi({
         await writeJsonAtomic(resolve("batchSchedule"), saved);
         await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
           trigger: "manual_test",
+          id: historyRunId,
           startedAt,
           finishedAt: new Date().toISOString(),
           nextRunAt,
@@ -195,7 +199,7 @@ export function createPlatformApi({
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
         await appendBatchHistoryRun(resolve("batchHistory"), {
-          id: randomUUID(),
+          id: historyRunId,
           trigger: "manual_test",
           startedAt,
           finishedAt: new Date().toISOString(),
@@ -377,6 +381,7 @@ export function createPlatformApi({
             chatId: String(body.chatId || "").trim(),
             recipientEmails: String(body.recipientEmails || "").trim(),
             mentions: normalizeMentions(body.mentions),
+            detailUrl: String(body.detailUrl || "").trim(),
             sentAt: null,
           },
         };
@@ -408,6 +413,7 @@ export function createPlatformApi({
           chatId: alerts.chatId || "",
           mentions: alerts.mentions,
           webhookUrl: alerts.webhookUrl,
+          detailUrl: alerts.detailUrl || "",
           sentAt: new Date().toISOString(),
         },
       };
@@ -426,6 +432,8 @@ export function createPlatformApi({
 
       const startedAt = now.toISOString();
       const nextRunAt = nextDailyRunAt(schedule.dailyRunTimes || [schedule.dailyRunTime], new Date(now.getTime() + 60_000));
+      const historyRunId = randomUUID();
+      const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
       try {
         const countryRuns = [];
         for (const countryConfig of schedule.countryConfigs.filter((item) => item.enabled)) {
@@ -440,6 +448,7 @@ export function createPlatformApi({
               chatId: countryConfig.chatId,
               recipientEmails: countryConfig.recipientEmails,
               mentions: countryConfig.mentions,
+              detailUrl,
             });
             countryRuns.push({
               countryCode: countryConfig.countryCode,
@@ -467,6 +476,7 @@ export function createPlatformApi({
         await writeJsonAtomic(resolve("batchSchedule"), saved);
         await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
           trigger: "schedule",
+          id: historyRunId,
           startedAt,
           finishedAt: new Date().toISOString(),
           nextRunAt,
@@ -484,7 +494,7 @@ export function createPlatformApi({
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
         await appendBatchHistoryRun(resolve("batchHistory"), {
-          id: randomUUID(),
+          id: historyRunId,
           trigger: "schedule",
           startedAt,
           finishedAt: new Date().toISOString(),
@@ -575,6 +585,14 @@ function isKnBotChannel(value) {
   return normalizeNotifyChannel(value) === "knBot";
 }
 
+function buildBatchHistoryDetailUrl(runId) {
+  const baseUrl = String(process.env.DUTY_PLATFORM_BASE_URL || process.env.PLATFORM_BASE_URL || "").trim()
+    || `http://127.0.0.1:${process.env.PORT || 8787}`;
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  const params = new URLSearchParams({ historyRunId: String(runId || "") });
+  return `${normalizedBaseUrl}/#/batch-check?${params.toString()}`;
+}
+
 function inferCountryNotifyChannel(mergedConfig, incomingConfig, previousSchedule) {
   if (incomingConfig.notifyChannel) {
     return normalizeNotifyChannel(incomingConfig.notifyChannel);
@@ -593,6 +611,7 @@ function inferCountryNotifyChannel(mergedConfig, incomingConfig, previousSchedul
 
 function buildBatchNotifyAlerts(body, configuredAlerts, notifyChannel) {
   const mentions = normalizeMentions(body.mentions);
+  const detailUrl = String(body.detailUrl || configuredAlerts?.detailUrl || "").trim();
   if (isKnBotChannel(notifyChannel)) {
     const botToken = String(body.botToken || "${KN_BOT_TOKEN}").trim();
     const chatId = String(body.chatId || "").trim();
@@ -608,6 +627,7 @@ function buildBatchNotifyAlerts(body, configuredAlerts, notifyChannel) {
       chatId,
       recipientEmails,
       mentions,
+      detailUrl,
     };
   }
 
@@ -625,6 +645,7 @@ function buildBatchNotifyAlerts(body, configuredAlerts, notifyChannel) {
     webhookUrl,
     botId,
     mentions,
+    detailUrl,
   };
 }
 
@@ -795,8 +816,11 @@ function summarizeBatchScheduleRun(result = {}) {
     checkedCardCount: result.checkedCardCount || 0,
     dashboardCount: result.dashboardCount || 0,
     checkedDashboards: summarizeCheckedDashboards(result),
+    checkedCards: Array.isArray(result.checkedCards) ? result.checkedCards : [],
     anomalyCount: result.anomalyCount || 0,
+    anomalies: Array.isArray(result.anomalies) ? result.anomalies : [],
     dataQualityAnomalyCount: result.dataQualityAnomalyCount || 0,
+    dataQuality: result.dataQuality || null,
     notification: result.notification
       ? {
           sent: Boolean(result.notification.sent),
@@ -823,14 +847,14 @@ function summarizeCountryScheduleRuns(countryRuns = []) {
   };
 }
 
-function buildBatchHistoryEntry({ trigger = "schedule", startedAt, finishedAt, nextRunAt, schedule, countryRuns }) {
+function buildBatchHistoryEntry({ trigger = "schedule", id = randomUUID(), startedAt, finishedAt, nextRunAt, schedule, countryRuns }) {
   const summary = summarizeCountryScheduleRuns(countryRuns);
   const notificationSentCount = countryRuns.reduce((sum, run) => {
     const notification = run.result?.notification;
     return sum + (notification?.sent ? Number(notification.sentMessages || 0) : 0);
   }, 0);
   return {
-    id: randomUUID(),
+    id,
     trigger,
     startedAt,
     finishedAt,

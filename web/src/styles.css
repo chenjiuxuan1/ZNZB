@@ -659,6 +659,45 @@ th {
   margin: 3px 0;
 }
 
+.history-detail-page {
+  margin: 16px 0;
+}
+
+.history-detail-page .auto-summary.small-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+
+.history-country-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.country-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #344054;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 650;
+  padding: 6px 11px;
+  text-decoration: none;
+}
+
+.country-pill.active {
+  background: var(--accent-soft);
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.history-country-detail {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
 .message-preview {
   min-height: 220px;
 }

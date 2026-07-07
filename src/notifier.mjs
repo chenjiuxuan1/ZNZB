@@ -239,6 +239,7 @@ export function buildPublicCheckMessages(result, options = {}) {
 
 function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {
   const anomalies = result.anomalies || [];
+  const detailUrl = normalizeDetailUrl(options.detailUrl);
   const lines = [];
 
   lines.push("📣【公共报表巡检汇总】");
@@ -259,12 +260,14 @@ function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAno
   if (anomalies.length === 0 && !hasDataQualityIssue(result.dataQuality)) {
     lines.push("");
     lines.push("✅ 本次巡检未发现异常。");
+    appendDetailUrl(lines, detailUrl);
     return lines.join("\n");
   }
 
   if (anomalies.length === 0) {
     lines.push("");
     lines.push("✅ 报表巡检未发现异常；数据质量异常见上方。");
+    appendDetailUrl(lines, detailUrl);
     return lines.join("\n");
   }
 
@@ -285,7 +288,8 @@ function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAno
   appendTopSevereAnomalies(lines, anomalies, options.maxSummaryTopAnomalies || 5);
 
   lines.push("");
-  lines.push("后续每个异常国家各发1条聚合明细；总览只展示 Top 项，完整细节请看对应国家消息。");
+  lines.push("后续每个异常国家各发1条聚合明细；总览只展示 Top 项。");
+  appendDetailUrl(lines, detailUrl);
 
   return lines.join("\n");
 }
@@ -295,6 +299,7 @@ function buildCountryPublicCheckMessage(result, group, options = {}) {
   const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(group.anomalies);
   const anomalyCardCount = groupAnomaliesByReportCard(group.anomalies).length;
   const qualityMetric = findDataQualityMetric(result.dataQuality, group);
+  const detailUrl = appendCountryToDetailUrl(normalizeDetailUrl(options.detailUrl), group.countryCode || group.key || "");
   const lines = [];
 
   lines.push(`🚨【${group.label} 公共报表巡检异常】`);
@@ -322,8 +327,38 @@ function buildCountryPublicCheckMessage(result, group, options = {}) {
   appendCompactGroupedAnomalyDetails(lines, fluctuationAnomalies, maxGroupsPerCategory, { emptyText: "暂无异常", mode: "fluctuation" });
 
   appendDashboardLinks(lines, group.anomalies);
+  appendDetailUrl(lines, detailUrl, "查看本次巡检完整明细");
 
   return lines.join("\n");
+}
+
+function normalizeDetailUrl(value) {
+  return String(value || "").trim();
+}
+
+function appendCountryToDetailUrl(url, countryCode) {
+  if (!url || !countryCode) {
+    return url;
+  }
+  try {
+    const parsed = new URL(url);
+    const [hashPath, hashQuery = ""] = String(parsed.hash || "").replace(/^#/, "").split("?");
+    const params = new URLSearchParams(hashQuery);
+    params.set("countryCode", countryCode);
+    parsed.hash = `${hashPath || "/batch-check"}?${params.toString()}`;
+    return parsed.toString();
+  } catch {
+    const joiner = url.includes("?") ? "&" : "?";
+    return `${url}${joiner}countryCode=${encodeURIComponent(countryCode)}`;
+  }
+}
+
+function appendDetailUrl(lines, detailUrl, label = "查看完整明细") {
+  if (!detailUrl) {
+    return;
+  }
+  lines.push("");
+  lines.push(`🔎 ${label}：${detailUrl}`);
 }
 
 function appendCheckedDashboardSummary(lines, result, options = {}) {

@@ -377,6 +377,9 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(history.runs[0].anomalyCount, 1);
   assert.equal(history.runs[0].notificationSentCount, 2);
   assert.equal(history.runs[0].runs[0].result.checkedDashboards.length, 1);
+  assert.equal(history.runs[0].runs[0].result.checkedCards.length, 1);
+  assert.equal(history.runs[0].runs[0].result.anomalies.length, 1);
+  assert.match(captured[0].message, new RegExp(`historyRunId=${history.runs[0].id}`));
 
   const filteredHistory = await api.getBatchHistory({ countryCode: "INE", status: "anomaly" });
   assert.equal(filteredHistory.runs.length, 1);

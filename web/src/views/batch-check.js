@@ -73,6 +73,7 @@ export function renderBatchCheck(root) {
       ${renderBatchStatus()}
       ${renderBatchSchedulePanel()}
     </section>
+    ${renderSelectedHistoryRunDetail()}
     ${result ? renderBatchResult(result) : `<p class="muted">选择范围并确认通知配置后，点击“开始巡检并发送 TV”。</p>`}
   `;
 
@@ -259,7 +260,8 @@ async function reloadBatchHistory(root) {
   };
   renderBatchCheck(root);
   try {
-    state.batchHistory = await apiGet(`/api/batch-history${params.toString() ? `?${params}` : ""}`);
+    params.set("limit", "200");
+    state.batchHistory = await apiGet(`/api/batch-history?${params}`);
     state.batchHistoryStatus = null;
   } catch (error) {
     state.batchHistoryStatus = {
@@ -429,7 +431,178 @@ function renderBatchHistoryRows(runs) {
               <td>${escapeHtml(run.dashboardCount || 0)} 个看板 / ${escapeHtml(run.checkedCardCount || 0)} 张卡片</td>
               <td>${escapeHtml((run.anomalyCount || 0) + (run.dataQualityAnomalyCount || 0))}</td>
               <td>${escapeHtml(run.notificationSentCount || 0)} 条</td>
-              <td>${renderHistoryRunDetails(run)}</td>
+              <td><a class="link-button" href="#/batch-check?historyRunId=${encodeURIComponent(run.id || "")}">打开详情页</a></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderSelectedHistoryRunDetail() {
+  const runId = state.routeQuery?.historyRunId || "";
+  if (!runId) {
+    return "";
+  }
+  const history = state.batchHistory || { runs: [] };
+  const run = (history.runs || []).find((item) => String(item.id || "") === String(runId));
+  if (!run) {
+    return `
+      <section class="panel history-detail-page">
+        <div class="detail-header compact-header">
+          <div>
+            <h2 class="panel-title">巡检历史详情</h2>
+            <p class="muted">未找到这次巡检记录，可能本地历史已被清理。</p>
+          </div>
+          <a class="link-button" href="#/batch-check">返回批量巡检</a>
+        </div>
+      </section>
+    `;
+  }
+  const selectedCountryCode = state.routeQuery?.countryCode || "";
+  const countryRuns = selectedCountryCode
+    ? (run.runs || []).filter((item) => item.countryCode === selectedCountryCode)
+    : (run.runs || []);
+  const titleSuffix = selectedCountryCode ? `（${escapeHtml(selectedCountryCode)}）` : "";
+  return `
+    <section class="panel history-detail-page" id="batch-history-detail">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">巡检历史详情${titleSuffix}</h2>
+          <p class="muted">这里展示通知里没有展开的完整扫描结果：每个国家、每个看板检查了哪些卡片，哪些看板异常，具体异常消息是什么。</p>
+        </div>
+        <div class="button-group">
+          <a class="link-button" href="#/batch-check">返回批量巡检</a>
+        </div>
+      </div>
+      <div class="auto-summary">
+        ${summaryItem("运行时间", formatDisplayTime(run.startedAt))}
+        ${summaryItem("国家", `${run.successCount || 0}/${run.countryCount || 0}`)}
+        ${summaryItem("检查卡片", run.checkedCardCount || 0)}
+        ${summaryItem("异常数量", (run.anomalyCount || 0) + (run.dataQualityAnomalyCount || 0))}
+      </div>
+      ${renderHistoryCountryTabs(run, selectedCountryCode)}
+      ${countryRuns.length ? countryRuns.map(renderHistoryCountryDetail).join("") : `<p class="muted">当前筛选国家没有这次巡检记录。</p>`}
+      <details class="advanced compact">
+        <summary>查看这次巡检完整 JSON</summary>
+        <pre class="code">${escapeHtml(json(run))}</pre>
+      </details>
+    </section>
+  `;
+}
+
+function renderHistoryCountryTabs(run, selectedCountryCode) {
+  const countries = run.runs || [];
+  if (countries.length <= 1) {
+    return "";
+  }
+  return `
+    <div class="history-country-tabs">
+      <a class="country-pill ${selectedCountryCode ? "" : "active"}" href="#/batch-check?historyRunId=${encodeURIComponent(run.id || "")}">全部国家</a>
+      ${countries.map((countryRun) => {
+        const label = [countryRun.countryName, countryRun.countryCode].filter(Boolean).join(" / ") || "-";
+        const active = selectedCountryCode === countryRun.countryCode;
+        return `<a class="country-pill ${active ? "active" : ""}" href="#/batch-check?historyRunId=${encodeURIComponent(run.id || "")}&countryCode=${encodeURIComponent(countryRun.countryCode || "")}">${escapeHtml(label)}</a>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderHistoryCountryDetail(countryRun) {
+  const label = [countryRun.countryName, countryRun.countryCode].filter(Boolean).join(" / ") || "-";
+  if (!countryRun.ok) {
+    return `
+      <div class="sub-panel history-country-detail">
+        <h2 class="panel-title">${escapeHtml(label)}</h2>
+        <div class="sandbox-status error">
+          <strong>该国家巡检失败</strong>
+          <span>${escapeHtml(countryRun.error || "运行失败")}</span>
+        </div>
+      </div>
+    `;
+  }
+  const result = countryRun.result || {};
+  const anomalies = result.anomalies || [];
+  return `
+    <div class="sub-panel history-country-detail">
+      <div class="detail-header compact-header">
+        <h2 class="panel-title">${escapeHtml(label)}</h2>
+        <span class="badge ${anomalies.length || result.dataQualityAnomalyCount ? "warn" : "ok"}">${anomalies.length || result.dataQualityAnomalyCount ? "有异常" : "正常"}</span>
+      </div>
+      <div class="auto-summary small-summary">
+        ${summaryItem("检查卡片", result.checkedCardCount || 0)}
+        ${summaryItem("覆盖看板", result.dashboardCount || 0)}
+        ${summaryItem("规则异常", result.anomalyCount || 0)}
+        ${summaryItem("数据质量异常", result.dataQualityAnomalyCount || 0)}
+      </div>
+      ${renderDashboardScanDetails(result) || renderHistoryDashboardSummary(result)}
+      ${renderHistoryAnomalyTable(anomalies)}
+    </div>
+  `;
+}
+
+function renderHistoryDashboardSummary(result) {
+  const dashboards = result.checkedDashboards || [];
+  if (!dashboards.length) {
+    return "";
+  }
+  return `
+    <div class="sub-panel dashboard-scan-details">
+      <h2 class="panel-title">看板扫描摘要</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>国家</th>
+              <th>看板</th>
+              <th>检查卡片</th>
+              <th>查询失败</th>
+              <th>异常数量</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dashboards.map((dashboard) => `
+              <tr>
+                <td>${escapeHtml([dashboard.countryName, dashboard.countryCode].filter(Boolean).join(" / ") || "-")}</td>
+                <td>${escapeHtml(dashboard.dashboardTitle || "-")}</td>
+                <td>${escapeHtml(dashboard.checkedCardCount || 0)}</td>
+                <td>${escapeHtml(dashboard.failedCardCount || 0)}</td>
+                <td>${escapeHtml(dashboard.anomalyCount || 0)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">这条历史产生于完整明细保存上线前，因此只展示当时已保存的看板摘要。</p>
+    </div>
+  `;
+}
+
+function renderHistoryAnomalyTable(anomalies) {
+  if (!anomalies.length) {
+    return `<p class="success">该范围没有规则异常。</p>`;
+  }
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>国家</th>
+            <th>看板</th>
+            <th>卡片</th>
+            <th>类型</th>
+            <th>消息</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${anomalies.map((anomaly) => `
+            <tr>
+              <td>${escapeHtml([anomaly.countryName, anomaly.countryCode].filter(Boolean).join(" / ") || "-")}</td>
+              <td>${escapeHtml(anomaly.dashboardTitle || "-")}</td>
+              <td>${escapeHtml(anomaly.cardTitle || "-")}</td>
+              <td>${escapeHtml(ruleTypeLabel(anomaly.type))}</td>
+              <td>${escapeHtml(anomaly.message || "-")}</td>
             </tr>
           `).join("")}
         </tbody>

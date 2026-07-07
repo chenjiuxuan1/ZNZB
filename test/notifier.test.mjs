@@ -327,7 +327,35 @@ test("buildPublicCheckMessage summarizes multi-country anomalies without listing
   assert.match(summary, /🧭 异常看板 Top 3/);
   assert.match(summary, /核心链路准实时监控：1条，1张卡片，缺失0、波动1，最大\+227\.2%/);
   assert.match(summary, /🔎 最严重异常 Top 3/);
-  assert.match(summary, /后续每个异常国家各发1条聚合明细；总览只展示 Top 项/);
+  assert.match(summary, /后续每个异常国家各发1条聚合明细；总览只展示 Top 项。/);
+});
+
+test("buildPublicCheckMessage links to frontend history detail when provided", () => {
+  const message = buildPublicCheckMessage(
+    {
+      checkedAt: "2026-07-07T08:31:00.000Z",
+      dashboardCount: 1,
+      checkedCardCount: 2,
+      anomalyCount: 1,
+      checkedCards: [
+        { countryCode: "INE", countryName: "印尼", dashboardTitle: "核心链路", cardTitle: "注册数" },
+      ],
+      anomalies: [
+        {
+          type: "completeDayChange",
+          countryCode: "INE",
+          countryName: "印尼",
+          dashboardTitle: "核心链路",
+          cardTitle: "注册数",
+          message: "完整日指标「注册数」从 100 到 200，波动 +100.0%（统计日期 2026-07-06 对比 2026-07-05）",
+        },
+      ],
+    },
+    { detailUrl: "http://127.0.0.1:8787/#/batch-check?historyRunId=run-001" },
+  );
+
+  assert.match(message, /🔎 查看完整明细：http:\/\/127\.0\.0\.1:8787\/#\/batch-check\?historyRunId=run-001/);
+  assert.match(message, /🔎 查看本次巡检完整明细：http:\/\/127\.0\.0\.1:8787\/#\/batch-check\?historyRunId=run-001&countryCode=INE/);
 });
 
 test("buildPublicCheckMessage includes data quality current anomaly counts", () => {

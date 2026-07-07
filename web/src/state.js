@@ -1,5 +1,6 @@
 export const state = {
-  route: window.location.hash.replace(/^#/, "") || "/dashboard",
+  route: parseHashRoute().path,
+  routeQuery: parseHashRoute().query,
   summary: null,
   countries: null,
   inventory: null,
@@ -42,8 +43,19 @@ export const state = {
 };
 
 export function setRoute(route) {
-  state.route = route;
+  const parsed = parseHashRoute(`#${route}`);
+  state.route = parsed.path;
+  state.routeQuery = parsed.query;
   window.location.hash = route;
+}
+
+export function parseHashRoute(hash = window.location.hash) {
+  const raw = String(hash || "").replace(/^#/, "") || "/dashboard";
+  const [path, queryString = ""] = raw.split("?");
+  return {
+    path: path || "/dashboard",
+    query: Object.fromEntries(new URLSearchParams(queryString).entries()),
+  };
 }
 
 export function getDashboards() {
