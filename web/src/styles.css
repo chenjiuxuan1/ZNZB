@@ -377,6 +377,19 @@ th {
   min-width: 280px;
 }
 
+.schedule-country-row[data-notify-channel="knBot"] .tv-target-field,
+.schedule-country-row[data-notify-channel="tv"] .kn-target-field {
+  display: none;
+}
+
+.muted-inline {
+  color: var(--muted);
+  display: inline-block;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 9px 0;
+}
+
 .schedule-table small {
   display: block;
   margin-top: 5px;

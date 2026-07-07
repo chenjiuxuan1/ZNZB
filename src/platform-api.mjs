@@ -110,9 +110,6 @@ export function createPlatformApi({
       }
       for (const countryConfig of enabledCountries) {
         if (isKnBotChannel(countryConfig.notifyChannel)) {
-          if (!countryConfig.botToken) {
-            throw badRequest("KN Bot Token is required", [`${countryConfig.countryCode} 启用定时巡检前请填写 KN Chat 机器人 Token。`]);
-          }
           if (!countryConfig.chatId && !countryConfig.recipientEmails) {
             throw badRequest("KN Chat recipient is required", [`${countryConfig.countryCode} 启用定时巡检前请填写接收人邮箱或群聊 chat_id。`]);
           }
@@ -498,12 +495,9 @@ function inferCountryNotifyChannel(mergedConfig, incomingConfig, previousSchedul
 function buildBatchNotifyAlerts(body, configuredAlerts, notifyChannel) {
   const mentions = normalizeMentions(body.mentions);
   if (isKnBotChannel(notifyChannel)) {
-    const botToken = String(body.botToken || "").trim();
+    const botToken = String(body.botToken || "${KN_BOT_TOKEN}").trim();
     const chatId = String(body.chatId || "").trim();
     const recipientEmails = String(body.recipientEmails || "").trim();
-    if (!botToken) {
-      throw badRequest("KN Bot Token is required", ["请填写 KN Chat 机器人 Token。"]);
-    }
     if (!chatId && !recipientEmails) {
       throw badRequest("KN Chat recipient is required", ["请填写接收人邮箱或群聊 chat_id。"]);
     }
@@ -620,7 +614,7 @@ function normalizeCountryScheduleConfigs(inputConfigs, previousSchedule, countri
       notifyChannel: inferCountryNotifyChannel(merged, incomingConfig, previousSchedule),
       webhookUrl: String(merged.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim() || DEFAULT_TV_WEBHOOK_URL,
       botId: String(merged.botId ?? previousSchedule.botId ?? "").trim(),
-      botToken: String(merged.botToken ?? previousSchedule.botToken ?? "").trim(),
+      botToken: String(merged.botToken ?? previousSchedule.botToken ?? "${KN_BOT_TOKEN}").trim(),
       chatId: String(merged.chatId ?? previousSchedule.chatId ?? "").trim(),
       recipientEmails: String(merged.recipientEmails ?? previousSchedule.recipientEmails ?? "").trim(),
       mentions: normalizeMentions(merged.mentions ?? previousSchedule.mentions).join(","),
