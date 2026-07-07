@@ -29,6 +29,7 @@ const FILES = {
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_BATCH_SCHEDULE = {
   enabled: false,
+  dailyRunTime: "09:00",
   intervalMinutes: 120,
   countryCode: "",
   dashboardUuid: "",
@@ -134,9 +135,7 @@ export function createPlatformApi({
       }
 
       const startedAt = now.toISOString();
-      const nextRunAt = schedule.enabled
-        ? new Date(now.getTime() + schedule.intervalMinutes * 60_000).toISOString()
-        : schedule.nextRunAt;
+      const nextRunAt = schedule.nextRunAt;
       try {
         const countryRuns = [];
         for (const countryConfig of enabledCountryConfigs) {
@@ -418,7 +417,7 @@ export function createPlatformApi({
       }
 
       const startedAt = now.toISOString();
-      const nextRunAt = new Date(now.getTime() + schedule.intervalMinutes * 60_000).toISOString();
+      const nextRunAt = nextDailyRunAt(schedule.dailyRunTime, new Date(now.getTime() + 60_000));
       try {
         const countryRuns = [];
         for (const countryConfig of schedule.countryConfigs.filter((item) => item.enabled)) {
@@ -625,6 +624,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   const previousSchedule = { ...DEFAULT_BATCH_SCHEDULE, ...(previous || {}) };
   const enabled = Boolean(input.enabled);
   const intervalMinutes = clampNumber(input.intervalMinutes ?? previousSchedule.intervalMinutes, 5, 1440, 120);
+  const dailyRunTime = normalizeDailyRunTime(input.dailyRunTime ?? previousSchedule.dailyRunTime ?? DEFAULT_BATCH_SCHEDULE.dailyRunTime);
   const webhookUrl = String(input.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim();
   const notifyChannel = normalizeNotifyChannel(input.notifyChannel ?? previousSchedule.notifyChannel ?? DEFAULT_BATCH_SCHEDULE.notifyChannel);
   const countryConfigs = normalizeCountryScheduleConfigs(input.countryConfigs, previousSchedule, options.countries || []);
@@ -632,6 +632,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   const next = {
     ...previousSchedule,
     enabled,
+    dailyRunTime,
     intervalMinutes,
     countryCode: String(input.countryCode ?? previousSchedule.countryCode ?? "").trim(),
     dashboardUuid: String(input.dashboardUuid ?? previousSchedule.dashboardUuid ?? "").trim(),
@@ -664,6 +665,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   }
 
   const previousNextRunAt = previousSchedule.nextRunAt ? Date.parse(previousSchedule.nextRunAt) : Number.NaN;
+  const dailyRunTimeChanged = next.dailyRunTime !== previousSchedule.dailyRunTime;
   const countryChanged = JSON.stringify(next.countryConfigs.map((item) => ({
     countryCode: item.countryCode,
     enabled: item.enabled,
@@ -676,13 +678,35 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
     notifyChannel: item.notifyChannel || DEFAULT_BATCH_SCHEDULE.notifyChannel,
   })));
   const intervalChanged = next.intervalMinutes !== Number(previousSchedule.intervalMinutes || DEFAULT_BATCH_SCHEDULE.intervalMinutes);
-  if (!countryChanged && !intervalChanged && Number.isFinite(previousNextRunAt) && previousNextRunAt > Date.now()) {
+  if (!countryChanged && !intervalChanged && !dailyRunTimeChanged && Number.isFinite(previousNextRunAt) && previousNextRunAt > Date.now()) {
     next.nextRunAt = previousSchedule.nextRunAt;
   } else {
-    next.nextRunAt = new Date(Date.now() + intervalMinutes * 60_000).toISOString();
+    next.nextRunAt = nextDailyRunAt(dailyRunTime);
   }
 
   return next;
+}
+
+function normalizeDailyRunTime(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) {
+    return DEFAULT_BATCH_SCHEDULE.dailyRunTime;
+  }
+  return `${match[1]}:${match[2]}`;
+}
+
+function nextDailyRunAt(dailyRunTime, now = new Date()) {
+  const [hour, minute] = normalizeDailyRunTime(dailyRunTime).split(":").map(Number);
+  const beijingNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const year = beijingNow.getUTCFullYear();
+  const month = beijingNow.getUTCMonth();
+  const date = beijingNow.getUTCDate();
+  let nextUtcMs = Date.UTC(year, month, date, hour - 8, minute, 0, 0);
+  if (nextUtcMs <= now.getTime()) {
+    nextUtcMs = Date.UTC(year, month, date + 1, hour - 8, minute, 0, 0);
+  }
+  return new Date(nextUtcMs).toISOString();
 }
 
 function normalizeScheduleTime(value) {

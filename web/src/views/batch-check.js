@@ -132,10 +132,10 @@ export function renderBatchCheck(root) {
       state.batchSchedule = await apiPut("/api/batch-schedule", payload);
       state.batchScheduleStatus = {
         type: "success",
-        title: state.batchSchedule.enabled ? "定时巡检已启用" : "定时巡检已关闭",
+        title: state.batchSchedule.enabled ? "定时巡检已上线" : "定时巡检已下线",
         detail: state.batchSchedule.enabled
-          ? `下次运行：${formatDisplayTime(state.batchSchedule.nextRunAt)}；间隔 ${state.batchSchedule.intervalMinutes} 分钟。`
-          : "已保存为关闭状态，后续不会自动触发。",
+          ? `每日 ${state.batchSchedule.dailyRunTime || "09:00"} 北京时间运行；下次运行：${formatDisplayTime(state.batchSchedule.nextRunAt)}。`
+          : "已保存为下线状态，后续不会自动触发。",
       };
     } catch (error) {
       state.batchScheduleError = error.payload?.errors?.join("\n") || error.message;
@@ -154,9 +154,9 @@ export function renderBatchCheck(root) {
       dashboardUuid: state.selected.dashboardUuid || "",
     });
     state.batchScheduleStatus = {
-      type: "loading",
-      title: "正在保存并立即试跑",
-      detail: "会先保存当前定时配置，再按已启用国家逐个巡检；发现异常时会按各国家通知方式发送。",
+        type: "loading",
+        title: "正在保存并立即试跑",
+        detail: "会先保存当前定时配置，再按已上线国家逐个巡检；发现异常时会按各国家通知方式发送。",
     };
     state.batchScheduleError = "";
     renderBatchCheck(root);
@@ -271,22 +271,22 @@ function renderBatchSchedulePanel() {
       <div class="form-grid">
         <label class="checkbox-field">
           <input id="batch-schedule-enabled" type="checkbox" ${enabled ? "checked" : ""}>
-          <span>启用服务内定时巡检</span>
+          <span>上线定时巡检总开关</span>
         </label>
         <div class="field">
-          <label>巡检间隔（分钟）</label>
-          <input id="batch-schedule-interval" type="number" min="5" max="1440" step="5" value="${escapeHtml(schedule.intervalMinutes || 120)}">
+          <label>每日运行时间（北京时间）</label>
+          <input id="batch-schedule-daily-run-time" type="time" value="${escapeHtml(schedule.dailyRunTime || "09:00")}">
         </div>
         <div class="field">
-          <label>下次运行时间（北京时间）</label>
-          <input id="batch-schedule-next-run-at" type="datetime-local" value="${escapeHtml(formatDateTimeLocal(schedule.nextRunAt))}">
+          <label>下次运行</label>
+          <input value="${escapeHtml(schedule.enabled ? formatDisplayTime(schedule.nextRunAt) : "未启用")}" readonly>
         </div>
         <div class="field">
           <label>上次运行</label>
           <input value="${escapeHtml(formatDisplayTime(schedule.lastRunAt))}" readonly>
         </div>
       </div>
-      <p class="muted">定时任务按国家分别巡检。每个国家可以单独上下线，并配置自己的看板范围与通知目标；保存后服务每分钟检查一次，到达“下次运行时间”即执行，执行后按巡检间隔计算下一次运行。</p>
+      <p class="muted">下线方式：取消“上线定时巡检总开关”并保存，会关闭全部自动触发；取消某个国家的勾选并保存，只会下线该国家。定时任务每天按北京时间固定时间运行一次，手动“立即运行测试”不影响正式下次运行时间。</p>
       <div class="schedule-help">
         <strong>KN Chat 接收目标说明</strong>
         <span>选择 KN Chat 机器人时，只填写接收人邮箱即可，服务会先调用 resolveUserId 把邮箱解析为 user_id，再私聊发送；多个邮箱用逗号分隔。选择 TV webhook 时，才需要填写 TV bot_id 和提醒人 mentions。</span>
@@ -321,6 +321,10 @@ function renderScheduleOverview(schedule) {
       <div class="info-item">
         <span>下次运行</span>
         <strong>${escapeHtml(schedule.enabled ? formatDisplayTime(schedule.nextRunAt) : "未启用")}</strong>
+      </div>
+      <div class="info-item">
+        <span>每日定点</span>
+        <strong>${escapeHtml(schedule.dailyRunTime || "09:00")} 北京时间</strong>
       </div>
       <div class="info-item">
         <span>上次运行</span>
@@ -576,8 +580,8 @@ function renderBatchScheduleStatus(status) {
 function buildBatchSchedulePayload(root, scope) {
   return {
     enabled: Boolean(root.querySelector("#batch-schedule-enabled")?.checked),
-    intervalMinutes: Number(root.querySelector("#batch-schedule-interval")?.value || 120),
-    nextRunAt: parseDateTimeLocalToIso(root.querySelector("#batch-schedule-next-run-at")?.value || ""),
+    dailyRunTime: root.querySelector("#batch-schedule-daily-run-time")?.value || "09:00",
+    intervalMinutes: 1440,
     countryCode: scope.countryCode || "",
     dashboardUuid: scope.dashboardUuid || "",
     webhookUrl: getBatchNotifyConfig().webhookUrl,
@@ -900,15 +904,4 @@ function formatDateTimeLocal(value) {
     pad(date.getMonth() + 1),
     pad(date.getDate()),
   ].join("-") + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function parseDateTimeLocalToIso(value) {
-  if (!value) {
-    return null;
-  }
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) {
-    return null;
-  }
-  return date.toISOString();
 }

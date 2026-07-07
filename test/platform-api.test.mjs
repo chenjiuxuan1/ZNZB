@@ -365,6 +365,7 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(due.schedule.lastResult.anomalyCount, 1);
   assert.equal(due.schedule.lastResult.successCount, 1);
   assert.equal(due.schedule.lastResult.runs[0].result.notification.sent, true);
+  assert.ok(Date.parse(due.schedule.nextRunAt) > Date.parse(schedule.nextRunAt));
   assert.equal(captured.length, 2);
   assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
 
@@ -403,6 +404,42 @@ test("platform api preserves explicit next run time on schedule save", async () 
 
   assert.equal(schedule.nextRunAt, nextRunAt);
   assert.equal(schedule.countryConfigs[0].botToken, "${KN_BOT_TOKEN}");
+});
+
+test("platform api schedules the next run at a fixed Beijing daily time", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async () => ({ sent: true, status: 200 }),
+  });
+
+  const schedule = await api.saveBatchSchedule({
+    enabled: true,
+    dailyRunTime: "09:00",
+    intervalMinutes: 30,
+    nextRunAt: "2026-07-07T01:00:00.000Z",
+    countryConfigs: [
+      {
+        countryCode: "INE",
+        enabled: true,
+        dashboardUuids: ["dash-1"],
+        notifyChannel: "knBot",
+        recipientEmails: "owner@kn.group",
+      },
+    ],
+  });
+
+  assert.equal(schedule.dailyRunTime, "09:00");
+
+  const due = await api.runDueBatchSchedule(new Date("2026-07-07T01:00:01.000Z"));
+
+  assert.equal(due.ran, true);
+  assert.equal(due.schedule.nextRunAt, "2026-07-08T01:00:00.000Z");
 });
 
 test("platform api can manually test saved country schedule before it is due", async () => {
