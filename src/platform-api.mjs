@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
 import {
   buildDefaultCardParameters,
@@ -23,6 +24,7 @@ const FILES = {
   result: "config/public-check-result.ready.json",
   baselineCache: "config/public-check-baseline-cache.json",
   batchSchedule: "config/batch-check-schedule.json",
+  batchHistory: "config/batch-check-run-history.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_BATCH_SCHEDULE = {
@@ -39,6 +41,8 @@ const DEFAULT_BATCH_SCHEDULE = {
   lastError: null,
   lastResult: null,
 };
+const DEFAULT_BATCH_HISTORY = { runs: [] };
+const MAX_BATCH_HISTORY_RUNS = 200;
 
 export function createPlatformApi({
   rootDir = process.cwd(),
@@ -85,6 +89,11 @@ export function createPlatformApi({
       const schedule = await readJsonFile(resolve("batchSchedule"), DEFAULT_BATCH_SCHEDULE);
       const countries = await readJsonFile(resolve("countries"), { countries: [] });
       return normalizeBatchSchedule(schedule, schedule, { countries: countries.countries || [], preserveNextRunAt: true });
+    },
+
+    async getBatchHistory(filters = {}) {
+      const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
+      return filterBatchHistory(history, filters);
     },
 
     async saveBatchSchedule(body = {}) {
@@ -329,12 +338,14 @@ export function createPlatformApi({
             });
             countryRuns.push({
               countryCode: countryConfig.countryCode,
+              countryName: countryConfig.countryName || "",
               ok: true,
               result: summarizeBatchScheduleRun(result),
             });
           } catch (error) {
             countryRuns.push({
               countryCode: countryConfig.countryCode,
+              countryName: countryConfig.countryName || "",
               ok: false,
               error: error.message,
             });
@@ -349,6 +360,13 @@ export function createPlatformApi({
           lastResult: summarizeCountryScheduleRuns(countryRuns),
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
+        await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          nextRunAt,
+          schedule,
+          countryRuns,
+        }));
         return { ran: true, schedule: saved, result: saved.lastResult };
       } catch (error) {
         const saved = {
@@ -359,6 +377,25 @@ export function createPlatformApi({
           lastResult: null,
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
+        await appendBatchHistoryRun(resolve("batchHistory"), {
+          id: randomUUID(),
+          trigger: "schedule",
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          nextRunAt,
+          status: "failed",
+          ok: false,
+          error: error.message,
+          countryCount: 0,
+          successCount: 0,
+          failedCount: 1,
+          checkedCardCount: 0,
+          dashboardCount: 0,
+          anomalyCount: 0,
+          dataQualityAnomalyCount: 0,
+          notificationSentCount: 0,
+          runs: [],
+        });
         return { ran: true, schedule: saved, error: error.message };
       }
     },
@@ -533,6 +570,68 @@ function summarizeCountryScheduleRuns(countryRuns = []) {
     dashboardCount: successfulRuns.reduce((sum, item) => sum + Number(item.result?.dashboardCount || 0), 0),
     anomalyCount: successfulRuns.reduce((sum, item) => sum + Number(item.result?.anomalyCount || 0), 0),
     runs: countryRuns,
+  };
+}
+
+function buildBatchHistoryEntry({ startedAt, finishedAt, nextRunAt, schedule, countryRuns }) {
+  const summary = summarizeCountryScheduleRuns(countryRuns);
+  const notificationSentCount = countryRuns.reduce((sum, run) => {
+    const notification = run.result?.notification;
+    return sum + (notification?.sent ? Number(notification.sentMessages || 0) : 0);
+  }, 0);
+  return {
+    id: randomUUID(),
+    trigger: "schedule",
+    startedAt,
+    finishedAt,
+    nextRunAt,
+    intervalMinutes: schedule.intervalMinutes || null,
+    status: summary.failedCount > 0 ? "partial_failed" : "success",
+    ok: summary.failedCount === 0,
+    countryCount: summary.countryCount,
+    successCount: summary.successCount,
+    failedCount: summary.failedCount,
+    checkedCardCount: summary.checkedCardCount,
+    dashboardCount: summary.dashboardCount,
+    anomalyCount: summary.anomalyCount,
+    dataQualityAnomalyCount: countryRuns.reduce((sum, run) => sum + Number(run.result?.dataQualityAnomalyCount || 0), 0),
+    notificationSentCount,
+    runs: countryRuns,
+  };
+}
+
+async function appendBatchHistoryRun(historyFile, entry) {
+  const history = await readJsonFile(historyFile, DEFAULT_BATCH_HISTORY);
+  const runs = [entry, ...(history.runs || [])].slice(0, MAX_BATCH_HISTORY_RUNS);
+  await writeJsonAtomic(historyFile, { updatedAt: new Date().toISOString(), runs });
+}
+
+function filterBatchHistory(history = DEFAULT_BATCH_HISTORY, filters = {}) {
+  const countryCode = String(filters.countryCode || "").trim();
+  const status = String(filters.status || "").trim();
+  const limit = clampNumber(filters.limit ?? 50, 1, MAX_BATCH_HISTORY_RUNS, 50);
+  let runs = history.runs || [];
+
+  if (countryCode) {
+    runs = runs.filter((run) => (run.runs || []).some((countryRun) => countryRun.countryCode === countryCode));
+  }
+
+  if (status === "success") {
+    runs = runs.filter((run) => run.status === "success");
+  } else if (status === "partial_failed") {
+    runs = runs.filter((run) => run.status === "partial_failed");
+  } else if (status === "failed") {
+    runs = runs.filter((run) => run.status === "failed");
+  } else if (status === "anomaly") {
+    runs = runs.filter((run) => Number(run.anomalyCount || 0) + Number(run.dataQualityAnomalyCount || 0) > 0);
+  } else if (status === "healthy") {
+    runs = runs.filter((run) => Number(run.anomalyCount || 0) + Number(run.dataQualityAnomalyCount || 0) === 0 && run.status !== "failed");
+  }
+
+  return {
+    updatedAt: history.updatedAt || null,
+    total: runs.length,
+    runs: runs.slice(0, limit),
   };
 }
 

@@ -57,6 +57,9 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/batch-schedule") {
     return sendJson(response, 200, await api.getBatchSchedule());
   }
+  if (method === "GET" && url.pathname === "/api/batch-history") {
+    return sendJson(response, 200, await api.getBatchHistory(Object.fromEntries(url.searchParams.entries())));
+  }
   if (method === "PUT" && url.pathname === "/api/batch-schedule") {
     return sendJson(response, 200, await api.saveBatchSchedule(await readBody(request, {})));
   }

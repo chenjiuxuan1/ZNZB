@@ -367,6 +367,18 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(due.schedule.lastResult.runs[0].result.notification.sent, true);
   assert.equal(captured.length, 2);
   assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
+
+  const history = await api.getBatchHistory();
+  assert.equal(history.runs.length, 1);
+  assert.equal(history.runs[0].status, "success");
+  assert.equal(history.runs[0].countryCount, 1);
+  assert.equal(history.runs[0].checkedCardCount, 1);
+  assert.equal(history.runs[0].anomalyCount, 1);
+  assert.equal(history.runs[0].notificationSentCount, 2);
+  assert.equal(history.runs[0].runs[0].result.checkedDashboards.length, 1);
+
+  const filteredHistory = await api.getBatchHistory({ countryCode: "INE", status: "anomaly" });
+  assert.equal(filteredHistory.runs.length, 1);
 });
 
 test("platform api validates and saves rules", async () => {

@@ -1,4 +1,4 @@
-import { apiPost, apiPut } from "../api.js";
+import { apiGet, apiPost, apiPut } from "../api.js";
 import { state } from "../state.js";
 import { countryLabel, escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
 
@@ -90,6 +90,17 @@ export function renderBatchCheck(root) {
   root.querySelector("#batch-webhook-url")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#batch-bot-id")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#batch-mentions")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
+  root.querySelector("#batch-history-country")?.addEventListener("change", async (event) => {
+    state.batchHistoryFilters.countryCode = event.target.value;
+    await reloadBatchHistory(root);
+  });
+  root.querySelector("#batch-history-status")?.addEventListener("change", async (event) => {
+    state.batchHistoryFilters.status = event.target.value;
+    await reloadBatchHistory(root);
+  });
+  root.querySelector("#refresh-batch-history")?.addEventListener("click", async () => {
+    await reloadBatchHistory(root);
+  });
   root.querySelector("#save-batch-schedule")?.addEventListener("click", async () => {
     updateBatchNotifyConfigFromDom(root);
     const payload = buildBatchSchedulePayload(root, {
@@ -173,6 +184,33 @@ export function renderBatchCheck(root) {
   });
 }
 
+async function reloadBatchHistory(root) {
+  const params = new URLSearchParams();
+  if (state.batchHistoryFilters?.countryCode) {
+    params.set("countryCode", state.batchHistoryFilters.countryCode);
+  }
+  if (state.batchHistoryFilters?.status) {
+    params.set("status", state.batchHistoryFilters.status);
+  }
+  state.batchHistoryStatus = {
+    type: "loading",
+    title: "正在刷新定时巡检历史",
+    detail: "按当前筛选条件读取最近的定时巡检记录。",
+  };
+  renderBatchCheck(root);
+  try {
+    state.batchHistory = await apiGet(`/api/batch-history${params.toString() ? `?${params}` : ""}`);
+    state.batchHistoryStatus = null;
+  } catch (error) {
+    state.batchHistoryStatus = {
+      type: "error",
+      title: "定时巡检历史读取失败",
+      detail: error.message,
+    };
+  }
+  renderBatchCheck(root);
+}
+
 function renderBatchSchedulePanel() {
   const schedule = state.batchSchedule || {};
   const enabled = Boolean(schedule.enabled);
@@ -206,8 +244,144 @@ function renderBatchSchedulePanel() {
       <div class="button-group">
         <button id="save-batch-schedule" class="secondary">保存定时巡检</button>
       </div>
+      ${renderBatchHistoryPanel()}
     </div>
   `;
+}
+
+function renderBatchHistoryPanel() {
+  const countries = state.countries?.countries || [];
+  const filters = state.batchHistoryFilters || {};
+  const history = state.batchHistory || { runs: [] };
+  const runs = history.runs || [];
+  return `
+    <div class="sub-panel schedule-history-panel">
+      <div class="detail-header compact-header">
+        <h2 class="panel-title">定时巡检历史</h2>
+        <button id="refresh-batch-history" class="ghost">刷新历史</button>
+      </div>
+      <div class="toolbar wide-toolbar">
+        <label>
+          国家
+          <select id="batch-history-country">
+            <option value="">全部国家</option>
+            ${countries.map((country) => `<option value="${escapeHtml(country.code || "")}" ${filters.countryCode === country.code ? "selected" : ""}>${escapeHtml(countryLabel(country, countries))}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          状态
+          <select id="batch-history-status">
+            <option value="" ${filters.status ? "" : "selected"}>全部状态</option>
+            <option value="anomaly" ${filters.status === "anomaly" ? "selected" : ""}>有异常</option>
+            <option value="healthy" ${filters.status === "healthy" ? "selected" : ""}>无异常</option>
+            <option value="success" ${filters.status === "success" ? "selected" : ""}>运行成功</option>
+            <option value="partial_failed" ${filters.status === "partial_failed" ? "selected" : ""}>部分失败</option>
+            <option value="failed" ${filters.status === "failed" ? "selected" : ""}>运行失败</option>
+          </select>
+        </label>
+      </div>
+      ${renderBatchHistoryStatus()}
+      ${runs.length ? renderBatchHistoryRows(runs) : `<p class="muted">暂无定时巡检历史。保存并启用定时巡检后，每次到期执行都会在这里留一条记录。</p>`}
+    </div>
+  `;
+}
+
+function renderBatchHistoryStatus() {
+  const status = state.batchHistoryStatus;
+  if (!status) {
+    return "";
+  }
+  return `
+    <div class="sandbox-status ${escapeHtml(status.type)}">
+      <strong>${escapeHtml(status.title)}</strong>
+      <span>${escapeHtml(status.detail || "")}</span>
+    </div>
+  `;
+}
+
+function renderBatchHistoryRows(runs) {
+  return `
+    <div class="table-wrap schedule-history-table">
+      <table>
+        <thead>
+          <tr>
+            <th>运行时间</th>
+            <th>状态</th>
+            <th>国家</th>
+            <th>看板/卡片</th>
+            <th>异常</th>
+            <th>TV</th>
+            <th>明细</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${runs.map((run) => `
+            <tr>
+              <td>${escapeHtml(formatDisplayTime(run.startedAt))}</td>
+              <td><span class="badge ${escapeHtml(historyBadgeClass(run))}">${escapeHtml(historyStatusText(run))}</span></td>
+              <td>${escapeHtml(formatHistoryCountries(run))}</td>
+              <td>${escapeHtml(run.dashboardCount || 0)} 个看板 / ${escapeHtml(run.checkedCardCount || 0)} 张卡片</td>
+              <td>${escapeHtml((run.anomalyCount || 0) + (run.dataQualityAnomalyCount || 0))}</td>
+              <td>${escapeHtml(run.notificationSentCount || 0)} 条</td>
+              <td>${renderHistoryRunDetails(run)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderHistoryRunDetails(run) {
+  return `
+    <details class="history-details">
+      <summary>查看</summary>
+      ${(run.runs || []).map((countryRun) => `
+        <div class="history-country-run">
+          <strong>${escapeHtml([countryRun.countryName, countryRun.countryCode].filter(Boolean).join(" / ") || "-")}</strong>
+          ${countryRun.ok ? renderHistoryCountryResult(countryRun.result || {}) : `<p class="error">${escapeHtml(countryRun.error || "运行失败")}</p>`}
+        </div>
+      `).join("")}
+    </details>
+  `;
+}
+
+function renderHistoryCountryResult(result) {
+  const dashboards = result.checkedDashboards || [];
+  return `
+    <p class="muted">检查 ${escapeHtml(result.checkedCardCount || 0)} 张卡片，异常 ${escapeHtml((result.anomalyCount || 0) + (result.dataQualityAnomalyCount || 0))} 条。</p>
+    ${dashboards.length ? `
+      <ul class="history-dashboard-list">
+        ${dashboards.map((dashboard) => `
+          <li>
+            ${escapeHtml(dashboard.dashboardTitle || "-")}：
+            ${escapeHtml(dashboard.checkedCardCount || 0)} 张卡片，
+            ${escapeHtml(dashboard.failedCardCount || 0)} 查询失败，
+            ${escapeHtml(dashboard.anomalyCount || 0)} 异常
+          </li>
+        `).join("")}
+      </ul>
+    ` : ""}
+  `;
+}
+
+function historyStatusText(run) {
+  if (run.status === "failed") return "失败";
+  if (run.status === "partial_failed") return "部分失败";
+  if ((run.anomalyCount || 0) + (run.dataQualityAnomalyCount || 0) > 0) return "有异常";
+  return "正常";
+}
+
+function historyBadgeClass(run) {
+  if (run.status === "failed" || run.status === "partial_failed") return "danger";
+  return (run.anomalyCount || 0) + (run.dataQualityAnomalyCount || 0) > 0 ? "warn" : "ok";
+}
+
+function formatHistoryCountries(run) {
+  return (run.runs || [])
+    .map((item) => [item.countryName, item.countryCode].filter(Boolean).join(" / ") || item.countryCode)
+    .filter(Boolean)
+    .join("、") || "-";
 }
 
 function renderScheduleLastResult(result) {

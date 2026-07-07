@@ -18,6 +18,12 @@ export const state = {
   batchSchedule: null,
   batchScheduleStatus: null,
   batchScheduleError: "",
+  batchHistory: null,
+  batchHistoryFilters: {
+    countryCode: "",
+    status: "",
+  },
+  batchHistoryStatus: null,
   batchNotifyConfig: {
     webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
     botId: "",

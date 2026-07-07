@@ -360,6 +360,31 @@ th {
   width: auto;
 }
 
+.history-details summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.history-country-run {
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.history-country-run:first-of-type {
+  border-top: 0;
+}
+
+.history-dashboard-list {
+  color: #475467;
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.history-dashboard-list li {
+  margin: 3px 0;
+}
+
 .message-preview {
   min-height: 220px;
 }
