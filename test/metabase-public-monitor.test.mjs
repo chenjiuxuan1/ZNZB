@@ -662,7 +662,7 @@ test("evaluateRowsAgainstRule checks intraday time point change", () => {
   );
 
   assert.deepEqual(result, [
-    "同时间点指标「reg_cnt」从 100 到 130，波动 +30.0%（Asia/Jakarta 00:30，日期 2026-06-08 对比 2026-06-07）",
+    "同时间点指标「reg_cnt」从 100 到 130，波动 +30.0%；判定：昨日同点波动超过±15.0%；近30天同点样本不足7天时，先按昨日同点阈值触发（Asia/Jakarta 00:30，日期 2026-06-08 对比 2026-06-07）",
   ]);
 });
 
@@ -697,7 +697,7 @@ test("evaluateRowsAgainstRule adds monthly time point baseline details", () => {
   );
 
   assert.deepEqual(result, [
-    "同时间点指标「reg_cnt」从 100 到 180，波动 +80.0%；近30天同点中位数 100（样本7天），较基线 +80.0%（Asia/Jakarta 00:30，日期 2026-06-08 对比 2026-06-07）",
+    "同时间点指标「reg_cnt」从 100 到 180，波动 +80.0%；近30天同点中位数 100（样本7天），较基线 +80.0%；判定：昨日同点波动超过±50.0%，且近30天同点中位数波动超过±50.0%，两项同时命中才触发（Asia/Jakarta 00:30，日期 2026-06-08 对比 2026-06-07）",
   ]);
 });
 

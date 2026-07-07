@@ -32,6 +32,7 @@ const server = http.createServer(async (request, response) => {
 server.listen(port, host, () => {
   console.log(`Duty platform running at http://${host}:${port}`);
 });
+startBatchScheduler();
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";
@@ -53,6 +54,12 @@ async function handleApi(request, response, url) {
   if (method === "PUT" && url.pathname === "/api/rules") {
     return sendJson(response, 200, await api.saveRulesConfig(await readBody(request)));
   }
+  if (method === "GET" && url.pathname === "/api/batch-schedule") {
+    return sendJson(response, 200, await api.getBatchSchedule());
+  }
+  if (method === "PUT" && url.pathname === "/api/batch-schedule") {
+    return sendJson(response, 200, await api.saveBatchSchedule(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/sandbox/evaluate") {
     return sendJson(response, 200, await api.evaluateSandbox(await readBody(request)));
   }
@@ -73,6 +80,31 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await api.sendNotifyTest(await readBody(request, {})));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
+}
+
+function startBatchScheduler() {
+  let running = false;
+  const tick = async () => {
+    if (running) {
+      return;
+    }
+    running = true;
+    try {
+      const result = await api.runDueBatchSchedule();
+      if (result.ran) {
+        console.log(`Batch public check schedule ran at ${new Date().toISOString()}`);
+      }
+    } catch (error) {
+      console.error("Batch public check schedule failed:", error);
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(tick, 60_000);
+  if (typeof timer.unref === "function") {
+    timer.unref();
+  }
+  setTimeout(tick, 5_000).unref?.();
 }
 
 async function readBody(request, fallback = null) {

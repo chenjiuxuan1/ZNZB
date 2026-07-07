@@ -927,12 +927,19 @@ function checkIntradayTimePointChange(rows, rule) {
           const baselineText = hasBaseline && Number.isFinite(baselineChangeRate)
             ? `；近${baseline.lookbackDays}天同点中位数 ${formatNumber(baseline.median)}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(baselineChangeRate)}`
             : "";
+          const triggerText = formatIntradayTimePointTriggerText({
+            maxAbsChangeRate,
+            baselineMaxAbsChangeRate,
+            baselineLookbackDays,
+            baselineMinSamples,
+            hasBaseline,
+          });
           messages.push({
             absChangeRate: Math.max(Math.abs(changeRate), Number.isFinite(baselineChangeRate) ? Math.abs(baselineChangeRate) : 0),
             message:
               `同时间点指标「${column}」从 ${formatNumber(previous)} 到 ${formatNumber(current)}，波动 ${formatSignedPercent(
                 changeRate,
-              )}${baselineText}` +
+              )}${baselineText}${triggerText}` +
               `（${timezone} ${formatHourLabel(time / 60)}，${dateColumn} ${currentDate} 对比 ${previousDate}${formatDimensionText(
                 item,
               )}）`,
@@ -948,6 +955,27 @@ function checkIntradayTimePointChange(rows, rule) {
       .map((item) => item.message),
     rule,
   );
+}
+
+function formatIntradayTimePointTriggerText({
+  maxAbsChangeRate,
+  baselineMaxAbsChangeRate,
+  baselineLookbackDays,
+  baselineMinSamples,
+  hasBaseline,
+}) {
+  const yesterdayThreshold = formatSignedThreshold(maxAbsChangeRate);
+  if (hasBaseline) {
+    return `；判定：昨日同点波动超过${yesterdayThreshold}，且近${baselineLookbackDays}天同点中位数波动超过${formatSignedThreshold(
+      baselineMaxAbsChangeRate,
+    )}，两项同时命中才触发`;
+  }
+
+  return `；判定：昨日同点波动超过${yesterdayThreshold}；近${baselineLookbackDays}天同点样本不足${baselineMinSamples}天时，先按昨日同点阈值触发`;
+}
+
+function formatSignedThreshold(value) {
+  return `±${formatPercent(Math.abs(value))}`;
 }
 
 function resolveTimePointBaseline({ item, column, time, timeColumn, currentDate, previousDate, lookbackDays, minSamples, rule }) {

@@ -1,4 +1,4 @@
-import { apiPost } from "../api.js";
+import { apiPost, apiPut } from "../api.js";
 import { state } from "../state.js";
 import { countryLabel, escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
 
@@ -71,6 +71,7 @@ export function renderBatchCheck(root) {
       </div>
       <p class="muted">点击开始后会先只读访问 Metabase；只有发现异常才会把本次巡检汇总和异常明细发送到上方 TV bot_id，健康结果不会发送 TV。</p>
       ${renderBatchStatus()}
+      ${renderBatchSchedulePanel()}
     </section>
     ${result ? renderBatchResult(result) : `<p class="muted">选择范围并确认通知配置后，点击“开始巡检并发送 TV”。</p>`}
   `;
@@ -89,6 +90,37 @@ export function renderBatchCheck(root) {
   root.querySelector("#batch-webhook-url")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#batch-bot-id")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#batch-mentions")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
+  root.querySelector("#save-batch-schedule")?.addEventListener("click", async () => {
+    updateBatchNotifyConfigFromDom(root);
+    state.batchScheduleStatus = {
+      type: "loading",
+      title: "正在保存定时巡检",
+      detail: "保存后服务会每分钟检查一次，到期自动执行当前范围的巡检。",
+    };
+    state.batchScheduleError = "";
+    renderBatchCheck(root);
+    try {
+      state.batchSchedule = await apiPut("/api/batch-schedule", buildBatchSchedulePayload(root, {
+        countryCode: isAllCountries ? "" : state.selected.countryCode || selectedCountry,
+        dashboardUuid: state.selected.dashboardUuid || "",
+      }));
+      state.batchScheduleStatus = {
+        type: "success",
+        title: state.batchSchedule.enabled ? "定时巡检已启用" : "定时巡检已关闭",
+        detail: state.batchSchedule.enabled
+          ? `下次运行：${formatDisplayTime(state.batchSchedule.nextRunAt)}；间隔 ${state.batchSchedule.intervalMinutes} 分钟。`
+          : "已保存为关闭状态，后续不会自动触发。",
+      };
+    } catch (error) {
+      state.batchScheduleError = error.payload?.errors?.join("\n") || error.message;
+      state.batchScheduleStatus = {
+        type: "error",
+        title: "定时巡检保存失败",
+        detail: "请检查 TV webhook、bot_id 和巡检间隔配置。",
+      };
+    }
+    renderBatchCheck(root);
+  });
   root.querySelector("#run-batch-check")?.addEventListener("click", async () => {
     updateBatchNotifyConfigFromDom(root);
     const validationError = validateBatchNotifyConfig();
@@ -138,6 +170,90 @@ export function renderBatchCheck(root) {
     }
     renderBatchCheck(root);
   });
+}
+
+function renderBatchSchedulePanel() {
+  const schedule = state.batchSchedule || {};
+  const enabled = Boolean(schedule.enabled);
+  const status = state.batchScheduleStatus;
+  return `
+    <div class="sub-panel schedule-panel">
+      <h2 class="panel-title section-title">定时巡检</h2>
+      <div class="form-grid">
+        <label class="checkbox-field">
+          <input id="batch-schedule-enabled" type="checkbox" ${enabled ? "checked" : ""}>
+          <span>启用服务内定时巡检</span>
+        </label>
+        <div class="field">
+          <label>巡检间隔（分钟）</label>
+          <input id="batch-schedule-interval" type="number" min="5" max="1440" step="5" value="${escapeHtml(schedule.intervalMinutes || 120)}">
+        </div>
+        <div class="field">
+          <label>下次运行</label>
+          <input value="${escapeHtml(formatDisplayTime(schedule.nextRunAt))}" readonly>
+        </div>
+        <div class="field">
+          <label>上次运行</label>
+          <input value="${escapeHtml(formatDisplayTime(schedule.lastRunAt))}" readonly>
+        </div>
+      </div>
+      <p class="muted">定时任务会使用当前页面的国家、看板范围、TV webhook、bot_id 和提醒人；每次到期先巡检，只有发现异常才发送 TV。</p>
+      ${schedule.lastResult ? renderScheduleLastResult(schedule.lastResult) : ""}
+      ${schedule.lastError ? `<div class="sandbox-status error"><strong>上次定时运行失败</strong><span>${escapeHtml(schedule.lastError)}</span></div>` : ""}
+      ${renderBatchScheduleStatus(status)}
+      <div class="button-group">
+        <button id="save-batch-schedule" class="secondary">保存定时巡检</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderScheduleLastResult(result) {
+  const notification = result.notification || {};
+  const notifyText = notification.sent
+    ? `已发送 ${notification.sentMessages || 0} 条 TV 消息`
+    : notification.skipped
+      ? "无异常，跳过 TV"
+      : "未发送 TV";
+  return `
+    <div class="sandbox-status idle">
+      <strong>上次定时结果</strong>
+      <span>检查 ${escapeHtml(result.checkedCardCount || 0)} 张卡片，异常 ${escapeHtml(result.anomalyCount || 0)} 条；${escapeHtml(notifyText)}。</span>
+    </div>
+  `;
+}
+
+function renderBatchScheduleStatus(status) {
+  if (!status) {
+    return "";
+  }
+  if (status.type === "error") {
+    return `
+      <div class="sandbox-status error">
+        <strong>${escapeHtml(status.title)}</strong>
+        <span>${escapeHtml(status.detail || "")}</span>
+        <pre>${escapeHtml(state.batchScheduleError || "-")}</pre>
+      </div>
+    `;
+  }
+  return `
+    <div class="sandbox-status ${escapeHtml(status.type)}">
+      <strong>${escapeHtml(status.title)}</strong>
+      <span>${escapeHtml(status.detail || "")}</span>
+    </div>
+  `;
+}
+
+function buildBatchSchedulePayload(root, scope) {
+  return {
+    enabled: Boolean(root.querySelector("#batch-schedule-enabled")?.checked),
+    intervalMinutes: Number(root.querySelector("#batch-schedule-interval")?.value || 120),
+    countryCode: scope.countryCode || "",
+    dashboardUuid: scope.dashboardUuid || "",
+    webhookUrl: getBatchNotifyConfig().webhookUrl,
+    botId: getBatchNotifyConfig().botId,
+    mentions: getBatchNotifyConfig().mentions,
+  };
 }
 
 function clearBatchFeedback() {

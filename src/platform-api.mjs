@@ -22,8 +22,22 @@ const FILES = {
   inventory: "config/discovered-public-dashboards.ready.json",
   result: "config/public-check-result.ready.json",
   baselineCache: "config/public-check-baseline-cache.json",
+  batchSchedule: "config/batch-check-schedule.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
+const DEFAULT_BATCH_SCHEDULE = {
+  enabled: false,
+  intervalMinutes: 120,
+  countryCode: "",
+  dashboardUuid: "",
+  webhookUrl: DEFAULT_TV_WEBHOOK_URL,
+  botId: "",
+  mentions: "",
+  nextRunAt: null,
+  lastRunAt: null,
+  lastError: null,
+  lastResult: null,
+};
 
 export function createPlatformApi({
   rootDir = process.cwd(),
@@ -64,6 +78,24 @@ export function createPlatformApi({
 
     async getCountries() {
       return readJsonFile(resolve("countries"), { countries: [] });
+    },
+
+    async getBatchSchedule() {
+      const schedule = await readJsonFile(resolve("batchSchedule"), DEFAULT_BATCH_SCHEDULE);
+      return normalizeBatchSchedule(schedule, schedule, { preserveNextRunAt: true });
+    },
+
+    async saveBatchSchedule(body = {}) {
+      const previous = await this.getBatchSchedule();
+      const next = normalizeBatchSchedule(body, previous);
+      if (next.enabled && !next.botId) {
+        throw badRequest("TV bot_id is required", ["启用定时巡检前请填写 TV bot_id。"]);
+      }
+      if (next.enabled && !next.webhookUrl) {
+        throw badRequest("TV webhook is required", ["启用定时巡检前请填写 TV webhook 地址。"]);
+      }
+      await writeJsonAtomic(resolve("batchSchedule"), next);
+      return next;
     },
 
     async saveCountriesConfig(config) {
@@ -258,6 +290,43 @@ export function createPlatformApi({
       };
     },
 
+    async runDueBatchSchedule(now = new Date()) {
+      const schedule = await this.getBatchSchedule();
+      if (!schedule.enabled) {
+        return { ran: false, reason: "disabled", schedule };
+      }
+
+      const dueAt = schedule.nextRunAt ? Date.parse(schedule.nextRunAt) : Number.NaN;
+      if (Number.isFinite(dueAt) && dueAt > now.getTime()) {
+        return { ran: false, reason: "not due", schedule };
+      }
+
+      const startedAt = now.toISOString();
+      const nextRunAt = new Date(now.getTime() + schedule.intervalMinutes * 60_000).toISOString();
+      try {
+        const result = await this.runBatchCheckAndNotify(schedule);
+        const saved = {
+          ...schedule,
+          lastRunAt: startedAt,
+          nextRunAt,
+          lastError: null,
+          lastResult: summarizeBatchScheduleRun(result),
+        };
+        await writeJsonAtomic(resolve("batchSchedule"), saved);
+        return { ran: true, schedule: saved, result };
+      } catch (error) {
+        const saved = {
+          ...schedule,
+          lastRunAt: startedAt,
+          nextRunAt,
+          lastError: error.message,
+          lastResult: null,
+        };
+        await writeJsonAtomic(resolve("batchSchedule"), saved);
+        return { ran: true, schedule: saved, error: error.message };
+      }
+    },
+
     async getNotifyPreview(resultOverride = null, optionOverride = {}) {
       const rules = await readJsonFile(resolve("rules"), { alerts: {} });
       const result = resultOverride || await readJsonFile(resolve("result"), {
@@ -313,6 +382,74 @@ function normalizeMentions(value) {
     .split(/[\n,，;；]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
+  const previousSchedule = { ...DEFAULT_BATCH_SCHEDULE, ...(previous || {}) };
+  const enabled = Boolean(input.enabled);
+  const intervalMinutes = clampNumber(input.intervalMinutes ?? previousSchedule.intervalMinutes, 5, 1440, 120);
+  const webhookUrl = String(input.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim();
+  const next = {
+    ...previousSchedule,
+    enabled,
+    intervalMinutes,
+    countryCode: String(input.countryCode ?? previousSchedule.countryCode ?? "").trim(),
+    dashboardUuid: String(input.dashboardUuid ?? previousSchedule.dashboardUuid ?? "").trim(),
+    webhookUrl: webhookUrl || DEFAULT_TV_WEBHOOK_URL,
+    botId: String(input.botId ?? previousSchedule.botId ?? "").trim(),
+    mentions: normalizeMentions(input.mentions ?? previousSchedule.mentions).join(","),
+    lastRunAt: previousSchedule.lastRunAt || null,
+    lastError: previousSchedule.lastError || null,
+    lastResult: previousSchedule.lastResult || null,
+  };
+
+  if (!enabled) {
+    next.nextRunAt = null;
+    return next;
+  }
+
+  if (options.preserveNextRunAt && previousSchedule.nextRunAt) {
+    next.nextRunAt = previousSchedule.nextRunAt;
+    return next;
+  }
+
+  const previousNextRunAt = previousSchedule.nextRunAt ? Date.parse(previousSchedule.nextRunAt) : Number.NaN;
+  const countryChanged = next.countryCode !== previousSchedule.countryCode || next.dashboardUuid !== previousSchedule.dashboardUuid;
+  const intervalChanged = next.intervalMinutes !== Number(previousSchedule.intervalMinutes || DEFAULT_BATCH_SCHEDULE.intervalMinutes);
+  if (!countryChanged && !intervalChanged && Number.isFinite(previousNextRunAt) && previousNextRunAt > Date.now()) {
+    next.nextRunAt = previousSchedule.nextRunAt;
+  } else {
+    next.nextRunAt = new Date(Date.now() + intervalMinutes * 60_000).toISOString();
+  }
+
+  return next;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.round(numberValue)));
+}
+
+function summarizeBatchScheduleRun(result = {}) {
+  return {
+    checkedAt: result.checkedAt || null,
+    checkedCardCount: result.checkedCardCount || 0,
+    dashboardCount: result.dashboardCount || 0,
+    anomalyCount: result.anomalyCount || 0,
+    dataQualityAnomalyCount: result.dataQualityAnomalyCount || 0,
+    notification: result.notification
+      ? {
+          sent: Boolean(result.notification.sent),
+          skipped: Boolean(result.notification.skipped),
+          reason: result.notification.reason || null,
+          sentMessages: result.notification.sentMessages || 0,
+          sentAt: result.notification.sentAt || null,
+        }
+      : null,
+  };
 }
 
 function filterBatchInventory(inventory, { countryCode, dashboardUuid }) {

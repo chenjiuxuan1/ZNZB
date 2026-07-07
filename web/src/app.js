@@ -6,7 +6,7 @@ import { renderInventory } from "./views/inventory.js?v=20260706-ui16";
 import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui16";
 import { renderRules } from "./views/rules.js?v=20260706-ui16";
 import { renderSandbox } from "./views/sandbox.js?v=20260706-ui16";
-import { renderBatchCheck } from "./views/batch-check.js?v=20260706-ui16";
+import { renderBatchCheck } from "./views/batch-check.js?v=20260707-schedule1";
 
 const routes = [
   { path: "/dashboard", label: "总览", render: renderDashboard },
@@ -27,16 +27,31 @@ await loadData();
 render();
 
 export async function loadData() {
-  const [summary, countries, inventory, rulesConfig] = await Promise.all([
+  const [summary, countries, inventory, rulesConfig, batchSchedule] = await Promise.all([
     apiGet("/api/summary"),
     apiGet("/api/countries"),
     apiGet("/api/inventory"),
     apiGet("/api/rules"),
+    apiGet("/api/batch-schedule").catch(() => null),
   ]);
   state.summary = summary;
   state.countries = countries;
   state.inventory = inventory;
   state.rulesConfig = rulesConfig;
+  state.batchSchedule = batchSchedule;
+  if (batchSchedule) {
+    state.batchNotifyConfig = {
+      webhookUrl: batchSchedule.webhookUrl || state.batchNotifyConfig.webhookUrl,
+      botId: batchSchedule.botId || state.batchNotifyConfig.botId,
+      mentions: batchSchedule.mentions || state.batchNotifyConfig.mentions,
+    };
+    if (!state.selected.countryCode && batchSchedule.countryCode) {
+      state.selected.countryCode = batchSchedule.countryCode;
+    }
+    if (!state.selected.dashboardUuid && batchSchedule.dashboardUuid) {
+      state.selected.dashboardUuid = batchSchedule.dashboardUuid;
+    }
+  }
 }
 
 export function render() {

@@ -22,7 +22,13 @@ async function makeFixture() {
     JSON.stringify({
       alerts: { channel: "tv", webhookUrl: "${TV_ALERT_WEBHOOK_URL}" },
       rules: [
-        { type: "requiredDatePresent", dashboardTitle: "OKR", cardTitles: ["规模"], dateColumn: "统计日期" },
+        {
+          type: "requiredDatePresent",
+          dashboardTitle: "OKR",
+          cardTitles: ["规模"],
+          dateColumn: "统计日期",
+          now: "2026-07-06T08:00:00.000Z",
+        },
       ],
     }),
   );
@@ -263,6 +269,48 @@ test("platform api skips TV notification when batch check is healthy", async () 
   assert.equal(result.notification.skipped, true);
   assert.equal(result.notification.reason, "no anomalies");
   assert.equal(result.notification.sentMessages, 0);
+});
+
+test("platform api saves batch schedule and runs it when due", async () => {
+  const rootDir = await makeFixture();
+  const captured = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-05", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async (config, message, metadata) => {
+      captured.push({ config, message, metadata });
+      return { sent: true, status: 200 };
+    },
+  });
+
+  const schedule = await api.saveBatchSchedule({
+    enabled: true,
+    intervalMinutes: 5,
+    countryCode: "INE",
+    webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+    botId: "tv-bot-001",
+    mentions: "owner@kn.group",
+  });
+
+  assert.equal(schedule.enabled, true);
+  assert.equal(schedule.intervalMinutes, 5);
+  assert.ok(schedule.nextRunAt);
+
+  const notDue = await api.runDueBatchSchedule(new Date(Date.parse(schedule.nextRunAt) - 1000));
+  assert.equal(notDue.ran, false);
+  assert.equal(notDue.reason, "not due");
+
+  const due = await api.runDueBatchSchedule(new Date(Date.parse(schedule.nextRunAt) + 1000));
+  assert.equal(due.ran, true);
+  assert.equal(due.schedule.lastError, null);
+  assert.equal(due.schedule.lastResult.anomalyCount, 1);
+  assert.equal(due.schedule.lastResult.notification.sent, true);
+  assert.equal(captured.length, 2);
+  assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
 });
 
 test("platform api validates and saves rules", async () => {

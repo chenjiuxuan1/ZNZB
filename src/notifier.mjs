@@ -555,6 +555,9 @@ function appendFluctuationSummaryLines(lines, label, summary, options = {}) {
       `   近${summary.baseline.lookbackDays}天基线：${summary.baseline.value}（样本${summary.baseline.sampleCount}天），较基线 ${summary.baseline.change}`,
     );
   }
+  if (summary.trigger) {
+    lines.push(`   判定依据：${summary.trigger}`);
+  }
   const displayContext = stripCommonComparisonFromContext(summary.context, options.comparisonContext);
   if (displayContext) {
     lines.push(`   时间点：${displayContext}`);
@@ -660,6 +663,7 @@ function summarizeFluctuationMessage(message = "") {
   const numericChange = parseChangeNumber(changeMatch);
   const context = extractMessageContext(text);
   const baseline = extractBaselineSummary(text);
+  const trigger = extractTriggerSummary(text);
 
   if (fromToMatch) {
     return {
@@ -670,6 +674,7 @@ function summarizeFluctuationMessage(message = "") {
       numericChange,
       context,
       baseline,
+      trigger,
     };
   }
 
@@ -686,6 +691,7 @@ function summarizeFluctuationMessage(message = "") {
       numericChange: Number.NaN,
       context,
       baseline,
+      trigger,
     };
   }
 
@@ -697,6 +703,7 @@ function summarizeFluctuationMessage(message = "") {
     numericChange,
     context,
     baseline,
+    trigger,
   };
 }
 
@@ -714,6 +721,11 @@ function extractBaselineSummary(text = "") {
     sampleCount: Number(match[3]),
     change: match[4],
   };
+}
+
+function extractTriggerSummary(text = "") {
+  const match = String(text).match(/；判定：(.+?)(?:（|$)/);
+  return match ? match[1].trim() : "";
 }
 
 function parseChangeNumber(changeMatch) {
