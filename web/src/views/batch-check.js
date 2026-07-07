@@ -256,16 +256,16 @@ function renderCountryScheduleConfig(schedule) {
               const code = dashboard.countryCode || dashboard.country?.code || "";
               return code === country.code;
             });
-            const selectedDashboardUuids = new Set(config.dashboardUuids || []);
+            const selectedDashboardUuid = Array.isArray(config.dashboardUuids) ? config.dashboardUuids[0] || "" : "";
             return `
               <tr class="schedule-country-row" data-country-code="${escapeHtml(country.code || "")}">
                 <td><input class="schedule-country-enabled" type="checkbox" ${config.enabled ? "checked" : ""}></td>
                 <td>${escapeHtml(countryLabel(country, countries))}</td>
                 <td>
-                  <select class="schedule-country-dashboard-uuids" multiple size="3">
-                    ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboardUuids.has(dashboard.uuid) ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
+                  <select class="schedule-country-dashboard-uuid">
+                    <option value="" ${selectedDashboardUuid ? "" : "selected"}>该国家告警巡检看板</option>
+                    ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboardUuid === dashboard.uuid ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
                   </select>
-                  <small class="muted">留空=该国家告警巡检看板；按住 Ctrl/Command 可多选。</small>
                 </td>
                 <td><input class="schedule-country-bot-id" value="${escapeHtml(config.botId || "")}" placeholder="该国家接收 bot_id"></td>
                 <td><input class="schedule-country-mentions" value="${escapeHtml(config.mentions || "")}" placeholder="邮箱，多个用逗号分隔"></td>
@@ -311,9 +311,7 @@ function buildBatchSchedulePayload(root, scope) {
     countryConfigs: [...root.querySelectorAll(".schedule-country-row")].map((row) => ({
       countryCode: row.dataset.countryCode || "",
       enabled: Boolean(row.querySelector(".schedule-country-enabled")?.checked),
-      dashboardUuids: [...(row.querySelector(".schedule-country-dashboard-uuids")?.selectedOptions || [])]
-        .map((option) => option.value)
-        .filter(Boolean),
+      dashboardUuids: [row.querySelector(".schedule-country-dashboard-uuid")?.value || ""].filter(Boolean),
       webhookUrl: getBatchNotifyConfig().webhookUrl,
       botId: row.querySelector(".schedule-country-bot-id")?.value.trim() || "",
       mentions: row.querySelector(".schedule-country-mentions")?.value.trim() || "",
