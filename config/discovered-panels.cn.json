@@ -5,5 +5,137 @@
     "from": "now-6h",
     "to": "now"
   },
-  "panels": []
+  "country": {
+    "code": "CN",
+    "name": "中国",
+    "timezone": "Asia/Shanghai"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "业务概览-OKR",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/collection/799-okr",
+          "url": "https://data.kuainiu.io/collection/799-okr"
+        }
+      ],
+      "textPreview": "内部 collection 链接，需转成 public/dashboard UUID 后才能巡检。"
+    },
+    {
+      "id": 2,
+      "title": "业务概览-核心链路准实时监控",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/dashboard/462?date_filter=past1days~",
+          "url": "https://data.kuainiu.io/dashboard/462?date_filter=past1days~"
+        }
+      ],
+      "textPreview": "内部 dashboard 链接，需转成 public/dashboard UUID 后才能巡检。"
+    },
+    {
+      "id": 3,
+      "title": "投放获客-新客转化率:注册~放款",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/collection/909",
+          "url": "https://data.kuainiu.io/collection/909"
+        }
+      ],
+      "textPreview": "内部 collection 链接，需转成 public/dashboard UUID 后才能巡检。"
+    },
+    {
+      "id": 4,
+      "title": "营销活动-营销数据统计",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/collection/190",
+          "url": "https://data.kuainiu.io/collection/190"
+        }
+      ],
+      "textPreview": "内部 collection 链接，需转成 public/dashboard UUID 后才能巡检。"
+    },
+    {
+      "id": 5,
+      "title": "营销活动-营销数据统计-NEW_营销过程数据统计",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/dashboard/994",
+          "url": "https://data.kuainiu.io/dashboard/994?%25E4%25BE%259B%25E5%25BA%2594%25E5%2595%2586=&%25E5%2585%25A5%25E5%25BA%2593%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=API%E5%8F%AC%E5%9B%9E&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E9%A6%96%E8%B4%B7&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E7%BB%AD%E8%B4%B7&%25E5%2590%258D%25E5%258D%2595%25E4%25BA%258C%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=&%25E5%2590%258D%25E5%258D%2595code=&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E6%25A8%25A1%25E5%259E%258B%25E5%2588%2586=&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=fox&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=hubble&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=TMK&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=SMS_IVR&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=SMS&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=PURE&%25E8%25BD%25AC%25E5%258C%2596%25E8%258A%2582%25E7%2582%25B9=%E9%BB%98%E8%AE%A4&app="
+        }
+      ],
+      "textPreview": "内部 dashboard 链接，需转成 public/dashboard UUID 后才能巡检。"
+    },
+    {
+      "id": 6,
+      "title": "营销活动-营销数据统计-NEW_营销结果数据统计",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/dashboard/993",
+          "url": "https://data.kuainiu.io/dashboard/993?%25E5%2585%25A5%25E5%25BA%2593%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=&%25E5%2590%258D%25E5%258D%2595%25E4%25BA%258C%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=&%25E5%2590%258D%25E5%258D%2595code=&%25E5%25AF%25B9%25E7%2585%25A7%25E7%25BB%2584%25E7%259A%2584%25E9%2580%2589%25E6%258B%25A9%25E6%25A0%2587%25E5%2587%2586=30%E5%A4%A9%E7%A7%BB%E5%8A%A8%E5%B9%B3%E5%9D%87%E5%80%BC&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E6%25A8%25A1%25E5%259E%258B%25E5%2588%2586=&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=fox&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=TMK&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=SMS_IVR&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=SMS&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=PURE&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=TMK&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=SMS_IVR&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=SMS&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=PURE&app="
+        }
+      ],
+      "textPreview": "内部 dashboard 链接，需转成 public/dashboard UUID 后才能巡检。"
+    },
+    {
+      "id": 7,
+      "title": "资产管理-放款统计",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/collection/879",
+          "url": "https://data.kuainiu.io/collection/879"
+        }
+      ],
+      "textPreview": "内部 collection 链接，需转成 public/dashboard UUID 后才能巡检。"
+    },
+    {
+      "id": 8,
+      "title": "资产管理-每期逾期率by日期",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/collection/596-by",
+          "url": "https://data.kuainiu.io/collection/596-by"
+        }
+      ],
+      "textPreview": "内部 collection 链接，需转成 public/dashboard UUID 后才能巡检。"
+    },
+    {
+      "id": 9,
+      "title": "贷后催收-核心指标概览",
+      "type": "metabase-source",
+      "datasource": "metabase",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/collection/601",
+          "url": "https://data.kuainiu.io/collection/601"
+        }
+      ],
+      "textPreview": "内部 collection 链接，需转成 public/dashboard UUID 后才能巡检。"
+    }
+  ]
 }

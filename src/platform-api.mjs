@@ -227,8 +227,15 @@ export function createPlatformApi({
     },
 
     async getInventory(filters = {}) {
-      const inventory = await readJsonFile(resolve("inventory"), { dashboards: [] });
-      return filterInventory(inventory, filters);
+      const [countries, inventory] = await Promise.all([
+        readJsonFile(resolve("countries"), { countries: [] }),
+        readJsonFile(resolve("inventory"), { dashboards: [] }),
+      ]);
+      const filtered = filterInventory(inventory, filters);
+      return {
+        ...filtered,
+        panelSources: await loadPanelSources(rootDir, countries.countries || [], filters),
+      };
     },
 
     async getRulesConfig() {
@@ -1013,6 +1020,48 @@ function filterInventory(inventory, filters = {}) {
     dashboardCount: dashboards.length,
     totalCardCount: dashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0),
   };
+}
+
+async function loadPanelSources(rootDir, countries, filters = {}) {
+  const selectedCountryCode = String(filters.countryCode || "").trim();
+  const targetCountries = selectedCountryCode
+    ? countries.filter((country) => country.code === selectedCountryCode)
+    : countries;
+  const sources = [];
+
+  for (const country of targetCountries) {
+    const filePath = panelSourceFilePath(rootDir, country.code);
+    const source = await readJsonFile(filePath, {});
+    if (!source || !Array.isArray(source.panels) || source.panels.length === 0) {
+      continue;
+    }
+
+    sources.push({
+      countryCode: country.code,
+      countryName: country.name,
+      timezone: country.timezone,
+      sourceTitle: source.title || "",
+      sourceUid: source.uid || "",
+      panels: source.panels.map((panel) => ({
+        id: panel.id,
+        title: panel.title || "-",
+        type: panel.type || "",
+        datasource: panel.datasource || "",
+        targetCount: Number(panel.targetCount || 0),
+        textPreview: panel.textPreview || "",
+        links: Array.isArray(panel.links) ? panel.links : [],
+      })),
+    });
+  }
+
+  return sources;
+}
+
+function panelSourceFilePath(rootDir, countryCode) {
+  if (countryCode === "INE") {
+    return path.join(rootDir, "config/discovered-panels.json");
+  }
+  return path.join(rootDir, `config/discovered-panels.${String(countryCode || "").toLowerCase()}.json`);
 }
 
 function summarizeCountries(countries, inventory, result) {
