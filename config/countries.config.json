@@ -44,6 +44,15 @@
       "dataQualityDashboardUrl": "https://sr-monitor.mxgbus.com/d/cemqtffvojgu8a/d9b4ae1d-a69c-56ff-8302-fb85eea54d57?orgId=1&refresh=5m",
       "monitorConfigFile": "./config/monitor.mx.json",
       "status": "ready"
+    },
+    {
+      "code": "CN",
+      "name": "中国",
+      "timezone": "Asia/Shanghai",
+      "grafanaDashboardUrl": "",
+      "dataQualityDashboardUrl": "",
+      "monitorConfigFile": "./config/monitor.cn.json",
+      "status": "ready"
     }
   ]
 }

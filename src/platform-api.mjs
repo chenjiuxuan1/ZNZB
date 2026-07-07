@@ -578,7 +578,7 @@ function inferCountryNotifyChannel(mergedConfig, incomingConfig, previousSchedul
   if (mergedConfig.notifyChannel) {
     return normalizeNotifyChannel(mergedConfig.notifyChannel);
   }
-  if (mergedConfig.botId || previousSchedule.botId) {
+  if (mergedConfig.botId) {
     return "tv";
   }
   return normalizeNotifyChannel(previousSchedule.notifyChannel || DEFAULT_BATCH_SCHEDULE.notifyChannel);

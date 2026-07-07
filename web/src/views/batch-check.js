@@ -102,13 +102,18 @@ export function renderBatchCheck(root) {
     checkbox.addEventListener("change", (event) => {
       const row = event.target.closest(".schedule-country-row");
       updateScheduleCountryRowState(row, event.target.checked);
+      updateScheduleOverviewFromDom(root);
     });
+  });
+  root.querySelector("#batch-schedule-enabled")?.addEventListener("change", () => {
+    updateScheduleOverviewFromDom(root);
   });
   root.querySelector("#batch-schedule-daily-run-times")?.addEventListener("input", (event) => {
     const preview = root.querySelector("#batch-schedule-time-preview");
     if (preview) {
       preview.innerHTML = renderTimeChips(parseDailyRunTimes(event.target.value));
     }
+    updateScheduleOverviewFromDom(root);
   });
   root.querySelector("#batch-history-country")?.addEventListener("change", async (event) => {
     state.batchHistoryFilters.countryCode = event.target.value;
@@ -289,7 +294,7 @@ function renderBatchSchedulePanel() {
           <span class="switch-track"></span>
           <span>
             <strong>自动触发</strong>
-            <small>${enabled ? "已开启，到点会自动巡检已上线国家" : "已关闭，不会自动触发；仍可手动测试"}</small>
+            <small id="batch-schedule-enabled-copy">${enabled ? "已开启，到点会自动巡检已上线国家" : "已关闭，不会自动触发；仍可手动测试"}</small>
           </span>
         </label>
         <div class="field">
@@ -327,20 +332,20 @@ function renderScheduleOverview(schedule) {
   return `
     <div class="schedule-overview">
       <div class="info-item">
-        <span>总开关</span>
-        <strong><span class="badge ${schedule.enabled ? "ok" : "danger"}">${schedule.enabled ? "已开启" : "已关闭"}</span></strong>
+        <span>自动触发状态</span>
+        <strong><span id="schedule-overview-enabled-badge" class="badge ${schedule.enabled ? "ok" : "danger"}">${schedule.enabled ? "已开启" : "已关闭"}</span></strong>
       </div>
       <div class="info-item">
         <span>已上线国家</span>
-        <strong>${escapeHtml(enabledCountries.length)} / ${escapeHtml(totalCountries)}</strong>
+        <strong id="schedule-overview-country-count">${escapeHtml(enabledCountries.length)} / ${escapeHtml(totalCountries)}</strong>
       </div>
       <div class="info-item">
         <span>下次运行</span>
-        <strong>${escapeHtml(schedule.enabled ? formatDisplayTime(schedule.nextRunAt) : "未启用")}</strong>
+        <strong id="schedule-overview-next-run">${escapeHtml(schedule.enabled ? formatDisplayTime(schedule.nextRunAt) : "未启用")}</strong>
       </div>
       <div class="info-item">
         <span>每日定点</span>
-        <strong>${escapeHtml(formatDailyRunTimes(schedule))} 北京时间</strong>
+        <strong id="schedule-overview-run-times">${escapeHtml(formatDailyRunTimes(schedule))} 北京时间</strong>
       </div>
       <div class="info-item">
         <span>上次运行</span>
@@ -528,6 +533,7 @@ function renderCountryScheduleConfig(schedule) {
             const selectedDashboardUuid = Array.isArray(config.dashboardUuids) ? config.dashboardUuids[0] || "" : "";
             const notifyChannel = config.notifyChannel || "knBot";
             const rowEnabled = Boolean(config.enabled);
+            const dashboardCount = countryDashboards.length;
             return `
               <article class="schedule-country-row schedule-country-card ${rowEnabled ? "is-enabled" : ""}" data-country-code="${escapeHtml(country.code || "")}" data-notify-channel="${escapeHtml(notifyChannel)}">
                 <div class="schedule-country-card-header">
@@ -547,6 +553,7 @@ function renderCountryScheduleConfig(schedule) {
                     <option value="" ${selectedDashboardUuid ? "" : "selected"}>该国家告警巡检看板</option>
                     ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboardUuid === dashboard.uuid ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
                   </select>
+                  <small class="schedule-dashboard-hint">${dashboardCount ? `当前清单 ${escapeHtml(dashboardCount)} 个看板；不选具体看板时扫描全部。` : "当前暂无该国家公共看板清单，请先补充看板后再上线。"} </small>
                 </label>
                 <label>
                   通知方式
@@ -637,6 +644,40 @@ function updateScheduleCountryRowState(row, enabled) {
   badge.classList.toggle("ok", enabled);
   badge.classList.toggle("danger", !enabled);
   row.classList.toggle("is-enabled", enabled);
+}
+
+function updateScheduleOverviewFromDom(root) {
+  const enabled = Boolean(root.querySelector("#batch-schedule-enabled")?.checked);
+  const enabledBadge = root.querySelector("#schedule-overview-enabled-badge");
+  if (enabledBadge) {
+    enabledBadge.textContent = enabled ? "已开启" : "已关闭";
+    enabledBadge.classList.toggle("ok", enabled);
+    enabledBadge.classList.toggle("danger", !enabled);
+  }
+
+  const enabledCopy = root.querySelector("#batch-schedule-enabled-copy");
+  if (enabledCopy) {
+    enabledCopy.textContent = enabled ? "已开启，到点会自动巡检已上线国家" : "已关闭，不会自动触发；仍可手动测试";
+  }
+
+  const countryCount = root.querySelector("#schedule-overview-country-count");
+  if (countryCount) {
+    const rows = [...root.querySelectorAll(".schedule-country-row")];
+    const enabledRows = rows.filter((row) => row.querySelector(".schedule-country-enabled")?.checked);
+    countryCount.textContent = `${enabledRows.length} / ${rows.length}`;
+  }
+
+  const timeInput = root.querySelector("#batch-schedule-daily-run-times");
+  const runTimes = root.querySelector("#schedule-overview-run-times");
+  if (timeInput && runTimes) {
+    const times = parseDailyRunTimes(timeInput.value);
+    runTimes.textContent = `${(times.length ? times : ["09:00"]).join(", ")} 北京时间`;
+  }
+
+  const nextRun = root.querySelector("#schedule-overview-next-run");
+  if (nextRun) {
+    nextRun.textContent = enabled ? "保存后重新计算" : "未启用";
+  }
 }
 
 function parseDailyRunTimes(value) {
