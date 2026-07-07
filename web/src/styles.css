@@ -307,6 +307,118 @@ th {
   margin-bottom: 14px;
 }
 
+.schedule-title-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.schedule-title-row .section-title {
+  margin-bottom: 4px;
+}
+
+.schedule-title-row .button-group {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.schedule-config-card {
+  align-items: start;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(320px, 1.2fr) repeat(2, minmax(180px, 0.7fr));
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.switch-field {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  min-height: 68px;
+  padding: 10px 12px;
+}
+
+.switch-field input,
+.mini-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-track,
+.mini-switch span {
+  background: #cbd5e1;
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 24px;
+  position: relative;
+  transition: background 0.16s ease;
+  width: 44px;
+}
+
+.switch-track::after,
+.mini-switch span::after {
+  background: #fff;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.22);
+  content: "";
+  height: 18px;
+  left: 3px;
+  position: absolute;
+  top: 3px;
+  transition: transform 0.16s ease;
+  width: 18px;
+}
+
+.switch-field input:checked + .switch-track,
+.mini-switch input:checked + span {
+  background: #16a34a;
+}
+
+.switch-field input:checked + .switch-track::after,
+.mini-switch input:checked + span::after {
+  transform: translateX(20px);
+}
+
+.switch-field strong,
+.switch-field small {
+  display: block;
+}
+
+.switch-field small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 3px;
+}
+
+.time-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 6px;
+}
+
+.time-chip {
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  border-radius: 999px;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 3px 9px;
+}
+
 .advanced-form {
   margin-top: 12px;
 }
@@ -342,7 +454,8 @@ th {
   width: 16px;
 }
 
-.schedule-table input {
+.schedule-table input,
+.schedule-country-grid input {
   min-width: 0;
   width: 100%;
 }
@@ -387,6 +500,94 @@ th {
 .schedule-country-row[data-notify-channel="knBot"] .tv-target-field,
 .schedule-country-row[data-notify-channel="tv"] .kn-target-field {
   display: none;
+}
+
+.schedule-country-section {
+  margin-top: 14px;
+}
+
+.schedule-country-section .compact-header {
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.schedule-country-section .compact-header p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.schedule-country-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.schedule-country-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.schedule-country-card.is-enabled {
+  border-color: #bbf7d0;
+  box-shadow: 0 0 0 3px rgb(187 247 208 / 0.26);
+}
+
+.schedule-country-card-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.schedule-country-card-header strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.schedule-country-card label {
+  color: #475467;
+  display: grid;
+  font-size: 12px;
+  gap: 5px;
+}
+
+.schedule-country-card select,
+.schedule-country-card input {
+  font-size: 14px;
+}
+
+.mini-switch {
+  align-items: center;
+  color: #475467;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.mini-switch span {
+  height: 22px;
+  width: 40px;
+}
+
+.mini-switch span::after {
+  height: 16px;
+  width: 16px;
+}
+
+.mini-switch input:checked + span::after {
+  transform: translateX(18px);
+}
+
+.mini-switch em {
+  font-style: normal;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .muted-inline {
@@ -980,8 +1181,22 @@ th {
   .sandbox-layout,
   .notify-layout,
   .card-row,
-  .info-grid {
+  .info-grid,
+  .schedule-overview,
+  .schedule-config-card,
+  .schedule-country-grid {
     grid-template-columns: 1fr;
+  }
+  .schedule-title-row,
+  .schedule-country-card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .schedule-title-row .button-group {
+    width: 100%;
+  }
+  .schedule-title-row .button-group button {
+    flex: 1;
   }
   .wide-toolbar label,
   .wide-toolbar select {

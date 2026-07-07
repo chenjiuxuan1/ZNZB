@@ -104,6 +104,12 @@ export function renderBatchCheck(root) {
       updateScheduleCountryRowState(row, event.target.checked);
     });
   });
+  root.querySelector("#batch-schedule-daily-run-times")?.addEventListener("input", (event) => {
+    const preview = root.querySelector("#batch-schedule-time-preview");
+    if (preview) {
+      preview.innerHTML = renderTimeChips(parseDailyRunTimes(event.target.value));
+    }
+  });
   root.querySelector("#batch-history-country")?.addEventListener("change", async (event) => {
     state.batchHistoryFilters.countryCode = event.target.value;
     await reloadBatchHistory(root);
@@ -266,17 +272,31 @@ function renderBatchSchedulePanel() {
   const status = state.batchScheduleStatus;
   return `
     <div class="sub-panel schedule-panel">
-      <h2 class="panel-title section-title">定时巡检</h2>
+      <div class="schedule-title-row">
+        <div>
+          <h2 class="panel-title section-title">定时巡检</h2>
+          <p class="muted">按国家配置自动巡检。总开关控制是否到点自动运行，国家开关控制该国家是否参与。</p>
+        </div>
+        <div class="button-group">
+          <button id="save-batch-schedule" class="secondary">保存配置</button>
+          <button id="run-batch-schedule-now" class="primary">立即运行测试</button>
+        </div>
+      </div>
       ${renderScheduleOverview(schedule)}
-      <div class="form-grid">
-        <label class="checkbox-field">
+      <div class="schedule-config-card">
+        <label class="switch-field">
           <input id="batch-schedule-enabled" type="checkbox" ${enabled ? "checked" : ""}>
-          <span>自动触发总开关</span>
+          <span class="switch-track"></span>
+          <span>
+            <strong>自动触发</strong>
+            <small>${enabled ? "已开启，到点会自动巡检已上线国家" : "已关闭，不会自动触发；仍可手动测试"}</small>
+          </span>
         </label>
-        <div class="field wide-form-field">
+        <div class="field">
           <label>每日运行时间（北京时间，可多个）</label>
           <input id="batch-schedule-daily-run-times" value="${escapeHtml(formatDailyRunTimes(schedule))}" placeholder="例如：09:00, 14:30, 20:00">
-          <small class="muted">多个时间用逗号、空格或换行分隔；服务每天会在这些北京时间点各运行一次。</small>
+          <div id="batch-schedule-time-preview" class="time-chip-row">${renderTimeChips(parseDailyRunTimes(formatDailyRunTimes(schedule)))}</div>
+          <small class="muted">多个时间用逗号、空格或换行分隔；服务每天会在这些时间点各运行一次。</small>
         </div>
         <div class="field">
           <label>下次运行</label>
@@ -287,19 +307,14 @@ function renderBatchSchedulePanel() {
           <input value="${escapeHtml(formatDisplayTime(schedule.lastRunAt))}" readonly>
         </div>
       </div>
-      <p class="muted">“自动触发总开关”控制服务是否到点自动跑定时巡检：关闭后所有国家都不会自动触发，但仍可点击“立即运行测试”。取消某个国家的勾选并保存，只会下线该国家。</p>
       <div class="schedule-help">
-        <strong>KN Chat 接收目标说明</strong>
-        <span>选择 KN Chat 机器人时，只填写接收人邮箱即可，服务会先调用 resolveUserId 把邮箱解析为 user_id，再私聊发送；多个邮箱用逗号分隔。选择 TV webhook 时，才需要填写 TV bot_id 和提醒人 mentions。</span>
+        <strong>怎么下线</strong>
+        <span>关闭“自动触发”并保存，会停止所有到点自动巡检；关闭某个国家卡片里的“上线”并保存，只会下线该国家。选择 KN Chat 机器人时只填接收人邮箱；选择 TV webhook 时填写 TV bot_id 和提醒人。</span>
       </div>
       ${renderCountryScheduleConfig(schedule)}
       ${schedule.lastResult ? renderScheduleLastResult(schedule.lastResult) : ""}
       ${schedule.lastError ? `<div class="sandbox-status error"><strong>上次定时运行失败</strong><span>${escapeHtml(schedule.lastError)}</span></div>` : ""}
       ${renderBatchScheduleStatus(status)}
-      <div class="button-group">
-        <button id="save-batch-schedule" class="secondary">保存定时巡检</button>
-        <button id="run-batch-schedule-now" class="primary">立即运行测试</button>
-      </div>
       ${renderBatchHistoryPanel()}
     </div>
   `;
@@ -498,20 +513,12 @@ function renderCountryScheduleConfig(schedule) {
   const dashboards = state.inventory?.dashboards || [];
   const configs = new Map((schedule.countryConfigs || []).map((item) => [item.countryCode, item]));
   return `
-    <div class="table-wrap schedule-table">
-      <table>
-        <thead>
-          <tr>
-            <th>启用</th>
-            <th>状态</th>
-            <th>国家</th>
-            <th>看板范围</th>
-            <th>通知方式</th>
-            <th>接收目标</th>
-            <th>提醒人</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div class="schedule-country-section">
+      <div class="detail-header compact-header">
+        <h2 class="panel-title">国家定时配置</h2>
+        <p class="muted">每个国家可以独立上下线、选择看板范围和通知方式。</p>
+      </div>
+      <div class="schedule-country-grid">
           ${countries.map((country) => {
             const config = configs.get(country.code) || {};
             const countryDashboards = dashboards.filter((dashboard) => {
@@ -522,37 +529,49 @@ function renderCountryScheduleConfig(schedule) {
             const notifyChannel = config.notifyChannel || "knBot";
             const rowEnabled = Boolean(config.enabled);
             return `
-              <tr class="schedule-country-row" data-country-code="${escapeHtml(country.code || "")}" data-notify-channel="${escapeHtml(notifyChannel)}">
-                <td><input class="schedule-country-enabled" type="checkbox" ${rowEnabled ? "checked" : ""}></td>
-                <td><span class="badge schedule-country-state ${rowEnabled ? "ok" : "danger"}">${rowEnabled ? "已上线" : "未上线"}</span></td>
-                <td>${escapeHtml(countryLabel(country, countries))}</td>
-                <td>
+              <article class="schedule-country-row schedule-country-card ${rowEnabled ? "is-enabled" : ""}" data-country-code="${escapeHtml(country.code || "")}" data-notify-channel="${escapeHtml(notifyChannel)}">
+                <div class="schedule-country-card-header">
+                  <div>
+                    <strong>${escapeHtml(countryLabel(country, countries))}</strong>
+                    <span class="badge schedule-country-state ${rowEnabled ? "ok" : "danger"}">${rowEnabled ? "已上线" : "未上线"}</span>
+                  </div>
+                  <label class="mini-switch">
+                    <input class="schedule-country-enabled" type="checkbox" ${rowEnabled ? "checked" : ""}>
+                    <span></span>
+                    <em>上线</em>
+                  </label>
+                </div>
+                <label>
+                  看板范围
                   <select class="schedule-country-dashboard-uuid">
                     <option value="" ${selectedDashboardUuid ? "" : "selected"}>该国家告警巡检看板</option>
                     ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboardUuid === dashboard.uuid ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
                   </select>
-                </td>
-                <td>
+                </label>
+                <label>
+                  通知方式
                   <select class="schedule-country-notify-channel">
                     <option value="knBot" ${notifyChannel === "knBot" ? "selected" : ""}>KN Chat 机器人</option>
                     <option value="tv" ${notifyChannel === "tv" ? "selected" : ""}>TV webhook</option>
                   </select>
-                </td>
-                <td>
-                  <div class="stacked-fields">
-                    <input class="schedule-country-recipient-emails kn-target-field" value="${escapeHtml(config.recipientEmails || "")}" placeholder="接收人邮箱，多个用逗号分隔">
-                    <input class="schedule-country-bot-id tv-target-field" value="${escapeHtml(config.botId || "")}" placeholder="TV bot_id">
-                  </div>
-                </td>
-                <td>
-                  <input class="schedule-country-mentions tv-target-field" value="${escapeHtml(config.mentions || "")}" placeholder="TV 提醒人邮箱，多个用逗号分隔">
-                  <span class="kn-target-field muted-inline">KN Chat 按邮箱私聊，无需填写提醒人</span>
-                </td>
-              </tr>
+                </label>
+                <label class="kn-target-field">
+                  接收人邮箱
+                  <input class="schedule-country-recipient-emails" value="${escapeHtml(config.recipientEmails || "")}" placeholder="多个邮箱用逗号分隔">
+                </label>
+                <label class="tv-target-field">
+                  TV bot_id
+                  <input class="schedule-country-bot-id" value="${escapeHtml(config.botId || "")}" placeholder="TV bot_id">
+                </label>
+                <label class="tv-target-field">
+                  TV 提醒人
+                  <input class="schedule-country-mentions" value="${escapeHtml(config.mentions || "")}" placeholder="多个邮箱用逗号分隔">
+                </label>
+                <p class="kn-target-field muted-inline">KN Chat 会按邮箱私聊，无需填写提醒人。</p>
+              </article>
             `;
           }).join("")}
-        </tbody>
-      </table>
+      </div>
     </div>
   `;
 }
@@ -617,6 +636,7 @@ function updateScheduleCountryRowState(row, enabled) {
   badge.textContent = enabled ? "已上线" : "未上线";
   badge.classList.toggle("ok", enabled);
   badge.classList.toggle("danger", !enabled);
+  row.classList.toggle("is-enabled", enabled);
 }
 
 function parseDailyRunTimes(value) {
@@ -632,6 +652,11 @@ function formatDailyRunTimes(schedule = {}) {
     ? schedule.dailyRunTimes
     : [schedule.dailyRunTime || "09:00"];
   return parseDailyRunTimes(times.join(",")).join(", ") || "09:00";
+}
+
+function renderTimeChips(times) {
+  const safeTimes = times.length ? times : ["09:00"];
+  return safeTimes.map((time) => `<span class="time-chip">${escapeHtml(time)}</span>`).join("");
 }
 
 function clearBatchFeedback() {
