@@ -37,6 +37,7 @@ const DEFAULT_BATCH_SCHEDULE = {
   botId: "",
   botToken: "",
   chatId: "",
+  recipientEmails: "",
   mentions: "",
   countryConfigs: [],
   nextRunAt: null,
@@ -112,8 +113,8 @@ export function createPlatformApi({
           if (!countryConfig.botToken) {
             throw badRequest("KN Bot Token is required", [`${countryConfig.countryCode} 启用定时巡检前请填写 KN Chat 机器人 Token。`]);
           }
-          if (!countryConfig.chatId) {
-            throw badRequest("KN Chat chat_id is required", [`${countryConfig.countryCode} 启用定时巡检前请填写接收人或群聊 chat_id。`]);
+          if (!countryConfig.chatId && !countryConfig.recipientEmails) {
+            throw badRequest("KN Chat recipient is required", [`${countryConfig.countryCode} 启用定时巡检前请填写接收人邮箱或群聊 chat_id。`]);
           }
           continue;
         }
@@ -279,6 +280,7 @@ export function createPlatformApi({
             channel: normalizeNotifyChannel(body.notifyChannel || "tv"),
             botId: String(body.botId || "").trim(),
             chatId: String(body.chatId || "").trim(),
+            recipientEmails: String(body.recipientEmails || "").trim(),
             mentions: normalizeMentions(body.mentions),
             sentAt: null,
           },
@@ -341,6 +343,7 @@ export function createPlatformApi({
               botId: countryConfig.botId,
               botToken: countryConfig.botToken,
               chatId: countryConfig.chatId,
+              recipientEmails: countryConfig.recipientEmails,
               mentions: countryConfig.mentions,
             });
             countryRuns.push({
@@ -497,11 +500,12 @@ function buildBatchNotifyAlerts(body, configuredAlerts, notifyChannel) {
   if (isKnBotChannel(notifyChannel)) {
     const botToken = String(body.botToken || "").trim();
     const chatId = String(body.chatId || "").trim();
+    const recipientEmails = String(body.recipientEmails || "").trim();
     if (!botToken) {
       throw badRequest("KN Bot Token is required", ["请填写 KN Chat 机器人 Token。"]);
     }
-    if (!chatId) {
-      throw badRequest("KN Chat chat_id is required", ["请填写接收人或群聊 chat_id。"]);
+    if (!chatId && !recipientEmails) {
+      throw badRequest("KN Chat recipient is required", ["请填写接收人邮箱或群聊 chat_id。"]);
     }
     return {
       ...(configuredAlerts || {}),
@@ -509,6 +513,7 @@ function buildBatchNotifyAlerts(body, configuredAlerts, notifyChannel) {
       botApiBaseUrl: String(body.botApiBaseUrl || configuredAlerts?.botApiBaseUrl || "").trim(),
       botToken,
       chatId,
+      recipientEmails,
       mentions,
     };
   }
@@ -548,6 +553,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
     botId: String(input.botId ?? previousSchedule.botId ?? "").trim(),
     botToken: String(input.botToken ?? previousSchedule.botToken ?? "").trim(),
     chatId: String(input.chatId ?? previousSchedule.chatId ?? "").trim(),
+    recipientEmails: String(input.recipientEmails ?? previousSchedule.recipientEmails ?? "").trim(),
     mentions: normalizeMentions(input.mentions ?? previousSchedule.mentions).join(","),
     countryConfigs,
     lastRunAt: previousSchedule.lastRunAt || null,
@@ -616,6 +622,7 @@ function normalizeCountryScheduleConfigs(inputConfigs, previousSchedule, countri
       botId: String(merged.botId ?? previousSchedule.botId ?? "").trim(),
       botToken: String(merged.botToken ?? previousSchedule.botToken ?? "").trim(),
       chatId: String(merged.chatId ?? previousSchedule.chatId ?? "").trim(),
+      recipientEmails: String(merged.recipientEmails ?? previousSchedule.recipientEmails ?? "").trim(),
       mentions: normalizeMentions(merged.mentions ?? previousSchedule.mentions).join(","),
     };
   });

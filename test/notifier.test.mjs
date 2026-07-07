@@ -85,6 +85,57 @@ test("notifyText sends KN Chat Bot messages to each chat id", async () => {
   }
 });
 
+test("notifyText resolves KN Chat user ids from recipient emails", async () => {
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (String(url).endsWith("/resolveUserId")) {
+      assert.equal(options.method, "POST");
+      assert.equal(options.body instanceof URLSearchParams, true);
+      assert.equal(options.body.get("email"), "owner@kn.group");
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        async text() {
+          return JSON.stringify({ ok: true, result: { user_id: 1571267276 } });
+        },
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      async text() {
+        return JSON.stringify({ ok: true, result: { message_id: 1 } });
+      },
+    };
+  };
+
+  try {
+    const result = await notifyText(
+      {
+        alerts: {
+          channel: "knBot",
+          botToken: "token-001",
+          recipientEmails: "owner@kn.group",
+        },
+      },
+      "测试消息",
+    );
+
+    assert.equal(result.sent, true);
+    assert.deepEqual(result.chatIds, ["1571267276"]);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].url, "https://bot.kn.chat/bottoken-001/resolveUserId");
+    assert.equal(calls[1].url, "https://bot.kn.chat/bottoken-001/sendMessage");
+    assert.equal(JSON.parse(calls[1].options.body).chat_id, "1571267276");
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("buildPublicCheckMessage includes dashboard, context, card and exact message", () => {
   const message = buildPublicCheckMessage(
     {

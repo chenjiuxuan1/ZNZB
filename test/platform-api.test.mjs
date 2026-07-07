@@ -407,7 +407,7 @@ test("platform api supports scheduled KN Chat Bot notifications", async () => {
         dashboardUuids: ["dash-1"],
         notifyChannel: "knBot",
         botToken: "token-001",
-        chatId: "10001",
+        recipientEmails: "owner@kn.group",
         mentions: "owner@kn.group",
       },
     ],
@@ -420,7 +420,7 @@ test("platform api supports scheduled KN Chat Bot notifications", async () => {
   assert.equal(captured.length, 2);
   assert.equal(captured[0].config.alerts.channel, "knBot");
   assert.equal(captured[0].config.alerts.botToken, "token-001");
-  assert.equal(captured[0].config.alerts.chatId, "10001");
+  assert.equal(captured[0].config.alerts.recipientEmails, "owner@kn.group");
   assert.deepEqual(captured[0].config.alerts.mentions, ["owner@kn.group"]);
 });
 

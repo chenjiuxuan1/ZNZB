@@ -67,12 +67,18 @@ export async function notifyText(config, message, metadata = {}) {
 
 async function notifyKnBot(alertConfig, message) {
   const botToken = resolveEnvString(alertConfig.botToken || alertConfig.token);
-  const chatIds = normalizeChatIds(alertConfig.chatIds || alertConfig.chatId);
+  const apiBaseUrl = resolveEnvString(alertConfig.botApiBaseUrl || "https://bot.kn.chat").replace(/\/+$/, "");
+  const directChatIds = normalizeChatIds(alertConfig.chatIds || alertConfig.chatId);
+  const resolvedChatIds = await resolveKnBotEmailChatIds({
+    apiBaseUrl,
+    botToken,
+    emails: alertConfig.recipientEmails || alertConfig.emails,
+  });
+  const chatIds = [...new Set([...directChatIds, ...resolvedChatIds])];
   if (!botToken || chatIds.length === 0) {
     return { sent: false, reason: "kn bot not configured" };
   }
 
-  const apiBaseUrl = resolveEnvString(alertConfig.botApiBaseUrl || "https://bot.kn.chat").replace(/\/+$/, "");
   const url = `${apiBaseUrl}/bot${botToken}/sendMessage`;
   const text = appendMentionText(message, alertConfig.mentions);
   const results = [];
@@ -104,6 +110,43 @@ async function notifyKnBot(alertConfig, message) {
     chatIds,
     results,
   };
+}
+
+async function resolveKnBotEmailChatIds({ apiBaseUrl, botToken, emails }) {
+  if (!botToken) {
+    return [];
+  }
+
+  const normalizedEmails = normalizeEmailRecipients(emails);
+  if (normalizedEmails.length === 0) {
+    return [];
+  }
+
+  const url = `${apiBaseUrl}/bot${botToken}/resolveUserId`;
+  const chatIds = [];
+  for (const email of normalizedEmails) {
+    const form = new URLSearchParams();
+    form.set("email", email);
+    const response = await fetchWithRetry(url, {
+      method: "POST",
+      body: form,
+    });
+    const responseText = await response.text().catch(() => "");
+    let responseJson = {};
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch {
+      responseJson = {};
+    }
+    if (!response.ok || responseJson.ok === false || !responseJson.result?.user_id) {
+      throw new Error(
+        `KN Chat Bot resolveUserId failed for ${email} (${response.status} ${response.statusText}): ${responseText.slice(0, 240)}`,
+      );
+    }
+    chatIds.push(String(responseJson.result.user_id));
+  }
+
+  return chatIds;
 }
 
 async function fetchWithRetry(url, options, retries = 3) {
@@ -988,6 +1031,19 @@ function normalizeAlertChannel(channel) {
 }
 
 function normalizeChatIds(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (!value) {
+    return [];
+  }
+  return String(value)
+    .split(/[\n,，;；]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeEmailRecipients(value) {
   if (Array.isArray(value)) {
     return value.map((item) => String(item).trim()).filter(Boolean);
   }
