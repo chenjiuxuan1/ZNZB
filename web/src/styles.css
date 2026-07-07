@@ -335,6 +335,21 @@ th {
   width: 16px;
 }
 
+.schedule-table input {
+  min-width: 0;
+  width: 100%;
+}
+
+.schedule-table th:first-child,
+.schedule-table td:first-child {
+  text-align: center;
+  width: 64px;
+}
+
+.schedule-table td:first-child input {
+  width: auto;
+}
+
 .message-preview {
   min-height: 220px;
 }

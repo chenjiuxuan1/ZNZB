@@ -163,7 +163,7 @@ test("platform api runs scoped batch check", async () => {
   assert.ok(result.anomalyCount >= 1);
 });
 
-test("platform api scans every card for selected country even when maxCards is provided", async () => {
+test("platform api limits selected country scan by maxCards", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
     path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
@@ -207,8 +207,8 @@ test("platform api scans every card for selected country even when maxCards is p
     maxCards: 1,
   });
 
-  assert.equal(result.dashboardCount, 2);
-  assert.equal(result.checkedCardCount, 2);
+  assert.equal(result.dashboardCount, 1);
+  assert.equal(result.checkedCardCount, 1);
 });
 
 test("platform api runs scoped batch check and sends TV notification", async () => {
@@ -290,10 +290,17 @@ test("platform api saves batch schedule and runs it when due", async () => {
   const schedule = await api.saveBatchSchedule({
     enabled: true,
     intervalMinutes: 5,
-    countryCode: "INE",
     webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
-    botId: "tv-bot-001",
-    mentions: "owner@kn.group",
+    countryConfigs: [
+      {
+        countryCode: "INE",
+        enabled: true,
+        maxCards: 1,
+        webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+        botId: "tv-bot-001",
+        mentions: "owner@kn.group",
+      },
+    ],
   });
 
   assert.equal(schedule.enabled, true);
@@ -308,7 +315,8 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(due.ran, true);
   assert.equal(due.schedule.lastError, null);
   assert.equal(due.schedule.lastResult.anomalyCount, 1);
-  assert.equal(due.schedule.lastResult.notification.sent, true);
+  assert.equal(due.schedule.lastResult.successCount, 1);
+  assert.equal(due.schedule.lastResult.runs[0].result.notification.sent, true);
   assert.equal(captured.length, 2);
   assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
 });

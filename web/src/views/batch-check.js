@@ -15,7 +15,7 @@ export function renderBatchCheck(root) {
     return isAllCountries || !selectedCountry || code === selectedCountry;
   });
   const selectedDashboard = countryDashboards.find((dashboard) => dashboard.uuid === state.selected.dashboardUuid) || null;
-  const selectedCardCount = countSelectedCards(countryDashboards, selectedDashboard);
+  const selectedCardCount = countSelectedCards(countryDashboards, selectedDashboard, state.batchMaxCards);
   const result = state.batchCheckResult;
 
   root.innerHTML = `
@@ -30,7 +30,7 @@ export function renderBatchCheck(root) {
     </div>
     <div class="notice">
       <strong>巡检范围</strong>
-      <span>选择国家后会扫描该国家清单里的全部已发现公共看板；选择“全部国家 + 该范围全部看板”即可一次巡检所有国家看板。</span>
+      <span>选择国家后会按卡片上限从该国家看板清单中巡检；选择单个看板时只巡检该看板内的卡片。</span>
     </div>
     <section class="panel batch-controls">
       <h2 class="panel-title">巡检范围</h2>
@@ -45,12 +45,16 @@ export function renderBatchCheck(root) {
         <label>
           看板范围
           <select id="batch-dashboard">
-            <option value="">该国家全部已发现看板</option>
+            <option value="">该国家全部看板</option>
             ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboard === dashboard ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
           </select>
         </label>
         <label>
-          本次完整巡检卡片数
+          巡检卡片上限
+          <input id="batch-max-cards" type="number" min="1" step="1" value="${escapeHtml(state.batchMaxCards || 20)}">
+        </label>
+        <label>
+          本次巡检卡片数
           <input id="batch-card-count" value="${escapeHtml(selectedCardCount)}" readonly>
         </label>
       </div>
@@ -87,11 +91,21 @@ export function renderBatchCheck(root) {
     clearBatchFeedback();
     renderBatchCheck(root);
   });
+  root.querySelector("#batch-max-cards")?.addEventListener("input", (event) => {
+    state.batchMaxCards = Math.max(1, Number(event.target.value || 20));
+    clearBatchFeedback();
+    renderBatchCheck(root);
+  });
   root.querySelector("#batch-webhook-url")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#batch-bot-id")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#batch-mentions")?.addEventListener("input", () => updateBatchNotifyConfigFromDom(root));
   root.querySelector("#save-batch-schedule")?.addEventListener("click", async () => {
     updateBatchNotifyConfigFromDom(root);
+    const payload = buildBatchSchedulePayload(root, {
+      countryCode: isAllCountries ? "" : state.selected.countryCode || selectedCountry,
+      dashboardUuid: state.selected.dashboardUuid || "",
+      maxCards: state.batchMaxCards || 20,
+    });
     state.batchScheduleStatus = {
       type: "loading",
       title: "正在保存定时巡检",
@@ -100,10 +114,7 @@ export function renderBatchCheck(root) {
     state.batchScheduleError = "";
     renderBatchCheck(root);
     try {
-      state.batchSchedule = await apiPut("/api/batch-schedule", buildBatchSchedulePayload(root, {
-        countryCode: isAllCountries ? "" : state.selected.countryCode || selectedCountry,
-        dashboardUuid: state.selected.dashboardUuid || "",
-      }));
+      state.batchSchedule = await apiPut("/api/batch-schedule", payload);
       state.batchScheduleStatus = {
         type: "success",
         title: state.batchSchedule.enabled ? "定时巡检已启用" : "定时巡检已关闭",
@@ -146,6 +157,7 @@ export function renderBatchCheck(root) {
       state.batchCheckResult = await apiPost("/api/batch-check-and-notify", {
         countryCode: isAllCountries ? "" : state.selected.countryCode || selectedCountry,
         dashboardUuid: state.selected.dashboardUuid || "",
+        maxCards: state.batchMaxCards || 20,
         webhookUrl: getBatchNotifyConfig().webhookUrl,
         botId: getBatchNotifyConfig().botId,
         mentions: getBatchNotifyConfig().mentions,
@@ -197,7 +209,8 @@ function renderBatchSchedulePanel() {
           <input value="${escapeHtml(formatDisplayTime(schedule.lastRunAt))}" readonly>
         </div>
       </div>
-      <p class="muted">定时任务会使用当前页面的国家、看板范围、TV webhook、bot_id 和提醒人；每次到期先巡检，只有发现异常才发送 TV。</p>
+      <p class="muted">定时任务按国家分别巡检。每个国家可以单独启用，并配置自己的 bot_id、提醒人和卡片上限；每次到期先巡检，只有发现异常才发送 TV。</p>
+      ${renderCountryScheduleConfig(schedule)}
       ${schedule.lastResult ? renderScheduleLastResult(schedule.lastResult) : ""}
       ${schedule.lastError ? `<div class="sandbox-status error"><strong>上次定时运行失败</strong><span>${escapeHtml(schedule.lastError)}</span></div>` : ""}
       ${renderBatchScheduleStatus(status)}
@@ -209,6 +222,14 @@ function renderBatchSchedulePanel() {
 }
 
 function renderScheduleLastResult(result) {
+  if (Array.isArray(result.runs)) {
+    return `
+      <div class="sandbox-status idle">
+        <strong>上次定时结果</strong>
+        <span>国家 ${escapeHtml(result.countryCount || 0)} 个，成功 ${escapeHtml(result.successCount || 0)} 个，失败 ${escapeHtml(result.failedCount || 0)} 个；检查 ${escapeHtml(result.checkedCardCount || 0)} 张卡片，异常 ${escapeHtml(result.anomalyCount || 0)} 条。</span>
+      </div>
+    `;
+  }
   const notification = result.notification || {};
   const notifyText = notification.sent
     ? `已发送 ${notification.sentMessages || 0} 条 TV 消息`
@@ -219,6 +240,40 @@ function renderScheduleLastResult(result) {
     <div class="sandbox-status idle">
       <strong>上次定时结果</strong>
       <span>检查 ${escapeHtml(result.checkedCardCount || 0)} 张卡片，异常 ${escapeHtml(result.anomalyCount || 0)} 条；${escapeHtml(notifyText)}。</span>
+    </div>
+  `;
+}
+
+function renderCountryScheduleConfig(schedule) {
+  const countries = state.countries?.countries || [];
+  const configs = new Map((schedule.countryConfigs || []).map((item) => [item.countryCode, item]));
+  return `
+    <div class="table-wrap schedule-table">
+      <table>
+        <thead>
+          <tr>
+            <th>启用</th>
+            <th>国家</th>
+            <th>卡片上限</th>
+            <th>TV bot_id</th>
+            <th>提醒人 mentions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${countries.map((country) => {
+            const config = configs.get(country.code) || {};
+            return `
+              <tr class="schedule-country-row" data-country-code="${escapeHtml(country.code || "")}">
+                <td><input class="schedule-country-enabled" type="checkbox" ${config.enabled ? "checked" : ""}></td>
+                <td>${escapeHtml(countryLabel(country, countries))}</td>
+                <td><input class="schedule-country-max-cards" type="number" min="1" step="1" value="${escapeHtml(config.maxCards || schedule.maxCards || 20)}"></td>
+                <td><input class="schedule-country-bot-id" value="${escapeHtml(config.botId || "")}" placeholder="该国家接收 bot_id"></td>
+                <td><input class="schedule-country-mentions" value="${escapeHtml(config.mentions || "")}" placeholder="邮箱，多个用逗号分隔"></td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -250,9 +305,18 @@ function buildBatchSchedulePayload(root, scope) {
     intervalMinutes: Number(root.querySelector("#batch-schedule-interval")?.value || 120),
     countryCode: scope.countryCode || "",
     dashboardUuid: scope.dashboardUuid || "",
+    maxCards: state.batchMaxCards || 20,
     webhookUrl: getBatchNotifyConfig().webhookUrl,
     botId: getBatchNotifyConfig().botId,
     mentions: getBatchNotifyConfig().mentions,
+    countryConfigs: [...root.querySelectorAll(".schedule-country-row")].map((row) => ({
+      countryCode: row.dataset.countryCode || "",
+      enabled: Boolean(row.querySelector(".schedule-country-enabled")?.checked),
+      maxCards: Number(row.querySelector(".schedule-country-max-cards")?.value || 20),
+      webhookUrl: getBatchNotifyConfig().webhookUrl,
+      botId: row.querySelector(".schedule-country-bot-id")?.value.trim() || "",
+      mentions: row.querySelector(".schedule-country-mentions")?.value.trim() || "",
+    })),
   };
 }
 
@@ -262,11 +326,11 @@ function clearBatchFeedback() {
   state.batchCheckError = "";
 }
 
-function countSelectedCards(countryDashboards, selectedDashboard) {
+function countSelectedCards(countryDashboards, selectedDashboard, maxCards = 20) {
   if (selectedDashboard) {
-    return selectedDashboard.cards?.length || 0;
+    return Math.min(selectedDashboard.cards?.length || 0, maxCards);
   }
-  return countryDashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0);
+  return Math.min(countryDashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0), maxCards);
 }
 
 function getBatchNotifyConfig() {
