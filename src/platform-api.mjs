@@ -30,7 +30,6 @@ const DEFAULT_BATCH_SCHEDULE = {
   intervalMinutes: 120,
   countryCode: "",
   dashboardUuid: "",
-  maxCards: 20,
   webhookUrl: DEFAULT_TV_WEBHOOK_URL,
   botId: "",
   mentions: "",
@@ -206,11 +205,9 @@ export function createPlatformApi({
       });
       const countryCode = String(body.countryCode || "").trim();
       const dashboardUuid = String(body.dashboardUuid || "").trim();
-      const maxCards = body.maxCards === undefined || body.maxCards === null || body.maxCards === ""
-        ? null
-        : clampPositiveInteger(body.maxCards, 20, 1, Number.MAX_SAFE_INTEGER);
-      const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards });
-      if (dashboardUuid && filteredInventory.dashboardCount === 0) {
+      const dashboardUuids = normalizeDashboardUuids(body.dashboardUuids);
+      const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
+      if ((dashboardUuid || dashboardUuids.length) && filteredInventory.dashboardCount === 0) {
         throw badRequest("Dashboard not found", ["选择的看板不在当前国家范围内，请重新选择看板。"]);
       }
       const queryCardFn = async (_client, dashboard, card, parameters = []) => {
@@ -325,8 +322,7 @@ export function createPlatformApi({
           try {
             const result = await this.runBatchCheckAndNotify({
               countryCode: countryConfig.countryCode,
-              dashboardUuid: "",
-              maxCards: countryConfig.maxCards,
+              dashboardUuids: countryConfig.dashboardUuids || [],
               webhookUrl: countryConfig.webhookUrl,
               botId: countryConfig.botId,
               mentions: countryConfig.mentions,
@@ -429,7 +425,6 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   const enabled = Boolean(input.enabled);
   const intervalMinutes = clampNumber(input.intervalMinutes ?? previousSchedule.intervalMinutes, 5, 1440, 120);
   const webhookUrl = String(input.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim();
-  const maxCards = clampPositiveInteger(input.maxCards ?? previousSchedule.maxCards, 20, 1, Number.MAX_SAFE_INTEGER);
   const countryConfigs = normalizeCountryScheduleConfigs(input.countryConfigs, previousSchedule, options.countries || []);
   const next = {
     ...previousSchedule,
@@ -437,7 +432,6 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
     intervalMinutes,
     countryCode: String(input.countryCode ?? previousSchedule.countryCode ?? "").trim(),
     dashboardUuid: String(input.dashboardUuid ?? previousSchedule.dashboardUuid ?? "").trim(),
-    maxCards,
     webhookUrl: webhookUrl || DEFAULT_TV_WEBHOOK_URL,
     botId: String(input.botId ?? previousSchedule.botId ?? "").trim(),
     mentions: normalizeMentions(input.mentions ?? previousSchedule.mentions).join(","),
@@ -458,7 +452,15 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   }
 
   const previousNextRunAt = previousSchedule.nextRunAt ? Date.parse(previousSchedule.nextRunAt) : Number.NaN;
-  const countryChanged = next.countryCode !== previousSchedule.countryCode || next.dashboardUuid !== previousSchedule.dashboardUuid;
+  const countryChanged = JSON.stringify(next.countryConfigs.map((item) => ({
+    countryCode: item.countryCode,
+    enabled: item.enabled,
+    dashboardUuids: item.dashboardUuids || [],
+  }))) !== JSON.stringify((previousSchedule.countryConfigs || []).map((item) => ({
+    countryCode: item.countryCode,
+    enabled: item.enabled,
+    dashboardUuids: item.dashboardUuids || [],
+  })));
   const intervalChanged = next.intervalMinutes !== Number(previousSchedule.intervalMinutes || DEFAULT_BATCH_SCHEDULE.intervalMinutes);
   if (!countryChanged && !intervalChanged && Number.isFinite(previousNextRunAt) && previousNextRunAt > Date.now()) {
     next.nextRunAt = previousSchedule.nextRunAt;
@@ -477,14 +479,6 @@ function clampNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, Math.round(numberValue)));
 }
 
-function clampPositiveInteger(value, fallback, min, max) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    return fallback;
-  }
-  return Math.max(min, Math.min(max, Math.floor(number)));
-}
-
 function normalizeCountryScheduleConfigs(inputConfigs, previousSchedule, countries) {
   const previousConfigs = new Map((previousSchedule.countryConfigs || []).map((item) => [item.countryCode, item]));
   const incomingConfigs = new Map((inputConfigs || []).map((item) => [String(item.countryCode || "").trim(), item]));
@@ -500,7 +494,7 @@ function normalizeCountryScheduleConfigs(inputConfigs, previousSchedule, countri
       countryCode,
       countryName: countries.find((country) => country.code === countryCode)?.name || previousConfig.countryName || "",
       enabled: Boolean(merged.enabled),
-      maxCards: clampPositiveInteger(merged.maxCards, previousConfig.maxCards || previousSchedule.maxCards || 20, 1, Number.MAX_SAFE_INTEGER),
+      dashboardUuids: normalizeDashboardUuids(merged.dashboardUuids ?? previousConfig.dashboardUuids),
       webhookUrl: String(merged.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim() || DEFAULT_TV_WEBHOOK_URL,
       botId: String(merged.botId ?? previousSchedule.botId ?? "").trim(),
       mentions: normalizeMentions(merged.mentions ?? previousSchedule.mentions).join(","),
@@ -513,6 +507,7 @@ function summarizeBatchScheduleRun(result = {}) {
     checkedAt: result.checkedAt || null,
     checkedCardCount: result.checkedCardCount || 0,
     dashboardCount: result.dashboardCount || 0,
+    checkedDashboards: summarizeCheckedDashboards(result),
     anomalyCount: result.anomalyCount || 0,
     dataQualityAnomalyCount: result.dataQualityAnomalyCount || 0,
     notification: result.notification
@@ -541,22 +536,73 @@ function summarizeCountryScheduleRuns(countryRuns = []) {
   };
 }
 
-function filterBatchInventory(inventory, { countryCode, dashboardUuid, maxCards }) {
-  let remainingCards = maxCards ?? Number.MAX_SAFE_INTEGER;
+function normalizeDashboardUuids(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((item) => String(item || "").trim()).filter(Boolean))];
+  }
+  if (!value) {
+    return [];
+  }
+  return [...new Set(String(value)
+    .split(/[\n,，;；]+/)
+    .map((item) => item.trim())
+    .filter(Boolean))];
+}
+
+function summarizeCheckedDashboards(result = {}) {
+  const groups = new Map();
+  for (const card of result.checkedCards || []) {
+    const key = `${card.countryCode || ""}::${card.dashboardUuid || card.dashboardTitle || ""}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        countryCode: card.countryCode || "",
+        countryName: card.countryName || "",
+        dashboardUuid: card.dashboardUuid || "",
+        dashboardTitle: card.dashboardTitle || "",
+        checkedCardCount: 0,
+        failedCardCount: 0,
+        anomalyCount: 0,
+      });
+    }
+    const group = groups.get(key);
+    group.checkedCardCount += 1;
+    if (!card.ok) {
+      group.failedCardCount += 1;
+    }
+  }
+  for (const anomaly of result.anomalies || []) {
+    const key = `${anomaly.countryCode || ""}::${anomaly.dashboardUuid || anomaly.dashboardTitle || ""}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        countryCode: anomaly.countryCode || "",
+        countryName: anomaly.countryName || "",
+        dashboardUuid: anomaly.dashboardUuid || "",
+        dashboardTitle: anomaly.dashboardTitle || "",
+        checkedCardCount: 0,
+        failedCardCount: 0,
+        anomalyCount: 0,
+      });
+    }
+    groups.get(key).anomalyCount += 1;
+  }
+  return [...groups.values()];
+}
+
+function filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids = [] }) {
+  const selectedDashboardUuids = new Set(dashboardUuids);
   const dashboards = [];
   for (const dashboard of inventory.dashboards || []) {
     const code = dashboard.countryCode || dashboard.country?.code || "";
     if (countryCode && code !== countryCode) {
       continue;
     }
-    if (dashboardUuid && dashboard.uuid !== dashboardUuid) {
+    if (selectedDashboardUuids.size && !selectedDashboardUuids.has(dashboard.uuid)) {
       continue;
     }
-    if (remainingCards <= 0) {
-      break;
+    if (!selectedDashboardUuids.size && dashboardUuid && dashboard.uuid !== dashboardUuid) {
+      continue;
     }
-    const cards = (dashboard.cards || []).slice(0, remainingCards);
-    remainingCards -= cards.length;
+    const cards = dashboard.cards || [];
     if (cards.length) {
       dashboards.push({ ...dashboard, cards });
     }

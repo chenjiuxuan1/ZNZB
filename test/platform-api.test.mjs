@@ -154,7 +154,6 @@ test("platform api runs scoped batch check", async () => {
 
   const result = await api.runBatchCheck({
     countryCode: "INE",
-    maxCards: 1,
   });
 
   assert.equal(result.checkedCardCount, 1);
@@ -163,7 +162,7 @@ test("platform api runs scoped batch check", async () => {
   assert.ok(result.anomalyCount >= 1);
 });
 
-test("platform api limits selected country scan by maxCards", async () => {
+test("platform api scans full configured country scope by default", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
     path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
@@ -204,11 +203,61 @@ test("platform api limits selected country scan by maxCards", async () => {
 
   const result = await api.runBatchCheck({
     countryCode: "INE",
-    maxCards: 1,
+  });
+
+  assert.equal(result.dashboardCount, 2);
+  assert.equal(result.checkedCardCount, 2);
+});
+
+test("platform api filters batch check by selected dashboard uuids", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboardCount: 2,
+      dashboards: [
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          title: "OKR",
+          uuid: "dash-1",
+          url: "https://data.example/public/dashboard/dash-1",
+          cards: [
+            { title: "规模", cardId: 1, dashcardId: 2 },
+          ],
+        },
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          title: "核心链路准实时监控",
+          uuid: "dash-2",
+          url: "https://data.example/public/dashboard/dash-2",
+          cards: [
+            { title: "注册数", cardId: 3, dashcardId: 4 },
+          ],
+        },
+      ],
+    }),
+  );
+  const queriedDashboards = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: (dashboard) => ({
+      async queryDashcardJson() {
+        queriedDashboards.push(dashboard.uuid);
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+
+  const result = await api.runBatchCheck({
+    countryCode: "INE",
+    dashboardUuids: ["dash-2"],
   });
 
   assert.equal(result.dashboardCount, 1);
   assert.equal(result.checkedCardCount, 1);
+  assert.deepEqual(queriedDashboards, ["dash-2"]);
 });
 
 test("platform api runs scoped batch check and sends TV notification", async () => {
@@ -229,7 +278,6 @@ test("platform api runs scoped batch check and sends TV notification", async () 
 
   const result = await api.runBatchCheckAndNotify({
     countryCode: "INE",
-    maxCards: 1,
     webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
     botId: "tv-bot-001",
     mentions: "strongliu@kn.group,jerrycai@kn.group",
@@ -295,7 +343,7 @@ test("platform api saves batch schedule and runs it when due", async () => {
       {
         countryCode: "INE",
         enabled: true,
-        maxCards: 1,
+        dashboardUuids: ["dash-1"],
         webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
         botId: "tv-bot-001",
         mentions: "owner@kn.group",

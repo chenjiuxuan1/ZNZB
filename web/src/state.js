@@ -15,7 +15,6 @@ export const state = {
   batchCheckResult: null,
   batchCheckStatus: null,
   batchCheckError: "",
-  batchMaxCards: 20,
   batchSchedule: null,
   batchScheduleStatus: null,
   batchScheduleError: "",

@@ -340,6 +340,16 @@ th {
   width: 100%;
 }
 
+.schedule-table select {
+  min-width: 260px;
+  width: 100%;
+}
+
+.schedule-table small {
+  display: block;
+  margin-top: 5px;
+}
+
 .schedule-table th:first-child,
 .schedule-table td:first-child {
   text-align: center;
