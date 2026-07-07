@@ -340,6 +340,28 @@ th {
   width: 100%;
 }
 
+.schedule-help {
+  align-items: flex-start;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #475467;
+  display: grid;
+  gap: 4px;
+  line-height: 1.6;
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+}
+
+.schedule-help strong {
+  color: #344054;
+  font-size: 13px;
+}
+
+.schedule-help span {
+  font-size: 13px;
+}
+
 .schedule-table select {
   min-width: 260px;
   width: 100%;

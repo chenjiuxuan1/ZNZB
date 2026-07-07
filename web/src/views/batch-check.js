@@ -237,6 +237,10 @@ function renderBatchSchedulePanel() {
         </div>
       </div>
       <p class="muted">定时任务按国家分别巡检。每个国家可以单独启用，并配置自己的看板范围与通知目标；KN Chat 机器人使用 Bot Token + chat_id，TV webhook 仍兼容旧配置。不选择具体看板时默认扫描该国家告警巡检看板。</p>
+      <div class="schedule-help">
+        <strong>chat_id 说明</strong>
+        <span>chat_id 决定机器人把告警发到哪里：填写个人 chat_id 会发到该用户私聊，填写群聊 chat_id 会发到该群；多个 chat_id 用逗号分隔时，同一份定时巡检通知会分别发送给每个接收目标。提醒人 mentions 只会追加到消息正文里，不影响消息投递位置。</span>
+      </div>
       ${renderCountryScheduleConfig(schedule)}
       ${schedule.lastResult ? renderScheduleLastResult(schedule.lastResult) : ""}
       ${schedule.lastError ? `<div class="sandbox-status error"><strong>上次定时运行失败</strong><span>${escapeHtml(schedule.lastError)}</span></div>` : ""}
@@ -452,7 +456,7 @@ function renderCountryScheduleConfig(schedule) {
                 <td>
                   <div class="stacked-fields">
                     <input class="schedule-country-bot-token" value="${escapeHtml(config.botToken || "")}" placeholder="KN Bot Token，可填 \${KN_BOT_TOKEN}">
-                    <input class="schedule-country-chat-id" value="${escapeHtml(config.chatId || "")}" placeholder="chat_id，多个用逗号分隔">
+                    <input class="schedule-country-chat-id" value="${escapeHtml(config.chatId || "")}" placeholder="个人/群聊 chat_id，多个用逗号分隔">
                     <input class="schedule-country-bot-id" value="${escapeHtml(config.botId || "")}" placeholder="TV bot_id（选择 TV 时使用）">
                   </div>
                 </td>
