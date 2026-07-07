@@ -345,6 +345,16 @@ th {
   width: 100%;
 }
 
+.schedule-table .schedule-country-notify-channel {
+  min-width: 150px;
+}
+
+.schedule-table .stacked-fields {
+  display: grid;
+  gap: 8px;
+  min-width: 280px;
+}
+
 .schedule-table small {
   display: block;
   margin-top: 5px;

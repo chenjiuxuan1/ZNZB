@@ -381,6 +381,49 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(filteredHistory.runs.length, 1);
 });
 
+test("platform api supports scheduled KN Chat Bot notifications", async () => {
+  const rootDir = await makeFixture();
+  const captured = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-05", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async (config, message, metadata) => {
+      captured.push({ config, message, metadata });
+      return { sent: true, status: 200, chatIds: ["10001"] };
+    },
+  });
+
+  const schedule = await api.saveBatchSchedule({
+    enabled: true,
+    intervalMinutes: 5,
+    countryConfigs: [
+      {
+        countryCode: "INE",
+        enabled: true,
+        dashboardUuids: ["dash-1"],
+        notifyChannel: "knBot",
+        botToken: "token-001",
+        chatId: "10001",
+        mentions: "owner@kn.group",
+      },
+    ],
+  });
+
+  const due = await api.runDueBatchSchedule(new Date(Date.parse(schedule.nextRunAt) + 1000));
+
+  assert.equal(due.ran, true);
+  assert.equal(due.schedule.lastError, null);
+  assert.equal(captured.length, 2);
+  assert.equal(captured[0].config.alerts.channel, "knBot");
+  assert.equal(captured[0].config.alerts.botToken, "token-001");
+  assert.equal(captured[0].config.alerts.chatId, "10001");
+  assert.deepEqual(captured[0].config.alerts.mentions, ["owner@kn.group"]);
+});
+
 test("platform api validates and saves rules", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

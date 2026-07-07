@@ -236,7 +236,7 @@ function renderBatchSchedulePanel() {
           <input value="${escapeHtml(formatDisplayTime(schedule.lastRunAt))}" readonly>
         </div>
       </div>
-      <p class="muted">定时任务按国家分别巡检。每个国家可以单独启用，并配置自己的看板范围、bot_id 和提醒人；不选择具体看板时默认扫描该国家告警巡检看板。</p>
+      <p class="muted">定时任务按国家分别巡检。每个国家可以单独启用，并配置自己的看板范围与通知目标；KN Chat 机器人使用 Bot Token + chat_id，TV webhook 仍兼容旧配置。不选择具体看板时默认扫描该国家告警巡检看板。</p>
       ${renderCountryScheduleConfig(schedule)}
       ${schedule.lastResult ? renderScheduleLastResult(schedule.lastResult) : ""}
       ${schedule.lastError ? `<div class="sandbox-status error"><strong>上次定时运行失败</strong><span>${escapeHtml(schedule.lastError)}</span></div>` : ""}
@@ -419,8 +419,9 @@ function renderCountryScheduleConfig(schedule) {
             <th>启用</th>
             <th>国家</th>
             <th>看板范围</th>
-            <th>TV bot_id</th>
-            <th>提醒人 mentions</th>
+            <th>通知方式</th>
+            <th>接收目标</th>
+            <th>提醒人</th>
           </tr>
         </thead>
         <tbody>
@@ -431,6 +432,7 @@ function renderCountryScheduleConfig(schedule) {
               return code === country.code;
             });
             const selectedDashboardUuid = Array.isArray(config.dashboardUuids) ? config.dashboardUuids[0] || "" : "";
+            const notifyChannel = config.notifyChannel || "knBot";
             return `
               <tr class="schedule-country-row" data-country-code="${escapeHtml(country.code || "")}">
                 <td><input class="schedule-country-enabled" type="checkbox" ${config.enabled ? "checked" : ""}></td>
@@ -441,7 +443,19 @@ function renderCountryScheduleConfig(schedule) {
                     ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboardUuid === dashboard.uuid ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
                   </select>
                 </td>
-                <td><input class="schedule-country-bot-id" value="${escapeHtml(config.botId || "")}" placeholder="该国家接收 bot_id"></td>
+                <td>
+                  <select class="schedule-country-notify-channel">
+                    <option value="knBot" ${notifyChannel === "knBot" ? "selected" : ""}>KN Chat 机器人</option>
+                    <option value="tv" ${notifyChannel === "tv" ? "selected" : ""}>TV webhook</option>
+                  </select>
+                </td>
+                <td>
+                  <div class="stacked-fields">
+                    <input class="schedule-country-bot-token" value="${escapeHtml(config.botToken || "")}" placeholder="KN Bot Token，可填 \${KN_BOT_TOKEN}">
+                    <input class="schedule-country-chat-id" value="${escapeHtml(config.chatId || "")}" placeholder="chat_id，多个用逗号分隔">
+                    <input class="schedule-country-bot-id" value="${escapeHtml(config.botId || "")}" placeholder="TV bot_id（选择 TV 时使用）">
+                  </div>
+                </td>
                 <td><input class="schedule-country-mentions" value="${escapeHtml(config.mentions || "")}" placeholder="邮箱，多个用逗号分隔"></td>
               </tr>
             `;
@@ -486,8 +500,11 @@ function buildBatchSchedulePayload(root, scope) {
       countryCode: row.dataset.countryCode || "",
       enabled: Boolean(row.querySelector(".schedule-country-enabled")?.checked),
       dashboardUuids: [row.querySelector(".schedule-country-dashboard-uuid")?.value || ""].filter(Boolean),
+      notifyChannel: row.querySelector(".schedule-country-notify-channel")?.value || "tv",
       webhookUrl: getBatchNotifyConfig().webhookUrl,
       botId: row.querySelector(".schedule-country-bot-id")?.value.trim() || "",
+      botToken: row.querySelector(".schedule-country-bot-token")?.value.trim() || "",
+      chatId: row.querySelector(".schedule-country-chat-id")?.value.trim() || "",
       mentions: row.querySelector(".schedule-country-mentions")?.value.trim() || "",
     })),
   };

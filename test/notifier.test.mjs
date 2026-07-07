@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildPublicCheckMessage, buildWebhookPayload } from "../src/notifier.mjs";
+import { buildPublicCheckMessage, buildWebhookPayload, notifyText } from "../src/notifier.mjs";
 
 test("buildWebhookPayload supports TV alert payload", () => {
   const payload = buildWebhookPayload(
@@ -41,6 +41,48 @@ test("buildWebhookPayload supports TV mentions", () => {
     message: "测试消息",
     mentions: ["strongliu@kn.group", "jerrycai@kn.group"],
   });
+});
+
+test("notifyText sends KN Chat Bot messages to each chat id", async () => {
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      async text() {
+        return JSON.stringify({ ok: true, result: { message_id: 1 } });
+      },
+    };
+  };
+
+  try {
+    const result = await notifyText(
+      {
+        alerts: {
+          channel: "knBot",
+          botToken: "token-001",
+          chatId: "10001,10002",
+          mentions: "owner@kn.group",
+        },
+      },
+      "测试消息",
+    );
+
+    assert.equal(result.sent, true);
+    assert.deepEqual(result.chatIds, ["10001", "10002"]);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].url, "https://bot.kn.chat/bottoken-001/sendMessage");
+    assert.deepEqual(JSON.parse(calls[0].options.body), {
+      chat_id: "10001",
+      text: "测试消息\n\n提醒人：owner@kn.group",
+      disable_web_page_preview: true,
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test("buildPublicCheckMessage includes dashboard, context, card and exact message", () => {

@@ -38,12 +38,17 @@ export async function notifyText(config, message, metadata = {}) {
   console.log(message);
 
   const { channel, webhookUrl } = config.alerts || {};
+  const normalizedChannel = normalizeAlertChannel(channel);
+  if (normalizedChannel === "knBot") {
+    return notifyKnBot(config.alerts || {}, message);
+  }
+
   const resolvedWebhookUrl = resolveEnvString(webhookUrl);
-  if (!channel || channel === "console" || !resolvedWebhookUrl) {
+  if (!normalizedChannel || normalizedChannel === "console" || !resolvedWebhookUrl) {
     return { sent: false, reason: "webhook not configured" };
   }
 
-  const body = buildWebhookPayload(channel, message, metadata, config.alerts || {});
+  const body = buildWebhookPayload(normalizedChannel, message, metadata, config.alerts || {});
   const response = await fetchWithRetry(resolvedWebhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -58,6 +63,47 @@ export async function notifyText(config, message, metadata = {}) {
   }
 
   return { sent: true, status: response.status };
+}
+
+async function notifyKnBot(alertConfig, message) {
+  const botToken = resolveEnvString(alertConfig.botToken || alertConfig.token);
+  const chatIds = normalizeChatIds(alertConfig.chatIds || alertConfig.chatId);
+  if (!botToken || chatIds.length === 0) {
+    return { sent: false, reason: "kn bot not configured" };
+  }
+
+  const apiBaseUrl = resolveEnvString(alertConfig.botApiBaseUrl || "https://bot.kn.chat").replace(/\/+$/, "");
+  const url = `${apiBaseUrl}/bot${botToken}/sendMessage`;
+  const text = appendMentionText(message, alertConfig.mentions);
+  const results = [];
+
+  for (const chatId of chatIds) {
+    const response = await fetchWithRetry(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text().catch(() => "");
+      throw new Error(
+        `KN Chat Bot sendMessage failed (${response.status} ${response.statusText}): ${responseText.slice(0, 240)}`,
+      );
+    }
+
+    results.push({ chatId, status: response.status });
+  }
+
+  return {
+    sent: results.length > 0,
+    status: results[0]?.status || 200,
+    chatIds,
+    results,
+  };
 }
 
 async function fetchWithRetry(url, options, retries = 3) {
@@ -901,7 +947,7 @@ function formatCountryLabel(anomaly) {
 }
 
 export function buildWebhookPayload(channel, message, metadata = {}, alertConfig = {}) {
-  switch (channel) {
+  switch (normalizeAlertChannel(channel)) {
     case "feishu":
       return {
         msg_type: "text",
@@ -931,6 +977,35 @@ export function buildWebhookPayload(channel, message, metadata = {}, alertConfig
     default:
       throw new Error(`Unsupported alert channel: ${channel}`);
   }
+}
+
+function normalizeAlertChannel(channel) {
+  const value = String(channel || "").trim();
+  if (["knBot", "knChatBot", "kn_chat_bot", "kn-chat-bot"].includes(value)) {
+    return "knBot";
+  }
+  return value;
+}
+
+function normalizeChatIds(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (!value) {
+    return [];
+  }
+  return String(value)
+    .split(/[\n,，;；]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function appendMentionText(message, value) {
+  const mentions = normalizeMentions(value);
+  if (mentions.length === 0) {
+    return message;
+  }
+  return `${message}\n\n提醒人：${mentions.join(" ")}`;
 }
 
 function normalizeMentions(value) {

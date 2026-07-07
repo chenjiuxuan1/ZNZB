@@ -32,8 +32,11 @@ const DEFAULT_BATCH_SCHEDULE = {
   intervalMinutes: 120,
   countryCode: "",
   dashboardUuid: "",
+  notifyChannel: "knBot",
   webhookUrl: DEFAULT_TV_WEBHOOK_URL,
   botId: "",
+  botToken: "",
+  chatId: "",
   mentions: "",
   countryConfigs: [],
   nextRunAt: null,
@@ -105,6 +108,15 @@ export function createPlatformApi({
         throw badRequest("No scheduled countries", ["启用定时巡检前请至少启用一个国家。"]);
       }
       for (const countryConfig of enabledCountries) {
+        if (isKnBotChannel(countryConfig.notifyChannel)) {
+          if (!countryConfig.botToken) {
+            throw badRequest("KN Bot Token is required", [`${countryConfig.countryCode} 启用定时巡检前请填写 KN Chat 机器人 Token。`]);
+          }
+          if (!countryConfig.chatId) {
+            throw badRequest("KN Chat chat_id is required", [`${countryConfig.countryCode} 启用定时巡检前请填写接收人或群聊 chat_id。`]);
+          }
+          continue;
+        }
         if (!countryConfig.botId) {
           throw badRequest("TV bot_id is required", [`${countryConfig.countryCode} 启用定时巡检前请填写 TV bot_id。`]);
         }
@@ -264,27 +276,17 @@ export function createPlatformApi({
             reason: "no anomalies",
             sentMessages: 0,
             results: [],
+            channel: normalizeNotifyChannel(body.notifyChannel || "tv"),
             botId: String(body.botId || "").trim(),
+            chatId: String(body.chatId || "").trim(),
             mentions: normalizeMentions(body.mentions),
             sentAt: null,
           },
         };
       }
       const rules = await readJsonFile(resolve("rules"), { alerts: {} });
-      const botId = String(body.botId || "").trim();
-      if (!botId) {
-        throw badRequest("TV bot_id is required", ["请填写 TV bot_id。"]);
-      }
-      const alerts = {
-        ...(rules.alerts || {}),
-        channel: "tv",
-        webhookUrl: resolveWebhookUrl(body.webhookUrl, rules.alerts?.webhookUrl),
-        botId,
-        mentions: normalizeMentions(body.mentions),
-      };
-      if (!alerts.webhookUrl) {
-        throw badRequest("TV webhook is required", ["请填写 TV webhook 地址。"]);
-      }
+      const notifyChannel = normalizeNotifyChannel(body.notifyChannel || "tv");
+      const alerts = buildBatchNotifyAlerts(body, rules.alerts || {}, notifyChannel);
       const messages = buildPublicCheckMessages(result, alerts);
       const results = [];
       for (const message of messages) {
@@ -304,7 +306,9 @@ export function createPlatformApi({
           sent: results.some((item) => item.sent),
           sentMessages: messages.length,
           results,
-          botId,
+          channel: alerts.channel,
+          botId: alerts.botId || "",
+          chatId: alerts.chatId || "",
           mentions: alerts.mentions,
           webhookUrl: alerts.webhookUrl,
           sentAt: new Date().toISOString(),
@@ -332,8 +336,11 @@ export function createPlatformApi({
             const result = await this.runBatchCheckAndNotify({
               countryCode: countryConfig.countryCode,
               dashboardUuids: countryConfig.dashboardUuids || [],
+              notifyChannel: countryConfig.notifyChannel,
               webhookUrl: countryConfig.webhookUrl,
               botId: countryConfig.botId,
+              botToken: countryConfig.botToken,
+              chatId: countryConfig.chatId,
               mentions: countryConfig.mentions,
             });
             countryRuns.push({
@@ -457,11 +464,78 @@ function normalizeMentions(value) {
     .filter(Boolean);
 }
 
+function normalizeNotifyChannel(value) {
+  const channel = String(value || "").trim();
+  if (["knBot", "knChatBot", "kn_chat_bot", "kn-chat-bot"].includes(channel)) {
+    return "knBot";
+  }
+  return channel || "tv";
+}
+
+function isKnBotChannel(value) {
+  return normalizeNotifyChannel(value) === "knBot";
+}
+
+function inferCountryNotifyChannel(mergedConfig, incomingConfig, previousSchedule) {
+  if (incomingConfig.notifyChannel) {
+    return normalizeNotifyChannel(incomingConfig.notifyChannel);
+  }
+  if (incomingConfig.botId) {
+    return "tv";
+  }
+  if (mergedConfig.notifyChannel) {
+    return normalizeNotifyChannel(mergedConfig.notifyChannel);
+  }
+  if (mergedConfig.botId || previousSchedule.botId) {
+    return "tv";
+  }
+  return normalizeNotifyChannel(previousSchedule.notifyChannel || DEFAULT_BATCH_SCHEDULE.notifyChannel);
+}
+
+function buildBatchNotifyAlerts(body, configuredAlerts, notifyChannel) {
+  const mentions = normalizeMentions(body.mentions);
+  if (isKnBotChannel(notifyChannel)) {
+    const botToken = String(body.botToken || "").trim();
+    const chatId = String(body.chatId || "").trim();
+    if (!botToken) {
+      throw badRequest("KN Bot Token is required", ["请填写 KN Chat 机器人 Token。"]);
+    }
+    if (!chatId) {
+      throw badRequest("KN Chat chat_id is required", ["请填写接收人或群聊 chat_id。"]);
+    }
+    return {
+      ...(configuredAlerts || {}),
+      channel: "knBot",
+      botApiBaseUrl: String(body.botApiBaseUrl || configuredAlerts?.botApiBaseUrl || "").trim(),
+      botToken,
+      chatId,
+      mentions,
+    };
+  }
+
+  const botId = String(body.botId || "").trim();
+  if (!botId) {
+    throw badRequest("TV bot_id is required", ["请填写 TV bot_id。"]);
+  }
+  const webhookUrl = resolveWebhookUrl(body.webhookUrl, configuredAlerts?.webhookUrl);
+  if (!webhookUrl) {
+    throw badRequest("TV webhook is required", ["请填写 TV webhook 地址。"]);
+  }
+  return {
+    ...(configuredAlerts || {}),
+    channel: "tv",
+    webhookUrl,
+    botId,
+    mentions,
+  };
+}
+
 function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   const previousSchedule = { ...DEFAULT_BATCH_SCHEDULE, ...(previous || {}) };
   const enabled = Boolean(input.enabled);
   const intervalMinutes = clampNumber(input.intervalMinutes ?? previousSchedule.intervalMinutes, 5, 1440, 120);
   const webhookUrl = String(input.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim();
+  const notifyChannel = normalizeNotifyChannel(input.notifyChannel ?? previousSchedule.notifyChannel ?? DEFAULT_BATCH_SCHEDULE.notifyChannel);
   const countryConfigs = normalizeCountryScheduleConfigs(input.countryConfigs, previousSchedule, options.countries || []);
   const next = {
     ...previousSchedule,
@@ -469,8 +543,11 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
     intervalMinutes,
     countryCode: String(input.countryCode ?? previousSchedule.countryCode ?? "").trim(),
     dashboardUuid: String(input.dashboardUuid ?? previousSchedule.dashboardUuid ?? "").trim(),
+    notifyChannel,
     webhookUrl: webhookUrl || DEFAULT_TV_WEBHOOK_URL,
     botId: String(input.botId ?? previousSchedule.botId ?? "").trim(),
+    botToken: String(input.botToken ?? previousSchedule.botToken ?? "").trim(),
+    chatId: String(input.chatId ?? previousSchedule.chatId ?? "").trim(),
     mentions: normalizeMentions(input.mentions ?? previousSchedule.mentions).join(","),
     countryConfigs,
     lastRunAt: previousSchedule.lastRunAt || null,
@@ -493,10 +570,12 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
     countryCode: item.countryCode,
     enabled: item.enabled,
     dashboardUuids: item.dashboardUuids || [],
+    notifyChannel: item.notifyChannel || DEFAULT_BATCH_SCHEDULE.notifyChannel,
   }))) !== JSON.stringify((previousSchedule.countryConfigs || []).map((item) => ({
     countryCode: item.countryCode,
     enabled: item.enabled,
     dashboardUuids: item.dashboardUuids || [],
+    notifyChannel: item.notifyChannel || DEFAULT_BATCH_SCHEDULE.notifyChannel,
   })));
   const intervalChanged = next.intervalMinutes !== Number(previousSchedule.intervalMinutes || DEFAULT_BATCH_SCHEDULE.intervalMinutes);
   if (!countryChanged && !intervalChanged && Number.isFinite(previousNextRunAt) && previousNextRunAt > Date.now()) {
@@ -532,8 +611,11 @@ function normalizeCountryScheduleConfigs(inputConfigs, previousSchedule, countri
       countryName: countries.find((country) => country.code === countryCode)?.name || previousConfig.countryName || "",
       enabled: Boolean(merged.enabled),
       dashboardUuids: normalizeDashboardUuids(merged.dashboardUuids ?? previousConfig.dashboardUuids),
+      notifyChannel: inferCountryNotifyChannel(merged, incomingConfig, previousSchedule),
       webhookUrl: String(merged.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim() || DEFAULT_TV_WEBHOOK_URL,
       botId: String(merged.botId ?? previousSchedule.botId ?? "").trim(),
+      botToken: String(merged.botToken ?? previousSchedule.botToken ?? "").trim(),
+      chatId: String(merged.chatId ?? previousSchedule.chatId ?? "").trim(),
       mentions: normalizeMentions(merged.mentions ?? previousSchedule.mentions).join(","),
     };
   });
