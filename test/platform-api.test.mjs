@@ -381,6 +381,74 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(filteredHistory.runs.length, 1);
 });
 
+test("platform api preserves explicit next run time on schedule save", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+  const nextRunAt = "2026-07-07T06:30:00.000Z";
+
+  const schedule = await api.saveBatchSchedule({
+    enabled: true,
+    intervalMinutes: 30,
+    nextRunAt,
+    countryConfigs: [
+      {
+        countryCode: "INE",
+        enabled: true,
+        dashboardUuids: ["dash-1"],
+        notifyChannel: "knBot",
+        recipientEmails: "owner@kn.group",
+      },
+    ],
+  });
+
+  assert.equal(schedule.nextRunAt, nextRunAt);
+  assert.equal(schedule.countryConfigs[0].botToken, "${KN_BOT_TOKEN}");
+});
+
+test("platform api can manually test saved country schedule before it is due", async () => {
+  const rootDir = await makeFixture();
+  const captured = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-05", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async (config, message, metadata) => {
+      captured.push({ config, message, metadata });
+      return { sent: true, status: 200 };
+    },
+  });
+
+  await api.saveBatchSchedule({
+    enabled: false,
+    intervalMinutes: 120,
+    countryConfigs: [
+      {
+        countryCode: "INE",
+        enabled: true,
+        dashboardUuids: ["dash-1"],
+        notifyChannel: "tv",
+        webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+        botId: "tv-bot-001",
+      },
+    ],
+  });
+
+  const result = await api.runBatchScheduleNow(new Date("2026-07-07T06:00:00.000Z"));
+
+  assert.equal(result.ran, true);
+  assert.equal(result.schedule.enabled, false);
+  assert.equal(result.schedule.lastResult.countryCount, 1);
+  assert.equal(result.schedule.lastResult.anomalyCount, 1);
+  assert.equal(captured.length, 2);
+
+  const history = await api.getBatchHistory();
+  assert.equal(history.runs[0].trigger, "manual_test");
+  assert.equal(history.runs[0].countryCount, 1);
+});
+
 test("platform api supports scheduled KN Chat Bot notifications", async () => {
   const rootDir = await makeFixture();
   const captured = [];

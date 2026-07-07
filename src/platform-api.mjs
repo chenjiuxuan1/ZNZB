@@ -126,6 +126,97 @@ export function createPlatformApi({
       return next;
     },
 
+    async runBatchScheduleNow(now = new Date()) {
+      const schedule = await this.getBatchSchedule();
+      const enabledCountryConfigs = schedule.countryConfigs.filter((item) => item.enabled);
+      if (enabledCountryConfigs.length === 0) {
+        throw badRequest("No scheduled countries", ["请先至少启用一个国家，再运行定时巡检测试。"]);
+      }
+
+      const startedAt = now.toISOString();
+      const nextRunAt = schedule.enabled
+        ? new Date(now.getTime() + schedule.intervalMinutes * 60_000).toISOString()
+        : schedule.nextRunAt;
+      try {
+        const countryRuns = [];
+        for (const countryConfig of enabledCountryConfigs) {
+          try {
+            const result = await this.runBatchCheckAndNotify({
+              countryCode: countryConfig.countryCode,
+              dashboardUuids: countryConfig.dashboardUuids || [],
+              notifyChannel: countryConfig.notifyChannel,
+              webhookUrl: countryConfig.webhookUrl,
+              botId: countryConfig.botId,
+              botToken: countryConfig.botToken,
+              chatId: countryConfig.chatId,
+              recipientEmails: countryConfig.recipientEmails,
+              mentions: countryConfig.mentions,
+            });
+            countryRuns.push({
+              countryCode: countryConfig.countryCode,
+              countryName: countryConfig.countryName || "",
+              ok: true,
+              result: summarizeBatchScheduleRun(result),
+            });
+          } catch (error) {
+            countryRuns.push({
+              countryCode: countryConfig.countryCode,
+              countryName: countryConfig.countryName || "",
+              ok: false,
+              error: error.message,
+            });
+          }
+        }
+        const failedRuns = countryRuns.filter((item) => !item.ok);
+        const saved = {
+          ...schedule,
+          lastRunAt: startedAt,
+          nextRunAt,
+          lastError: failedRuns.length ? failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; ") : null,
+          lastResult: summarizeCountryScheduleRuns(countryRuns),
+        };
+        await writeJsonAtomic(resolve("batchSchedule"), saved);
+        await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+          trigger: "manual_test",
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          nextRunAt,
+          schedule,
+          countryRuns,
+        }));
+        return { ran: true, schedule: saved, result: saved.lastResult };
+      } catch (error) {
+        const saved = {
+          ...schedule,
+          lastRunAt: startedAt,
+          nextRunAt,
+          lastError: error.message,
+          lastResult: null,
+        };
+        await writeJsonAtomic(resolve("batchSchedule"), saved);
+        await appendBatchHistoryRun(resolve("batchHistory"), {
+          id: randomUUID(),
+          trigger: "manual_test",
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          nextRunAt,
+          status: "failed",
+          ok: false,
+          error: error.message,
+          countryCount: 0,
+          successCount: 0,
+          failedCount: 1,
+          checkedCardCount: 0,
+          dashboardCount: 0,
+          anomalyCount: 0,
+          dataQualityAnomalyCount: 0,
+          notificationSentCount: 0,
+          runs: [],
+        });
+        return { ran: true, schedule: saved, error: error.message };
+      }
+    },
+
     async saveCountriesConfig(config) {
       const validation = validateCountriesConfig(config);
       if (!validation.ok) {
@@ -368,6 +459,7 @@ export function createPlatformApi({
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
         await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+          trigger: "schedule",
           startedAt,
           finishedAt: new Date().toISOString(),
           nextRunAt,
@@ -536,6 +628,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   const webhookUrl = String(input.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim();
   const notifyChannel = normalizeNotifyChannel(input.notifyChannel ?? previousSchedule.notifyChannel ?? DEFAULT_BATCH_SCHEDULE.notifyChannel);
   const countryConfigs = normalizeCountryScheduleConfigs(input.countryConfigs, previousSchedule, options.countries || []);
+  const requestedNextRunAt = normalizeScheduleTime(input.nextRunAt);
   const next = {
     ...previousSchedule,
     enabled,
@@ -557,6 +650,11 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
 
   if (!enabled) {
     next.nextRunAt = null;
+    return next;
+  }
+
+  if (requestedNextRunAt) {
+    next.nextRunAt = requestedNextRunAt;
     return next;
   }
 
@@ -587,6 +685,17 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   return next;
 }
 
+function normalizeScheduleTime(value) {
+  if (!value) {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+  return new Date(timestamp).toISOString();
+}
+
 function clampNumber(value, min, max, fallback) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) {
@@ -614,12 +723,17 @@ function normalizeCountryScheduleConfigs(inputConfigs, previousSchedule, countri
       notifyChannel: inferCountryNotifyChannel(merged, incomingConfig, previousSchedule),
       webhookUrl: String(merged.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim() || DEFAULT_TV_WEBHOOK_URL,
       botId: String(merged.botId ?? previousSchedule.botId ?? "").trim(),
-      botToken: String(merged.botToken ?? previousSchedule.botToken ?? "${KN_BOT_TOKEN}").trim(),
+      botToken: normalizeDefaultSecret(merged.botToken ?? previousSchedule.botToken, "${KN_BOT_TOKEN}"),
       chatId: String(merged.chatId ?? previousSchedule.chatId ?? "").trim(),
       recipientEmails: String(merged.recipientEmails ?? previousSchedule.recipientEmails ?? "").trim(),
       mentions: normalizeMentions(merged.mentions ?? previousSchedule.mentions).join(","),
     };
   });
+}
+
+function normalizeDefaultSecret(value, fallback) {
+  const text = String(value ?? "").trim();
+  return text || fallback;
 }
 
 function summarizeBatchScheduleRun(result = {}) {
@@ -656,7 +770,7 @@ function summarizeCountryScheduleRuns(countryRuns = []) {
   };
 }
 
-function buildBatchHistoryEntry({ startedAt, finishedAt, nextRunAt, schedule, countryRuns }) {
+function buildBatchHistoryEntry({ trigger = "schedule", startedAt, finishedAt, nextRunAt, schedule, countryRuns }) {
   const summary = summarizeCountryScheduleRuns(countryRuns);
   const notificationSentCount = countryRuns.reduce((sum, run) => {
     const notification = run.result?.notification;
@@ -664,7 +778,7 @@ function buildBatchHistoryEntry({ startedAt, finishedAt, nextRunAt, schedule, co
   }, 0);
   return {
     id: randomUUID(),
-    trigger: "schedule",
+    trigger,
     startedAt,
     finishedAt,
     nextRunAt,

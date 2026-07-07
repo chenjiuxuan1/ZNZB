@@ -300,6 +300,13 @@ th {
   margin-bottom: 14px;
 }
 
+.schedule-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .advanced-form {
   margin-top: 12px;
 }
@@ -399,6 +406,11 @@ th {
 .schedule-table td:first-child {
   text-align: center;
   width: 64px;
+}
+
+.schedule-table th:nth-child(2),
+.schedule-table td:nth-child(2) {
+  width: 86px;
 }
 
 .schedule-table td:first-child input {

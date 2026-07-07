@@ -98,6 +98,12 @@ export function renderBatchCheck(root) {
       }
     });
   });
+  root.querySelectorAll(".schedule-country-enabled").forEach((checkbox) => {
+    checkbox.addEventListener("change", (event) => {
+      const row = event.target.closest(".schedule-country-row");
+      updateScheduleCountryRowState(row, event.target.checked);
+    });
+  });
   root.querySelector("#batch-history-country")?.addEventListener("change", async (event) => {
     state.batchHistoryFilters.countryCode = event.target.value;
     await reloadBatchHistory(root);
@@ -137,6 +143,41 @@ export function renderBatchCheck(root) {
         type: "error",
         title: "定时巡检保存失败",
         detail: "请检查 TV webhook、bot_id 和巡检间隔配置。",
+      };
+    }
+    renderBatchCheck(root);
+  });
+  root.querySelector("#run-batch-schedule-now")?.addEventListener("click", async () => {
+    updateBatchNotifyConfigFromDom(root);
+    const payload = buildBatchSchedulePayload(root, {
+      countryCode: isAllCountries ? "" : state.selected.countryCode || selectedCountry,
+      dashboardUuid: state.selected.dashboardUuid || "",
+    });
+    state.batchScheduleStatus = {
+      type: "loading",
+      title: "正在保存并立即试跑",
+      detail: "会先保存当前定时配置，再按已启用国家逐个巡检；发现异常时会按各国家通知方式发送。",
+    };
+    state.batchScheduleError = "";
+    renderBatchCheck(root);
+    try {
+      state.batchSchedule = await apiPut("/api/batch-schedule", payload);
+      const result = await apiPost("/api/batch-schedule/run-now", {});
+      state.batchSchedule = result.schedule || state.batchSchedule;
+      const summary = result.result || {};
+      state.batchScheduleStatus = {
+        type: summary.failedCount > 0 ? "error" : "success",
+        title: summary.failedCount > 0 ? "定时巡检测试完成，部分国家失败" : "定时巡检测试完成",
+        detail: `国家 ${summary.countryCount || 0} 个，成功 ${summary.successCount || 0} 个，失败 ${summary.failedCount || 0} 个；检查 ${summary.checkedCardCount || 0} 张卡片，异常 ${summary.anomalyCount || 0} 条。`,
+      };
+      await reloadBatchHistory(root);
+      return;
+    } catch (error) {
+      state.batchScheduleError = error.payload?.errors?.join("\n") || error.message;
+      state.batchScheduleStatus = {
+        type: "error",
+        title: "定时巡检测试失败",
+        detail: "请检查已启用国家、看板范围和通知接收目标。",
       };
     }
     renderBatchCheck(root);
@@ -226,6 +267,7 @@ function renderBatchSchedulePanel() {
   return `
     <div class="sub-panel schedule-panel">
       <h2 class="panel-title section-title">定时巡检</h2>
+      ${renderScheduleOverview(schedule)}
       <div class="form-grid">
         <label class="checkbox-field">
           <input id="batch-schedule-enabled" type="checkbox" ${enabled ? "checked" : ""}>
@@ -236,15 +278,15 @@ function renderBatchSchedulePanel() {
           <input id="batch-schedule-interval" type="number" min="5" max="1440" step="5" value="${escapeHtml(schedule.intervalMinutes || 120)}">
         </div>
         <div class="field">
-          <label>下次运行</label>
-          <input value="${escapeHtml(formatDisplayTime(schedule.nextRunAt))}" readonly>
+          <label>下次运行时间（北京时间）</label>
+          <input id="batch-schedule-next-run-at" type="datetime-local" value="${escapeHtml(formatDateTimeLocal(schedule.nextRunAt))}">
         </div>
         <div class="field">
           <label>上次运行</label>
           <input value="${escapeHtml(formatDisplayTime(schedule.lastRunAt))}" readonly>
         </div>
       </div>
-      <p class="muted">定时任务按国家分别巡检。每个国家可以单独启用，并配置自己的看板范围与通知目标；KN Chat 机器人只需要填写接收人邮箱，TV webhook 模式才需要填写 TV bot_id 和提醒人。</p>
+      <p class="muted">定时任务按国家分别巡检。每个国家可以单独上下线，并配置自己的看板范围与通知目标；保存后服务每分钟检查一次，到达“下次运行时间”即执行，执行后按巡检间隔计算下一次运行。</p>
       <div class="schedule-help">
         <strong>KN Chat 接收目标说明</strong>
         <span>选择 KN Chat 机器人时，只填写接收人邮箱即可，服务会先调用 resolveUserId 把邮箱解析为 user_id，再私聊发送；多个邮箱用逗号分隔。选择 TV webhook 时，才需要填写 TV bot_id 和提醒人 mentions。</span>
@@ -255,8 +297,35 @@ function renderBatchSchedulePanel() {
       ${renderBatchScheduleStatus(status)}
       <div class="button-group">
         <button id="save-batch-schedule" class="secondary">保存定时巡检</button>
+        <button id="run-batch-schedule-now" class="primary">立即运行测试</button>
       </div>
       ${renderBatchHistoryPanel()}
+    </div>
+  `;
+}
+
+function renderScheduleOverview(schedule) {
+  const configs = schedule.countryConfigs || [];
+  const enabledCountries = configs.filter((item) => item.enabled);
+  const totalCountries = (state.countries?.countries || []).length || configs.length;
+  return `
+    <div class="schedule-overview">
+      <div class="info-item">
+        <span>总开关</span>
+        <strong><span class="badge ${schedule.enabled ? "ok" : "danger"}">${schedule.enabled ? "已开启" : "已关闭"}</span></strong>
+      </div>
+      <div class="info-item">
+        <span>已上线国家</span>
+        <strong>${escapeHtml(enabledCountries.length)} / ${escapeHtml(totalCountries)}</strong>
+      </div>
+      <div class="info-item">
+        <span>下次运行</span>
+        <strong>${escapeHtml(schedule.enabled ? formatDisplayTime(schedule.nextRunAt) : "未启用")}</strong>
+      </div>
+      <div class="info-item">
+        <span>上次运行</span>
+        <strong>${escapeHtml(formatDisplayTime(schedule.lastRunAt))}</strong>
+      </div>
     </div>
   `;
 }
@@ -322,7 +391,7 @@ function renderBatchHistoryRows(runs) {
             <th>国家</th>
             <th>看板/卡片</th>
             <th>异常</th>
-            <th>TV</th>
+            <th>通知</th>
             <th>明细</th>
           </tr>
         </thead>
@@ -429,6 +498,7 @@ function renderCountryScheduleConfig(schedule) {
         <thead>
           <tr>
             <th>启用</th>
+            <th>状态</th>
             <th>国家</th>
             <th>看板范围</th>
             <th>通知方式</th>
@@ -445,9 +515,11 @@ function renderCountryScheduleConfig(schedule) {
             });
             const selectedDashboardUuid = Array.isArray(config.dashboardUuids) ? config.dashboardUuids[0] || "" : "";
             const notifyChannel = config.notifyChannel || "knBot";
+            const rowEnabled = Boolean(config.enabled);
             return `
               <tr class="schedule-country-row" data-country-code="${escapeHtml(country.code || "")}" data-notify-channel="${escapeHtml(notifyChannel)}">
-                <td><input class="schedule-country-enabled" type="checkbox" ${config.enabled ? "checked" : ""}></td>
+                <td><input class="schedule-country-enabled" type="checkbox" ${rowEnabled ? "checked" : ""}></td>
+                <td><span class="badge schedule-country-state ${rowEnabled ? "ok" : "danger"}">${rowEnabled ? "已上线" : "未上线"}</span></td>
                 <td>${escapeHtml(countryLabel(country, countries))}</td>
                 <td>
                   <select class="schedule-country-dashboard-uuid">
@@ -505,6 +577,7 @@ function buildBatchSchedulePayload(root, scope) {
   return {
     enabled: Boolean(root.querySelector("#batch-schedule-enabled")?.checked),
     intervalMinutes: Number(root.querySelector("#batch-schedule-interval")?.value || 120),
+    nextRunAt: parseDateTimeLocalToIso(root.querySelector("#batch-schedule-next-run-at")?.value || ""),
     countryCode: scope.countryCode || "",
     dashboardUuid: scope.dashboardUuid || "",
     webhookUrl: getBatchNotifyConfig().webhookUrl,
@@ -526,6 +599,19 @@ function buildBatchSchedulePayload(root, scope) {
       };
     }),
   };
+}
+
+function updateScheduleCountryRowState(row, enabled) {
+  if (!row) {
+    return;
+  }
+  const badge = row.querySelector(".schedule-country-state");
+  if (!badge) {
+    return;
+  }
+  badge.textContent = enabled ? "已上线" : "未上线";
+  badge.classList.toggle("ok", enabled);
+  badge.classList.toggle("danger", !enabled);
 }
 
 function clearBatchFeedback() {
@@ -783,7 +869,10 @@ function defaultBotId() {
 }
 
 function formatDisplayTime(value) {
-  const date = value ? new Date(value) : new Date();
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
   if (!Number.isFinite(date.getTime())) {
     return value || "-";
   }
@@ -795,4 +884,31 @@ function formatDisplayTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatDateTimeLocal(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "";
+  }
+  const pad = (number) => String(number).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join("-") + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function parseDateTimeLocalToIso(value) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return null;
+  }
+  return date.toISOString();
 }
