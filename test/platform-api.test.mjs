@@ -442,6 +442,74 @@ test("platform api schedules the next run at a fixed Beijing daily time", async 
   assert.equal(due.schedule.nextRunAt, "2026-07-08T01:00:00.000Z");
 });
 
+test("platform api supports multiple Beijing daily run times", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async () => ({ sent: true, status: 200 }),
+  });
+
+  const schedule = await api.saveBatchSchedule({
+    enabled: true,
+    dailyRunTimes: ["09:00", "14:30", "20:00"],
+    nextRunAt: "2026-07-07T06:30:00.000Z",
+    countryConfigs: [
+      {
+        countryCode: "INE",
+        enabled: true,
+        dashboardUuids: ["dash-1"],
+        notifyChannel: "knBot",
+        recipientEmails: "owner@kn.group",
+      },
+    ],
+  });
+
+  assert.deepEqual(schedule.dailyRunTimes, ["09:00", "14:30", "20:00"]);
+
+  const due = await api.runDueBatchSchedule(new Date("2026-07-07T06:30:01.000Z"));
+
+  assert.equal(due.ran, true);
+  assert.equal(due.schedule.nextRunAt, "2026-07-07T12:00:00.000Z");
+});
+
+test("platform api rolls multiple daily run times to tomorrow after the last time", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async () => ({ sent: true, status: 200 }),
+  });
+
+  await api.saveBatchSchedule({
+    enabled: true,
+    dailyRunTimes: ["09:00", "14:30", "20:00"],
+    nextRunAt: "2026-07-07T12:00:00.000Z",
+    countryConfigs: [
+      {
+        countryCode: "INE",
+        enabled: true,
+        dashboardUuids: ["dash-1"],
+        notifyChannel: "knBot",
+        recipientEmails: "owner@kn.group",
+      },
+    ],
+  });
+
+  const due = await api.runDueBatchSchedule(new Date("2026-07-07T12:00:01.000Z"));
+
+  assert.equal(due.ran, true);
+  assert.equal(due.schedule.nextRunAt, "2026-07-08T01:00:00.000Z");
+});
+
 test("platform api can manually test saved country schedule before it is due", async () => {
   const rootDir = await makeFixture();
   const captured = [];

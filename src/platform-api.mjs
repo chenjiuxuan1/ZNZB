@@ -30,6 +30,7 @@ const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/a
 const DEFAULT_BATCH_SCHEDULE = {
   enabled: false,
   dailyRunTime: "09:00",
+  dailyRunTimes: ["09:00"],
   intervalMinutes: 120,
   countryCode: "",
   dashboardUuid: "",
@@ -167,7 +168,7 @@ export function createPlatformApi({
           }
         }
         const failedRuns = countryRuns.filter((item) => !item.ok);
-        const saved = {
+      const saved = {
           ...schedule,
           lastRunAt: startedAt,
           nextRunAt,
@@ -417,7 +418,7 @@ export function createPlatformApi({
       }
 
       const startedAt = now.toISOString();
-      const nextRunAt = nextDailyRunAt(schedule.dailyRunTime, new Date(now.getTime() + 60_000));
+      const nextRunAt = nextDailyRunAt(schedule.dailyRunTimes || [schedule.dailyRunTime], new Date(now.getTime() + 60_000));
       try {
         const countryRuns = [];
         for (const countryConfig of schedule.countryConfigs.filter((item) => item.enabled)) {
@@ -624,7 +625,8 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   const previousSchedule = { ...DEFAULT_BATCH_SCHEDULE, ...(previous || {}) };
   const enabled = Boolean(input.enabled);
   const intervalMinutes = clampNumber(input.intervalMinutes ?? previousSchedule.intervalMinutes, 5, 1440, 120);
-  const dailyRunTime = normalizeDailyRunTime(input.dailyRunTime ?? previousSchedule.dailyRunTime ?? DEFAULT_BATCH_SCHEDULE.dailyRunTime);
+  const dailyRunTimes = normalizeDailyRunTimes(input.dailyRunTimes ?? input.dailyRunTime ?? previousSchedule.dailyRunTimes ?? previousSchedule.dailyRunTime);
+  const dailyRunTime = dailyRunTimes[0] || DEFAULT_BATCH_SCHEDULE.dailyRunTime;
   const webhookUrl = String(input.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim();
   const notifyChannel = normalizeNotifyChannel(input.notifyChannel ?? previousSchedule.notifyChannel ?? DEFAULT_BATCH_SCHEDULE.notifyChannel);
   const countryConfigs = normalizeCountryScheduleConfigs(input.countryConfigs, previousSchedule, options.countries || []);
@@ -633,6 +635,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
     ...previousSchedule,
     enabled,
     dailyRunTime,
+    dailyRunTimes,
     intervalMinutes,
     countryCode: String(input.countryCode ?? previousSchedule.countryCode ?? "").trim(),
     dashboardUuid: String(input.dashboardUuid ?? previousSchedule.dashboardUuid ?? "").trim(),
@@ -665,7 +668,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   }
 
   const previousNextRunAt = previousSchedule.nextRunAt ? Date.parse(previousSchedule.nextRunAt) : Number.NaN;
-  const dailyRunTimeChanged = next.dailyRunTime !== previousSchedule.dailyRunTime;
+  const dailyRunTimeChanged = dailyRunTimesKey(next.dailyRunTimes) !== dailyRunTimesKey(previousSchedule.dailyRunTimes || [previousSchedule.dailyRunTime]);
   const countryChanged = JSON.stringify(next.countryConfigs.map((item) => ({
     countryCode: item.countryCode,
     enabled: item.enabled,
@@ -681,7 +684,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
   if (!countryChanged && !intervalChanged && !dailyRunTimeChanged && Number.isFinite(previousNextRunAt) && previousNextRunAt > Date.now()) {
     next.nextRunAt = previousSchedule.nextRunAt;
   } else {
-    next.nextRunAt = nextDailyRunAt(dailyRunTime);
+    next.nextRunAt = nextDailyRunAt(dailyRunTimes);
   }
 
   return next;
@@ -696,16 +699,35 @@ function normalizeDailyRunTime(value) {
   return `${match[1]}:${match[2]}`;
 }
 
-function nextDailyRunAt(dailyRunTime, now = new Date()) {
-  const [hour, minute] = normalizeDailyRunTime(dailyRunTime).split(":").map(Number);
+function normalizeDailyRunTimes(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || "")
+      .split(/[\n,，;；\s]+/)
+      .map((item) => item.trim());
+  const times = [...new Set(values.map(normalizeDailyRunTime).filter(Boolean))].sort();
+  return times.length ? times : [...DEFAULT_BATCH_SCHEDULE.dailyRunTimes];
+}
+
+function dailyRunTimesKey(value) {
+  return normalizeDailyRunTimes(value).join(",");
+}
+
+function nextDailyRunAt(dailyRunTimes, now = new Date()) {
   const beijingNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
   const year = beijingNow.getUTCFullYear();
   const month = beijingNow.getUTCMonth();
   const date = beijingNow.getUTCDate();
-  let nextUtcMs = Date.UTC(year, month, date, hour - 8, minute, 0, 0);
-  if (nextUtcMs <= now.getTime()) {
-    nextUtcMs = Date.UTC(year, month, date + 1, hour - 8, minute, 0, 0);
+  const runTimes = normalizeDailyRunTimes(dailyRunTimes);
+  for (const time of runTimes) {
+    const [hour, minute] = time.split(":").map(Number);
+    const nextUtcMs = Date.UTC(year, month, date, hour - 8, minute, 0, 0);
+    if (nextUtcMs > now.getTime()) {
+      return new Date(nextUtcMs).toISOString();
+    }
   }
+  const [hour, minute] = runTimes[0].split(":").map(Number);
+  const nextUtcMs = Date.UTC(year, month, date + 1, hour - 8, minute, 0, 0);
   return new Date(nextUtcMs).toISOString();
 }
 

@@ -134,7 +134,7 @@ export function renderBatchCheck(root) {
         type: "success",
         title: state.batchSchedule.enabled ? "定时巡检已上线" : "定时巡检已下线",
         detail: state.batchSchedule.enabled
-          ? `每日 ${state.batchSchedule.dailyRunTime || "09:00"} 北京时间运行；下次运行：${formatDisplayTime(state.batchSchedule.nextRunAt)}。`
+          ? `每日 ${formatDailyRunTimes(state.batchSchedule)} 北京时间运行；下次运行：${formatDisplayTime(state.batchSchedule.nextRunAt)}。`
           : "已保存为下线状态，后续不会自动触发。",
       };
     } catch (error) {
@@ -271,11 +271,12 @@ function renderBatchSchedulePanel() {
       <div class="form-grid">
         <label class="checkbox-field">
           <input id="batch-schedule-enabled" type="checkbox" ${enabled ? "checked" : ""}>
-          <span>上线定时巡检总开关</span>
+          <span>自动触发总开关</span>
         </label>
-        <div class="field">
-          <label>每日运行时间（北京时间）</label>
-          <input id="batch-schedule-daily-run-time" type="time" value="${escapeHtml(schedule.dailyRunTime || "09:00")}">
+        <div class="field wide-form-field">
+          <label>每日运行时间（北京时间，可多个）</label>
+          <input id="batch-schedule-daily-run-times" value="${escapeHtml(formatDailyRunTimes(schedule))}" placeholder="例如：09:00, 14:30, 20:00">
+          <small class="muted">多个时间用逗号、空格或换行分隔；服务每天会在这些北京时间点各运行一次。</small>
         </div>
         <div class="field">
           <label>下次运行</label>
@@ -286,7 +287,7 @@ function renderBatchSchedulePanel() {
           <input value="${escapeHtml(formatDisplayTime(schedule.lastRunAt))}" readonly>
         </div>
       </div>
-      <p class="muted">下线方式：取消“上线定时巡检总开关”并保存，会关闭全部自动触发；取消某个国家的勾选并保存，只会下线该国家。定时任务每天按北京时间固定时间运行一次，手动“立即运行测试”不影响正式下次运行时间。</p>
+      <p class="muted">“自动触发总开关”控制服务是否到点自动跑定时巡检：关闭后所有国家都不会自动触发，但仍可点击“立即运行测试”。取消某个国家的勾选并保存，只会下线该国家。</p>
       <div class="schedule-help">
         <strong>KN Chat 接收目标说明</strong>
         <span>选择 KN Chat 机器人时，只填写接收人邮箱即可，服务会先调用 resolveUserId 把邮箱解析为 user_id，再私聊发送；多个邮箱用逗号分隔。选择 TV webhook 时，才需要填写 TV bot_id 和提醒人 mentions。</span>
@@ -324,7 +325,7 @@ function renderScheduleOverview(schedule) {
       </div>
       <div class="info-item">
         <span>每日定点</span>
-        <strong>${escapeHtml(schedule.dailyRunTime || "09:00")} 北京时间</strong>
+        <strong>${escapeHtml(formatDailyRunTimes(schedule))} 北京时间</strong>
       </div>
       <div class="info-item">
         <span>上次运行</span>
@@ -580,7 +581,7 @@ function renderBatchScheduleStatus(status) {
 function buildBatchSchedulePayload(root, scope) {
   return {
     enabled: Boolean(root.querySelector("#batch-schedule-enabled")?.checked),
-    dailyRunTime: root.querySelector("#batch-schedule-daily-run-time")?.value || "09:00",
+    dailyRunTimes: parseDailyRunTimes(root.querySelector("#batch-schedule-daily-run-times")?.value || "09:00"),
     intervalMinutes: 1440,
     countryCode: scope.countryCode || "",
     dashboardUuid: scope.dashboardUuid || "",
@@ -616,6 +617,21 @@ function updateScheduleCountryRowState(row, enabled) {
   badge.textContent = enabled ? "已上线" : "未上线";
   badge.classList.toggle("ok", enabled);
   badge.classList.toggle("danger", !enabled);
+}
+
+function parseDailyRunTimes(value) {
+  const times = String(value || "")
+    .split(/[\n,，;；\s]+/)
+    .map((item) => item.trim())
+    .filter((item) => /^([01]\d|2[0-3]):[0-5]\d$/.test(item));
+  return [...new Set(times)].sort();
+}
+
+function formatDailyRunTimes(schedule = {}) {
+  const times = Array.isArray(schedule.dailyRunTimes) && schedule.dailyRunTimes.length
+    ? schedule.dailyRunTimes
+    : [schedule.dailyRunTime || "09:00"];
+  return parseDailyRunTimes(times.join(",")).join(", ") || "09:00";
 }
 
 function clearBatchFeedback() {
