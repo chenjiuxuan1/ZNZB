@@ -53,6 +53,12 @@ export function renderQualityRuleGeneration(root) {
       root.querySelector("#quality-rule-country-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
+  root.querySelectorAll("[data-quality-filter-country]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.qualityRuleGenerationCountry = button.getAttribute("data-quality-filter-country") || "";
+      renderQualityRuleGeneration(root);
+    });
+  });
   root.querySelectorAll("[data-quality-edit-row]").forEach((button) => {
     button.addEventListener("click", () => {
       const row = findRow(button.getAttribute("data-quality-edit-row"));
@@ -259,36 +265,34 @@ function renderResult(result) {
       ${summaryItem("待自动生成", result.summary?.autoGenerateCount || 0)}
       ${summaryItem("已标记上线", result.summary?.needApplyCount || 0)}
     </div>
-    ${renderCountryGrid(result)}
-    ${renderCountryDetail(result)}
+    ${renderSheetToolbar(result)}
+    ${renderSheetTable(result)}
   `;
 }
 
-function renderCountryGrid(result) {
+function renderSheetToolbar(result) {
   const countries = result.countries || [];
   if (!countries.length) {
     return `<p class="muted">确认表暂无可展示数据。</p>`;
   }
+  const selected = state.qualityRuleGenerationCountry || "";
   return `
-    <section class="sub-panel">
+    <section class="quality-sheet-toolbar">
       <div class="detail-header compact-header">
         <div>
-          <h2 class="panel-title">各国生成情况</h2>
-          <p class="muted">点击国家卡片查看具体表、唯一键和 SQL。</p>
+          <h2 class="panel-title">Google 表记录</h2>
+          <p class="muted">默认展示确认表全部行；可按国家快速过滤，每行都能查看 SQL 并复制编辑。</p>
         </div>
       </div>
-      <div class="quality-country-grid">
+      <div class="quality-filter-row" aria-label="国家过滤">
+        <button type="button" class="quality-filter-chip ${selected ? "" : "is-selected"}" data-quality-filter-country="">
+          全部 <span>${escapeHtml(result.rowCount || 0)}</span>
+        </button>
         ${countries.map((country) => {
-          const selected = country.country === state.qualityRuleGenerationCountry;
           return `
-            <button type="button" class="quality-country-card ${selected ? "is-selected" : ""}" data-quality-country="${escapeHtml(country.country)}">
-              <strong>${escapeHtml(displayCountry(country.country, country.countryRaw))}</strong>
-              <span>${escapeHtml(country.rowCount)} 行，${escapeHtml(country.tableCount)} 张表</span>
-              <div>
-                <em>待生成 ${escapeHtml(country.autoGenerateCount)}</em>
-                <em>上线 ${escapeHtml(country.needApplyCount)}</em>
-                <em>已有 SQL ${escapeHtml(country.generatedSqlCount)}</em>
-              </div>
+            <button type="button" class="quality-filter-chip ${selected === country.country ? "is-selected" : ""}" data-quality-filter-country="${escapeHtml(country.country)}">
+              ${escapeHtml(displayCountry(country.country, country.countryRaw))}
+              <span>${escapeHtml(country.rowCount)}</span>
             </button>
           `;
         }).join("")}
@@ -297,50 +301,99 @@ function renderCountryGrid(result) {
   `;
 }
 
-function renderCountryDetail(result) {
-  const country = selectedCountry(result);
-  if (!country) {
-    return "";
+function renderSheetTable(result) {
+  const rows = filteredRows(result);
+  if (!rows.length) {
+    return `
+      <section class="sub-panel">
+        <p class="muted">当前筛选下没有确认表记录。</p>
+      </section>
+    `;
   }
   return `
-    <section id="quality-rule-country-detail" class="sub-panel">
-      <div class="detail-header compact-header">
-        <div>
-          <h2 class="panel-title">${escapeHtml(displayCountry(country.country, country.countryRaw))} 表级明细</h2>
-          <p class="muted">展示确认表里的生成状态、唯一键、源端 SQL 和目标 SQL。</p>
-        </div>
-      </div>
-      <div class="quality-rule-table-list">
-        ${country.rows.map((row) => renderRuleRow(row)).join("")}
+    <section id="quality-rule-country-detail" class="sub-panel quality-sheet-section">
+      <div class="quality-sheet-table-wrap">
+        <table class="quality-sheet-table">
+          <thead>
+            <tr>
+              <th>行</th>
+              <th>国家</th>
+              <th>数据库 / 表名</th>
+              <th>唯一键</th>
+              <th>生成状态</th>
+              <th>校验字段</th>
+              <th>提交信息</th>
+              <th>SQL / 备注</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => renderSheetRow(row)).join("")}
+          </tbody>
+        </table>
       </div>
     </section>
   `;
 }
 
-function renderRuleRow(row) {
+function renderSheetRow(row) {
+  const hasSql = Boolean(row.srcSql || row.destSql || row.humanCheck || row.notes);
   return `
-    <article class="quality-rule-row-card">
-      <div class="quality-rule-row-head">
-        <div>
-          <strong>${escapeHtml(row.database || "-")}.${escapeHtml(row.table || "-")}</strong>
-          <span>唯一键：${escapeHtml(row.candidateKey || "-")}</span>
-        </div>
-        <div>
+    <tr>
+      <td class="quality-row-number">${escapeHtml(row.sheetRowNumber || "-")}</td>
+      <td>
+        <strong>${escapeHtml(displayCountry(row.country, row.countryRaw))}</strong>
+        <span class="quality-muted-small">${escapeHtml(row.countryRaw || row.country || "")}</span>
+      </td>
+      <td>
+        <strong>${escapeHtml(row.database || "-")}</strong>
+        <span class="quality-table-name">${escapeHtml(row.table || "-")}</span>
+      </td>
+      <td><code>${escapeHtml(row.candidateKey || "-")}</code></td>
+      <td>
+        <div class="quality-pill-stack">
           ${pill(isTruthyFlag(row.autoGenerate) ? "需要生成" : "不生成", isTruthyFlag(row.autoGenerate) ? "warning" : "neutral")}
-          ${pill(isTruthyFlag(row.needApply) ? "已标记上线" : "未上线", isTruthyFlag(row.needApply) ? "success" : "neutral")}
-          <button class="mini-action" type="button" data-quality-edit-row="${escapeHtml(row.id || "")}">复制编辑</button>
+          ${pill(isTruthyFlag(row.needApply) ? "已上线" : "未上线", isTruthyFlag(row.needApply) ? "success" : "neutral")}
         </div>
+      </td>
+      <td>${escapeHtml(row.metricField || "-")}</td>
+      <td>
+        <strong>${escapeHtml(row.submittedAt || "-")}</strong>
+        <span class="quality-muted-small">操作人：${escapeHtml(row.operator || "-")}</span>
+      </td>
+      <td class="quality-sql-cell">
+        ${hasSql ? renderSqlSummary(row) : `<span class="muted">暂无 SQL 或备注</span>`}
+      </td>
+      <td>
+        <button class="mini-action" type="button" data-quality-edit-row="${escapeHtml(row.id || "")}">编辑</button>
+      </td>
+    </tr>
+  `;
+}
+
+function renderSqlSummary(row) {
+  return `
+    <details class="quality-inline-detail">
+      <summary>查看 SQL / 备注</summary>
+      <div class="quality-sql-grid">
+        ${renderSqlBlock("src_sql", row.srcSql)}
+        ${renderSqlBlock("dest_sql", row.destSql)}
+        ${renderSqlBlock("人工确认", row.humanCheck)}
+        ${renderSqlBlock("备注", row.notes)}
       </div>
-      <div class="quality-rule-row-meta">
-        ${field("提交时间", row.submittedAt || "-")}
-        ${field("校验字段", row.metricField || "-")}
-        ${field("操作人", row.operator || "-")}
-        ${field("备注", row.notes || "-")}
-      </div>
-      ${renderSqlDetail("src_sql", row.srcSql)}
-      ${renderSqlDetail("dest_sql", row.destSql)}
-      ${row.humanCheck ? renderSqlDetail("human_check", row.humanCheck) : ""}
-    </article>
+    </details>
+  `;
+}
+
+function renderSqlBlock(label, value) {
+  if (!value) {
+    return "";
+  }
+  return `
+    <div class="quality-sql-block">
+      <span>${escapeHtml(label)}</span>
+      <pre>${escapeHtml(value)}</pre>
+    </div>
   `;
 }
 
@@ -426,8 +479,8 @@ function summaryItem(label, value) {
 
 function ensureSelectedCountry(result = {}) {
   const countries = result.countries || [];
-  if (!countries.find((country) => country.country === state.qualityRuleGenerationCountry)) {
-    state.qualityRuleGenerationCountry = countries[0]?.country || "";
+  if (state.qualityRuleGenerationCountry && !countries.find((country) => country.country === state.qualityRuleGenerationCountry)) {
+    state.qualityRuleGenerationCountry = "";
   }
 }
 
@@ -457,6 +510,14 @@ function emptyEditorRow() {
 function selectedCountry(result = {}) {
   const countries = result.countries || [];
   return countries.find((country) => country.country === state.qualityRuleGenerationCountry) || countries[0] || null;
+}
+
+function filteredRows(result = {}) {
+  const rows = result.rows || [];
+  if (!state.qualityRuleGenerationCountry) {
+    return rows;
+  }
+  return rows.filter((row) => row.country === state.qualityRuleGenerationCountry);
 }
 
 function displayCountry(country, raw) {
