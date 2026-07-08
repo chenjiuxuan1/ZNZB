@@ -169,6 +169,59 @@ npm run check-public-gateway-notify:ready
 
 Gateway API 契约见 `./docs/bi-monitor-gateway.md`。注意：Skill 本身不能绕过网络隔离，必须有 Gateway 服务端在公司网络内代查报表。
 
+### n8n 部署与 Wattrel 多国家连接
+
+Wattrel 告警页面需要直接查询各国 `wattrel_quality_result`。因为每个国家的 Wattrel 数据库不同，推荐把本项目部署在 n8n 能 SSH 到、并且能访问各国数据库的服务器上；n8n 只负责拉代码、启动服务或触发接口。
+
+参考 `智能告警修复-印尼` 工作流，n8n 可以使用 SSH 节点执行下面这类命令：
+
+```bash
+ssh -p 36000 root@192.168.21.236 '
+  cd /root/ZNZB &&
+  git fetch origin &&
+  git reset --hard origin/codex-show-scanned-dashboards &&
+  npm install &&
+  cp -n config/wattrel.config.example.json config/wattrel.config.json || true &&
+  nohup npm run platform > platform.log 2>&1 &
+'
+```
+
+各国 Wattrel 连接建议用环境变量注入，不要把密码写进仓库。变量名规则如下：
+
+```bash
+export WATTREL_INE_DB_HOST='印尼 Wattrel host'
+export WATTREL_INE_DB_PORT='3306'
+export WATTREL_INE_DB_USER='账号'
+export WATTREL_INE_DB_PASSWORD='密码'
+export WATTREL_INE_DB_NAME='库名'
+
+export WATTREL_PH_DB_HOST='菲律宾 Wattrel host'
+export WATTREL_PH_DB_PORT='3306'
+export WATTREL_PH_DB_USER='账号'
+export WATTREL_PH_DB_PASSWORD='密码'
+export WATTREL_PH_DB_NAME='库名'
+
+export WATTREL_TH_DB_HOST='泰国 Wattrel host'
+export WATTREL_PK_DB_HOST='巴基斯坦 Wattrel host'
+export WATTREL_MX_DB_HOST='墨西哥 Wattrel host'
+export WATTREL_CN_DB_HOST='中国 Wattrel host'
+```
+
+每个国家都支持同样的五个变量：`WATTREL_<国家代码>_DB_HOST`、`WATTREL_<国家代码>_DB_PORT`、`WATTREL_<国家代码>_DB_USER`、`WATTREL_<国家代码>_DB_PASSWORD`、`WATTREL_<国家代码>_DB_NAME`。国家代码使用 `INE`、`PH`、`TH`、`PK`、`MX`、`CN`。
+
+如果服务器没有安装 Node MySQL 驱动，项目会回退使用本机 `mysql` 命令行，因此服务器至少要满足二选一：
+
+- 安装 Node 依赖中的 `mysql2`。
+- 或安装系统 `mysql` 客户端，并保证命令名为 `mysql`，也可以通过 `WATTREL_MYSQL_COMMAND` 指定。
+
+启动后访问：
+
+```text
+http://<服务器IP>:8787/#/wattrel-alerts
+```
+
+页面会自动按国家查询当前 Wattrel 告警。未配置连接的国家会显示“未配置连接”；已配置但查询失败会显示失败原因；点击国家卡片可以查看该国家当前具体告警。
+
 4. 运行一次巡检：
 
 ```bash

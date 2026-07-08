@@ -1,5 +1,5 @@
 import { apiPost } from "../api.js";
-import { findSelectedCard, findSelectedDashboard, findSelectedRule, setRoute, state } from "../state.js";
+import { findSelectedRule, setRoute, state } from "../state.js";
 import {
   describeRule,
   escapeHtml,
@@ -14,8 +14,17 @@ export function renderSandbox(root) {
   const dashboards = state.inventory?.dashboards || [];
   const rules = state.rulesConfig?.rules || [];
   const countries = state.countries?.countries || [];
-  const dashboard = findSelectedDashboard();
-  const card = findSelectedCard();
+  const countryOptions = buildSandboxCountryOptions(dashboards, countries);
+  const selectedCountry = resolveSandboxCountry(countryOptions, dashboards);
+  const filteredDashboards = selectedCountry
+    ? dashboards.filter((item) => getDashboardCountryCode(item) === selectedCountry)
+    : dashboards;
+  const dashboard = filteredDashboards.find((item) => item.uuid === state.selected.dashboardUuid) || filteredDashboards[0] || null;
+  if (dashboard && state.selected.dashboardUuid !== dashboard.uuid) {
+    state.selected.dashboardUuid = dashboard.uuid || "";
+    state.selected.cardId = "";
+  }
+  const card = (dashboard?.cards || []).find((item) => String(item.cardId) === String(state.selected.cardId)) || dashboard?.cards?.[0] || null;
   const rule = findSelectedRule();
   const rows = state.sandboxRows || card?.sampleRows || [];
 
@@ -47,9 +56,15 @@ export function renderSandbox(root) {
     ${renderSandboxStatus()}
     <div class="toolbar wide-toolbar">
       <label>
+        国家
+        <select id="sandbox-country-select">
+          ${countryOptions.map((item) => `<option value="${escapeHtml(item.code)}" ${item.code === selectedCountry ? "selected" : ""}>${escapeHtml(item.label)} · ${item.count} 个看板</option>`).join("")}
+        </select>
+      </label>
+      <label>
         看板
         <select id="dashboard-select">
-          ${dashboards.map((item) => `<option value="${escapeHtml(item.uuid || "")}" ${item === dashboard ? "selected" : ""}>${escapeHtml(item.countryCode || "")} ${escapeHtml(item.title || item.sourcePanelTitle || "")}</option>`).join("")}
+          ${filteredDashboards.map((item) => `<option value="${escapeHtml(item.uuid || "")}" ${item === dashboard ? "selected" : ""}>${escapeHtml(item.title || item.sourcePanelTitle || "")}</option>`).join("")}
         </select>
       </label>
       <label>
@@ -91,6 +106,16 @@ export function renderSandbox(root) {
     </div>
   `;
 
+  root.querySelector("#sandbox-country-select")?.addEventListener("change", (event) => {
+    state.selected.countryCode = event.target.value;
+    const nextDashboard = dashboards.find((item) => getDashboardCountryCode(item) === event.target.value) || null;
+    state.selected.dashboardUuid = nextDashboard?.uuid || "";
+    state.selected.cardId = "";
+    state.sandboxRows = null;
+    resetSandboxSort();
+    clearSandboxFeedback();
+    renderSandbox(root);
+  });
   root.querySelector("#dashboard-select")?.addEventListener("change", (event) => {
     state.selected.dashboardUuid = event.target.value;
     state.selected.cardId = "";
@@ -181,6 +206,43 @@ export function renderSandbox(root) {
     state.notifyPreview = null;
     setRoute("/notify-preview");
   });
+}
+
+function getDashboardCountryCode(dashboard = {}) {
+  return dashboard.countryCode || dashboard.country?.code || "";
+}
+
+function buildSandboxCountryOptions(dashboards, countries) {
+  const countryByCode = new Map((countries || []).map((item) => [item.code, item]));
+  const codes = [];
+  for (const dashboard of dashboards || []) {
+    const code = getDashboardCountryCode(dashboard);
+    if (code && !codes.includes(code)) {
+      codes.push(code);
+    }
+  }
+  return codes.map((code) => {
+    const country = countryByCode.get(code);
+    const label = country?.name ? `${country.name} / ${code}` : code;
+    return {
+      code,
+      label,
+      count: dashboards.filter((dashboard) => getDashboardCountryCode(dashboard) === code).length,
+    };
+  });
+}
+
+function resolveSandboxCountry(countryOptions, dashboards) {
+  const selectedDashboard = dashboards.find((dashboard) => dashboard.uuid === state.selected.dashboardUuid);
+  const dashboardCountry = selectedDashboard ? getDashboardCountryCode(selectedDashboard) : "";
+  const selectedCountry = state.selected.countryCode || dashboardCountry;
+  if (countryOptions.some((item) => item.code === selectedCountry)) {
+    state.selected.countryCode = selectedCountry;
+    return selectedCountry;
+  }
+  const fallback = countryOptions[0]?.code || "";
+  state.selected.countryCode = fallback;
+  return fallback;
 }
 
 function clearSandboxFeedback() {

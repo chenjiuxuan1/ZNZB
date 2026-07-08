@@ -1,5 +1,6 @@
 import path from "node:path";
 import { collectDataQualityMetrics } from "./grafana-quality-monitor.mjs";
+import { MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
 import { readJsonFile, writeJsonFile } from "./utils.mjs";
 
@@ -12,6 +13,7 @@ export async function checkPublicDashboards({
   rulesFile,
   baselineCacheFile,
   queryCardFn = queryCard,
+  metabaseClientFactory = createDefaultMetabaseClient,
 }) {
   const inventoryData = inventory || await readJsonFile(path.resolve(inventoryFile));
   const ruleConfigData = ruleConfig || await readJsonFile(path.resolve(rulesFile), {
@@ -29,10 +31,7 @@ export async function checkPublicDashboards({
   const shouldRunBuiltIns = ruleConfigData.builtInChecks?.queryError !== false || ruleConfigData.builtInChecks?.noData !== false;
 
   for (const dashboard of inventoryData.dashboards || []) {
-    const client = new MetabasePublicClient({
-      baseUrl: new URL(dashboard.url).origin,
-      requestTimeoutSeconds: 30,
-    });
+    const client = metabaseClientFactory(dashboard);
 
     for (const card of dashboard.cards || []) {
       const matchingRules = rules.filter((rule) => ruleMatchesCard(rule, dashboard, card));
@@ -97,6 +96,20 @@ export async function checkPublicDashboards({
   }
 
   return result;
+}
+
+export function createDefaultMetabaseClient(dashboard) {
+  const baseUrl = new URL(dashboard.url).origin;
+  if (dashboard.access === "internal") {
+    return new MetabaseInternalClient({
+      baseUrl,
+      requestTimeoutSeconds: 30,
+    });
+  }
+  return new MetabasePublicClient({
+    baseUrl,
+    requestTimeoutSeconds: 30,
+  });
 }
 
 function countDataQualityIssues(dataQuality) {
@@ -242,12 +255,17 @@ function parameterTargetKey(parameter) {
 
 async function queryCard(client, dashboard, card, parameters = []) {
   try {
-    const rows = await client.queryDashcardJson({
+    const request = {
       cardId: card.cardId,
-      dashboardUuid: dashboard.uuid,
       dashcardId: card.dashcardId,
       parameters,
-    });
+    };
+    if (dashboard.access === "internal") {
+      request.dashboardId = dashboard.dashboardId;
+    } else {
+      request.dashboardUuid = dashboard.uuid;
+    }
+    const rows = await client.queryDashcardJson(request);
     return {
       ok: true,
       rows: Array.isArray(rows) ? rows : [],

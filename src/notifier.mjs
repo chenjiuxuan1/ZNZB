@@ -226,10 +226,16 @@ export function buildPublicCheckMessages(result, options = {}) {
     return messages;
   }
 
+  if (options.includeCountryDetailMessages !== true) {
+    return messages;
+  }
+
   for (const group of countryGroups) {
     messages.push({
       title: `${group.label} 公共报表巡检异常 ${group.anomalies.length} 条`,
-      body: buildCountryPublicCheckMessage(result, group, options),
+      body: options.countryDetailMode === "summary"
+        ? buildCountryPublicCheckDigestMessage(result, group, options)
+        : buildCountryPublicCheckMessage(result, group, options),
       anomalyCount: group.anomalies.length,
     });
   }
@@ -285,11 +291,39 @@ function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAno
   }
 
   appendTopAnomalyDashboardSummary(lines, anomalies, options.maxSummaryAnomalyDashboards || 5);
-  appendTopSevereAnomalies(lines, anomalies, options.maxSummaryTopAnomalies || 5);
+  appendSpecificAnomalyExamples(lines, anomalies, options.maxSummaryTopAnomalies || 5);
 
   lines.push("");
-  lines.push("后续每个异常国家各发1条聚合明细；总览只展示 Top 项。");
+  lines.push("完整异常原因、各时间点当前值/基准值/波动幅度已保存到巡检历史详情页。");
   appendDetailUrl(lines, detailUrl);
+  appendCountryDetailLinks(lines, countryGroups, detailUrl, Number(options.maxSummaryCountryLinks || 8));
+
+  return lines.join("\n");
+}
+
+function buildCountryPublicCheckDigestMessage(result, group, options = {}) {
+  const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(group.anomalies);
+  const anomalyCardCount = groupAnomaliesByReportCard(group.anomalies).length;
+  const detailUrl = appendCountryToDetailUrl(normalizeDetailUrl(options.detailUrl), group.countryCode || group.key || "");
+  const maxDashboards = Number(options.maxCountryDigestDashboards || 5);
+  const maxExamples = Number(options.maxCountryDigestExamples || 6);
+  const lines = [];
+
+  lines.push(`🚨【${group.label} 公共报表巡检异常摘要】`);
+  lines.push("");
+  lines.push(`🕒 巡检时间：${formatCompactZonedDateTime(result.checkedAt, "Asia/Shanghai")}（北京时间）`);
+  lines.push("");
+  lines.push("📊 异常概览");
+  lines.push(`• 数据缺失：${missingAnomalies.length}条`);
+  lines.push(`• 数据波动：${fluctuationAnomalies.length}条`);
+  lines.push(`• 异常卡片：${anomalyCardCount}个`);
+  lines.push("");
+  appendTopAnomalyDashboardSummary(lines, group.anomalies, maxDashboards);
+  appendSpecificAnomalyExamples(lines, group.anomalies, maxExamples);
+  lines.push("");
+  lines.push("完整原因、每个时间点的当前值/基准值/波动幅度已保存到巡检历史详情页。");
+  appendDashboardLinks(lines, group.anomalies, { maxLinks: 6 });
+  appendDetailUrl(lines, detailUrl, "查看本国家完整明细");
 
   return lines.join("\n");
 }
@@ -361,6 +395,27 @@ function appendDetailUrl(lines, detailUrl, label = "查看完整明细") {
   lines.push(`🔎 ${label}：${detailUrl}`);
 }
 
+function appendCountryDetailLinks(lines, countryGroups, detailUrl, maxLinks = 8) {
+  if (!detailUrl || !Array.isArray(countryGroups) || countryGroups.length === 0) {
+    return;
+  }
+  const groups = countryGroups
+    .filter((group) => group?.anomalies?.length > 0)
+    .slice(0, Math.max(0, maxLinks));
+  if (groups.length === 0) {
+    return;
+  }
+  lines.push("");
+  lines.push("🌏 按国家查看");
+  for (const group of groups) {
+    const countryUrl = appendCountryToDetailUrl(detailUrl, group.countryCode || group.key || "");
+    lines.push(`• ${group.label}：${countryUrl}`);
+  }
+  if (countryGroups.length > groups.length) {
+    lines.push(`• 另有${countryGroups.length - groups.length}个国家，请在完整明细页切换查看。`);
+  }
+}
+
 function appendCheckedDashboardSummary(lines, result, options = {}) {
   const dashboardGroups = groupCheckedCardsByDashboard(result.checkedCards || []);
   const dashboardCount = Number(result.dashboardCount || dashboardGroups.length || 0);
@@ -422,7 +477,7 @@ function appendTopAnomalyDashboardSummary(lines, anomalies, limit) {
   }
 }
 
-function appendTopSevereAnomalies(lines, anomalies, limit) {
+function appendSpecificAnomalyExamples(lines, anomalies, limit) {
   const items = [...(anomalies || [])]
     .sort((left, right) => extractAnomalySeverity(right.message) - extractAnomalySeverity(left.message))
     .slice(0, limit);
@@ -432,9 +487,9 @@ function appendTopSevereAnomalies(lines, anomalies, limit) {
   }
 
   lines.push("");
-  lines.push(`🔎 最严重异常 Top ${items.length}`);
+  lines.push(`🔎 具体异常示例 Top ${items.length}`);
   for (const anomaly of items) {
-    lines.push(`• ${formatCompactAnomalySummary(anomaly)}`);
+    lines.push(`• ${formatActionableAnomalySummary(anomaly)}`);
   }
 }
 
@@ -477,15 +532,19 @@ function summarizeTopAnomaly(anomalies) {
   return top.message.slice(0, 36);
 }
 
-function formatCompactAnomalySummary(anomaly) {
+function formatActionableAnomalySummary(anomaly) {
   const location = [
     formatCountryLabel(anomaly),
     anomaly.dashboardTitle,
     anomaly.cardTitle || anomaly.cardName,
   ].filter(Boolean).join(" / ");
   const summary = summarizeFluctuationMessage(anomaly.message || "");
+  const metricName = extractMetricName(anomaly.message || "");
   const details = [];
 
+  if (metricName) {
+    details.push(`指标「${metricName}」`);
+  }
   if (summary.change) {
     details.push(summary.change);
   }
@@ -497,6 +556,15 @@ function formatCompactAnomalySummary(anomaly) {
   }
 
   return `${location || "未知卡片"}：${details.join("，") || String(anomaly.message || "").slice(0, 80)}`;
+}
+
+function extractMetricName(message = "") {
+  const metricMatch = String(message).match(/指标「([^」]+)」/);
+  if (metricMatch) {
+    return metricMatch[1];
+  }
+  const quotedMatch = String(message).match(/「([^」]+)」/);
+  return quotedMatch ? quotedMatch[1] : "";
 }
 
 function groupCheckedCardsByDashboard(checkedCards) {
@@ -1081,7 +1149,8 @@ function formatCircledNumber(value) {
   return circledNumbers[value - 1] || `${value}.`;
 }
 
-function appendDashboardLinks(lines, anomalies) {
+function appendDashboardLinks(lines, anomalies, options = {}) {
+  const maxLinks = Number(options.maxLinks || 12);
   const links = [];
   const seen = new Set();
 
@@ -1111,9 +1180,12 @@ function appendDashboardLinks(lines, anomalies) {
   }
 
   lines.push("🔗 看板链接");
-  for (const link of links) {
+  for (const link of links.slice(0, maxLinks)) {
     lines.push(`• ${link.title}`);
     lines.push(link.url);
+  }
+  if (links.length > maxLinks) {
+    lines.push(`• 另有${links.length - maxLinks}个看板链接未展开，请在完整明细页查看。`);
   }
 }
 

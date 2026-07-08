@@ -260,6 +260,46 @@ test("platform api filters batch check by selected dashboard uuids", async () =>
   assert.deepEqual(queriedDashboards, ["dash-2"]);
 });
 
+test("platform api explains countries that only have internal source dashboards", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({
+      countries: [
+        { code: "CN", name: "中国", timezone: "Asia/Shanghai", status: "ready" },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({ dashboardCount: 0, dashboards: [] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.cn.json"),
+    JSON.stringify({
+      panels: [
+        {
+          title: "业务概览-OKR",
+          links: [{ url: "https://data.kuainiu.io/collection/799-okr" }],
+        },
+      ],
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(
+    () => api.runBatchCheck({ countryCode: "CN" }),
+    (error) => {
+      assert.equal(error.message, "No public dashboard for country");
+      assert.match(
+        error.errors?.[0] || "",
+        /中国 \/ CN 当前有 1 个来源看板.*尚未发现可巡检的 \/public\/dashboard UUID/,
+      );
+      return true;
+    },
+  );
+});
+
 test("platform api runs scoped batch check and sends TV notification", async () => {
   const rootDir = await makeFixture();
   const captured = [];
@@ -366,7 +406,7 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(due.schedule.lastResult.successCount, 1);
   assert.equal(due.schedule.lastResult.runs[0].result.notification.sent, true);
   assert.ok(Date.parse(due.schedule.nextRunAt) > Date.parse(schedule.nextRunAt));
-  assert.equal(captured.length, 2);
+  assert.equal(captured.length, 1);
   assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
 
   const history = await api.getBatchHistory();
@@ -375,7 +415,7 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(history.runs[0].countryCount, 1);
   assert.equal(history.runs[0].checkedCardCount, 1);
   assert.equal(history.runs[0].anomalyCount, 1);
-  assert.equal(history.runs[0].notificationSentCount, 2);
+  assert.equal(history.runs[0].notificationSentCount, 1);
   assert.equal(history.runs[0].runs[0].result.checkedDashboards.length, 1);
   assert.equal(history.runs[0].runs[0].result.checkedCards.length, 1);
   assert.equal(history.runs[0].runs[0].result.anomalies.length, 1);
@@ -383,6 +423,282 @@ test("platform api saves batch schedule and runs it when due", async () => {
 
   const filteredHistory = await api.getBatchHistory({ countryCode: "INE", status: "anomaly" });
   assert.equal(filteredHistory.runs.length, 1);
+});
+
+test("platform api aggregates scheduled countries by same notification target", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({
+      countries: [
+        { code: "INE", name: "印尼", timezone: "Asia/Jakarta", status: "ready" },
+        { code: "PH", name: "菲律宾", timezone: "Asia/Manila", status: "ready" },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboardCount: 2,
+      dashboards: [
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          title: "OKR",
+          uuid: "dash-ine",
+          url: "https://data.example/public/dashboard/dash-ine",
+          cards: [{ title: "规模", cardId: 1, dashcardId: 2, columns: ["统计日期", "注册数"] }],
+        },
+        {
+          countryCode: "PH",
+          countryName: "菲律宾",
+          title: "OKR",
+          uuid: "dash-ph",
+          url: "https://data.example/public/dashboard/dash-ph",
+          cards: [{ title: "规模", cardId: 3, dashcardId: 4, columns: ["统计日期", "注册数"] }],
+        },
+      ],
+    }),
+  );
+  const captured = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-05", "注册数": 10 }];
+      },
+    }),
+    notifyTextFn: async (config, message, metadata) => {
+      captured.push({ config, message, metadata });
+      return { sent: true, status: 200 };
+    },
+  });
+
+  const schedule = await api.saveBatchSchedule({
+    enabled: true,
+    dailyRunTimes: ["09:00"],
+    countryConfigs: [
+      {
+        countryCode: "INE",
+        enabled: true,
+        dashboardUuids: ["dash-ine"],
+        webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+        botId: "shared-tv-bot",
+      },
+      {
+        countryCode: "PH",
+        enabled: true,
+        dashboardUuids: ["dash-ph"],
+        webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+        botId: "shared-tv-bot",
+      },
+    ],
+  });
+
+  await api.runDueBatchSchedule(new Date(Date.parse(schedule.nextRunAt) + 1000));
+
+  assert.equal(captured.length, 1);
+  assert.match(captured[0].message, /公共报表巡检汇总/);
+  assert.match(captured[0].message, /印尼\(INE\)/);
+  assert.match(captured[0].message, /菲律宾\(PH\)/);
+  assert.match(captured[0].message, /按国家查看/);
+
+  const history = await api.getBatchHistory();
+  assert.equal(history.runs[0].notificationSentCount, 1);
+  assert.equal(history.runs[0].countryCount, 2);
+});
+
+test("platform api ingests external wattrel alert runs into batch history", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  const result = await api.ingestExternalAlertRun({
+    source: "wattrel",
+    checkedAt: "2026-07-08T02:40:00.000Z",
+    countries: [
+      {
+        countryCode: "CN",
+        countryName: "中国",
+        checkedCount: 2,
+        anomalies: [
+          {
+            name: "dwd_asset_withhold_cnt",
+            srcTbl: "ods_repay_withhold",
+            destTbl: "dwd_asset_withhold",
+            expectedValue: 1212966,
+            actualValue: 1219544,
+            diff: -6578,
+            window: "2026-04-05 至 2026-07-04",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.source, "wattrel");
+  assert.equal(result.summary.countryCount, 1);
+  assert.equal(result.summary.checkedCardCount, 2);
+  assert.equal(result.summary.anomalyCount, 1);
+  assert.match(result.detailUrl, /historyRunId=/);
+
+  const history = await api.getBatchHistory({ countryCode: "CN", status: "anomaly" });
+  assert.equal(history.runs.length, 1);
+  assert.equal(history.runs[0].source, "wattrel");
+  assert.equal(history.runs[0].trigger, "external_wattrel");
+  assert.equal(history.runs[0].runs[0].result.anomalies[0].dashboardTitle, "Wattrel 数据质量");
+  assert.equal(history.runs[0].runs[0].result.anomalies[0].cardTitle, "dwd_asset_withhold");
+  assert.match(history.runs[0].runs[0].result.anomalies[0].message, /期望值 1212966，实际值 1219544，差值 -6578/);
+});
+
+test("platform api can notify after ingesting external wattrel alerts", async () => {
+  const rootDir = await makeFixture();
+  const captured = [];
+  const api = createPlatformApi({
+    rootDir,
+    notifyTextFn: async (config, message, metadata) => {
+      captured.push({ config, message, metadata });
+      return { sent: true, status: 200 };
+    },
+  });
+
+  const result = await api.ingestExternalAlertRun({
+    source: "wattrel",
+    checkedAt: "2026-07-08T02:40:00.000Z",
+    notify: true,
+    notifyChannel: "tv",
+    webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+    botId: "tv-bot-001",
+    anomalies: [
+      {
+        countryCode: "INE",
+        countryName: "印尼",
+        name: "dwb_asset_info_reduce_amt",
+        destTbl: "dwb_asset_info",
+        expectedValue: 543295.82,
+        actualValue: 544267.82,
+        diff: -972,
+      },
+    ],
+  });
+
+  assert.equal(result.notificationSentCount, 1);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
+  assert.match(captured[0].message, /公共报表巡检汇总/);
+  assert.match(captured[0].message, /Wattrel 数据质量/);
+  assert.match(captured[0].message, /dwb_asset_info/);
+});
+
+test("platform api locally queries wattrel alerts into batch history", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/wattrel.config.json"),
+    JSON.stringify({
+      enabled: true,
+      defaultCountryCode: "CN",
+      defaultCountryName: "中国",
+      query: { limit: 5 },
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    wattrelQueryFn: async (config) => {
+      assert.equal(config.query.limit, 5);
+      return [
+        {
+          name: "dwd_asset_withhold_cnt",
+          src_tbl: "ods_repay_withhold",
+          dest_tbl: "dwd_asset_withhold",
+          src_value: 1212966,
+          dest_value: 1219544,
+          diff: -6578,
+          check_window: "2026-04-05 至 2026-07-04",
+        },
+      ];
+    },
+  });
+
+  const result = await api.queryWattrelAlerts({ limit: 5 });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.source, "wattrel");
+  assert.equal(result.rowCount, 1);
+  assert.equal(result.summary.countryCount, 1);
+  assert.equal(result.summary.anomalyCount, 1);
+  const history = await api.getBatchHistory({ countryCode: "CN", status: "anomaly" });
+  assert.equal(history.runs.length, 1);
+  assert.equal(history.runs[0].trigger, "external_wattrel");
+  assert.equal(history.runs[0].runs[0].result.anomalies[0].countryCode, "CN");
+  assert.equal(history.runs[0].runs[0].result.anomalies[0].cardTitle, "dwd_asset_withhold");
+});
+
+test("platform api locally queries wattrel with no active alerts", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/wattrel.config.json"),
+    JSON.stringify({ enabled: true }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    wattrelQueryFn: async () => [],
+  });
+
+  const result = await api.queryWattrelAlerts();
+
+  assert.equal(result.ok, true);
+  assert.equal(result.rowCount, 0);
+  assert.equal(result.summary.anomalyCount, 0);
+  const history = await api.getBatchHistory();
+  assert.equal(history.runs.length, 0);
+});
+
+test("platform api reads current wattrel alerts without writing history", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/wattrel.config.json"),
+    JSON.stringify({ enabled: true, query: { limit: 10 } }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    wattrelQueryFn: async () => [
+      {
+        country_code: "INE",
+        country_name: "印尼",
+        name: "dwb_asset_info_reduce_amt",
+        src_tbl: "dwd_asset_main",
+        dest_tbl: "dwb_asset_info",
+        src_value: 543295.82,
+        dest_value: 544267.82,
+        diff: -972,
+        begin: "2026-07-04",
+        end: "2026-07-05",
+      },
+      {
+        country_code: "PH",
+        country_name: "菲律宾",
+        name: "dwd_asset_withhold_cnt",
+        src_tbl: "ods_repay_withhold",
+        dest_tbl: "dwd_asset_withhold",
+        src_value: 1212966,
+        dest_value: 1219544,
+        diff: -6578,
+      },
+    ],
+  });
+
+  const result = await api.getCurrentWattrelAlerts({ limit: 10 });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.source, "wattrel");
+  assert.equal(result.summary.countryCount, 2);
+  assert.equal(result.summary.anomalyCount, 2);
+  assert.equal(result.summary.targetTableCount, 2);
+  assert.equal(result.countries[0].anomalyCount, 1);
+  assert.equal(result.anomalies[0].destTbl, "dwb_asset_info");
+  assert.match(result.anomalies[0].message, /期望值/);
+  const history = await api.getBatchHistory();
+  assert.equal(history.runs.length, 0);
 });
 
 test("platform api preserves explicit next run time on schedule save", async () => {
@@ -550,7 +866,7 @@ test("platform api can manually test saved country schedule before it is due", a
   assert.equal(result.schedule.enabled, false);
   assert.equal(result.schedule.lastResult.countryCount, 1);
   assert.equal(result.schedule.lastResult.anomalyCount, 1);
-  assert.equal(captured.length, 2);
+  assert.equal(captured.length, 1);
 
   const history = await api.getBatchHistory();
   assert.equal(history.runs[0].trigger, "manual_test");
@@ -593,7 +909,7 @@ test("platform api supports scheduled KN Chat Bot notifications", async () => {
 
   assert.equal(due.ran, true);
   assert.equal(due.schedule.lastError, null);
-  assert.equal(captured.length, 2);
+  assert.equal(captured.length, 1);
   assert.equal(captured[0].config.alerts.channel, "knBot");
   assert.equal(captured[0].config.alerts.botToken, "token-001");
   assert.equal(captured[0].config.alerts.recipientEmails, "owner@kn.group");

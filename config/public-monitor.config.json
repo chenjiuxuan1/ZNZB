@@ -239,6 +239,34 @@
       ]
     },
     {
+      "type": "requiredDatePresent",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "核心指标概览$",
+      "cardTitles": [
+        "未还占比-cn",
+        "滚动回款率-cn"
+      ],
+      "dateColumn": "到期日期",
+      "timezone": "dashboard",
+      "requiredLagDays": 1,
+      "parameters": [
+        {
+          "id": "52b3c4e6",
+          "type": "string/=",
+          "target": [
+            "variable",
+            [
+              "template-tag",
+              "date_type"
+            ]
+          ],
+          "value": [
+            "日"
+          ]
+        }
+      ]
+    },
+    {
       "type": "completeDayChange",
       "dashboardTitle": "OKR",
       "cardTitle": "转化漏斗",
@@ -356,6 +384,87 @@
       "valueFormat": "percent"
     },
     {
+      "type": "completeDayChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "OKR$",
+      "cardTitle": "中国OKR",
+      "dateColumn": "统计日期",
+      "columnPattern": "GMV|单量|件均",
+      "timezone": "dashboard",
+      "maxDropRate": 0.35,
+      "maxRiseRate": 0.6,
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 40,
+      "context": "CN月度OKR：按最近完整月份对比上月"
+    },
+    {
+      "type": "completeDayChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "OKR$",
+      "cardTitle": "中国OKR",
+      "dateColumn": "统计日期",
+      "columnPattern": "费率|首逾|坏账率|未还",
+      "timezone": "dashboard",
+      "minAbsDelta": 0.003,
+      "maxAbsDelta": 0.15,
+      "valueFormat": "percent",
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 40,
+      "context": "CN月度OKR：按最近完整月份对比上月"
+    },
+    {
+      "type": "completeDayChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "OKR$",
+      "cardTitle": "续贷交易来源",
+      "dateColumn": "统计月",
+      "columnPattern": "月初在贷用户数|月初人均在贷|当月交易用户数|户均交易额",
+      "timezone": "dashboard",
+      "maxDropRate": 0.35,
+      "maxRiseRate": 0.6,
+      "dimensionColumns": [
+        "用户类型"
+      ],
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 40,
+      "context": "CN月度OKR：按最近完整月份对比上月"
+    },
+    {
+      "type": "completeDayChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "OKR$",
+      "cardTitle": "续贷交易来源",
+      "dateColumn": "统计月",
+      "columnPattern": "交易率",
+      "timezone": "dashboard",
+      "minAbsDelta": 0.003,
+      "maxAbsDelta": 0.15,
+      "valueFormat": "percent",
+      "dimensionColumns": [
+        "用户类型"
+      ],
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 40,
+      "context": "CN月度OKR：按最近完整月份对比上月"
+    },
+    {
+      "type": "completeDayChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "OKR$",
+      "cardTitle": "下单~放款率",
+      "dateColumn": "放款时间",
+      "columns": [
+        "下单~放款"
+      ],
+      "timezone": "dashboard",
+      "minAbsDelta": 0.003,
+      "maxAbsDelta": 0.15,
+      "valueFormat": "percent",
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 40,
+      "context": "CN月度OKR：按最近完整月份对比上月"
+    },
+    {
       "type": "intradayTimePointCompleteness",
       "dashboardTitle": "核心链路准实时监控",
       "cardTitlePattern": "^(新客|老客)-",
@@ -445,6 +554,116 @@
         "launch_num",
         "reg_cnt",
         "ocr_num"
+      ],
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 30,
+      "allowedDelayMinutes": 60,
+      "previousLagDays": 1,
+      "maxAbsChangeRate": 0.5,
+      "baselineLookbackDays": 30,
+      "baselineMinSamples": 7,
+      "baselineMaxAbsChangeRate": 0.5,
+      "minPrevious": 100,
+      "ignoreDimensionColumns": [
+        "开始时间"
+      ],
+      "maxAnomaliesPerCard": 8
+    },
+    {
+      "type": "intradayTimePointCompleteness",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "核心链路准实时监控$",
+      "cardTitlePattern": "^新客-\\s*(注册次数|进件次数|通过次数|OCR次数|启动次数)$",
+      "dateColumn": "日期",
+      "timeColumn": "开始时间",
+      "columns": [
+        "pass_num",
+        "freeze_num",
+        "launch_num",
+        "reg_cnt",
+        "ocr_num"
+      ],
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 30,
+      "allowedDelayMinutes": 60,
+      "expectedTimePointSource": "previousDay",
+      "ignoreDimensionColumns": [
+        "开始时间"
+      ],
+      "maxAnomaliesPerCard": 8
+    },
+    {
+      "type": "intradayTimePointChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "核心链路准实时监控$",
+      "cardTitlePattern": "^新客-\\s*(注册次数|进件次数|通过次数|OCR次数|启动次数)$",
+      "dateColumn": "日期",
+      "timeColumn": "开始时间",
+      "columns": [
+        "pass_num",
+        "freeze_num",
+        "launch_num",
+        "reg_cnt",
+        "ocr_num"
+      ],
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 30,
+      "allowedDelayMinutes": 60,
+      "previousLagDays": 1,
+      "maxAbsChangeRate": 0.5,
+      "baselineLookbackDays": 30,
+      "baselineMinSamples": 7,
+      "baselineMaxAbsChangeRate": 0.5,
+      "minPrevious": 100,
+      "ignoreDimensionColumns": [
+        "开始时间"
+      ],
+      "maxAnomaliesPerCard": 8
+    },
+    {
+      "type": "intradayTimePointCompleteness",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "核心链路准实时监控$",
+      "cardTitlePattern": "^(老客-|新客-(irr|apr))",
+      "dateColumn": "stat_date",
+      "timeColumn": "开始时间",
+      "columns": [
+        "pass_num",
+        "freeze_num",
+        "launch_num",
+        "irr_grant_amt",
+        "apr_grant_amt",
+        "irr_repaid_amt",
+        "apr_repaid_amt"
+      ],
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 30,
+      "allowedDelayMinutes": 60,
+      "expectedTimePointSource": "previousDay",
+      "ignoreDimensionColumns": [
+        "开始时间"
+      ],
+      "maxAnomaliesPerCard": 8
+    },
+    {
+      "type": "intradayTimePointChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "核心链路准实时监控$",
+      "cardTitlePattern": "^(老客-|新客-(irr|apr))",
+      "dateColumn": "stat_date",
+      "timeColumn": "开始时间",
+      "columns": [
+        "pass_num",
+        "freeze_num",
+        "launch_num",
+        "irr_grant_amt",
+        "apr_grant_amt",
+        "irr_repaid_amt",
+        "apr_repaid_amt"
       ],
       "timezone": "dashboard",
       "startTime": "00:00",
@@ -504,6 +723,46 @@
       "maxDateGapDays": 1,
       "maxAbsDelta": 0.15,
       "valueFormat": "percent"
+    },
+    {
+      "type": "completeDayChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "新客转化率.*注册.*放款",
+      "cardTitles": [
+        "每日趋势-表",
+        "每日趋势- 图",
+        "一级渠道时间趋势",
+        "二级渠道时间趋势 ",
+        "三级渠道时间趋势"
+      ],
+      "dateColumn": "注册日期",
+      "columns": [
+        "注册",
+        "登录",
+        "点击我要借款",
+        "身份证",
+        "人脸识别",
+        "基本信息",
+        "联系人信息",
+        "银行卡",
+        "公司信息",
+        "预审进件",
+        "预审通过",
+        "正审进件",
+        "正审通过",
+        "下单",
+        "放款"
+      ],
+      "timezone": "dashboard",
+      "maxDropRate": 0.25,
+      "maxRiseRate": 0.4,
+      "dimensionColumns": [
+        "一级渠道",
+        "二级渠道",
+        "三级渠道"
+      ],
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 1
     },
     {
       "type": "intradayProgress",
@@ -672,6 +931,40 @@
       "cardTitles": [
         "未还占比",
         "滚动回款率"
+      ],
+      "dateColumn": "到期日期",
+      "columnPattern": "未还|^\\[",
+      "timezone": "dashboard",
+      "completeLagDays": 1,
+      "minAbsDelta": 0.003,
+      "maxAnomaliesPerCard": 15,
+      "maxDateGapDays": 1,
+      "maxAbsDelta": 0.1,
+      "valueFormat": "percent",
+      "parameters": [
+        {
+          "id": "52b3c4e6",
+          "type": "string/=",
+          "target": [
+            "variable",
+            [
+              "template-tag",
+              "date_type"
+            ]
+          ],
+          "value": [
+            "日"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "completeDayChange",
+      "countryCode": "CN",
+      "dashboardTitlePattern": "核心指标概览$",
+      "cardTitles": [
+        "未还占比-cn",
+        "滚动回款率-cn"
       ],
       "dateColumn": "到期日期",
       "columnPattern": "未还|^\\[",

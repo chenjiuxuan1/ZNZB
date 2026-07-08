@@ -17,65 +17,45 @@ export function renderBatchCheck(root) {
   const selectedDashboard = countryDashboards.find((dashboard) => dashboard.uuid === state.selected.dashboardUuid) || null;
   const selectedCardCount = countSelectedCards(countryDashboards, selectedDashboard);
   const result = state.batchCheckResult;
+  const activeTab = state.routeQuery?.historyRunId
+    ? "history"
+    : state.batchCheckTab || "manual";
 
   root.innerHTML = `
-    <div class="page-header">
+    <div class="page-header batch-hero">
       <div>
-        <h1 class="page-title">批量巡检</h1>
-        <p class="page-note">按国家或单个看板批量真实只读访问 Metabase，执行当前规则并直接发送 TV 通知；只读访问，不修改看板。</p>
+        <h1 class="page-title">Metabase 定时巡检</h1>
+        <p class="page-note">只读访问 Metabase，按当前规则识别公共报表缺失和波动；手动巡检、定时任务和历史明细分区管理。</p>
       </div>
-      <div class="button-group">
-        <button class="primary" id="run-batch-check">开始巡检并发送 TV</button>
-      </div>
+      ${renderBatchHeroStats()}
     </div>
-    <div class="notice">
-      <strong>巡检范围</strong>
-      <span>“该国家告警巡检看板”指当前配置清单里的公共看板范围，不是 Metabase 空间里的全部看板；选择单个看板时只巡检该看板内的卡片。</span>
-    </div>
-    <section class="panel batch-controls">
-      <h2 class="panel-title">巡检范围</h2>
-      <div class="toolbar wide-toolbar">
-        <label>
-          国家
-          <select id="batch-country">
-            <option value="${ALL_COUNTRIES}" ${isAllCountries ? "selected" : ""}>全部国家</option>
-            ${countries.map((country) => `<option value="${escapeHtml(country.code || "")}" ${country.code === selectedCountry ? "selected" : ""}>${escapeHtml(countryLabel(country, countries))}</option>`).join("")}
-          </select>
-        </label>
-        <label>
-          看板范围
-          <select id="batch-dashboard">
-            <option value="">该国家告警巡检看板</option>
-            ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboard === dashboard ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
-          </select>
-        </label>
-        <label>
-          本次巡检卡片数
-          <input id="batch-card-count" value="${escapeHtml(selectedCardCount)}" readonly>
-        </label>
-      </div>
-      <h2 class="panel-title section-title">通知配置</h2>
-      <div class="form-grid">
-        <div class="field">
-          <label>TV webhook 地址</label>
-          <input id="batch-webhook-url" value="${escapeHtml(getBatchNotifyConfig().webhookUrl)}" placeholder="${escapeHtml(DEFAULT_TV_WEBHOOK_URL)}">
-        </div>
-        <div class="field">
-          <label>TV bot_id</label>
-          <input id="batch-bot-id" value="${escapeHtml(getBatchNotifyConfig().botId)}" placeholder="必填：用于接收本次巡检通知">
-        </div>
-        <div class="field wide-form-field">
-          <label>提醒人 mentions</label>
-          <input id="batch-mentions" value="${escapeHtml(getBatchNotifyConfig().mentions)}" placeholder="可选：邮箱，多个用逗号或换行分隔">
-        </div>
-      </div>
-      <p class="muted">点击开始后会先只读访问 Metabase；只有发现异常才会把本次巡检汇总和异常明细发送到上方 TV bot_id，健康结果不会发送 TV。</p>
-      ${renderBatchStatus()}
-      ${renderBatchSchedulePanel()}
-    </section>
-    ${renderSelectedHistoryRunDetail()}
-    ${result ? renderBatchResult(result) : `<p class="muted">选择范围并确认通知配置后，点击“开始巡检并发送 TV”。</p>`}
+    ${renderBatchWorkspaceTabs(activeTab)}
+    ${state.routeQuery?.historyRunId ? renderSelectedHistoryRunDetail() : `
+      ${activeTab === "manual" ? renderManualBatchCheckPanel({
+        countries,
+        countryDashboards,
+        selectedCountry,
+        isAllCountries,
+        selectedDashboard,
+        selectedCardCount,
+        result,
+      }) : ""}
+      ${activeTab === "schedule" ? renderBatchSchedulePanel() : ""}
+      ${activeTab === "history" ? renderBatchHistoryPanel() : ""}
+    `}
   `;
+
+  root.querySelectorAll("[data-batch-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.batchCheckTab = button.dataset.batchTab || "manual";
+      if (state.routeQuery?.historyRunId) {
+        state.routeQuery = {};
+        window.history.replaceState(null, "", "#/batch-check");
+      }
+      clearBatchFeedback();
+      renderBatchCheck(root);
+    });
+  });
 
   root.querySelector("#batch-country")?.addEventListener("change", (event) => {
     state.selected.countryCode = event.target.value;
@@ -171,20 +151,26 @@ export function renderBatchCheck(root) {
         detail: "会先保存当前定时配置，再按已上线国家逐个巡检；发现异常时会按各国家通知方式发送。",
     };
     state.batchScheduleError = "";
+    state.batchScheduleProgress = null;
     renderBatchCheck(root);
     try {
       state.batchSchedule = await apiPut("/api/batch-schedule", payload);
+      startBatchScheduleProgressPolling(root);
       const result = await apiPost("/api/batch-schedule/run-now", {});
       state.batchSchedule = result.schedule || state.batchSchedule;
+      await refreshBatchScheduleProgress();
       const summary = result.result || {};
       state.batchScheduleStatus = {
         type: summary.failedCount > 0 ? "error" : "success",
         title: summary.failedCount > 0 ? "定时巡检测试完成，部分国家失败" : "定时巡检测试完成",
         detail: `国家 ${summary.countryCount || 0} 个，成功 ${summary.successCount || 0} 个，失败 ${summary.failedCount || 0} 个；检查 ${summary.checkedCardCount || 0} 张卡片，异常 ${summary.anomalyCount || 0} 条。`,
       };
+      stopBatchScheduleProgressPolling();
       await reloadBatchHistory(root);
       return;
     } catch (error) {
+      stopBatchScheduleProgressPolling();
+      await refreshBatchScheduleProgress().catch(() => {});
       state.batchScheduleError = error.payload?.errors?.join("\n") || error.message;
       state.batchScheduleStatus = {
         type: "error",
@@ -229,7 +215,7 @@ export function renderBatchCheck(root) {
         : "本次没有异常，已跳过 TV 发送。";
       state.batchCheckStatus = {
         type: "success",
-        title: notification.sent ? "批量巡检完成，TV 通知已发送" : "批量巡检完成，无需发送 TV",
+        title: notification.sent ? "Metabase 巡检完成，TV 通知已发送" : "Metabase 巡检完成，无需发送 TV",
         detail: `检查 ${state.batchCheckResult.checkedCardCount || 0} 张卡片，发现 ${state.batchCheckResult.anomalyCount || 0} 条异常；${sentText}`,
       };
     } catch (error) {
@@ -237,12 +223,133 @@ export function renderBatchCheck(root) {
       state.batchCheckError = error.payload?.errors?.join("\n") || error.message;
       state.batchCheckStatus = {
         type: "error",
-        title: "批量巡检或 TV 发送失败",
+        title: "Metabase 巡检或 TV 发送失败",
         detail: "请检查看板 public 链接、网络可达性、规则配置或 TV webhook/bot_id。",
       };
     }
     renderBatchCheck(root);
   });
+}
+
+function renderBatchHeroStats() {
+  const summary = state.summary || {};
+  const schedule = state.batchSchedule || {};
+  const historyRuns = state.batchHistory?.runs || [];
+  const latestRun = historyRuns[0] || null;
+  return `
+    <div class="hero-stats" aria-label="Metabase 定时巡检概览">
+      <article>
+        <span>国家</span>
+        <strong>${escapeHtml(summary.countryCount || 0)}</strong>
+      </article>
+      <article>
+        <span>看板</span>
+        <strong>${escapeHtml(summary.dashboardCount || 0)}</strong>
+      </article>
+      <article>
+        <span>规则</span>
+        <strong>${escapeHtml(summary.ruleCount || 0)}</strong>
+      </article>
+      <article>
+        <span>定时</span>
+        <strong>${schedule.enabled ? "已开启" : "未开启"}</strong>
+      </article>
+      <article>
+        <span>最近运行</span>
+        <strong>${escapeHtml(latestRun ? formatDisplayTime(latestRun.startedAt) : "-")}</strong>
+      </article>
+    </div>
+  `;
+}
+
+function renderBatchWorkspaceTabs(activeTab) {
+  const tabs = [
+    { key: "manual", label: "手动巡检", detail: "一次性验证范围并通知", index: "01" },
+    { key: "schedule", label: "定时任务", detail: "定点运行、按国家通知", index: "02" },
+    { key: "history", label: "历史明细", detail: "查看每次运行细节", index: "03" },
+  ];
+  return `
+    <div class="workspace-tabs" role="tablist">
+      ${tabs.map((tab) => `
+        <button class="${activeTab === tab.key ? "active" : ""}" data-batch-tab="${escapeHtml(tab.key)}" type="button">
+          <small>${escapeHtml(tab.index)}</small>
+          <strong>${escapeHtml(tab.label)}</strong>
+          <span>${escapeHtml(tab.detail)}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderManualBatchCheckPanel({
+  countries,
+  countryDashboards,
+  selectedCountry,
+  isAllCountries,
+  selectedDashboard,
+  selectedCardCount,
+  result,
+}) {
+  return `
+    <section class="panel batch-controls">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">手动巡检</h2>
+          <p class="muted">适合临时验证某个国家或单个看板；健康结果不会发通知，只有异常才发送。</p>
+        </div>
+        <button class="primary" id="run-batch-check">开始巡检并发送 TV</button>
+      </div>
+      <div class="notice compact-notice">
+        <strong>范围说明</strong>
+        <span>“该国家告警巡检看板”是配置清单里的公共看板范围，不是 Metabase 空间里的全部看板。</span>
+      </div>
+      <div class="manual-check-grid">
+        <div class="sub-panel">
+          <h2 class="panel-title">巡检范围</h2>
+          <div class="manual-range-form">
+            <label>
+              国家
+              <select id="batch-country">
+                <option value="${ALL_COUNTRIES}" ${isAllCountries ? "selected" : ""}>全部国家</option>
+                ${countries.map((country) => `<option value="${escapeHtml(country.code || "")}" ${country.code === selectedCountry ? "selected" : ""}>${escapeHtml(countryLabel(country, countries))}</option>`).join("")}
+              </select>
+            </label>
+            <label>
+              看板范围
+              <select id="batch-dashboard">
+                <option value="">该国家告警巡检看板</option>
+                ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboard === dashboard ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
+              </select>
+            </label>
+            <label>
+              本次巡检卡片数
+              <input id="batch-card-count" value="${escapeHtml(selectedCardCount)}" readonly>
+            </label>
+          </div>
+        </div>
+        <div class="sub-panel">
+          <h2 class="panel-title">TV 通知</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label>TV webhook 地址</label>
+              <input id="batch-webhook-url" value="${escapeHtml(getBatchNotifyConfig().webhookUrl)}" placeholder="${escapeHtml(DEFAULT_TV_WEBHOOK_URL)}">
+            </div>
+            <div class="field">
+              <label>TV bot_id</label>
+              <input id="batch-bot-id" value="${escapeHtml(getBatchNotifyConfig().botId)}" placeholder="必填：用于接收本次巡检通知">
+            </div>
+            <div class="field wide-form-field">
+              <label>提醒人 mentions</label>
+              <input id="batch-mentions" value="${escapeHtml(getBatchNotifyConfig().mentions)}" placeholder="可选：邮箱，多个用逗号或换行分隔">
+            </div>
+          </div>
+          <p class="muted">点击开始后会先只读访问 Metabase；只有发现异常才会把本次巡检汇总和异常明细发送到上方 TV bot_id，健康结果不会发送 TV。</p>
+        </div>
+      </div>
+      ${renderBatchStatus()}
+      ${result ? renderBatchResult(result) : `<p class="muted">选择范围并确认通知配置后，点击“开始巡检并发送 TV”。</p>`}
+    </section>
+  `;
 }
 
 async function reloadBatchHistory(root) {
@@ -273,12 +380,39 @@ async function reloadBatchHistory(root) {
   renderBatchCheck(root);
 }
 
+async function refreshBatchScheduleProgress() {
+  state.batchScheduleProgress = await apiGet("/api/batch-schedule/progress");
+  return state.batchScheduleProgress;
+}
+
+function startBatchScheduleProgressPolling(root) {
+  stopBatchScheduleProgressPolling();
+  state.batchScheduleProgressTimer = window.setInterval(async () => {
+    try {
+      const progress = await refreshBatchScheduleProgress();
+      renderBatchCheck(root);
+      if (["success", "partial_failed", "failed"].includes(progress.status)) {
+        stopBatchScheduleProgressPolling();
+      }
+    } catch {
+      stopBatchScheduleProgressPolling();
+    }
+  }, 1000);
+}
+
+function stopBatchScheduleProgressPolling() {
+  if (state.batchScheduleProgressTimer) {
+    window.clearInterval(state.batchScheduleProgressTimer);
+    state.batchScheduleProgressTimer = null;
+  }
+}
+
 function renderBatchSchedulePanel() {
   const schedule = state.batchSchedule || {};
   const enabled = Boolean(schedule.enabled);
   const status = state.batchScheduleStatus;
   return `
-    <div class="sub-panel schedule-panel">
+    <section class="panel schedule-panel">
       <div class="schedule-title-row">
         <div>
           <h2 class="panel-title section-title">定时巡检</h2>
@@ -290,6 +424,7 @@ function renderBatchSchedulePanel() {
         </div>
       </div>
       ${renderScheduleOverview(schedule)}
+      ${renderScheduleRunProgress()}
       <div class="schedule-config-card">
         <label class="switch-field">
           <input id="batch-schedule-enabled" type="checkbox" ${enabled ? "checked" : ""}>
@@ -322,8 +457,7 @@ function renderBatchSchedulePanel() {
       ${schedule.lastResult ? renderScheduleLastResult(schedule.lastResult) : ""}
       ${schedule.lastError ? `<div class="sandbox-status error"><strong>上次定时运行失败</strong><span>${escapeHtml(schedule.lastError)}</span></div>` : ""}
       ${renderBatchScheduleStatus(status)}
-      ${renderBatchHistoryPanel()}
-    </div>
+    </section>
   `;
 }
 
@@ -357,13 +491,106 @@ function renderScheduleOverview(schedule) {
   `;
 }
 
+function renderScheduleRunProgress() {
+  const progress = state.batchScheduleProgress;
+  if (!progress || progress.status === "idle" || !(progress.countries || []).length) {
+    return "";
+  }
+  const countries = progress.countries || [];
+  const completed = Number(progress.completedCountries || 0);
+  const total = Number(progress.totalCountries || countries.length || 0);
+  const percent = total ? Math.round((completed / total) * 100) : 0;
+  const currentLabel = [progress.currentCountryName, progress.currentCountryCode].filter(Boolean).join(" / ");
+  return `
+    <div class="sub-panel schedule-progress-panel">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">本次测试运行进度</h2>
+          <p class="muted">${escapeHtml(formatScheduleProgressStatus(progress, currentLabel))}</p>
+        </div>
+        <span class="badge ${escapeHtml(scheduleProgressBadge(progress.status))}">${escapeHtml(scheduleProgressLabel(progress.status))}</span>
+      </div>
+      <div class="progress-track" aria-label="定时巡检测试进度">
+        <span style="width:${escapeHtml(percent)}%"></span>
+      </div>
+      <div class="schedule-progress-list">
+        ${countries.map((country) => `
+          <article class="schedule-progress-item ${escapeHtml(country.status || "pending")}">
+            <div>
+              <strong>${escapeHtml([country.countryName, country.countryCode].filter(Boolean).join(" / ") || "-")}</strong>
+              <span>${escapeHtml(scheduleCountryProgressSubtext(country))}</span>
+            </div>
+            <span class="badge ${escapeHtml(scheduleProgressBadge(country.status))}">${escapeHtml(scheduleProgressLabel(country.status))}</span>
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function formatScheduleProgressStatus(progress, currentLabel) {
+  if (progress.status === "running") {
+    return currentLabel
+      ? `正在巡检 ${currentLabel}，已完成 ${progress.completedCountries || 0}/${progress.totalCountries || 0} 个国家。`
+      : `正在准备巡检，已完成 ${progress.completedCountries || 0}/${progress.totalCountries || 0} 个国家。`;
+  }
+  if (progress.status === "sending") {
+    return "国家巡检已完成，正在聚合汇总并发送通知。";
+  }
+  if (progress.status === "success") {
+    return `测试运行完成，已完成 ${progress.completedCountries || 0}/${progress.totalCountries || 0} 个国家。`;
+  }
+  if (progress.status === "partial_failed") {
+    return `测试运行完成，但有国家失败；已完成 ${progress.completedCountries || 0}/${progress.totalCountries || 0} 个国家。`;
+  }
+  if (progress.status === "failed") {
+    return progress.error || "测试运行失败。";
+  }
+  return "等待开始。";
+}
+
+function scheduleCountryProgressSubtext(country) {
+  if (country.status === "pending") {
+    return "等待巡检";
+  }
+  if (country.status === "running") {
+    return "正在读取 Metabase 并执行规则";
+  }
+  if (country.status === "failed") {
+    return country.error || "运行失败";
+  }
+  if (country.status === "success") {
+    return `检查 ${country.checkedCardCount || 0} 张卡片，异常 ${country.anomalyCount || 0} 条`;
+  }
+  return "";
+}
+
+function scheduleProgressLabel(status) {
+  const labels = {
+    pending: "等待",
+    running: "运行中",
+    sending: "发送中",
+    success: "完成",
+    partial_failed: "部分失败",
+    failed: "失败",
+  };
+  return labels[status] || "未开始";
+}
+
+function scheduleProgressBadge(status) {
+  if (status === "success") return "ok";
+  if (status === "failed" || status === "partial_failed") return "danger";
+  if (status === "running" || status === "sending") return "warn";
+  return "idle";
+}
+
 function renderBatchHistoryPanel() {
   const countries = state.countries?.countries || [];
   const filters = state.batchHistoryFilters || {};
   const history = state.batchHistory || { runs: [] };
   const runs = history.runs || [];
   return `
-    <div class="sub-panel schedule-history-panel">
+    <section class="panel schedule-history-panel">
       <div class="detail-header compact-header">
         <h2 class="panel-title">定时巡检历史</h2>
         <button id="refresh-batch-history" class="ghost">刷新历史</button>
@@ -390,7 +617,7 @@ function renderBatchHistoryPanel() {
       </div>
       ${renderBatchHistoryStatus()}
       ${runs.length ? renderBatchHistoryRows(runs) : `<p class="muted">暂无定时巡检历史。保存并启用定时巡检后，每次到期执行都会在这里留一条记录。</p>`}
-    </div>
+    </section>
   `;
 }
 
@@ -455,7 +682,7 @@ function renderSelectedHistoryRunDetail() {
             <h2 class="panel-title">巡检历史详情</h2>
             <p class="muted">未找到这次巡检记录，可能本地历史已被清理。</p>
           </div>
-          <a class="link-button" href="#/batch-check">返回批量巡检</a>
+          <a class="link-button" href="#/batch-check">返回 Metabase 定时巡检</a>
         </div>
       </section>
     `;
@@ -473,7 +700,7 @@ function renderSelectedHistoryRunDetail() {
           <p class="muted">这里展示通知里没有展开的完整扫描结果：每个国家、每个看板检查了哪些卡片，哪些看板异常，具体异常消息是什么。</p>
         </div>
         <div class="button-group">
-          <a class="link-button" href="#/batch-check">返回批量巡检</a>
+          <a class="link-button" href="#/batch-check">返回 Metabase 定时巡检</a>
         </div>
       </div>
       <div class="auto-summary">
@@ -524,6 +751,7 @@ function renderHistoryCountryDetail(countryRun) {
   }
   const result = countryRun.result || {};
   const anomalies = result.anomalies || [];
+  const hasDashboardAnomalySummary = Number(result.anomalyCount || 0) > 0;
   return `
     <div class="sub-panel history-country-detail">
       <div class="detail-header compact-header">
@@ -537,7 +765,7 @@ function renderHistoryCountryDetail(countryRun) {
         ${summaryItem("数据质量异常", result.dataQualityAnomalyCount || 0)}
       </div>
       ${renderDashboardScanDetails(result) || renderHistoryDashboardSummary(result)}
-      ${renderHistoryAnomalyTable(anomalies)}
+      ${renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary)}
     </div>
   `;
 }
@@ -550,7 +778,7 @@ function renderHistoryDashboardSummary(result) {
   return `
     <div class="sub-panel dashboard-scan-details">
       <h2 class="panel-title">看板扫描摘要</h2>
-      <div class="table-wrap">
+      <div class="table-wrap dashboard-summary-table">
         <table>
           <thead>
             <tr>
@@ -584,31 +812,112 @@ function renderHistoryAnomalyTable(anomalies) {
     return `<p class="success">该范围没有规则异常。</p>`;
   }
   return `
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>国家</th>
-            <th>看板</th>
-            <th>卡片</th>
-            <th>类型</th>
-            <th>消息</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${anomalies.map((anomaly) => `
-            <tr>
-              <td>${escapeHtml([anomaly.countryName, anomaly.countryCode].filter(Boolean).join(" / ") || "-")}</td>
-              <td>${escapeHtml(anomaly.dashboardTitle || "-")}</td>
-              <td>${escapeHtml(anomaly.cardTitle || "-")}</td>
-              <td>${escapeHtml(ruleTypeLabel(anomaly.type))}</td>
-              <td>${escapeHtml(anomaly.message || "-")}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+    <details class="sub-panel anomaly-detail-panel">
+      <summary class="detail-header compact-header anomaly-detail-summary">
+        <div>
+          <h2 class="panel-title">异常原因与波动详情</h2>
+          <p class="muted">默认折叠，展开后可查看每条异常的当前值、基准值、变化幅度、统计时间和原始判定消息。</p>
+        </div>
+        <span class="badge warn">${escapeHtml(anomalies.length)} 条，点击展开</span>
+      </summary>
+      <div class="anomaly-detail-list">
+        ${anomalies.map((anomaly, index) => {
+          const detail = parseAnomalyMessage(anomaly.message || "");
+          const reason = detail.reason || ruleTypeLabel(anomaly.type);
+          const changeLabel = detail.changeValue || ruleTypeLabel(anomaly.type);
+          return `
+            <article class="anomaly-detail-card">
+              <div class="anomaly-detail-card-head">
+                <div>
+                  <span class="anomaly-index">#${index + 1}</span>
+                  <strong>${escapeHtml(anomaly.cardTitle || "-")}</strong>
+                  <small>${escapeHtml(anomaly.dashboardTitle || "-")} · ${escapeHtml(ruleTypeLabel(anomaly.type))}</small>
+                </div>
+                <span class="badge ${detail.changeValue ? "warn" : "idle"}">${escapeHtml(changeLabel)}</span>
+              </div>
+              <div class="anomaly-detail-metrics">
+                ${renderAnomalyDetailMetric("当前值", detail.currentValue || "-")}
+                ${renderAnomalyDetailMetric("基准值", detail.baselineValue || "-")}
+                ${renderAnomalyDetailMetric("统计时间", detail.timeText || "-")}
+                ${renderAnomalyDetailMetric("判定", reason)}
+              </div>
+              <div class="anomaly-detail-reason">
+                <span>原始消息</span>
+                <p>${escapeHtml(anomaly.message || "-")}</p>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function renderAnomalyDetailMetric(label, value) {
+  return `
+    <div class="anomaly-detail-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
     </div>
   `;
+}
+
+function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary) {
+  if (anomalies.length) {
+    return renderHistoryAnomalyTable(anomalies);
+  }
+  if (hasDashboardAnomalySummary) {
+    return `
+      <div class="sandbox-status warn">
+        <strong>这条历史只有看板级摘要</strong>
+        <span>当时还没有保存每条异常的详细原因，只能看到上方每个看板的异常数量。重新运行一次巡检后，新的历史会展示具体卡片、触发原因、当前值、基准值和波动幅度。</span>
+      </div>
+    `;
+  }
+  return `<p class="success">该范围没有规则异常。</p>`;
+}
+
+function parseAnomalyMessage(message) {
+  const text = String(message || "");
+  const detail = {
+    reason: "",
+    currentValue: "",
+    baselineValue: "",
+    changeValue: "",
+    timeText: "",
+  };
+  if (/缺少|没有|最新日期|必须存在|查询失败|返回为空|无数据/.test(text)) {
+    detail.reason = "数据缺失或查询异常";
+  } else if (/波动|变化|从 .* 到 /.test(text)) {
+    detail.reason = "指标波动超阈值";
+  }
+
+  const fromTo = text.match(/从\s*([^，,\s]+)\s*到\s*([^，,\s]+)/);
+  if (fromTo) {
+    detail.baselineValue = fromTo[1];
+    detail.currentValue = fromTo[2];
+  }
+
+  const change = text.match(/(?:波动|变化)\s*([+-]?\d+(?:\.\d+)?%?)/);
+  if (change) {
+    detail.changeValue = change[1];
+  }
+
+  const timeParts = [];
+  const statDate = text.match(/(?:统计日期|stat_date|注册日期|到期日期)\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/);
+  if (statDate) {
+    timeParts.push(statDate[1]);
+  }
+  const compareDate = text.match(/对比\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/);
+  if (compareDate) {
+    timeParts.push(`对比 ${compareDate[1]}`);
+  }
+  const timePoint = text.match(/(?:Asia\/[A-Za-z_]+\s*)?([0-9]{1,2}:[0-9]{2})/);
+  if (timePoint) {
+    timeParts.push(timePoint[1]);
+  }
+  detail.timeText = timeParts.join(" / ");
+  return detail;
 }
 
 function renderHistoryRunDetails(run) {
@@ -1002,7 +1311,7 @@ function renderDashboardScanDetails(result) {
   return `
     <div class="sub-panel dashboard-scan-details">
       <h2 class="panel-title">看板扫描明细</h2>
-      <div class="table-wrap">
+      <div class="table-wrap dashboard-summary-table">
         <table>
           <thead>
             <tr>
@@ -1012,7 +1321,7 @@ function renderDashboardScanDetails(result) {
               <th>查询失败</th>
               <th>异常数量</th>
               <th>状态</th>
-              <th>已扫描卡片示例</th>
+              <th>异常概述</th>
             </tr>
           </thead>
           <tbody>
@@ -1024,7 +1333,7 @@ function renderDashboardScanDetails(result) {
                 <td>${escapeHtml(row.failedCardCount)}</td>
                 <td>${escapeHtml(row.anomalyCount)}</td>
                 <td><span class="badge ${escapeHtml(row.badgeClass)}">${escapeHtml(row.statusText)}</span></td>
-                <td>${escapeHtml(row.cardPreview || "-")}</td>
+                <td>${escapeHtml(row.issueSummary || "-")}</td>
               </tr>
             `).join("")}
           </tbody>
@@ -1047,6 +1356,7 @@ function buildDashboardScanRows(result) {
         failedCardCount: 0,
         anomalyCount: 0,
         cards: [],
+        anomalySamples: [],
       });
     }
     const group = groups.get(key);
@@ -1069,9 +1379,15 @@ function buildDashboardScanRows(result) {
         failedCardCount: 0,
         anomalyCount: 0,
         cards: [],
+        anomalySamples: [],
       });
     }
-    groups.get(key).anomalyCount += 1;
+    const group = groups.get(key);
+    group.anomalyCount += 1;
+    const anomalySample = summarizeAnomalySituation(anomaly);
+    if (group.anomalySamples.length < 4 && !group.anomalySamples.includes(anomalySample)) {
+      group.anomalySamples.push(anomalySample);
+    }
   }
   return [...groups.values()].map((group) => {
     const statusText = group.anomalyCount > 0
@@ -1085,8 +1401,57 @@ function buildDashboardScanRows(result) {
       statusText,
       badgeClass,
       cardPreview: group.cards.join("、"),
+      issueSummary: summarizeDashboardIssue(group),
     };
   });
+}
+
+function summarizeDashboardIssue(group) {
+  const parts = [];
+  if (group.failedCardCount > 0) {
+    parts.push(`查询失败 ${group.failedCardCount} 张`);
+  }
+  if (group.anomalyCount > 0) {
+    const sampleText = group.anomalySamples.length ? `：${group.anomalySamples.join("；")}` : "";
+    parts.push(`发现 ${group.anomalyCount} 条异常${sampleText}`);
+  }
+  if (!parts.length) {
+    return `无异常，已扫描 ${group.checkedCardCount || 0} 张卡片`;
+  }
+  return parts.join("；");
+}
+
+function summarizeAnomalySituation(anomaly) {
+  const cardTitle = anomaly.cardTitle || "未命名卡片";
+  const detail = parseAnomalyMessage(anomaly.message || "");
+  const pieces = [];
+  if (detail.reason) {
+    pieces.push(detail.reason);
+  }
+  if (detail.reason === "数据缺失或查询异常" && anomaly.message) {
+    pieces.push(shortenText(anomaly.message, 72));
+  }
+  if (detail.baselineValue || detail.currentValue) {
+    pieces.push(`${detail.baselineValue || "-"} → ${detail.currentValue || "-"}`);
+  }
+  if (detail.changeValue) {
+    pieces.push(`变化 ${detail.changeValue}`);
+  }
+  if (detail.timeText) {
+    pieces.push(detail.timeText);
+  }
+  if (!pieces.length && anomaly.message) {
+    pieces.push(shortenText(anomaly.message, 56));
+  }
+  return `${cardTitle}：${pieces.join("，") || ruleTypeLabel(anomaly.type)}`;
+}
+
+function shortenText(value, maxLength) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
 function renderNotificationResult(notification) {

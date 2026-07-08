@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { MetabasePublicClient } from "./metabase-public-client.mjs";
+import { createDefaultMetabaseClient } from "./metabase-public-monitor.mjs";
 import {
   buildDefaultCardParameters,
   checkPublicDashboards,
@@ -10,6 +10,10 @@ import {
 } from "./metabase-public-monitor.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
+import {
+  mapWattrelRowsToAnomalies,
+  queryWattrelAlerts as queryWattrelAlertRows,
+} from "./wattrel-client.mjs";
 import {
   normalizeRuleMessages,
   validateCountriesConfig,
@@ -25,6 +29,7 @@ const FILES = {
   baselineCache: "config/public-check-baseline-cache.json",
   batchSchedule: "config/batch-check-schedule.json",
   batchHistory: "config/batch-check-run-history.json",
+  wattrel: "config/wattrel.config.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_BATCH_SCHEDULE = {
@@ -52,20 +57,19 @@ const MAX_BATCH_HISTORY_RUNS = 200;
 
 export function createPlatformApi({
   rootDir = process.cwd(),
-  metabaseClientFactory = (dashboard) => new MetabasePublicClient({
-    baseUrl: new URL(dashboard.url).origin,
-    requestTimeoutSeconds: 30,
-  }),
+  metabaseClientFactory = createDefaultMetabaseClient,
   notifyTextFn = notifyText,
+  wattrelQueryFn = null,
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
+  let batchScheduleRunProgress = null;
 
   return {
     async getSummary() {
       const [countries, rules, inventory, result] = await Promise.all([
         readJsonFile(resolve("countries"), { countries: [] }),
         readJsonFile(resolve("rules"), { rules: [] }),
-        readJsonFile(resolve("inventory"), { dashboards: [] }),
+        readPlatformInventory(rootDir, resolve("inventory")),
         readJsonFile(resolve("result"), null),
       ]);
       const flat = flattenInventory(inventory);
@@ -97,20 +101,191 @@ export function createPlatformApi({
       return normalizeBatchSchedule(schedule, schedule, { countries: countries.countries || [], preserveNextRunAt: true });
     },
 
+    async getBatchScheduleRunProgress() {
+      return batchScheduleRunProgress || { status: "idle", countries: [] };
+    },
+
     async getBatchHistory(filters = {}) {
       const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
       return filterBatchHistory(history, filters);
     },
 
+    async ingestExternalAlertRun(body = {}) {
+      const startedAt = String(body.checkedAt || body.startedAt || new Date().toISOString());
+      const finishedAt = String(body.finishedAt || new Date().toISOString());
+      const source = normalizeExternalSource(body.source || body.kind || "external");
+      const historyRunId = String(body.id || body.runId || randomUUID());
+      const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
+      const countryRuns = normalizeExternalCountryRuns(body, { source, checkedAt: startedAt });
+      if (countryRuns.length === 0) {
+        throw badRequest("No external alert data", ["请至少提供一个国家或一条异常。"]);
+      }
+
+      let notificationSentCount = 0;
+      if (body.notify === true || body.sendNotification === true) {
+        const rules = await readJsonFile(resolve("rules"), { alerts: {} });
+        const notifyOptions = typeof body.notifyOptions === "object" && body.notifyOptions ? body.notifyOptions : body;
+        const notifyChannel = normalizeNotifyChannel(notifyOptions.notifyChannel || notifyOptions.channel || rules.alerts?.channel || "tv");
+        const alerts = buildBatchNotifyAlerts({ ...notifyOptions, detailUrl }, rules.alerts || {}, notifyChannel);
+        const combinedResult = combineScheduledCountryResults(countryRuns.filter((item) => item.ok));
+        const messages = buildPublicCheckMessages(combinedResult, {
+          ...alerts,
+          maxSummaryAnomalyDashboards: Number(notifyOptions.maxSummaryAnomalyDashboards || 5),
+          maxSummaryTopAnomalies: Number(notifyOptions.maxSummaryTopAnomalies || 8),
+        });
+        const results = [];
+        for (const message of messages) {
+          results.push(await notifyTextFn({ ...rules, alerts }, message.body, {
+            title: message.title,
+            severity: "warning",
+            timestamp: combinedResult.checkedAt,
+            anomalyCount: message.anomalyCount ?? combinedResult.anomalyCount,
+            checkedCardCount: combinedResult.checkedCardCount,
+          }));
+        }
+        const notification = {
+          sent: results.some((item) => item.sent),
+          skipped: false,
+          reason: results.some((item) => item.sent) ? null : "send failed",
+          sentMessages: messages.length,
+          results,
+          channel: alerts.channel,
+          botId: alerts.botId || "",
+          chatId: alerts.chatId || "",
+          recipientEmails: alerts.recipientEmails || "",
+          mentions: alerts.mentions || [],
+          webhookUrl: alerts.webhookUrl || "",
+          detailUrl: alerts.detailUrl || "",
+          sentAt: new Date().toISOString(),
+        };
+        markCountryRunNotifications(countryRuns, notification);
+        notificationSentCount = messages.length;
+      }
+
+      const entry = buildBatchHistoryEntry({
+        trigger: `external_${source}`,
+        id: historyRunId,
+        startedAt,
+        finishedAt,
+        nextRunAt: null,
+        schedule: { intervalMinutes: null },
+        countryRuns,
+        notificationSentCount,
+      });
+      entry.source = source;
+      entry.title = String(body.title || externalSourceTitle(source));
+      await appendBatchHistoryRun(resolve("batchHistory"), entry);
+      return {
+        ok: true,
+        id: historyRunId,
+        source,
+        detailUrl,
+        notificationSentCount,
+        summary: {
+          countryCount: entry.countryCount,
+          checkedCardCount: entry.checkedCardCount,
+          dashboardCount: entry.dashboardCount,
+          anomalyCount: entry.anomalyCount,
+        },
+        entry,
+      };
+    },
+
+    async queryWattrelAlerts(body = {}) {
+      const config = await readJsonFile(resolve("wattrel"), { enabled: false });
+      const countriesConfig = await readJsonFile(resolve("countries"), { countries: [] });
+      const current = await queryCurrentWattrelTargets({
+        config,
+        countries: countriesConfig.countries || [],
+        body,
+        queryFn: wattrelQueryFn,
+      });
+      const anomalies = current.anomalies;
+
+      if (anomalies.length === 0) {
+        return {
+          ok: true,
+          source: "wattrel",
+          rowCount: current.rows.length,
+          detailUrl: null,
+          notificationSentCount: 0,
+          summary: {
+            countryCount: 0,
+            checkedCardCount: 0,
+            dashboardCount: 0,
+            anomalyCount: 0,
+          },
+          entry: null,
+        };
+      }
+
+      const result = await this.ingestExternalAlertRun({
+        source: "wattrel",
+        title: body.title || config.title || "Wattrel 数据质量巡检",
+        checkedAt: body.checkedAt || new Date().toISOString(),
+        anomalies,
+        notify: body.notify === true || body.sendNotification === true,
+        notifyChannel: body.notifyChannel || body.channel,
+        webhookUrl: body.webhookUrl,
+        botId: body.botId,
+        botToken: body.botToken,
+        chatId: body.chatId,
+        recipientEmails: body.recipientEmails,
+        mentions: body.mentions,
+        notifyOptions: body.notifyOptions,
+      });
+
+      return {
+        ...result,
+        rowCount: current.rows.length,
+        countries: current.countries,
+      };
+    },
+
+    async getCurrentWattrelAlerts(body = {}) {
+      const config = await readJsonFile(resolve("wattrel"), { enabled: false });
+      const checkedAt = body.checkedAt || new Date().toISOString();
+      const countriesConfig = await readJsonFile(resolve("countries"), { countries: [] });
+      const current = await queryCurrentWattrelTargets({
+        config,
+        countries: countriesConfig.countries || [],
+        body,
+        queryFn: wattrelQueryFn,
+      });
+      const snapshot = buildWattrelCurrentSnapshot({
+        rows: current.rows,
+        anomalies: current.anomalies,
+        checkedAt,
+        countryStatuses: current.countries,
+      });
+      return {
+        ok: true,
+        source: "wattrel",
+        configEnabled: current.countries.some((item) => item.configured),
+        connectionMode: current.connectionMode,
+        ...snapshot,
+      };
+    },
+
     async saveBatchSchedule(body = {}) {
       const previous = await this.getBatchSchedule();
       const countries = await readJsonFile(resolve("countries"), { countries: [] });
+      const inventory = await readPlatformInventory(rootDir, resolve("inventory"));
       const next = normalizeBatchSchedule(body, previous, { countries: countries.countries || [] });
       const enabledCountries = next.countryConfigs.filter((item) => item.enabled);
       if (next.enabled && enabledCountries.length === 0) {
         throw badRequest("No scheduled countries", ["启用定时巡检前请至少启用一个国家。"]);
       }
       for (const countryConfig of enabledCountries) {
+        const countryInventory = filterBatchInventory(inventory, {
+          countryCode: countryConfig.countryCode,
+          dashboardUuids: countryConfig.dashboardUuids || [],
+        });
+        if (countryInventory.dashboardCount === 0) {
+          throw badRequest("No public dashboard for country", [
+            await explainUnavailableCountryInventory(rootDir, countryConfig.countryCode, countries.countries || []),
+          ]);
+        }
         if (isKnBotChannel(countryConfig.notifyChannel)) {
           if (!countryConfig.chatId && !countryConfig.recipientEmails) {
             throw badRequest("KN Chat recipient is required", [`${countryConfig.countryCode} 启用定时巡检前请填写接收人邮箱或群聊 chat_id。`]);
@@ -139,44 +314,38 @@ export function createPlatformApi({
       const nextRunAt = schedule.nextRunAt;
       const historyRunId = randomUUID();
       const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
+      batchScheduleRunProgress = createBatchScheduleRunProgress({
+        id: historyRunId,
+        trigger: "manual_test",
+        startedAt,
+        countryConfigs: enabledCountryConfigs,
+      });
       try {
-        const countryRuns = [];
-        for (const countryConfig of enabledCountryConfigs) {
-          try {
-            const result = await this.runBatchCheckAndNotify({
-              countryCode: countryConfig.countryCode,
-              dashboardUuids: countryConfig.dashboardUuids || [],
-              notifyChannel: countryConfig.notifyChannel,
-              webhookUrl: countryConfig.webhookUrl,
-              botId: countryConfig.botId,
-              botToken: countryConfig.botToken,
-              chatId: countryConfig.chatId,
-              recipientEmails: countryConfig.recipientEmails,
-              mentions: countryConfig.mentions,
-              detailUrl,
-            });
-            countryRuns.push({
-              countryCode: countryConfig.countryCode,
-              countryName: countryConfig.countryName || "",
-              ok: true,
-              result: summarizeBatchScheduleRun(result),
-            });
-          } catch (error) {
-            countryRuns.push({
-              countryCode: countryConfig.countryCode,
-              countryName: countryConfig.countryName || "",
-              ok: false,
-              error: error.message,
-            });
-          }
-        }
+        const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck(body), (event) => {
+          batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
+        });
+        batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "sending", currentCountryCode: "", currentCountryName: "" };
+        const notificationSentCount = await sendScheduledAggregateNotifications({
+          countryRuns,
+          countryConfigs: enabledCountryConfigs,
+          rulesFile: resolve("rules"),
+          notifyTextFn,
+          detailUrl,
+        });
         const failedRuns = countryRuns.filter((item) => !item.ok);
-      const saved = {
+        const saved = {
           ...schedule,
           lastRunAt: startedAt,
           nextRunAt,
           lastError: failedRuns.length ? failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; ") : null,
           lastResult: summarizeCountryScheduleRuns(countryRuns),
+        };
+        batchScheduleRunProgress = {
+          ...batchScheduleRunProgress,
+          status: failedRuns.length ? "partial_failed" : "success",
+          finishedAt: new Date().toISOString(),
+          result: saved.lastResult,
+          notificationSentCount,
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
         await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
@@ -187,9 +356,16 @@ export function createPlatformApi({
           nextRunAt,
           schedule,
           countryRuns,
+          notificationSentCount,
         }));
         return { ran: true, schedule: saved, result: saved.lastResult };
       } catch (error) {
+        batchScheduleRunProgress = {
+          ...(batchScheduleRunProgress || {}),
+          status: "failed",
+          error: error.message,
+          finishedAt: new Date().toISOString(),
+        };
         const saved = {
           ...schedule,
           lastRunAt: startedAt,
@@ -233,7 +409,7 @@ export function createPlatformApi({
     async getInventory(filters = {}) {
       const [countries, inventory] = await Promise.all([
         readJsonFile(resolve("countries"), { countries: [] }),
-        readJsonFile(resolve("inventory"), { dashboards: [] }),
+        readPlatformInventory(rootDir, resolve("inventory")),
       ]);
       const filtered = filterInventory(inventory, filters);
       return {
@@ -289,12 +465,17 @@ export function createPlatformApi({
       const rule = applyDashboardRuleDefaults(body.rule, dashboard);
       const client = metabaseClientFactory(dashboard);
       const parameters = mergeParameters(buildDefaultCardParameters(dashboard, card), rule.parameters || []);
-      const rows = await client.queryDashcardJson({
+      const request = {
         cardId: card.cardId,
-        dashboardUuid: dashboard.uuid,
         dashcardId: card.dashcardId,
         parameters,
-      });
+      };
+      if (dashboard.access === "internal") {
+        request.dashboardId = dashboard.dashboardId;
+      } else {
+        request.dashboardUuid = dashboard.uuid;
+      }
+      const rows = await client.queryDashcardJson(request);
       const safeRows = Array.isArray(rows) ? rows : [];
       const raw = evaluateRowsAgainstRule(safeRows, rule);
       const messages = normalizeRuleMessages(raw);
@@ -308,6 +489,7 @@ export function createPlatformApi({
         request: {
           baseUrl: new URL(dashboard.url).origin,
           dashboardUuid: dashboard.uuid,
+          dashboardId: dashboard.dashboardId || null,
           cardId: card.cardId,
           dashcardId: card.dashcardId,
           parameterCount: parameters.length,
@@ -319,7 +501,7 @@ export function createPlatformApi({
     },
 
     async runBatchCheck(body = {}) {
-      const inventory = await readJsonFile(resolve("inventory"), { dashboards: [] });
+      const inventory = await readPlatformInventory(rootDir, resolve("inventory"));
       const ruleConfig = await readJsonFile(resolve("rules"), {
         builtInChecks: { queryError: true, noData: true },
         rules: [],
@@ -328,18 +510,29 @@ export function createPlatformApi({
       const dashboardUuid = String(body.dashboardUuid || "").trim();
       const dashboardUuids = normalizeDashboardUuids(body.dashboardUuids);
       const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
+      if (countryCode && filteredInventory.dashboardCount === 0) {
+        const countries = await readJsonFile(resolve("countries"), { countries: [] });
+        throw badRequest("No public dashboard for country", [
+          await explainUnavailableCountryInventory(rootDir, countryCode, countries.countries || []),
+        ]);
+      }
       if ((dashboardUuid || dashboardUuids.length) && filteredInventory.dashboardCount === 0) {
         throw badRequest("Dashboard not found", ["选择的看板不在当前国家范围内，请重新选择看板。"]);
       }
       const queryCardFn = async (_client, dashboard, card, parameters = []) => {
         const client = metabaseClientFactory(dashboard);
         try {
-          const rows = await client.queryDashcardJson({
+          const request = {
             cardId: card.cardId,
-            dashboardUuid: dashboard.uuid,
             dashcardId: card.dashcardId,
             parameters,
-          });
+          };
+          if (dashboard.access === "internal") {
+            request.dashboardId = dashboard.dashboardId;
+          } else {
+            request.dashboardUuid = dashboard.uuid;
+          }
+          const rows = await client.queryDashcardJson(request);
           return {
             ok: true,
             rows: Array.isArray(rows) ? rows : [],
@@ -357,6 +550,10 @@ export function createPlatformApi({
         inventory: filteredInventory,
         ruleConfig: {
           ...ruleConfig,
+          builtInChecks: {
+            ...(ruleConfig.builtInChecks || {}),
+            queryError: true,
+          },
           dataQuality: { ...(ruleConfig.dataQuality || {}), enabled: false },
         },
         baselineCacheFile: resolve("baselineCache"),
@@ -435,36 +632,24 @@ export function createPlatformApi({
       const historyRunId = randomUUID();
       const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
       try {
-        const countryRuns = [];
-        for (const countryConfig of schedule.countryConfigs.filter((item) => item.enabled)) {
-          try {
-            const result = await this.runBatchCheckAndNotify({
-              countryCode: countryConfig.countryCode,
-              dashboardUuids: countryConfig.dashboardUuids || [],
-              notifyChannel: countryConfig.notifyChannel,
-              webhookUrl: countryConfig.webhookUrl,
-              botId: countryConfig.botId,
-              botToken: countryConfig.botToken,
-              chatId: countryConfig.chatId,
-              recipientEmails: countryConfig.recipientEmails,
-              mentions: countryConfig.mentions,
-              detailUrl,
-            });
-            countryRuns.push({
-              countryCode: countryConfig.countryCode,
-              countryName: countryConfig.countryName || "",
-              ok: true,
-              result: summarizeBatchScheduleRun(result),
-            });
-          } catch (error) {
-            countryRuns.push({
-              countryCode: countryConfig.countryCode,
-              countryName: countryConfig.countryName || "",
-              ok: false,
-              error: error.message,
-            });
-          }
-        }
+        const enabledCountryConfigs = schedule.countryConfigs.filter((item) => item.enabled);
+        batchScheduleRunProgress = createBatchScheduleRunProgress({
+          id: historyRunId,
+          trigger: "schedule",
+          startedAt,
+          countryConfigs: enabledCountryConfigs,
+        });
+        const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck(body), (event) => {
+          batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
+        });
+        batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "sending", currentCountryCode: "", currentCountryName: "" };
+        const notificationSentCount = await sendScheduledAggregateNotifications({
+          countryRuns,
+          countryConfigs: enabledCountryConfigs,
+          rulesFile: resolve("rules"),
+          notifyTextFn,
+          detailUrl,
+        });
         const failedRuns = countryRuns.filter((item) => !item.ok);
         const saved = {
           ...schedule,
@@ -472,6 +657,13 @@ export function createPlatformApi({
           nextRunAt,
           lastError: failedRuns.length ? failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; ") : null,
           lastResult: summarizeCountryScheduleRuns(countryRuns),
+        };
+        batchScheduleRunProgress = {
+          ...batchScheduleRunProgress,
+          status: failedRuns.length ? "partial_failed" : "success",
+          finishedAt: new Date().toISOString(),
+          result: saved.lastResult,
+          notificationSentCount,
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
         await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
@@ -482,9 +674,16 @@ export function createPlatformApi({
           nextRunAt,
           schedule,
           countryRuns,
+          notificationSentCount,
         }));
         return { ran: true, schedule: saved, result: saved.lastResult };
       } catch (error) {
+        batchScheduleRunProgress = {
+          ...(batchScheduleRunProgress || {}),
+          status: "failed",
+          error: error.message,
+          finishedAt: new Date().toISOString(),
+        };
         const saved = {
           ...schedule,
           lastRunAt: startedAt,
@@ -833,6 +1032,529 @@ function summarizeBatchScheduleRun(result = {}) {
   };
 }
 
+function normalizeExternalSource(value) {
+  return String(value || "external")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    || "external";
+}
+
+function externalSourceTitle(source) {
+  if (source === "wattrel") {
+    return "Wattrel 数据质量巡检";
+  }
+  return "外部告警巡检";
+}
+
+async function queryCurrentWattrelTargets({ config = {}, countries = [], body = {}, queryFn = null } = {}) {
+  const targets = buildWattrelTargets({ config, countries, body, forceConfigured: Boolean(queryFn) });
+  const allRows = [];
+  const allAnomalies = [];
+  const countryStatuses = [];
+
+  for (const target of targets) {
+    const status = {
+      countryCode: target.countryCode,
+      countryName: target.countryName,
+      configured: target.configured,
+      status: target.configured ? "pending" : "unconfigured",
+      rowCount: 0,
+      anomalyCount: 0,
+      tableCount: 0,
+      topTables: [],
+      anomalies: [],
+      error: null,
+    };
+    if (!target.configured) {
+      countryStatuses.push(status);
+      continue;
+    }
+    try {
+      const rows = await queryWattrelAlertRows({ config: target.config, limit: target.limit, queryFn });
+      const anomalies = mapWattrelRowsToAnomalies(rows, {
+        countryCode: target.countryCode,
+        countryName: target.countryName,
+      });
+      const tableCount = new Set(anomalies.map((item) => item.destTbl || item.cardTitle).filter(Boolean)).size;
+      status.status = "success";
+      status.rowCount = rows.length;
+      status.anomalyCount = anomalies.length;
+      status.tableCount = tableCount;
+      status.anomalies = anomalies;
+      status.topTables = summarizeWattrelTargetTables(anomalies).slice(0, 5);
+      allRows.push(...rows);
+      allAnomalies.push(...anomalies);
+    } catch (error) {
+      status.status = "failed";
+      status.error = error.message || String(error);
+    }
+    countryStatuses.push(status);
+  }
+  return {
+    rows: allRows,
+    anomalies: allAnomalies,
+    countries: countryStatuses,
+    connectionMode: targets.some((item) => item.usesCountryConfig) ? "country" : "global",
+  };
+}
+
+function buildWattrelTargets({ config = {}, countries = [], body = {}, forceConfigured = false } = {}) {
+  const selectedCountryCode = String(body.countryCode || "").trim();
+  const countryConnections = normalizeCountryWattrelConnections(config);
+  const hasCountryConnections = countryConnections.length > 0;
+  const countryList = countries.length
+    ? countries
+    : countryConnections.map((item) => ({ code: item.countryCode, name: item.countryName || item.countryCode }));
+  const visibleCountries = selectedCountryCode
+    ? countryList.filter((country) => country.code === selectedCountryCode)
+    : countryList;
+
+  if (!forceConfigured && (hasCountryConnections || (!hasGlobalWattrelDatabase(config) && !config.defaultCountryCode && countryList.length))) {
+    return visibleCountries.map((country) => {
+      const code = String(country.code || country.countryCode || "").trim();
+      const connection = countryConnections.find((item) => item.countryCode === code) || {};
+      return buildCountryWattrelTarget({
+        baseConfig: config,
+        country,
+        connection,
+        body,
+        forceConfigured,
+        usesCountryConfig: true,
+      });
+    });
+  }
+
+  const preferredCode = config.defaultCountryCode || selectedCountryCode || "";
+  const country = preferredCode
+    ? (visibleCountries.find((item) => item.code === preferredCode) || { code: preferredCode, name: config.defaultCountryName || body.countryName || "" })
+    : (visibleCountries[0] || { code: "", name: config.defaultCountryName || body.countryName || "" });
+  return [buildCountryWattrelTarget({
+    baseConfig: config,
+    country,
+    connection: {},
+    body,
+    forceConfigured,
+    usesCountryConfig: false,
+  })];
+}
+
+function buildCountryWattrelTarget({ baseConfig = {}, country = {}, connection = {}, body = {}, forceConfigured = false, usesCountryConfig = false }) {
+  const code = String(connection.countryCode || country.code || country.countryCode || body.countryCode || baseConfig.defaultCountryCode || "").trim();
+  const name = String(connection.countryName || country.name || country.countryName || body.countryName || baseConfig.defaultCountryName || "").trim();
+  const envDatabase = countryEnvWattrelDatabase(code);
+  const database = {
+    ...(baseConfig.database || baseConfig.connection || {}),
+    ...envDatabase,
+    ...(connection.database || connection.connection || {}),
+  };
+  const query = {
+    ...(baseConfig.query || {}),
+    ...(connection.query || {}),
+  };
+  const limit = clampNumber(body.limit ?? query.limit ?? baseConfig.limit, 1, 1000, 100);
+  const configured = forceConfigured || (connection.enabled !== false && baseConfig.enabled !== false && hasWattrelDatabase(database));
+  return {
+    countryCode: code,
+    countryName: name,
+    configured,
+    usesCountryConfig,
+    limit,
+    config: {
+      ...baseConfig,
+      ...connection,
+      enabled: configured,
+      defaultCountryCode: code,
+      defaultCountryName: name,
+      database,
+      query: {
+        ...query,
+        limit,
+      },
+    },
+  };
+}
+
+function normalizeCountryWattrelConnections(config = {}) {
+  const raw = config.countries || config.countryConnections || config.countryDatabases || [];
+  if (Array.isArray(raw)) {
+    return raw.map((item) => ({
+      ...item,
+      countryCode: String(item.countryCode || item.code || "").trim(),
+      countryName: String(item.countryName || item.name || "").trim(),
+    })).filter((item) => item.countryCode);
+  }
+  if (raw && typeof raw === "object") {
+    return Object.entries(raw).map(([code, item]) => ({
+      ...(item || {}),
+      countryCode: String(item?.countryCode || code).trim(),
+      countryName: String(item?.countryName || item?.name || "").trim(),
+    })).filter((item) => item.countryCode);
+  }
+  return [];
+}
+
+function countryEnvWattrelDatabase(countryCode) {
+  const key = String(countryCode || "").toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  if (!key) {
+    return {};
+  }
+  return stripEmptyValues({
+    host: process.env[`WATTREL_${key}_DB_HOST`],
+    port: process.env[`WATTREL_${key}_DB_PORT`],
+    user: process.env[`WATTREL_${key}_DB_USER`],
+    password: process.env[`WATTREL_${key}_DB_PASSWORD`],
+    database: process.env[`WATTREL_${key}_DB_NAME`],
+    charset: process.env[`WATTREL_${key}_DB_CHARSET`],
+  });
+}
+
+function hasGlobalWattrelDatabase(config = {}) {
+  return hasWattrelDatabase(config.database || config.connection || {});
+}
+
+function hasWattrelDatabase(database = {}) {
+  const host = resolveConfigString(database.host);
+  const user = resolveConfigString(database.user);
+  const dbName = resolveConfigString(database.database);
+  return Boolean(host && user && dbName);
+}
+
+function resolveConfigString(value) {
+  return String(value ?? "").replace(/\$\{([^}]+)\}/g, (_match, key) => process.env[key] || "").trim();
+}
+
+function stripEmptyValues(value = {}) {
+  return Object.fromEntries(Object.entries(value).filter(([_key, entry]) => entry !== undefined && entry !== null && entry !== ""));
+}
+
+function buildWattrelCurrentSnapshot({ rows = [], anomalies = [], checkedAt, countryStatuses = [] } = {}) {
+  const normalizedAnomalies = anomalies.map((anomaly) => normalizeExternalAnomaly(anomaly, {
+    source: "wattrel",
+    checkedAt,
+    countryCode: anomaly.countryCode,
+    countryName: anomaly.countryName,
+  }));
+  const countries = mergeWattrelCountryStatuses(summarizeWattrelCountries(normalizedAnomalies), countryStatuses);
+  const topTables = summarizeWattrelTargetTables(normalizedAnomalies);
+  return {
+    checkedAt,
+    rowCount: rows.length,
+    summary: {
+      countryCount: countries.length,
+      configuredCountryCount: countries.filter((item) => item.configured).length,
+      failedCountryCount: countries.filter((item) => item.status === "failed").length,
+      anomalyCount: normalizedAnomalies.length,
+      tableCount: topTables.length,
+      targetTableCount: topTables.length,
+    },
+    countries,
+    topTables,
+    anomalies: normalizedAnomalies,
+  };
+}
+
+function mergeWattrelCountryStatuses(summaryCountries = [], statusCountries = []) {
+  const groups = new Map();
+  for (const country of statusCountries) {
+    const key = wattrelCountryKey(country);
+    groups.set(key, {
+      countryCode: country.countryCode || "",
+      countryName: country.countryName || "",
+      configured: Boolean(country.configured),
+      status: country.status || (country.configured ? "success" : "unconfigured"),
+      rowCount: country.rowCount || 0,
+      anomalyCount: country.anomalyCount || 0,
+      tableCount: country.tableCount || 0,
+      topTables: country.topTables || [],
+      anomalies: country.anomalies || [],
+      error: country.error || null,
+    });
+  }
+  for (const country of summaryCountries) {
+    const key = wattrelCountryKey(country);
+    const existing = groups.get(key) || {};
+    groups.set(key, {
+      ...existing,
+      ...country,
+      configured: existing.configured ?? true,
+      status: existing.status === "failed" ? "failed" : "success",
+      rowCount: existing.rowCount || country.anomalies?.length || 0,
+      anomalyCount: country.anomalyCount || 0,
+      tableCount: country.tableCount || 0,
+      topTables: country.topTables || [],
+      anomalies: country.anomalies || [],
+    });
+  }
+  return [...groups.values()].sort((a, b) => {
+    const severityOrder = { failed: 0, success: 1, unconfigured: 2 };
+    return (severityOrder[a.status] ?? 3) - (severityOrder[b.status] ?? 3)
+      || b.anomalyCount - a.anomalyCount
+      || countryRunLabel(a).localeCompare(countryRunLabel(b));
+  });
+}
+
+function wattrelCountryKey(country = {}) {
+  return `${country.countryCode || ""}::${country.countryName || ""}`;
+}
+
+function summarizeWattrelCountries(anomalies = []) {
+  const groups = new Map();
+  for (const anomaly of anomalies) {
+    const countryCode = String(anomaly.countryCode || "").trim();
+    const countryName = String(anomaly.countryName || "").trim();
+    const key = `${countryCode}::${countryName}` || "unknown";
+    if (!groups.has(key)) {
+      groups.set(key, {
+        countryCode,
+        countryName,
+        anomalyCount: 0,
+        tableCount: 0,
+        tables: new Map(),
+        anomalies: [],
+      });
+    }
+    const group = groups.get(key);
+    group.anomalyCount += 1;
+    group.anomalies.push(anomaly);
+    const tableName = String(anomaly.destTbl || anomaly.cardTitle || "未知目标表").trim();
+    if (!group.tables.has(tableName)) {
+      group.tables.set(tableName, {
+        name: tableName,
+        count: 0,
+        checks: new Set(),
+      });
+    }
+    const table = group.tables.get(tableName);
+    table.count += 1;
+    if (anomaly.name) {
+      table.checks.add(anomaly.name);
+    }
+  }
+  return [...groups.values()].map((group) => {
+    const topTables = [...group.tables.values()]
+      .map((table) => ({
+        name: table.name,
+        count: table.count,
+        checks: [...table.checks],
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    return {
+      countryCode: group.countryCode,
+      countryName: group.countryName,
+      anomalyCount: group.anomalyCount,
+      tableCount: topTables.length,
+      topTables: topTables.slice(0, 5),
+      anomalies: group.anomalies,
+    };
+  }).sort((a, b) => b.anomalyCount - a.anomalyCount || countryRunLabel(a).localeCompare(countryRunLabel(b)));
+}
+
+function summarizeWattrelTargetTables(anomalies = []) {
+  const groups = new Map();
+  for (const anomaly of anomalies) {
+    const tableName = String(anomaly.destTbl || anomaly.cardTitle || "未知目标表").trim();
+    if (!groups.has(tableName)) {
+      groups.set(tableName, {
+        name: tableName,
+        count: 0,
+        checks: new Set(),
+        countries: new Set(),
+        examples: [],
+      });
+    }
+    const group = groups.get(tableName);
+    group.count += 1;
+    if (anomaly.name) {
+      group.checks.add(anomaly.name);
+    }
+    const countryLabel = [anomaly.countryName, anomaly.countryCode].filter(Boolean).join(" / ");
+    if (countryLabel) {
+      group.countries.add(countryLabel);
+    }
+    if (group.examples.length < 3) {
+      group.examples.push(anomaly.message || anomaly.name || tableName);
+    }
+  }
+  return [...groups.values()]
+    .map((group) => ({
+      name: group.name,
+      count: group.count,
+      checks: [...group.checks],
+      countries: [...group.countries],
+      examples: group.examples,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function countryRunLabel(country = {}) {
+  return [country.countryName, country.countryCode].filter(Boolean).join(" / ") || "未归属国家";
+}
+
+function normalizeExternalCountryRuns(body = {}, { source, checkedAt }) {
+  const countries = Array.isArray(body.countries) ? body.countries : [];
+  const flatAnomalies = Array.isArray(body.anomalies) ? body.anomalies : [];
+  const countryRuns = [];
+
+  for (const country of countries) {
+    const countryCode = String(country.countryCode || country.code || "").trim();
+    const countryName = String(country.countryName || country.name || "").trim();
+    const anomalies = Array.isArray(country.anomalies) ? country.anomalies : [];
+    countryRuns.push(buildExternalCountryRun({
+      source,
+      checkedAt: country.checkedAt || checkedAt,
+      countryCode,
+      countryName,
+      checkedCount: country.checkedCount ?? country.checkedCardCount,
+      dashboardCount: country.dashboardCount,
+      anomalies,
+    }));
+  }
+
+  if (flatAnomalies.length > 0) {
+    const grouped = new Map();
+    for (const anomaly of flatAnomalies) {
+      const countryCode = String(anomaly.countryCode || anomaly.code || body.countryCode || "").trim();
+      const countryName = String(anomaly.countryName || anomaly.country || body.countryName || "").trim();
+      const key = `${countryCode}::${countryName}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, { countryCode, countryName, anomalies: [] });
+      }
+      grouped.get(key).anomalies.push(anomaly);
+    }
+    for (const group of grouped.values()) {
+      const exists = countryRuns.some((item) => item.countryCode === group.countryCode && item.countryName === group.countryName);
+      if (!exists) {
+        countryRuns.push(buildExternalCountryRun({
+          source,
+          checkedAt,
+          countryCode: group.countryCode,
+          countryName: group.countryName,
+          anomalies: group.anomalies,
+        }));
+      }
+    }
+  }
+
+  return countryRuns;
+}
+
+function buildExternalCountryRun({ source, checkedAt, countryCode, countryName, checkedCount, dashboardCount, anomalies }) {
+  const normalizedAnomalies = (anomalies || []).map((item) => normalizeExternalAnomaly(item, {
+    source,
+    checkedAt,
+    countryCode,
+    countryName,
+  }));
+  const checkedCards = normalizedAnomalies.map((anomaly) => ({
+    countryCode: anomaly.countryCode,
+    countryName: anomaly.countryName,
+    dashboardTitle: anomaly.dashboardTitle,
+    cardTitle: anomaly.cardTitle,
+    ok: false,
+    source,
+  }));
+  const effectiveCheckedCount = Number(checkedCount ?? checkedCards.length) || checkedCards.length;
+  const result = {
+    checkedAt,
+    checkedCardCount: effectiveCheckedCount,
+    dashboardCount: Number(dashboardCount || new Set(normalizedAnomalies.map((item) => item.dashboardTitle)).size || 1),
+    checkedDashboards: summarizeCheckedDashboards({
+      checkedCards,
+      anomalies: normalizedAnomalies,
+    }),
+    checkedCards,
+    anomalyCount: normalizedAnomalies.length,
+    anomalies: normalizedAnomalies,
+    dataQualityAnomalyCount: 0,
+    dataQuality: null,
+    source,
+  };
+  return {
+    countryCode,
+    countryName,
+    ok: true,
+    source,
+    result,
+  };
+}
+
+function normalizeExternalAnomaly(anomaly = {}, defaults = {}) {
+  const source = defaults.source || "external";
+  const countryCode = String(anomaly.countryCode || anomaly.code || defaults.countryCode || "").trim();
+  const countryName = String(anomaly.countryName || anomaly.country || defaults.countryName || "").trim();
+  const dashboardTitle = String(
+    anomaly.dashboardTitle
+      || anomaly.groupTitle
+      || (source === "wattrel" ? "Wattrel 数据质量" : "外部告警"),
+  ).trim();
+  const cardTitle = String(
+    anomaly.cardTitle
+      || anomaly.destTbl
+      || anomaly.destTable
+      || anomaly.table
+      || anomaly.name
+      || anomaly.checkName
+      || "未命名告警",
+  ).trim();
+  const checkName = String(anomaly.checkName || anomaly.name || anomaly.metric || cardTitle).trim();
+  return {
+    ...anomaly,
+    source,
+    type: String(anomaly.type || (source === "wattrel" ? "wattrelQualityAlert" : "externalAlert")),
+    countryCode,
+    countryName,
+    dashboardTitle,
+    cardTitle,
+    checkedAt: anomaly.checkedAt || defaults.checkedAt || null,
+    severity: anomaly.severity || "warning",
+    message: String(anomaly.message || formatExternalAnomalyMessage({ ...anomaly, checkName, source })),
+  };
+}
+
+function formatExternalAnomalyMessage(anomaly = {}) {
+  const pieces = [];
+  const checkName = String(anomaly.checkName || anomaly.name || anomaly.metric || "").trim();
+  const destTbl = String(anomaly.destTbl || anomaly.destTable || anomaly.table || "").trim();
+  const srcTbl = String(anomaly.srcTbl || anomaly.srcTable || "").trim();
+  const expected = firstPresent(anomaly.expectedValue, anomaly.srcValue, anomaly.expected, anomaly.srcCnt);
+  const actual = firstPresent(anomaly.actualValue, anomaly.destValue, anomaly.actual, anomaly.destCnt);
+  const diff = firstPresent(anomaly.diff, anomaly.diffValue);
+  const windowText = String(anomaly.window || anomaly.timeRange || anomaly.checkWindow || "").trim();
+
+  if (checkName) {
+    pieces.push(`指标「${checkName}」`);
+  }
+  if (destTbl) {
+    pieces.push(`目标表 ${destTbl}`);
+  }
+  if (srcTbl) {
+    pieces.push(`源表 ${srcTbl}`);
+  }
+  if (expected !== undefined || actual !== undefined) {
+    pieces.push(`期望值 ${formatExternalValue(expected)}，实际值 ${formatExternalValue(actual)}`);
+  }
+  if (diff !== undefined) {
+    pieces.push(`差值 ${formatExternalValue(diff)}`);
+  }
+  if (windowText) {
+    pieces.push(windowText);
+  }
+
+  return pieces.length ? pieces.join("，") : "外部告警异常";
+}
+
+function firstPresent(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "");
+}
+
+function formatExternalValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return "-";
+  }
+  return String(value);
+}
+
 function summarizeCountryScheduleRuns(countryRuns = []) {
   const successfulRuns = countryRuns.filter((item) => item.ok);
   const failedRuns = countryRuns.filter((item) => !item.ok);
@@ -847,9 +1569,216 @@ function summarizeCountryScheduleRuns(countryRuns = []) {
   };
 }
 
-function buildBatchHistoryEntry({ trigger = "schedule", id = randomUUID(), startedAt, finishedAt, nextRunAt, schedule, countryRuns }) {
+async function runScheduledCountryChecks(countryConfigs, runBatchCheckFn, onProgress = null) {
+  const countryRuns = [];
+  for (const countryConfig of countryConfigs) {
+    onProgress?.({ type: "start", countryConfig });
+    try {
+      const result = await runBatchCheckFn({
+        countryCode: countryConfig.countryCode,
+        dashboardUuids: countryConfig.dashboardUuids || [],
+      });
+      const countryRun = {
+        countryCode: countryConfig.countryCode,
+        countryName: countryConfig.countryName || "",
+        ok: true,
+        result: summarizeBatchScheduleRun(result),
+      };
+      countryRuns.push(countryRun);
+      onProgress?.({ type: "success", countryConfig, countryRun });
+    } catch (error) {
+      const countryRun = {
+        countryCode: countryConfig.countryCode,
+        countryName: countryConfig.countryName || "",
+        ok: false,
+        error: error.message,
+      };
+      countryRuns.push(countryRun);
+      onProgress?.({ type: "failed", countryConfig, countryRun });
+    }
+  }
+  return countryRuns;
+}
+
+function createBatchScheduleRunProgress({ id, trigger, startedAt, countryConfigs }) {
+  const countries = countryConfigs.map((item) => ({
+    countryCode: item.countryCode,
+    countryName: item.countryName || "",
+    status: "pending",
+    checkedCardCount: 0,
+    anomalyCount: 0,
+    dashboardCount: 0,
+    error: "",
+  }));
+  return {
+    id,
+    trigger,
+    status: "running",
+    startedAt,
+    finishedAt: null,
+    totalCountries: countries.length,
+    completedCountries: 0,
+    currentCountryCode: "",
+    currentCountryName: "",
+    countries,
+  };
+}
+
+function updateBatchScheduleRunProgress(progress, event) {
+  if (!progress || !event?.countryConfig) {
+    return progress;
+  }
+  const countryCode = event.countryConfig.countryCode;
+  const countries = (progress.countries || []).map((item) => {
+    if (item.countryCode !== countryCode) {
+      return item;
+    }
+    if (event.type === "start") {
+      return {
+        ...item,
+        status: "running",
+        startedAt: new Date().toISOString(),
+      };
+    }
+    const result = event.countryRun?.result || {};
+    return {
+      ...item,
+      status: event.type === "success" ? "success" : "failed",
+      finishedAt: new Date().toISOString(),
+      checkedCardCount: result.checkedCardCount || 0,
+      dashboardCount: result.dashboardCount || 0,
+      anomalyCount: result.anomalyCount || 0,
+      error: event.countryRun?.error || "",
+    };
+  });
+  const completedCountries = countries.filter((item) => ["success", "failed"].includes(item.status)).length;
+  const runningCountry = countries.find((item) => item.status === "running");
+  return {
+    ...progress,
+    status: "running",
+    countries,
+    completedCountries,
+    currentCountryCode: runningCountry?.countryCode || (event.type === "start" ? countryCode : ""),
+    currentCountryName: runningCountry?.countryName || (event.type === "start" ? event.countryConfig.countryName || "" : ""),
+  };
+}
+
+async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs, rulesFile, notifyTextFn, detailUrl }) {
+  const successfulRuns = countryRuns.filter((item) => item.ok);
+  if (!successfulRuns.some((item) => Number(item.result?.anomalyCount || 0) + Number(item.result?.dataQualityAnomalyCount || 0) > 0)) {
+    markCountryRunNotifications(countryRuns, {
+      sent: false,
+      skipped: true,
+      reason: "no anomalies",
+      sentMessages: 0,
+      sentAt: null,
+    });
+    return 0;
+  }
+
+  const rules = await readJsonFile(rulesFile, { alerts: {} });
+  const configByCountry = new Map(countryConfigs.map((item) => [item.countryCode, item]));
+  const groups = groupScheduledRunsByNotifyTarget(successfulRuns, configByCountry, rules.alerts || {}, detailUrl);
+  let sentMessages = 0;
+
+  for (const group of groups) {
+    const result = combineScheduledCountryResults(group.countryRuns);
+    const messages = buildPublicCheckMessages(result, {
+      ...group.alerts,
+      countryDetailMode: "summary",
+    });
+    const results = [];
+    for (const message of messages) {
+      results.push(await notifyTextFn({ ...rules, alerts: group.alerts }, message.body, {
+        title: message.title,
+        severity: "warning",
+        timestamp: result.checkedAt,
+        anomalyCount: message.anomalyCount ?? result.anomalyCount,
+        checkedCardCount: result.checkedCardCount,
+      }));
+    }
+    const sent = results.some((item) => item.sent);
+    const notification = {
+      sent,
+      skipped: false,
+      reason: sent ? null : "send failed",
+      sentMessages: messages.length,
+      results,
+      channel: group.alerts.channel,
+      botId: group.alerts.botId || "",
+      chatId: group.alerts.chatId || "",
+      recipientEmails: group.alerts.recipientEmails || "",
+      mentions: group.alerts.mentions || [],
+      webhookUrl: group.alerts.webhookUrl || "",
+      detailUrl: group.alerts.detailUrl || "",
+      sentAt: new Date().toISOString(),
+    };
+    for (const countryRun of group.countryRuns) {
+      countryRun.result.notification = notification;
+    }
+    sentMessages += messages.length;
+  }
+
+  return sentMessages;
+}
+
+function groupScheduledRunsByNotifyTarget(countryRuns, configByCountry, configuredAlerts, detailUrl) {
+  const groups = new Map();
+  for (const countryRun of countryRuns) {
+    const countryConfig = configByCountry.get(countryRun.countryCode) || {};
+    const notifyChannel = normalizeNotifyChannel(countryConfig.notifyChannel || configuredAlerts.channel || "tv");
+    const alerts = buildBatchNotifyAlerts({ ...countryConfig, detailUrl }, configuredAlerts, notifyChannel);
+    const key = notificationTargetKey(alerts);
+    if (!groups.has(key)) {
+      groups.set(key, { alerts, countryRuns: [] });
+    }
+    groups.get(key).countryRuns.push(countryRun);
+  }
+  return [...groups.values()];
+}
+
+function notificationTargetKey(alerts = {}) {
+  return [
+    alerts.channel || "",
+    alerts.webhookUrl || "",
+    alerts.botId || "",
+    alerts.botApiBaseUrl || "",
+    alerts.botToken || "",
+    alerts.chatId || "",
+    alerts.recipientEmails || "",
+    (alerts.mentions || []).join(","),
+  ].join("\u0000");
+}
+
+function combineScheduledCountryResults(countryRuns = []) {
+  const results = countryRuns.map((item) => item.result || {});
+  const checkedAt = results.map((item) => item.checkedAt).filter(Boolean).sort().slice(-1)[0] || new Date().toISOString();
+  const checkedCards = results.flatMap((item) => item.checkedCards || []);
+  const anomalies = results.flatMap((item) => item.anomalies || []);
+  return {
+    checkedAt,
+    checkedCardCount: results.reduce((sum, item) => sum + Number(item.checkedCardCount || 0), 0),
+    dashboardCount: results.reduce((sum, item) => sum + Number(item.dashboardCount || 0), 0),
+    checkedDashboards: results.flatMap((item) => item.checkedDashboards || []),
+    checkedCards,
+    anomalyCount: anomalies.length,
+    anomalies,
+    dataQualityAnomalyCount: results.reduce((sum, item) => sum + Number(item.dataQualityAnomalyCount || 0), 0),
+    dataQuality: null,
+  };
+}
+
+function markCountryRunNotifications(countryRuns, notification) {
+  for (const countryRun of countryRuns) {
+    if (countryRun.ok && countryRun.result) {
+      countryRun.result.notification = notification;
+    }
+  }
+}
+
+function buildBatchHistoryEntry({ trigger = "schedule", id = randomUUID(), startedAt, finishedAt, nextRunAt, schedule, countryRuns, notificationSentCount = null }) {
   const summary = summarizeCountryScheduleRuns(countryRuns);
-  const notificationSentCount = countryRuns.reduce((sum, run) => {
+  const sentCount = notificationSentCount ?? countryRuns.reduce((sum, run) => {
     const notification = run.result?.notification;
     return sum + (notification?.sent ? Number(notification.sentMessages || 0) : 0);
   }, 0);
@@ -869,7 +1798,7 @@ function buildBatchHistoryEntry({ trigger = "schedule", id = randomUUID(), start
     dashboardCount: summary.dashboardCount,
     anomalyCount: summary.anomalyCount,
     dataQualityAnomalyCount: countryRuns.reduce((sum, run) => sum + Number(run.result?.dataQualityAnomalyCount || 0), 0),
-    notificationSentCount,
+    notificationSentCount: sentCount,
     runs: countryRuns,
   };
 }
@@ -878,6 +1807,57 @@ async function appendBatchHistoryRun(historyFile, entry) {
   const history = await readJsonFile(historyFile, DEFAULT_BATCH_HISTORY);
   const runs = [entry, ...(history.runs || [])].slice(0, MAX_BATCH_HISTORY_RUNS);
   await writeJsonAtomic(historyFile, { updatedAt: new Date().toISOString(), runs });
+}
+
+async function readPlatformInventory(rootDir, primaryInventoryFile) {
+  const primary = await readJsonFile(primaryInventoryFile, { dashboards: [] });
+  const configDir = path.join(rootDir, "config");
+  let fileNames = [];
+  try {
+    fileNames = await fs.readdir(configDir);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const countryInventoryFiles = fileNames
+    .filter((fileName) => /^discovered-public-dashboards\.[a-z]+\.json$/i.test(fileName))
+    .map((fileName) => path.join(configDir, fileName));
+  const inventories = [primary];
+
+  for (const filePath of countryInventoryFiles) {
+    inventories.push(await readJsonFile(filePath, { dashboards: [] }));
+  }
+
+  return mergeInventories(inventories);
+}
+
+function mergeInventories(inventories) {
+  const dashboardsByKey = new Map();
+  const sourceErrors = [];
+
+  for (const inventory of inventories) {
+    sourceErrors.push(...(inventory.sourceErrors || []));
+    for (const dashboard of inventory.dashboards || []) {
+      const key = [
+        dashboard.countryCode || dashboard.country?.code || "",
+        dashboard.access || "public",
+        dashboard.dashboardId || dashboard.uuid || dashboard.url || dashboard.title || "",
+      ].join("::");
+      dashboardsByKey.set(key, dashboard);
+    }
+  }
+
+  const dashboards = [...dashboardsByKey.values()];
+  return {
+    ...(inventories[0] || {}),
+    dashboardCount: dashboards.length,
+    totalCardCount: dashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0),
+    sourceErrorCount: sourceErrors.length,
+    sourceErrors,
+    dashboards,
+  };
 }
 
 function filterBatchHistory(history = DEFAULT_BATCH_HISTORY, filters = {}) {
@@ -1086,6 +2066,17 @@ function panelSourceFilePath(rootDir, countryCode) {
     return path.join(rootDir, "config/discovered-panels.json");
   }
   return path.join(rootDir, `config/discovered-panels.${String(countryCode || "").toLowerCase()}.json`);
+}
+
+async function explainUnavailableCountryInventory(rootDir, countryCode, countries = []) {
+  const country = countries.find((item) => item.code === countryCode) || {};
+  const label = [country.name, countryCode].filter(Boolean).join(" / ") || countryCode || "该国家";
+  const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
+  const sourceCount = Array.isArray(source.panels) ? source.panels.length : 0;
+  if (sourceCount > 0) {
+    return `${label} 当前有 ${sourceCount} 个来源看板，但都是 Metabase 内部 collection/dashboard 链接，尚未发现可巡检的 /public/dashboard UUID；请先在 Metabase 开启 public sharing 并重新发现后再上线巡检。`;
+  }
+  return `${label} 当前没有可巡检的 public dashboard 清单，请先补充 /public/dashboard UUID 并重新发现。`;
 }
 
 function summarizeCountries(countries, inventory, result) {

@@ -25,6 +25,42 @@ export function formatError(error) {
   return String(error);
 }
 
+export async function loadEnvFile(filePath) {
+  let text = "";
+  try {
+    text = await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const key = line.slice(0, separatorIndex).trim();
+    const rawValue = line.slice(separatorIndex + 1).trim();
+    if (!key || process.env[key] !== undefined) {
+      continue;
+    }
+    process.env[key] = unquoteEnvValue(rawValue);
+  }
+}
+
+function unquoteEnvValue(value) {
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
 export function parseArgs(argv) {
   const [, , ...rest] = argv;
   const [command = "check", ...args] = rest;
@@ -101,4 +137,3 @@ export function formatTimestamp(timestampMs) {
   }
   return new Date(timestampMs).toISOString();
 }
-

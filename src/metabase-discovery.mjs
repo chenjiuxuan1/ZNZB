@@ -1,17 +1,29 @@
 import path from "node:path";
+import { MetabaseInternalClient, parseInternalMetabaseUrl } from "./metabase-internal-client.mjs";
 import { MetabasePublicClient, parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { readJsonFile, uniqueStrings, writeJsonFile } from "./utils.mjs";
 
-export async function discoverPublicDashboards({ inputFile, outputFile, sampleRows = 3 }) {
+export async function discoverPublicDashboards({
+  inputFile,
+  outputFile,
+  sampleRows = 3,
+  publicClientFactory = (ref) => new MetabasePublicClient({
+    baseUrl: ref.baseUrl,
+    requestTimeoutSeconds: 30,
+  }),
+  internalClientFactory = (ref) => new MetabaseInternalClient({
+    baseUrl: ref.baseUrl,
+    requestTimeoutSeconds: 30,
+  }),
+}) {
   const input = await readJsonFile(path.resolve(inputFile));
   const dashboardRefs = extractPublicDashboardRefs(input);
+  const internalRefs = extractInternalMetabaseRefs(input);
   const dashboards = [];
+  const sourceErrors = [];
 
   for (const ref of dashboardRefs) {
-    const client = new MetabasePublicClient({
-      baseUrl: ref.baseUrl,
-      requestTimeoutSeconds: 30,
-    });
+    const client = publicClientFactory(ref);
     const dashboard = await client.getDashboard(ref.uuid);
     const cards = extractCards(dashboard);
     const sampledCards = [];
@@ -25,6 +37,7 @@ export async function discoverPublicDashboards({ inputFile, outputFile, sampleRo
       countryCode: ref.country?.code,
       countryName: ref.country?.name,
       timezone: ref.country?.timezone,
+      access: "public",
       sourcePanelId: ref.sourcePanelId,
       sourcePanelTitle: ref.sourcePanelTitle,
       title: dashboard.name || dashboard.title || ref.sourcePanelTitle,
@@ -37,6 +50,24 @@ export async function discoverPublicDashboards({ inputFile, outputFile, sampleRo
     });
   }
 
+  for (const ref of internalRefs) {
+    const client = internalClientFactory(ref);
+    try {
+      dashboards.push(...await discoverInternalDashboards(client, ref, sampleRows));
+    } catch (error) {
+      sourceErrors.push({
+        countryCode: ref.country?.code,
+        countryName: ref.country?.name,
+        sourcePanelId: ref.sourcePanelId,
+        sourcePanelTitle: ref.sourcePanelTitle,
+        sourceType: ref.type,
+        sourceId: ref.id,
+        url: ref.url,
+        error: error.message,
+      });
+    }
+  }
+
   const summary = {
     generatedAt: new Date().toISOString(),
     country: input.country || null,
@@ -46,6 +77,8 @@ export async function discoverPublicDashboards({ inputFile, outputFile, sampleRo
     },
     dashboardCount: dashboards.length,
     totalCardCount: dashboards.reduce((sum, item) => sum + item.cardCount, 0),
+    sourceErrorCount: sourceErrors.length,
+    sourceErrors,
     dashboards,
   };
 
@@ -85,6 +118,38 @@ export function extractPublicDashboardRefs(discoveredPanels) {
   });
 }
 
+export function extractInternalMetabaseRefs(discoveredPanels) {
+  const refs = [];
+
+  for (const panel of discoveredPanels.panels || []) {
+    for (const link of panel.links || []) {
+      if (parsePublicDashboardUrl(link.url)) {
+        continue;
+      }
+      const parsed = parseInternalMetabaseUrl(link.url);
+      if (!parsed) {
+        continue;
+      }
+      refs.push({
+        ...parsed,
+        country: discoveredPanels.country || null,
+        sourcePanelId: panel.id,
+        sourcePanelTitle: panel.title,
+      });
+    }
+  }
+
+  const seen = new Set();
+  return refs.filter((ref) => {
+    const key = `${ref.baseUrl}:${ref.type}:${ref.id}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
 function extractCards(dashboard) {
   return (dashboard.dashcards || [])
     .filter((dashcard) => dashcard.card_id && dashcard.card?.name)
@@ -104,6 +169,7 @@ async function sampleCard(client, dashboardRef, card, sampleRows) {
     const rows = await client.queryDashcardJson({
       cardId: card.cardId,
       dashboardUuid: dashboardRef.uuid,
+      dashboardId: dashboardRef.dashboardId,
       dashcardId: card.dashcardId,
     });
     const normalizedRows = Array.isArray(rows) ? rows : [];
@@ -124,6 +190,90 @@ async function sampleCard(client, dashboardRef, card, sampleRows) {
       error: error.message,
     };
   }
+}
+
+async function discoverInternalDashboards(client, ref, sampleRows) {
+  const dashboardRefs = ref.type === "dashboard"
+    ? [{ ...ref, dashboardId: ref.id, url: ref.url }]
+    : await discoverDashboardsFromCollection(client, ref);
+  const dashboards = [];
+
+  for (const dashboardRef of dashboardRefs) {
+    const dashboard = await client.getDashboard(dashboardRef.dashboardId);
+    const cards = extractCards(dashboard);
+    const sampledCards = [];
+
+    for (const card of cards) {
+      sampledCards.push(await sampleCard(client, dashboardRef, card, sampleRows));
+    }
+
+    dashboards.push({
+      country: ref.country || null,
+      countryCode: ref.country?.code,
+      countryName: ref.country?.name,
+      timezone: ref.country?.timezone,
+      access: "internal",
+      sourcePanelId: ref.sourcePanelId,
+      sourcePanelTitle: ref.sourcePanelTitle,
+      title: dashboard.name || dashboard.title || dashboardRef.title || ref.sourcePanelTitle,
+      dashboardId: String(dashboardRef.dashboardId),
+      uuid: `internal-${dashboardRef.dashboardId}`,
+      url: dashboardRef.url || `${ref.baseUrl}/dashboard/${dashboardRef.dashboardId}`,
+      sourceUrl: ref.url,
+      sourceType: ref.type,
+      parameters: summarizeParameters(dashboard.parameters || []),
+      dashcardCount: dashboard.dashcards?.length || 0,
+      cardCount: cards.length,
+      cards: sampledCards,
+    });
+  }
+
+  return dashboards;
+}
+
+async function discoverDashboardsFromCollection(client, ref) {
+  const dashboards = [];
+  const visitedCollections = new Set();
+
+  async function visit(collectionId) {
+    if (visitedCollections.has(collectionId)) {
+      return;
+    }
+    visitedCollections.add(collectionId);
+
+    const response = await client.getCollectionItems(collectionId);
+    const items = normalizeCollectionItems(response);
+    for (const item of items) {
+      const model = String(item.model || item.type || "").toLowerCase();
+      if (model === "dashboard") {
+        dashboards.push({
+          ...ref,
+          dashboardId: String(item.id),
+          title: item.name || item.title,
+          url: item.url || `${ref.baseUrl}/dashboard/${item.id}`,
+        });
+      }
+      if (model === "collection") {
+        await visit(String(item.id));
+      }
+    }
+  }
+
+  await visit(ref.id);
+  return dashboards;
+}
+
+function normalizeCollectionItems(response) {
+  if (Array.isArray(response)) {
+    return response;
+  }
+  if (Array.isArray(response?.data)) {
+    return response.data;
+  }
+  if (Array.isArray(response?.items)) {
+    return response.items;
+  }
+  return [];
 }
 
 function summarizeParameters(parameters) {

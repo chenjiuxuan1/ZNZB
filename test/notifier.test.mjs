@@ -161,9 +161,10 @@ test("buildPublicCheckMessage includes dashboard, context, card and exact messag
   assert.match(message, /• 检查范围：56张卡片/);
   assert.match(message, /• 异常数量：1条/);
   assert.match(message, /• 巴基斯坦\(PK\)：共1条，缺失0条，波动1条/);
-  assert.match(message, /🚨【巴基斯坦\(PK\) 公共报表巡检异常】/);
-  assert.match(message, /① 统计口径=到期日期 \/ 每期逾期率-表（1条）/);
-  assert.match(message, /最大波动：\+9\.2个百分点/);
+  assert.match(message, /🧭 异常看板 Top 1/);
+  assert.match(message, /巴基斯坦\(PK\) \/ 每期逾期率by日期：1条，1张卡片，缺失0、波动1，最大\+9\.2个百分点/);
+  assert.match(message, /🔎 具体异常示例 Top 1/);
+  assert.match(message, /巴基斯坦\(PK\) \/ 每期逾期率by日期 \/ 每期逾期率-表：指标「入催率」，\+9\.2个百分点/);
   assert.match(message, /23\.8% → 33\.0%/);
 });
 
@@ -209,16 +210,14 @@ test("buildPublicCheckMessage separates missing data and fluctuations", () => {
   assert.match(message, /• 菲律宾\(PH\)：共1条，缺失1条，波动0条/);
   assert.match(message, /• 巴基斯坦\(PK\)：共1条，缺失1条，波动0条/);
   assert.match(message, /• 印尼\(INE\)：共1条，缺失0条，波动1条/);
-  assert.match(message, /🚨【菲律宾\(PH\) 公共报表巡检异常】/);
-  assert.match(message, /🔴 数据缺失异常（1条）/);
+  assert.match(message, /🧭 异常看板 Top 3/);
   assert.match(message, /缺少 D0 2026-06-09/);
   assert.match(message, /半小时点数据缺失/);
-  assert.match(message, /🚨【印尼\(INE\) 公共报表巡检异常】/);
-  assert.match(message, /🟡 数据波动异常（1条）/);
+  assert.match(message, /🔎 具体异常示例 Top 3/);
   assert.doesNotMatch(message, /<details>|<summary>|<\/details>/);
-  assert.match(message, /最大波动：\+10\.9个百分点/);
+  assert.match(message, /印尼\(INE\) \/ 每期逾期率by日期 \/ 每期逾期率：指标「入催率」，\+10\.9个百分点/);
   assert.match(message, /22\.3% → 33\.3%/);
-  assert.match(message, /https:\/\/data\.kuainiu\.io\/public\/dashboard\/example-id/);
+  assert.doesNotMatch(message, /https:\/\/data\.kuainiu\.io\/public\/dashboard\/example-id/);
 });
 
 test("buildPublicCheckMessage shows zero missing data explicitly", () => {
@@ -238,8 +237,10 @@ test("buildPublicCheckMessage shows zero missing data explicitly", () => {
     ],
   });
 
-  assert.match(message, /🔴 数据缺失异常（0条）\n暂无异常/);
-  assert.match(message, /🟡 数据波动异常（1条）/);
+  assert.match(message, /• 数据缺失：0条/);
+  assert.match(message, /• 数据波动：1条/);
+  assert.match(message, /🧭 异常看板 Top 1/);
+  assert.match(message, /🔎 具体异常示例 Top 1/);
 });
 
 test("buildPublicCheckMessage lists scanned dashboards for healthy checks", () => {
@@ -326,8 +327,9 @@ test("buildPublicCheckMessage summarizes multi-country anomalies without listing
   assert.match(summary, /• 菲律宾\(PH\)：共1条，缺失1条，波动0条，涉及1个看板\/1张卡片/);
   assert.match(summary, /🧭 异常看板 Top 3/);
   assert.match(summary, /核心链路准实时监控：1条，1张卡片，缺失0、波动1，最大\+227\.2%/);
-  assert.match(summary, /🔎 最严重异常 Top 3/);
-  assert.match(summary, /后续每个异常国家各发1条聚合明细；总览只展示 Top 项。/);
+  assert.match(summary, /🔎 具体异常示例 Top 3/);
+  assert.match(summary, /核心链路准实时监控 \/ 老客-还款金额：指标「repaid_amt」，\+227\.2%，123,883,310 → 405,325,890/);
+  assert.match(summary, /完整异常原因、各时间点当前值\/基准值\/波动幅度已保存到巡检历史详情页。/);
 });
 
 test("buildPublicCheckMessage links to frontend history detail when provided", () => {
@@ -355,7 +357,8 @@ test("buildPublicCheckMessage links to frontend history detail when provided", (
   );
 
   assert.match(message, /🔎 查看完整明细：http:\/\/127\.0\.0\.1:8787\/#\/batch-check\?historyRunId=run-001/);
-  assert.match(message, /🔎 查看本次巡检完整明细：http:\/\/127\.0\.0\.1:8787\/#\/batch-check\?historyRunId=run-001&countryCode=INE/);
+  assert.match(message, /🌏 按国家查看/);
+  assert.match(message, /• 印尼\(INE\)：http:\/\/127\.0\.0\.1:8787\/#\/batch-check\?historyRunId=run-001&countryCode=INE/);
 });
 
 test("buildPublicCheckMessage includes data quality current anomaly counts", () => {
@@ -394,7 +397,7 @@ test("buildPublicCheckMessage includes data quality current anomaly counts", () 
   assert.match(message, /🧪 数据质量当前异常/);
   assert.match(message, /• 印尼\(INE\)：3条/);
   assert.match(message, /• 菲律宾\(PH\)：获取失败（401 Unauthorized）/);
-  assert.match(message, /• 数据质量当前异常：3条/);
+  assert.doesNotMatch(message, /• 数据质量当前异常：3条/);
 });
 
 test("buildPublicCheckMessage shows both directions and time point for mixed intraday changes", () => {
@@ -422,12 +425,12 @@ test("buildPublicCheckMessage shows both directions and time point for mixed int
     ],
   });
 
-  assert.match(message, /最大上涨：\+2379\.4%/);
-  assert.match(message, /【核心链路准实时监控（stat_date 2026-06-11 对比 2026-06-10）】/);
-  assert.match(message, /时间点：Asia\/Jakarta 13:00/);
+  assert.match(message, /核心链路准实时监控：2条，1张卡片，缺失0、波动2，最大\+2379\.4%/);
+  assert.match(message, /核心链路准实时监控 \/ 新客-放款金额：指标「grant_amt」，\+2379\.4%/);
+  assert.match(message, /Asia\/Jakarta 13:00/);
   assert.match(message, /485,000 → 12,025,000/);
-  assert.match(message, /最大下跌：-97\.9%/);
-  assert.match(message, /时间点：Asia\/Jakarta 09:30/);
+  assert.match(message, /核心链路准实时监控 \/ 新客-放款金额：指标「grant_amt」，-97\.9%/);
+  assert.match(message, /Asia\/Jakarta 09:30/);
   assert.match(message, /23,650,000 → 485,000/);
 });
 
@@ -448,8 +451,8 @@ test("buildPublicCheckMessage includes baseline detail for intraday changes", ()
     ],
   });
 
-  assert.match(message, /最大波动：\+227\.2%/);
-  assert.match(message, /近30天基线：150,000,000（样本26天），较基线 \+170\.2%/);
-  assert.match(message, /判定依据：昨日同点波动超过±50\.0%，且近30天同点中位数波动超过±50\.0%，两项同时命中才触发/);
+  assert.match(message, /核心链路准实时监控：1条，1张卡片，缺失0、波动1，最大\+227\.2%/);
+  assert.match(message, /样本26天/);
+  assert.match(message, /完整异常原因、各时间点当前值\/基准值\/波动幅度已保存到巡检历史详情页。/);
   assert.match(message, /123,883,310 → 405,325,890/);
 });

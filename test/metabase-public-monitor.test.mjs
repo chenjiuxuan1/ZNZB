@@ -75,6 +75,42 @@ test("mergeParameters overrides by target while keeping actual dashboard paramet
   );
 });
 
+test("checkPublicDashboards queries internal dashboards by dashboardId", async () => {
+  const queriedRequests = [];
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [
+        {
+          access: "internal",
+          dashboardId: "462",
+          uuid: "internal-462",
+          title: "业务概览-核心链路准实时监控",
+          url: "https://data.kuainiu.io/dashboard/462",
+          cards: [{ title: "注册数", cardId: 22, dashcardId: 11, parameterMappings: [] }],
+        },
+      ],
+    },
+    ruleConfig: { builtInChecks: { queryError: true, noData: true }, rules: [] },
+    metabaseClientFactory: () => ({
+      async queryDashcardJson(request) {
+        queriedRequests.push(request);
+        return [{ "统计日期": "2026-07-07", "注册数": 10 }];
+      },
+    }),
+  });
+
+  assert.equal(result.checkedCardCount, 1);
+  assert.deepEqual(queriedRequests, [
+    {
+      cardId: 22,
+      dashcardId: 11,
+      parameters: [],
+      dashboardId: "462",
+    },
+  ]);
+});
+
 test("checkPublicDashboards keeps OKR D0 freshness except PK D-1 exception", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "public-monitor-"));
   const inventoryFile = path.join(tempDir, "inventory.json");

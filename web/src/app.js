@@ -2,20 +2,22 @@ import { apiGet } from "./api.js";
 import { parseHashRoute, setRoute, state } from "./state.js";
 import { renderCountries } from "./views/countries.js?v=20260706-ui16";
 import { renderDashboard } from "./views/dashboard.js?v=20260706-ui16";
-import { renderInventory } from "./views/inventory.js?v=20260706-ui16";
+import { renderInventory } from "./views/inventory.js?v=20260707-cn-source2";
 import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui16";
 import { renderRules } from "./views/rules.js?v=20260706-ui16";
-import { renderSandbox } from "./views/sandbox.js?v=20260706-ui16";
-import { renderBatchCheck } from "./views/batch-check.js?v=20260707-history2";
+import { renderSandbox } from "./views/sandbox.js?v=20260707-sandbox-country";
+import { renderBatchCheck } from "./views/batch-check.js?v=20260708-metabase-schedule";
+import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
 
 const routes = [
-  { path: "/dashboard", label: "总览", render: renderDashboard },
-  { path: "/countries", label: "国家配置", render: renderCountries },
-  { path: "/inventory", label: "看板与卡片", render: renderInventory },
-  { path: "/rules", label: "规则配置", render: renderRules },
-  { path: "/sandbox", label: "规则试跑", render: renderSandbox },
-  { path: "/batch-check", label: "批量巡检", render: renderBatchCheck },
-  { path: "/notify-preview", label: "通知预览", render: renderNotifyPreview },
+  { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
+  { path: "/countries", label: "国家配置", short: "国", render: renderCountries },
+  { path: "/inventory", label: "看板与卡片", short: "板", render: renderInventory },
+  { path: "/rules", label: "规则配置", short: "规", render: renderRules },
+  { path: "/sandbox", label: "规则试跑", short: "试", render: renderSandbox },
+  { path: "/batch-check", label: "Metabase 定时巡检", short: "巡", render: renderBatchCheck },
+  { path: "/wattrel-alerts", label: "Wattrel告警", short: "告", render: renderWattrelAlerts },
+  { path: "/notify-preview", label: "通知预览", short: "通", render: renderNotifyPreview },
 ];
 
 window.addEventListener("hashchange", () => {
@@ -64,12 +66,18 @@ export function render() {
   app.innerHTML = `
     <div class="layout">
       <aside class="sidebar">
-        <div class="brand">值班平台</div>
-        <div class="brand-subtitle">配置 + 离线试跑工作台</div>
+        <div class="brand-block">
+          <div class="brand-mark">值</div>
+          <div>
+            <div class="brand">值班平台</div>
+            <div class="brand-subtitle">配置 · 巡检 · 通知工作台</div>
+          </div>
+        </div>
         <nav class="nav">
           ${routes.map((item) => `
             <button class="${item.path === route.path ? "active" : ""}" data-route="${item.path}">
-              ${item.label}
+              <span class="nav-icon">${item.short}</span>
+              <span>${item.label}</span>
             </button>
           `).join("")}
         </nav>

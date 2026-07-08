@@ -3,6 +3,9 @@
 node_modules/
 *.log
 tmp-*.png
+*.png
+.playwright-mcp/
 config/public-check-baseline-cache.json
 config/batch-check-schedule.json
+config/batch-check-run-history.json
 .DS_Store

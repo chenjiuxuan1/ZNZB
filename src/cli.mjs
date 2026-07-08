@@ -8,9 +8,10 @@ import { discoverPublicDashboards } from "./metabase-discovery.mjs";
 import { checkPublicDashboards } from "./metabase-public-monitor.mjs";
 import { notifyPublicCheck, notifyText } from "./notifier.mjs";
 import { discover, runCheck, watch } from "./runner.mjs";
-import { formatError, parseArgs, readJsonFile } from "./utils.mjs";
+import { formatError, loadEnvFile, parseArgs, readJsonFile } from "./utils.mjs";
 
 async function main() {
+  await loadEnvFile(path.resolve(".env"));
   const { command, options } = parseArgs(process.argv);
   const configPath = options.config || "./config/monitor.config.json";
 

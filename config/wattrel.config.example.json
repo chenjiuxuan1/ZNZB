@@ -1,0 +1,71 @@
+{
+  "enabled": true,
+  "title": "Wattrel 数据质量巡检",
+  "countries": {
+    "INE": {
+      "database": {
+        "host": "${WATTREL_INE_DB_HOST}",
+        "port": "${WATTREL_INE_DB_PORT}",
+        "user": "${WATTREL_INE_DB_USER}",
+        "password": "${WATTREL_INE_DB_PASSWORD}",
+        "database": "${WATTREL_INE_DB_NAME}",
+        "charset": "utf8mb4"
+      }
+    },
+    "PH": {
+      "database": {
+        "host": "${WATTREL_PH_DB_HOST}",
+        "port": "${WATTREL_PH_DB_PORT}",
+        "user": "${WATTREL_PH_DB_USER}",
+        "password": "${WATTREL_PH_DB_PASSWORD}",
+        "database": "${WATTREL_PH_DB_NAME}",
+        "charset": "utf8mb4"
+      }
+    },
+    "TH": {
+      "database": {
+        "host": "${WATTREL_TH_DB_HOST}",
+        "port": "${WATTREL_TH_DB_PORT}",
+        "user": "${WATTREL_TH_DB_USER}",
+        "password": "${WATTREL_TH_DB_PASSWORD}",
+        "database": "${WATTREL_TH_DB_NAME}",
+        "charset": "utf8mb4"
+      }
+    },
+    "PK": {
+      "database": {
+        "host": "${WATTREL_PK_DB_HOST}",
+        "port": "${WATTREL_PK_DB_PORT}",
+        "user": "${WATTREL_PK_DB_USER}",
+        "password": "${WATTREL_PK_DB_PASSWORD}",
+        "database": "${WATTREL_PK_DB_NAME}",
+        "charset": "utf8mb4"
+      }
+    },
+    "MX": {
+      "database": {
+        "host": "${WATTREL_MX_DB_HOST}",
+        "port": "${WATTREL_MX_DB_PORT}",
+        "user": "${WATTREL_MX_DB_USER}",
+        "password": "${WATTREL_MX_DB_PASSWORD}",
+        "database": "${WATTREL_MX_DB_NAME}",
+        "charset": "utf8mb4"
+      }
+    },
+    "CN": {
+      "database": {
+        "host": "${WATTREL_CN_DB_HOST}",
+        "port": "${WATTREL_CN_DB_PORT}",
+        "user": "${WATTREL_CN_DB_USER}",
+        "password": "${WATTREL_CN_DB_PASSWORD}",
+        "database": "${WATTREL_CN_DB_NAME}",
+        "charset": "utf8mb4"
+      }
+    }
+  },
+  "query": {
+    "limit": 1000,
+    "sql": "SELECT id, quality_id, name, type, `desc`, src_db, src_tbl, dest_db, dest_tbl, src_value, dest_value, diff, `begin`, `end`, result, status, src_error, dest_error, is_repaired, created_at, updated_at FROM wattrel_quality_result WHERE result = 1 AND created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY created_at DESC LIMIT ?",
+    "params": ["${limit}"]
+  }
+}
