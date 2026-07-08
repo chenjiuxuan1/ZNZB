@@ -226,23 +226,36 @@ function buildGoogleSheetValues(row) {
 }
 
 function normalizeQualityRuleRow(row, rowNumber) {
+  const candidateKey = pickColumn(row, DEFAULT_COLUMNS.candidateKey);
+  const srcSql = pickColumn(row, DEFAULT_COLUMNS.srcSql);
+  const destSql = pickColumn(row, DEFAULT_COLUMNS.destSql);
+  const database = pickColumn(row, DEFAULT_COLUMNS.database) || inferDatabase({ candidateKey, srcSql, destSql });
   return {
     sheetRowNumber: rowNumber,
     submittedAt: pickColumn(row, DEFAULT_COLUMNS.submittedAt),
     country: normalizeCountryCode(pickColumn(row, DEFAULT_COLUMNS.country)),
     countryRaw: pickColumn(row, DEFAULT_COLUMNS.country),
-    database: pickColumn(row, DEFAULT_COLUMNS.database),
+    database,
     table: pickColumn(row, DEFAULT_COLUMNS.table),
     autoGenerate: pickColumn(row, DEFAULT_COLUMNS.autoGenerate),
     needApply: pickColumn(row, DEFAULT_COLUMNS.needApply),
     metricField: pickColumn(row, DEFAULT_COLUMNS.metricField),
-    candidateKey: pickColumn(row, DEFAULT_COLUMNS.candidateKey),
-    srcSql: pickColumn(row, DEFAULT_COLUMNS.srcSql),
-    destSql: pickColumn(row, DEFAULT_COLUMNS.destSql),
+    candidateKey,
+    srcSql,
+    destSql,
     humanCheck: pickColumn(row, DEFAULT_COLUMNS.humanCheck),
     operator: pickColumn(row, DEFAULT_COLUMNS.operator),
     notes: pickColumn(row, DEFAULT_COLUMNS.notes),
   };
+}
+
+function inferDatabase({ candidateKey = "", srcSql = "", destSql = "" } = {}) {
+  const keyDb = String(candidateKey || "").match(/^([A-Za-z_][\w]*)::/)?.[1];
+  if (keyDb) {
+    return keyDb;
+  }
+  const sqlDb = String(destSql || srcSql || "").match(/\b(?:FROM|JOIN)\s+`?([A-Za-z_][\w]*)`?\./i)?.[1];
+  return sqlDb || "";
 }
 
 function pickColumn(row, names) {
