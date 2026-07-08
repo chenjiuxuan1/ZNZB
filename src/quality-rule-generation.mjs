@@ -179,7 +179,7 @@ export function normalizeQualityRuleSubmission(input = {}) {
     database: cleanText(input.database),
     table: cleanText(input.table),
     autoGenerate: normalizeFlagText(input.autoGenerate),
-    needApply: normalizeFlagText(input.needApply),
+    needApply: normalizeOnlineFlagText(input.needApply),
     metricField: cleanText(input.metricField),
     candidateKey: cleanText(input.candidateKey),
     srcSql: cleanText(input.srcSql),
@@ -278,6 +278,14 @@ function normalizeFlagText(value) {
     return "";
   }
   return isTruthyFlag(text) ? "是" : text;
+}
+
+function normalizeOnlineFlagText(value) {
+  const text = cleanText(value);
+  if (!text) {
+    return "";
+  }
+  return isTruthyFlag(text) ? "1" : "0";
 }
 
 function groupByCountry(rows) {

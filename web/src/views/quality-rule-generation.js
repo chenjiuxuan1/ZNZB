@@ -218,7 +218,7 @@ function renderEditor() {
         ${inputField("表名", "table", row.table, "例如 dwd_cst_pay_cost_detail")}
         ${inputField("唯一键", "candidateKey", row.candidateKey, "例如 dwd_sec::table::cnt")}
         ${selectField("是否需要自动生成", "autoGenerate", row.autoGenerate)}
-        ${selectField("是否上线", "needApply", row.needApply)}
+        ${onlineSelectField("是否上线", "needApply", row.needApply)}
         ${inputField("校验字段", "metricField", row.metricField, "可选")}
         ${inputField("操作人", "operator", row.operator, "可选")}
         ${textareaField("src_sql", "srcSql", row.srcSql)}
@@ -415,6 +415,19 @@ function selectField(label, name, value) {
         ${option("", "未填写", current)}
         ${option("是", "是", current)}
         ${option("否", "否", current)}
+      </select>
+    </label>
+  `;
+}
+
+function onlineSelectField(label, name, value) {
+  const current = isTruthyFlag(value) ? "1" : String(value || "0");
+  return `
+    <label class="quality-editor-field">
+      <span>${escapeHtml(label)}</span>
+      <select name="${escapeHtml(name)}">
+        <option value="0" ${current === "0" || !current ? "selected" : ""}>0 未上线</option>
+        <option value="1" ${current === "1" ? "selected" : ""}>1 已上线</option>
       </select>
     </label>
   `;
