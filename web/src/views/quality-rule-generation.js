@@ -200,7 +200,7 @@ function renderEditor() {
   if (!editor?.open) {
     return "";
   }
-  const row = { ...emptyEditorRow(), ...(editor.row || {}) };
+  const row = withEditorDefaults({ ...emptyEditorRow(), ...(editor.row || {}) });
   return `
     <section id="quality-rule-editor" class="quality-editor-panel">
       <div class="detail-header compact-header">
@@ -508,8 +508,8 @@ function emptyEditorRow() {
     country: "",
     database: "",
     table: "",
-    autoGenerate: "是",
-    needApply: "",
+    autoGenerate: "否",
+    needApply: "1",
     metricField: "",
     candidateKey: "",
     srcSql: "",
@@ -517,6 +517,14 @@ function emptyEditorRow() {
     humanCheck: "",
     operator: "",
     notes: "",
+  };
+}
+
+function withEditorDefaults(row) {
+  return {
+    ...row,
+    autoGenerate: row.autoGenerate || "否",
+    needApply: row.needApply === undefined || row.needApply === null || row.needApply === "" ? "1" : row.needApply,
   };
 }
 
