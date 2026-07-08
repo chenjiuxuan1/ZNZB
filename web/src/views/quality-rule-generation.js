@@ -81,7 +81,7 @@ export function renderQualityRuleGeneration(root) {
   });
 
   if (!state.qualityRuleGenerationLoaded && state.qualityRuleGenerationStatus?.type !== "loading") {
-    void loadQualityRuleGeneration(root, "mock");
+    void loadQualityRuleGeneration(root, "real");
   }
 }
 
