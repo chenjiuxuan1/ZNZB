@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "mock": false,
+  "sheetUrl": "https://docs.google.com/spreadsheets/d/1xh4MSxN-sgdfKZnpGmnY-OujnneimfAp7cgVdtct6SQ/edit?gid=160372088#gid=160372088",
+  "gid": "160372088",
+  "writeWebhookUrl": "${QUALITY_RULE_GENERATION_WRITE_WEBHOOK_URL}",
+  "writeWebhookHeaders": {
+    "X-Webhook-Token": "${QUALITY_RULE_GENERATION_WRITE_WEBHOOK_TOKEN}"
+  },
+  "remote": {
+    "enabled": false,
+    "mode": "n8n_or_ssh",
+    "description": "后续可接 n8n webhook 或 SSH 到 quality-rule-automation-shared 运行 tools/run_single_quality_rule_flow.py。密钥和数据库连接请放环境变量，不要写入仓库。"
+  }
+}

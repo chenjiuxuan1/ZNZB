@@ -958,6 +958,69 @@ test("platform api keeps hidden secret placeholders from overwriting stored valu
   assert.equal(saved.rules[0].type, "rowCountAtLeast");
 });
 
+test("platform api blocks quality rule generation write without webhook", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/quality-rule-generation.config.json"),
+    JSON.stringify({ enabled: true, sheetUrl: "https://docs.google.com/spreadsheets/d/example/edit?gid=1" }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(
+    () => api.submitQualityRuleGenerationRow({
+      row: {
+        countryRaw: "CN",
+        database: "dwd",
+        table: "dwd_demo",
+        srcSql: "SELECT 1 AS cnt",
+      },
+    }),
+    /write webhook is not configured/,
+  );
+});
+
+test("platform api submits quality rule generation rows to configured writer", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/quality-rule-generation.config.json"),
+    JSON.stringify({
+      enabled: true,
+      sheetUrl: "https://docs.google.com/spreadsheets/d/example/edit?gid=160372088",
+      gid: "160372088",
+      writeWebhookUrl: "https://n8n.example/webhook/quality-rule-write",
+    }),
+  );
+  let captured = null;
+  const api = createPlatformApi({
+    rootDir,
+    qualityRuleGenerationSubmitFn: async (url, payload) => {
+      captured = { url, payload };
+      return { ok: true };
+    },
+  });
+
+  const result = await api.submitQualityRuleGenerationRow({
+    row: {
+      countryRaw: "中国",
+      database: "dwd_sec",
+      table: "dwd_cst_pay_cost_detail",
+      autoGenerate: "是",
+      needApply: "否",
+      candidateKey: "dwd_sec::dwd_cst_pay_cost_detail::cnt",
+      srcSql: "SELECT 1 AS cnt",
+      destSql: "SELECT 1 AS cnt",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(captured.url, "https://n8n.example/webhook/quality-rule-write");
+  assert.equal(captured.payload.row.country, "CN");
+  assert.equal(captured.payload.values["国家"], "中国");
+  assert.equal(captured.payload.values["数据库"], "dwd_sec");
+  assert.equal(captured.payload.values["表名"], "dwd_cst_pay_cost_detail");
+  assert.equal(captured.payload.values["src_sql"], "SELECT 1 AS cnt");
+});
+
 test("platform api generates notify preview", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

@@ -15,6 +15,10 @@ import {
   queryWattrelAlerts as queryWattrelAlertRows,
 } from "./wattrel-client.mjs";
 import {
+  readQualityRuleGenerationSheet,
+  submitQualityRuleGenerationRow,
+} from "./quality-rule-generation.mjs";
+import {
   normalizeRuleMessages,
   validateCountriesConfig,
   validateRulesConfig,
@@ -30,6 +34,7 @@ const FILES = {
   batchSchedule: "config/batch-check-schedule.json",
   batchHistory: "config/batch-check-run-history.json",
   wattrel: "config/wattrel.config.json",
+  qualityRuleGeneration: "config/quality-rule-generation.config.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_BATCH_SCHEDULE = {
@@ -60,6 +65,7 @@ export function createPlatformApi({
   metabaseClientFactory = createDefaultMetabaseClient,
   notifyTextFn = notifyText,
   wattrelQueryFn = null,
+  qualityRuleGenerationSubmitFn = null,
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
@@ -265,6 +271,29 @@ export function createPlatformApi({
         connectionMode: current.connectionMode,
         ...snapshot,
       };
+    },
+
+    async getQualityRuleGenerationSheet(body = {}) {
+      const config = await readJsonFile(resolve("qualityRuleGeneration"), {
+        enabled: false,
+        mock: true,
+      });
+      return readQualityRuleGenerationSheet({
+        config,
+        mode: body.mode || "auto",
+      });
+    },
+
+    async submitQualityRuleGenerationRow(body = {}) {
+      const config = await readJsonFile(resolve("qualityRuleGeneration"), {
+        enabled: false,
+        mock: true,
+      });
+      return submitQualityRuleGenerationRow({
+        config,
+        row: body.row || body,
+        submitFn: qualityRuleGenerationSubmitFn || undefined,
+      });
     },
 
     async saveBatchSchedule(body = {}) {

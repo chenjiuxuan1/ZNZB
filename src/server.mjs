@@ -74,6 +74,12 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/wattrel/current") {
     return sendJson(response, 200, await api.getCurrentWattrelAlerts(await readBody(request, {})));
   }
+  if (method === "POST" && url.pathname === "/api/quality-rule-generation/sheet") {
+    return sendJson(response, 200, await api.getQualityRuleGenerationSheet(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/quality-rule-generation/submit") {
+    return sendJson(response, 200, await api.submitQualityRuleGenerationRow(await readBody(request, {})));
+  }
   if (method === "PUT" && url.pathname === "/api/batch-schedule") {
     return sendJson(response, 200, await api.saveBatchSchedule(await readBody(request, {})));
   }

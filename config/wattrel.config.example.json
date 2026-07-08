@@ -65,7 +65,7 @@
   },
   "query": {
     "limit": 1000,
-    "sql": "SELECT id, quality_id, name, type, `desc`, src_db, src_tbl, dest_db, dest_tbl, src_value, dest_value, diff, `begin`, `end`, result, status, src_error, dest_error, is_repaired, created_at, updated_at FROM wattrel_quality_result WHERE result = 1 AND created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY created_at DESC LIMIT ?",
+    "sql": "SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY r.created_at DESC LIMIT ?",
     "params": ["${limit}"]
   }
 }

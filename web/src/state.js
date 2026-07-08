@@ -39,6 +39,15 @@ export const state = {
   wattrelQueryResult: null,
   wattrelQueryStatus: null,
   wattrelQueryError: "",
+  qualityRuleGenerationResult: null,
+  qualityRuleGenerationStatus: null,
+  qualityRuleGenerationLoaded: false,
+  qualityRuleGenerationCountry: "",
+  qualityRuleGenerationEditor: {
+    open: false,
+    row: null,
+    status: null,
+  },
   batchNotifyConfig: {
     webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
     botId: "",

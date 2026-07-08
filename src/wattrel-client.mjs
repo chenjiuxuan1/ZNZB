@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-const DEFAULT_WATTREL_SQL = "SELECT id, quality_id, name, type, `desc`, src_db, src_tbl, dest_db, dest_tbl, src_value, dest_value, diff, `begin`, `end`, result, status, src_error, dest_error, is_repaired, created_at, updated_at FROM wattrel_quality_result WHERE result = 1 AND created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY created_at DESC LIMIT ?";
+const DEFAULT_WATTREL_SQL = "SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY r.created_at DESC LIMIT ?";
 
 export async function queryWattrelAlerts({ config = {}, limit = 100, queryFn = null } = {}) {
   const normalized = normalizeWattrelConfig(config, limit);
@@ -34,10 +34,14 @@ export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
     const message = firstPresent(row.message, row.msg, row.setting_desc, row.desc, row.msg_template, row.description);
     const begin = firstPresent(row.begin, row.start_time, row.startTime);
     const end = firstPresent(row.end, row.end_time, row.endTime);
+    const srcSql = firstPresent(row.src_sql, row.srcSql, row.source_sql, row.sourceSql);
+    const destSql = firstPresent(row.dest_sql, row.destSql, row.target_sql, row.targetSql);
+    const checkSql = firstPresent(row.check_sql, row.checkSql, row.sql);
 
     return {
       source: "wattrel",
       type: "wattrelQualityAlert",
+      qualityId: firstPresent(row.quality_id, row.qualityId),
       countryCode: countryCode ? String(countryCode) : "",
       countryName: countryName ? String(countryName) : "",
       dashboardTitle: firstPresent(row.dashboard_title, row.dashboardTitle, "Wattrel 数据质量"),
@@ -53,6 +57,9 @@ export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
       end,
       srcDb: firstPresent(row.src_db, row.srcDb),
       destDb: firstPresent(row.dest_db, row.destDb),
+      srcSql: srcSql ? String(srcSql) : "",
+      destSql: destSql ? String(destSql) : "",
+      checkSql: checkSql ? String(checkSql) : "",
       srcError: firstPresent(row.src_error, row.srcError),
       destError: firstPresent(row.dest_error, row.destError),
       severity: firstPresent(row.alert_level, row.level, "warning"),

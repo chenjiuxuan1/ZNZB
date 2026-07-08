@@ -139,7 +139,7 @@ function renderWattrelLoadingGuide() {
     <div class="wattrel-guide-grid">
       <article>
         <strong>1. 先看模拟效果</strong>
-        <span>点击“加载模拟数据”可以直接预览国家汇总、目标表 Top 和国家明细。</span>
+        <span>点击“加载模拟数据”可以直接预览国家汇总和包含 SQL 的国家明细。</span>
       </article>
       <article>
         <strong>2. 接入真实数据库</strong>
@@ -176,7 +176,6 @@ function renderWattrelCurrentResult(result) {
     ${summaryItem("目标表", result.summary?.targetTableCount || result.topTables?.length || 0)}
     </div>
     ${renderWattrelCountryOverview(result)}
-    ${renderWattrelTopTables(result)}
     ${renderWattrelCountryDetails(result)}
   `;
 }
@@ -245,50 +244,67 @@ function renderWattrelCountryDetail(country) {
       ${country.configured && !anomalies.length && !country.error ? `<p class="success">该国家当前没有 Wattrel 告警。</p>` : ""}
       ${anomalies.length ? `
         <div class="wattrel-country-anomaly-list">
-          ${anomalies.slice(0, 20).map((item) => `
-            <article>
-              <strong>${escapeHtml(item.destTbl || item.cardTitle || "未知目标表")}</strong>
-              <span>${escapeHtml(item.name || "未命名校验")}：期望 ${escapeHtml(formatWattrelValue(item.expectedValue))}，实际 ${escapeHtml(formatWattrelValue(item.actualValue))}，差值 ${escapeHtml(formatWattrelValue(item.diff))}</span>
-              <small>${escapeHtml(item.window || item.message || "-")}</small>
-            </article>
-          `).join("")}
+          ${anomalies.slice(0, 20).map((item, index) => renderWattrelAnomalyDetail(item, index)).join("")}
         </div>
       ` : ""}
     </div>
   `;
 }
 
-function renderWattrelTopTables(result) {
-  const tables = (result.topTables || []).slice(0, 10);
-  if (!tables.length) {
+function renderWattrelAnomalyDetail(item, index) {
+  return `
+    <article class="wattrel-anomaly-card">
+      <div class="wattrel-anomaly-head">
+        <div>
+          <small>#${escapeHtml(index + 1)}</small>
+          <strong>${escapeHtml(item.name || "未命名校验")}</strong>
+          <span>${escapeHtml(item.message || buildAnomalyMessage(item))}</span>
+        </div>
+        ${renderDiffCell(item.diff)}
+      </div>
+
+      <div class="wattrel-anomaly-grid">
+        ${renderAnomalyField("底表 / 源表", formatTableName(item.srcDb, item.srcTbl))}
+        ${renderAnomalyField("目标表", formatTableName(item.destDb, item.destTbl || item.cardTitle))}
+        ${renderAnomalyField("时间范围", item.window || "-")}
+        ${renderAnomalyField("期望值", formatWattrelValue(item.expectedValue))}
+        ${renderAnomalyField("实际值", formatWattrelValue(item.actualValue))}
+        ${renderAnomalyField("差值", formatWattrelValue(item.diff))}
+      </div>
+
+      ${item.srcError || item.destError ? `
+        <div class="wattrel-error-box">
+          ${item.srcError ? `<p><strong>源端错误：</strong>${escapeHtml(item.srcError)}</p>` : ""}
+          ${item.destError ? `<p><strong>目标端错误：</strong>${escapeHtml(item.destError)}</p>` : ""}
+        </div>
+      ` : ""}
+
+      ${renderSqlBlock("源端校验 SQL", item.srcSql)}
+      ${renderSqlBlock("目标校验 SQL", item.destSql)}
+      ${renderSqlBlock("补充 SQL", item.checkSql)}
+    </article>
+  `;
+}
+
+function renderAnomalyField(label, value) {
+  return `
+    <div class="wattrel-anomaly-field">
+      <span>${escapeHtml(label)}</span>
+      <strong title="${escapeHtml(value || "-")}">${escapeHtml(value || "-")}</strong>
+    </div>
+  `;
+}
+
+function renderSqlBlock(label, sql) {
+  const content = String(sql || "").trim();
+  if (!content) {
     return "";
   }
   return `
-    <section class="sub-panel wattrel-top-table-panel">
-      <h2 class="panel-title">异常目标表 Top ${escapeHtml(tables.length)}</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>目标表</th>
-              <th>异常数</th>
-              <th>主要校验</th>
-              <th>涉及国家</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tables.map((table) => `
-              <tr>
-                <td>${escapeHtml(table.name)}</td>
-                <td>${escapeHtml(table.count)}</td>
-                <td>${escapeHtml((table.checks || []).slice(0, 4).join("、") || "-")}</td>
-                <td>${escapeHtml((table.countries || []).slice(0, 4).join("、") || "-")}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <details class="wattrel-sql-detail">
+      <summary>${escapeHtml(label)}</summary>
+      <pre>${escapeHtml(content)}</pre>
+    </details>
   `;
 }
 
@@ -347,6 +363,8 @@ function buildMockWattrelResult() {
       diff: 2368584.265999,
       window: "2026-07-04 00:00:00 至 2026-07-05 00:00:00",
       message: "目标表当天无数据，源表存在 2,368,584.265999，疑似先删后插任务失败。",
+      srcSql: "SELECT COALESCE(ROUND(SUM(total_cost_cny), 6), 0) AS cnt FROM dwd_sec.dwd_cst_pay_cost_detail WHERE dt >= DATE('{begin}') AND dt < DATE('{end}')",
+      destSql: "SELECT COALESCE(ROUND(SUM(total_cost_cny), 6), 0) AS cnt FROM dws_sec.dws_cst_pay_cost_statistics WHERE fee_day >= DATE('{begin}') AND fee_day < DATE('{end}')",
     }),
     mockWattrelAnomaly({
       countryCode: "CN",
@@ -359,6 +377,8 @@ function buildMockWattrelResult() {
       diff: -4700,
       window: "快照日 2026-07-01",
       message: "月快照金额与源表当前存量口径差 4,700，疑似源表修数后快照未重刷。",
+      srcSql: "SELECT COALESCE(ROUND(SUM(granted_principal_amt), 2), 0) AS cnt FROM dwb.dwb_asset_info WHERE grant_time < DATE_FORMAT(DATE_SUB('{end}', INTERVAL 1 DAY), '%Y-%m-01')",
+      destSql: "SELECT COALESCE(ROUND(SUM(granted_principal_amt), 2), 0) AS cnt FROM dwb.dwb_dd_onloan_balance WHERE stat_date = DATE_FORMAT(DATE_SUB('{end}', INTERVAL 1 DAY), '%Y-%m-01')",
     }),
     mockWattrelAnomaly({
       countryCode: "INE",
@@ -371,6 +391,8 @@ function buildMockWattrelResult() {
       diff: -33729,
       window: "2026-04-05 至 2026-07-04",
       message: "DWD 比 ODS+历史表多 33,729 条，疑似 ODS 删数后 DWD 孤儿数据未清理。",
+      srcSql: "SELECT COUNT(DISTINCT withhold_detail_id) AS cnt FROM (SELECT withhold_detail_id FROM ods.ods_repay_withhold_detail WHERE withhold_detail_create_at >= '{begin}' AND withhold_detail_create_at < '{end}' UNION SELECT withhold_detail_id FROM ods.ods_repay_history_withhold_detail_his WHERE withhold_detail_create_at >= '{begin}' AND withhold_detail_create_at < '{end}') t",
+      destSql: "SELECT COUNT(*) AS cnt FROM dwd.dwd_asset_withhold_detail WHERE withhold_detail_create_at >= '{begin}' AND withhold_detail_create_at < '{end}'",
     }),
     mockWattrelAnomaly({
       countryCode: "INE",
@@ -383,6 +405,8 @@ function buildMockWattrelResult() {
       diff: -6578,
       window: "2026-04-05 至 2026-07-04",
       message: "DWD 多 6,578 条，源端删除后目标表增量逻辑未同步删除。",
+      srcSql: "SELECT COUNT(*) AS cnt FROM ods.ods_repay_withhold_request WHERE withhold_request_create_at >= '{begin}' AND withhold_request_create_at < '{end}'",
+      destSql: "SELECT COUNT(*) AS cnt FROM dwd.dwd_asset_withhold_request WHERE withhold_request_create_at >= '{begin}' AND withhold_request_create_at < '{end}'",
     }),
     mockWattrelAnomaly({
       countryCode: "PH",
@@ -395,6 +419,8 @@ function buildMockWattrelResult() {
       diff: -1023819.81,
       window: "2026-06-01 至 2026-06-03",
       message: "目标金额比源表多 1,023,819.81，需检查 ADS 是否存在历史残留或口径外数据。",
+      srcSql: "SELECT COALESCE(ROUND(SUM(`value`), 6), 0) AS cnt FROM dwd_sec.dwd_asset_biz_report WHERE type = 'v2401_dp_acct_flowinout_amount_daily' AND `date` >= '{begin}' AND `date` < '{end}'",
+      destSql: "SELECT COALESCE(ROUND(SUM(flow_amt), 6), 0) AS cnt FROM ads_sec.ads_3602_asset_flow_d WHERE stat_date >= '{begin}' AND stat_date < '{end}' AND sort_rank = 2",
     }),
     mockWattrelAnomaly({
       countryCode: "MX",
@@ -407,6 +433,8 @@ function buildMockWattrelResult() {
       diff: 60178,
       window: "2026-06-28 至 2026-07-05",
       message: "目标表少 60,178 条，疑似 DWD 补刷窗口未覆盖完整 ODS 分区。",
+      srcSql: "SELECT COUNT(*) AS cnt FROM hive.ods.ods_r1_request_out WHERE dt >= DATE_FORMAT(DATE('{begin}'), '%Y%m%d') AND dt < DATE_FORMAT(DATE('{end}'), '%Y%m%d') AND request_out_data_status = 1",
+      destSql: "SELECT COUNT(*) AS cnt FROM dwd_sec.dwd_cst_dataproxy_request_out WHERE dt >= DATE('{begin}') AND dt < DATE('{end}')",
     }),
   ];
   const countries = [
@@ -532,6 +560,15 @@ function renderDiffCell(value) {
   const numberValue = Number(value);
   const className = Number.isFinite(numberValue) && numberValue !== 0 ? "pill warning" : "pill";
   return `<span class="${className}">${escapeHtml(text)}</span>`;
+}
+
+function formatTableName(db, table) {
+  const dbText = String(db || "").trim();
+  const tableText = String(table || "").trim();
+  if (dbText && tableText) {
+    return `${dbText}.${tableText}`;
+  }
+  return tableText || dbText || "-";
 }
 
 function formatWattrelValue(value) {

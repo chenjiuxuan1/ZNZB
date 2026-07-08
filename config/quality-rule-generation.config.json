@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "mock": false,
+  "sheetUrl": "https://docs.google.com/spreadsheets/d/1xh4MSxN-sgdfKZnpGmnY-OujnneimfAp7cgVdtct6SQ/edit?gid=160372088#gid=160372088",
+  "gid": "160372088",
+  "countryField": "国家",
+  "writeWebhookUrl": "${QUALITY_RULE_GENERATION_WRITE_WEBHOOK_URL}",
+  "writeWebhookHeaders": {
+    "X-Webhook-Token": "${QUALITY_RULE_GENERATION_WRITE_WEBHOOK_TOKEN}"
+  },
+  "remote": {
+    "enabled": false,
+    "mode": "n8n_or_ssh",
+    "description": "后续接入 n8n/quality-rule-automation-shared 时在这里配置触发入口，不在仓库中保存数据库密码或 API Token。"
+  }
+}

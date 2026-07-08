@@ -8,6 +8,7 @@ import { renderRules } from "./views/rules.js?v=20260706-ui16";
 import { renderSandbox } from "./views/sandbox.js?v=20260707-sandbox-country";
 import { renderBatchCheck } from "./views/batch-check.js?v=20260708-metabase-schedule";
 import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
+import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
@@ -17,6 +18,7 @@ const routes = [
   { path: "/sandbox", label: "规则试跑", short: "试", render: renderSandbox },
   { path: "/batch-check", label: "Metabase 定时巡检", short: "巡", render: renderBatchCheck },
   { path: "/wattrel-alerts", label: "Wattrel告警", short: "告", render: renderWattrelAlerts },
+  { path: "/quality-rule-generation", label: "智能告警生成", short: "生", render: renderQualityRuleGeneration },
   { path: "/notify-preview", label: "通知预览", short: "通", render: renderNotifyPreview },
 ];
 
