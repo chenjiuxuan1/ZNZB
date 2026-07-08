@@ -4,6 +4,10 @@
   "sheetUrl": "https://docs.google.com/spreadsheets/d/1xh4MSxN-sgdfKZnpGmnY-OujnneimfAp7cgVdtct6SQ/edit?gid=160372088#gid=160372088",
   "gid": "160372088",
   "countryField": "国家",
+  "readWebhookUrl": "${QUALITY_RULE_GENERATION_READ_WEBHOOK_URL}",
+  "readWebhookHeaders": {
+    "X-Webhook-Token": "${QUALITY_RULE_GENERATION_READ_WEBHOOK_TOKEN}"
+  },
   "writeWebhookUrl": "${QUALITY_RULE_GENERATION_WRITE_WEBHOOK_URL}",
   "writeWebhookHeaders": {
     "X-Webhook-Token": "${QUALITY_RULE_GENERATION_WRITE_WEBHOOK_TOKEN}"

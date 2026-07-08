@@ -2415,6 +2415,11 @@ button.wattrel-country-card.is-selected {
   justify-content: flex-end;
 }
 
+.status-line {
+  display: block;
+  margin-top: 4px;
+}
+
 .quality-rule-table-list {
   display: grid;
   gap: 12px;

@@ -18,19 +18,78 @@ const DEFAULT_COLUMNS = {
   notes: ["notes", "备注"],
 };
 
-export async function readQualityRuleGenerationSheet({ config = {}, mode = "auto", fetchText = fetchHttpsText } = {}) {
+export async function readQualityRuleGenerationSheet({
+  config = {},
+  mode = "auto",
+  fetchText = fetchHttpsText,
+  readWebhookFn = postJsonWebhook,
+} = {}) {
   if (mode === "mock" || config.mock === true || config.enabled === false) {
     return buildQualityRuleGenerationSnapshot(mockQualityRuleRows(), { source: "mock" });
   }
   const sheetUrl = config.sheetUrl || config.spreadsheetUrl || DEFAULT_QUALITY_RULE_SHEET_URL;
+  const readWebhookUrl = resolveEnvString(config.readWebhookUrl || config.reader?.webhookUrl || "");
+  if (readWebhookUrl) {
+    const payload = {
+      action: "read_quality_rule_generation_rows",
+      sheetUrl,
+      gid: String(config.gid || ""),
+      requestedAt: new Date().toISOString(),
+    };
+    const response = await readWebhookFn(readWebhookUrl, payload, {
+      headers: resolveWebhookHeaders(config.readWebhookHeaders || config.reader?.headers || {}),
+    });
+    const rawRows = normalizeWebhookRows(response);
+    const rows = rawRows.map((row, index) => normalizeQualityRuleRow(row, Number(row.sheetRowNumber || row.rowNumber || 0) || index + 2));
+    return buildQualityRuleGenerationSnapshot(rows, {
+      source: "read_webhook",
+      sheetUrl,
+      csvUrl: "",
+    });
+  }
   const csvUrl = buildGoogleSheetCsvUrl(sheetUrl, config.gid);
-  const csvText = await fetchText(csvUrl);
+  let csvText = "";
+  try {
+    csvText = await fetchText(csvUrl);
+  } catch (error) {
+    throw enhanceGoogleSheetReadError(error, csvUrl);
+  }
   const rows = parseCsvRows(csvText).map((row, index) => normalizeQualityRuleRow(row, index + 2));
   return buildQualityRuleGenerationSnapshot(rows, {
     source: "google_sheet",
     sheetUrl,
     csvUrl,
   });
+}
+
+function normalizeWebhookRows(response) {
+  if (Array.isArray(response)) {
+    return response;
+  }
+  if (Array.isArray(response?.rows)) {
+    return response.rows;
+  }
+  if (Array.isArray(response?.data)) {
+    return response.data;
+  }
+  if (Array.isArray(response?.result?.rows)) {
+    return response.result.rows;
+  }
+  return [];
+}
+
+function enhanceGoogleSheetReadError(error, csvUrl) {
+  const message = String(error?.message || error || "");
+  const enhanced = new Error(message);
+  enhanced.statusCode = error?.statusCode || 502;
+  enhanced.errors = [
+    message,
+    "当前平台使用 Google Sheet CSV 导出读取确认表。返回 401 通常表示该表没有开放“知道链接的人可查看”，或者当前服务没有 Google 登录态。",
+    "操作方式 1：在 Google Sheet 右上角点“共享”，把常规访问改为“知道链接的任何人可查看”，再点击“读取 Google 表”。",
+    "操作方式 2：如果不能公开表格，请配置 config/quality-rule-generation.config.json 里的 readWebhookUrl，让 n8n/Apps Script 带权限读取表格并返回 rows 数组。",
+    `当前尝试读取的 CSV 地址：${csvUrl}`,
+  ];
+  return enhanced;
 }
 
 export async function submitQualityRuleGenerationRow({ config = {}, row = {}, submitFn = postJsonWebhook } = {}) {

@@ -165,7 +165,7 @@ function renderStatus() {
   return `
     <div class="sandbox-status ${escapeHtml(status.type)}">
       <strong>${escapeHtml(status.title)}</strong>
-      <span>${escapeHtml(status.detail || "")}</span>
+      <span>${formatStatusDetail(status.detail || "")}</span>
     </div>
   `;
 }
@@ -238,9 +238,17 @@ function renderEditorStatus(status) {
   return `
     <div class="sandbox-status ${escapeHtml(status.type)}">
       <strong>${escapeHtml(status.title)}</strong>
-      <span>${escapeHtml(status.detail || "")}</span>
+      <span>${formatStatusDetail(status.detail || "")}</span>
     </div>
   `;
+}
+
+function formatStatusDetail(detail) {
+  return String(detail || "")
+    .split(/\n+/)
+    .filter(Boolean)
+    .map((line) => `<span class="status-line">${escapeHtml(line)}</span>`)
+    .join("");
 }
 
 function renderResult(result) {
