@@ -508,7 +508,7 @@ function emptyEditorRow() {
     country: "",
     database: "",
     table: "",
-    autoGenerate: "否",
+    autoGenerate: "1",
     needApply: "1",
     metricField: "",
     candidateKey: "",
@@ -523,7 +523,7 @@ function emptyEditorRow() {
 function withEditorDefaults(row) {
   return {
     ...row,
-    autoGenerate: row.autoGenerate || "否",
+    autoGenerate: row.autoGenerate === undefined || row.autoGenerate === null || row.autoGenerate === "" ? "1" : row.autoGenerate,
     needApply: row.needApply === undefined || row.needApply === null || row.needApply === "" ? "1" : row.needApply,
   };
 }

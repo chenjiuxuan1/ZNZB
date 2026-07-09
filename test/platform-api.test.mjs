@@ -1018,6 +1018,8 @@ test("platform api submits quality rule generation rows to configured writer", a
   assert.equal(captured.payload.values["国家"], "中国");
   assert.equal(captured.payload.values["数据库"], "dwd_sec");
   assert.equal(captured.payload.values["表名"], "dwd_cst_pay_cost_detail");
+  assert.equal(captured.payload.values["是否自动生成"], "是");
+  assert.equal(captured.payload.values["是否需要自动生成"], "是");
   assert.equal(captured.payload.values["是否上线"], "0");
   assert.equal(captured.payload.values["src_sql"], "SELECT 1 AS cnt");
 });
