@@ -501,7 +501,7 @@ test("platform api aggregates scheduled countries by same notification target", 
   assert.match(captured[0].message, /公共报表巡检汇总/);
   assert.match(captured[0].message, /印尼\(INE\)/);
   assert.match(captured[0].message, /菲律宾\(PH\)/);
-  assert.match(captured[0].message, /按国家查看/);
+  assert.match(captured[0].message, /各国异常 Metabase 看板/);
 
   const history = await api.getBatchHistory();
   assert.equal(history.runs[0].notificationSentCount, 1);

@@ -217,7 +217,8 @@ test("buildPublicCheckMessage separates missing data and fluctuations", () => {
   assert.doesNotMatch(message, /<details>|<summary>|<\/details>/);
   assert.match(message, /印尼\(INE\) \/ 每期逾期率by日期 \/ 每期逾期率：指标「入催率」，\+10\.9个百分点/);
   assert.match(message, /22\.3% → 33\.3%/);
-  assert.doesNotMatch(message, /https:\/\/data\.kuainiu\.io\/public\/dashboard\/example-id/);
+  assert.match(message, /🌏 各国异常 Metabase 看板/);
+  assert.match(message, /每期逾期率by日期（1条）：https:\/\/data\.kuainiu\.io\/public\/dashboard\/example-id/);
 });
 
 test("buildPublicCheckMessage shows zero missing data explicitly", () => {
@@ -348,6 +349,7 @@ test("buildPublicCheckMessage links to frontend history detail when provided", (
           countryCode: "INE",
           countryName: "印尼",
           dashboardTitle: "核心链路",
+          dashboardUrl: "https://data.kuainiu.io/public/dashboard/core-link",
           cardTitle: "注册数",
           message: "完整日指标「注册数」从 100 到 200，波动 +100.0%（统计日期 2026-07-06 对比 2026-07-05）",
         },
@@ -357,8 +359,10 @@ test("buildPublicCheckMessage links to frontend history detail when provided", (
   );
 
   assert.match(message, /🔎 查看完整明细：http:\/\/127\.0\.0\.1:8787\/#\/batch-check\?historyRunId=run-001/);
-  assert.match(message, /🌏 按国家查看/);
-  assert.match(message, /• 印尼\(INE\)：http:\/\/127\.0\.0\.1:8787\/#\/batch-check\?historyRunId=run-001&countryCode=INE/);
+  assert.match(message, /🌏 各国异常 Metabase 看板/);
+  assert.match(message, /• 印尼\(INE\)\n  - 核心链路（1条）：https:\/\/data\.kuainiu\.io\/public\/dashboard\/core-link/);
+  assert.doesNotMatch(message, /按国家查看/);
+  assert.doesNotMatch(message, /countryCode=INE/);
 });
 
 test("buildPublicCheckMessage includes data quality current anomaly counts", () => {

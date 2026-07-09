@@ -296,7 +296,9 @@ function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAno
   lines.push("");
   lines.push("完整异常原因、各时间点当前值/基准值/波动幅度已保存到巡检历史详情页。");
   appendDetailUrl(lines, detailUrl);
-  appendCountryDetailLinks(lines, countryGroups, detailUrl, Number(options.maxSummaryCountryLinks || 8));
+  appendCountryMetabaseDashboardLinks(lines, countryGroups, {
+    maxLinksPerCountry: Number(options.maxSummaryCountryDashboardLinks || 12),
+  });
 
   return lines.join("\n");
 }
@@ -395,24 +397,33 @@ function appendDetailUrl(lines, detailUrl, label = "查看完整明细") {
   lines.push(`🔎 ${label}：${detailUrl}`);
 }
 
-function appendCountryDetailLinks(lines, countryGroups, detailUrl, maxLinks = 8) {
-  if (!detailUrl || !Array.isArray(countryGroups) || countryGroups.length === 0) {
+function appendCountryMetabaseDashboardLinks(lines, countryGroups, options = {}) {
+  if (!Array.isArray(countryGroups) || countryGroups.length === 0) {
     return;
   }
+  const maxLinksPerCountry = Math.max(1, Number(options.maxLinksPerCountry || 12));
   const groups = countryGroups
     .filter((group) => group?.anomalies?.length > 0)
-    .slice(0, Math.max(0, maxLinks));
+    .map((group) => ({
+      ...group,
+      dashboardLinks: collectAnomalyDashboardLinks(group.anomalies),
+    }))
+    .filter((group) => group.dashboardLinks.length > 0);
   if (groups.length === 0) {
     return;
   }
+
   lines.push("");
-  lines.push("🌏 按国家查看");
+  lines.push("🌏 各国异常 Metabase 看板");
   for (const group of groups) {
-    const countryUrl = appendCountryToDetailUrl(detailUrl, group.countryCode || group.key || "");
-    lines.push(`• ${group.label}：${countryUrl}`);
-  }
-  if (countryGroups.length > groups.length) {
-    lines.push(`• 另有${countryGroups.length - groups.length}个国家，请在完整明细页切换查看。`);
+    lines.push(`• ${group.label}`);
+    const shownLinks = group.dashboardLinks.slice(0, maxLinksPerCountry);
+    for (const link of shownLinks) {
+      lines.push(`  - ${link.title}（${link.count}条）：${link.url}`);
+    }
+    if (group.dashboardLinks.length > shownLinks.length) {
+      lines.push(`  - 另有${group.dashboardLinks.length - shownLinks.length}个异常看板链接，请在完整明细页查看。`);
+    }
   }
 }
 
@@ -1151,19 +1162,7 @@ function formatCircledNumber(value) {
 
 function appendDashboardLinks(lines, anomalies, options = {}) {
   const maxLinks = Number(options.maxLinks || 12);
-  const links = [];
-  const seen = new Set();
-
-  for (const anomaly of anomalies || []) {
-    if (!anomaly.dashboardUrl || seen.has(anomaly.dashboardUrl)) {
-      continue;
-    }
-    seen.add(anomaly.dashboardUrl);
-    links.push({
-      title: anomaly.dashboardTitle || "未知看板",
-      url: anomaly.dashboardUrl,
-    });
-  }
+  const links = collectAnomalyDashboardLinks(anomalies);
 
   if (links.length === 0) {
     return;
@@ -1181,12 +1180,46 @@ function appendDashboardLinks(lines, anomalies, options = {}) {
 
   lines.push("🔗 看板链接");
   for (const link of links.slice(0, maxLinks)) {
-    lines.push(`• ${link.title}`);
+    lines.push(`• ${link.title}${link.count > 1 ? `（${link.count}条）` : ""}`);
     lines.push(link.url);
   }
   if (links.length > maxLinks) {
     lines.push(`• 另有${links.length - maxLinks}个看板链接未展开，请在完整明细页查看。`);
   }
+}
+
+function collectAnomalyDashboardLinks(anomalies) {
+  const links = new Map();
+
+  for (const anomaly of anomalies || []) {
+    const url = String(anomaly.dashboardUrl || "").trim();
+    if (!url) {
+      continue;
+    }
+    const title = anomaly.dashboardTitle || "未知看板";
+    const key = [
+      anomaly.countryCode || anomaly.countryName || "",
+      title,
+      url,
+    ].join("\u0000");
+
+    if (!links.has(key)) {
+      links.set(key, {
+        title,
+        url,
+        count: 0,
+        severity: 0,
+      });
+    }
+
+    const item = links.get(key);
+    item.count += 1;
+    item.severity = Math.max(item.severity, extractAnomalySeverity(anomaly.message));
+  }
+
+  return [...links.values()].sort((left, right) => {
+    return right.count - left.count || right.severity - left.severity || left.title.localeCompare(right.title, "zh-CN");
+  });
 }
 
 function firstDashboardUrl(anomalies) {
