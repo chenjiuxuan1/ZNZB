@@ -1178,12 +1178,16 @@ function buildCountryWattrelTarget({ baseConfig = {}, country = {}, connection =
     ...(baseConfig.ssh || {}),
     ...(connection.ssh || {}),
   };
+  const gateway = {
+    ...(baseConfig.gateway || {}),
+    ...(connection.gateway || {}),
+  };
   const query = {
     ...(baseConfig.query || {}),
     ...(connection.query || {}),
   };
   const limit = clampNumber(body.limit ?? query.limit ?? baseConfig.limit, 1, 1000, 100);
-  const configured = forceConfigured || (connection.enabled !== false && baseConfig.enabled !== false && hasWattrelConnection({ database, ssh }));
+  const configured = forceConfigured || (connection.enabled !== false && baseConfig.enabled !== false && hasWattrelConnection({ database, ssh, gateway }));
   return {
     countryCode: code,
     countryName: name,
@@ -1198,6 +1202,7 @@ function buildCountryWattrelTarget({ baseConfig = {}, country = {}, connection =
       defaultCountryName: name,
       database,
       ssh,
+      gateway,
       query: {
         ...query,
         limit,
@@ -1244,11 +1249,12 @@ function hasGlobalWattrelDatabase(config = {}) {
   return hasWattrelConnection({
     database: config.database || config.connection || {},
     ssh: config.ssh || {},
+    gateway: config.gateway || {},
   });
 }
 
-function hasWattrelConnection({ database = {}, ssh = {} } = {}) {
-  return hasWattrelDatabase(database) || hasWattrelSsh(ssh);
+function hasWattrelConnection({ database = {}, ssh = {}, gateway = {} } = {}) {
+  return hasWattrelDatabase(database) || hasWattrelSsh(ssh) || hasWattrelGateway(gateway);
 }
 
 function hasWattrelDatabase(database = {}) {
@@ -1260,6 +1266,10 @@ function hasWattrelDatabase(database = {}) {
 
 function hasWattrelSsh(ssh = {}) {
   return Boolean(resolveConfigString(ssh.host));
+}
+
+function hasWattrelGateway(gateway = {}) {
+  return Boolean(resolveConfigString(gateway.webhookUrl || gateway.url));
 }
 
 function resolveConfigString(value) {

@@ -1,0 +1,224 @@
+{
+  "name": "wattrel-query-gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wattrel-query",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b65b8287-ae5c-4bf5-9fac-081752575090",
+      "name": "接收 Wattrel 查询请求",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        120
+      ],
+      "webhookId": "replace-with-your-webhook-id",
+      "notes": "值班平台调用这个 Webhook。请求体包含 country/countryCode、limit、sql、params，中台在 n8n 机器上按国家 SSH 到对应 Wattrel 机器查询。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body ?? $json;\n\nconst DEFAULT_SQL = \"SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY r.created_at DESC LIMIT ?\";\n\nconst COUNTRIES = {\n  CN: {\n    name: '中国', host: '10.20.47.14', port: 36000,\n    envFiles: ['/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local', '/root/CN-Intelligent-Alarm-Repair-Assistant/.env.local'],\n  },\n  TH: {\n    name: '泰国', host: '192.168.20.236', port: 36000,\n    envFiles: ['/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local', '/root/TH-Intelligent-Alarm-Repair-Assistant/.env.local'],\n  },\n  INE: {\n    name: '印尼', host: '192.168.21.236', port: 36000,\n    envFiles: ['/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local', '/root/INE-Intelligent-Alarm-Repair-Assistant/.env.local'],\n  },\n  PK: {\n    name: '巴基斯坦', host: '10.20.84.176', port: null,\n    envFiles: ['/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local', '/root/PK-Intelligent-Alarm-Repair-Assistant/.env.local'],\n  },\n  MX: {\n    name: '墨西哥', host: '172.20.220.165', port: 36000,\n    envFiles: ['/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local', '/root/MX-Intelligent-Alarm-Repair-Assistant/.env.local'],\n  },\n  PH: {\n    name: '菲律宾', host: '10.20.10.12', port: null,\n    envFiles: ['/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local', '/root/PH-Intelligent-Alarm-Repair-Assistant/.env.local'],\n  },\n};\n\nfunction shellQuote(value) {\n  return `'${String(value).replace(/'/g, `'\\\\''`)}'`;\n}\n\nfunction sqlLiteral(value) {\n  if (value === null || value === undefined) return 'NULL';\n  if (typeof value === 'number' && Number.isFinite(value)) return String(value);\n  return `'${String(value).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\")}'`;\n}\n\nfunction interpolateSql(sql, params) {\n  let index = 0;\n  return String(sql || '').replace(/\\?/g, () => sqlLiteral(params[index++]));\n}\n\nfunction normalizeParams(params, limit) {\n  if (!Array.isArray(params) || params.length === 0) return [limit];\n  return params.map((item) => (item === '${limit}' || item === '{limit}' ? limit : item));\n}\n\nconst countryCode = String(raw.countryCode || raw.country || '').trim().toUpperCase();\nconst country = COUNTRIES[countryCode];\nconst limit = Math.max(1, Math.min(1000, Number(raw.limit || 1000) || 1000));\nconst params = normalizeParams(raw.params, limit);\nconst sql = interpolateSql(raw.sql || DEFAULT_SQL, params).replace(/;*\\s*$/, '') + ';';\nconst requestId = String(raw.request_id || raw.requestId || `wattrel-${Date.now()}`);\nconst errors = [];\n\nif (!country) errors.push(`unsupported country: ${countryCode}`);\nif (!sql.trim()) errors.push('sql is required');\n\nif (errors.length) {\n  return [{ json: { valid: false, errors, countryCode, countryName: raw.countryName || '', requestId } }];\n}\n\nconst meta = JSON.stringify({ countryCode, countryName: raw.countryName || country.name, requestId });\nconst sqlB64 = Buffer.from(sql, 'utf8').toString('base64');\nconst envFiles = country.envFiles.map(shellQuote).join(' ');\nconst remoteScript = `set -euo pipefail\nfor env_file in ${envFiles}; do\n  if [ -f \"$env_file\" ]; then\n    set -a\n    . \"$env_file\"\n    set +a\n    break\n  fi\ndone\n: \"${'${DB_HOST'}:?DB_HOST missing from wattrel env file}\"\n: \"${'${DB_PORT'}:?DB_PORT missing from wattrel env file}\"\n: \"${'${DB_USER'}:?DB_USER missing from wattrel env file}\"\n: \"${'${DB_PASSWORD'}:?DB_PASSWORD missing from wattrel env file}\"\n: \"${'${DB_NAME'}:?DB_NAME missing from wattrel env file}\"\nprintf %s ${shellQuote(sqlB64)} | base64 -d | MYSQL_PWD=\"$DB_PASSWORD\" mysql --batch --raw --silent --host=\"$DB_HOST\" --port=\"$DB_PORT\" --user=\"$DB_USER\" \"$DB_NAME\"`;\n\nconst sshParts = ['ssh'];\nif (country.port) sshParts.push('-p', String(country.port));\nsshParts.push('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', `root@${country.host}`, `bash -lc ${shellQuote(remoteScript)}`);\nconst command = `printf '%s\\\\n' ${shellQuote(`__WATTREL_META__${meta}`)} && ${sshParts.map(shellQuote).join(' ')}`;\n\nreturn [{\n  json: {\n    valid: true,\n    countryCode,\n    countryName: raw.countryName || country.name,\n    requestId,\n    command,\n  },\n}];"
+      },
+      "id": "f495bbbc-dbc7-4353-b8f5-24c84394dfe8",
+      "name": "解析并构造查询命令",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        120
+      ],
+      "notes": "校验国家、限制 limit，并把 SQL 编码后拼成安全的 SSH + mysql 命令。密码只从远端 .env.local 读取，不进入请求体或 workflow。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6bb42832-ad33-4adf-a0fc-83e63536b629",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "aa4a8f61-f93a-477b-8d47-5ffc40bbb070",
+      "name": "请求是否有效",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -180,
+        120
+      ],
+      "notes": "无效国家或 SQL 为空时直接返回错误，不执行命令。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "command": "={{$json.command}}"
+      },
+      "id": "d9094ffd-b9dd-4dcb-ae0f-705565db2796",
+      "name": "n8n 本机执行 SSH 查询",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "continueOnFail": true,
+      "position": [
+        80,
+        20
+      ],
+      "notes": "在 n8n 机器上执行 SSH 命令，连接对应国家机器并在远端 mysql 查询 wattrel_quality_result。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\nconst stdout = String(raw.stdout || '');\nconst stderr = String(raw.stderr || '').trim();\nconst exitCode = raw.code ?? raw.exitCode ?? 0;\n\nfunction parseValue(value) {\n  if (value === undefined || value === 'NULL') return null;\n  if (/^-?\\d+(?:\\.\\d+)?$/.test(value)) {\n    const n = Number(value);\n    if (Number.isFinite(n)) return n;\n  }\n  return value;\n}\n\nconst lines = stdout.split(/\\r?\\n/).filter((line) => line.length > 0);\nlet meta = {};\nif (lines[0]?.startsWith('__WATTREL_META__')) {\n  try { meta = JSON.parse(lines.shift().replace('__WATTREL_META__', '')); } catch {}\n}\n\nif (Number(exitCode) !== 0) {\n  return [{ json: { success: false, countryCode: meta.countryCode || '', countryName: meta.countryName || '', requestId: meta.requestId || '', rows: [], rowCount: 0, error: { code: 'COMMAND_FAILED', message: stderr || 'ssh/mysql command failed', exit_code: exitCode } } }];\n}\n\nif (!lines.length) {\n  return [{ json: { success: true, countryCode: meta.countryCode || '', countryName: meta.countryName || '', requestId: meta.requestId || '', rows: [], rowCount: 0 } }];\n}\nconst headers = lines[0].split('\\t');\nconst rows = lines.slice(1).map((line) => {\n  const values = line.split('\\t');\n  return Object.fromEntries(headers.map((header, index) => [header, parseValue(values[index])]));\n});\nreturn [{ json: { success: true, countryCode: meta.countryCode || '', countryName: meta.countryName || '', requestId: meta.requestId || '', rows, rowCount: rows.length } }];"
+      },
+      "id": "adfc3d79-31a6-4b1d-b38b-bbf261ca6fc5",
+      "name": "解析查询结果",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        20
+      ],
+      "notes": "解析 mysql batch TSV 输出为 JSON rows；命令失败时返回 success=false 和错误信息。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: false, countryCode: $json.countryCode || '', countryName: $json.countryName || '', requestId: $json.requestId || '', rows: [], rowCount: 0, error: { code: 'INVALID_REQUEST', message: ($json.errors || []).join('; ') || 'invalid request' } } }];"
+      },
+      "id": "f9f74277-47e4-4f82-a311-c6de15400aa7",
+      "name": "构造请求错误响应",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        240
+      ],
+      "notes": "把请求校验错误整理成统一 JSON。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "f5e53dd1-ebae-4454-8987-b8eaebaa36c9",
+      "name": "返回 Wattrel 查询结果",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        580,
+        120
+      ],
+      "notes": "返回给值班平台。成功时 rows 为 Wattrel 当前告警记录；失败时 error.message 说明原因。",
+      "notesInFlow": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "接收 Wattrel 查询请求": {
+      "main": [
+        [
+          {
+            "node": "解析并构造查询命令",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "解析并构造查询命令": {
+      "main": [
+        [
+          {
+            "node": "请求是否有效",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "请求是否有效": {
+      "main": [
+        [
+          {
+            "node": "n8n 本机执行 SSH 查询",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "构造请求错误响应",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "n8n 本机执行 SSH 查询": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "解析查询结果": {
+      "main": [
+        [
+          {
+            "node": "返回 Wattrel 查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "构造请求错误响应": {
+      "main": [
+        [
+          {
+            "node": "返回 Wattrel 查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "replace-after-import",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "replace-after-import",
+  "tags": []
+}

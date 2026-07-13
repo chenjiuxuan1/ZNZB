@@ -1,6 +1,12 @@
 {
   "enabled": true,
   "title": "Wattrel 数据质量巡检",
+  "gateway": {
+    "webhookUrl": "${WATTREL_GATEWAY_WEBHOOK_URL}",
+    "headers": {
+      "Authorization": "Bearer ${WATTREL_GATEWAY_TOKEN}"
+    }
+  },
   "countries": {
     "INE": {
       "ssh": {

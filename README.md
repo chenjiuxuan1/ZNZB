@@ -230,6 +230,28 @@ https://big-data-duty-management-platform.kuainiujinke.com/
 
 如需临时覆盖，可在启动服务前设置 `DUTY_PLATFORM_BASE_URL` 或 `PLATFORM_BASE_URL`。
 
+#### 通过 n8n Wattrel 查询中台读取 Wattrel
+
+推荐使用 n8n 查询中台，而不是让值班平台所在机器直接 SSH 各国机器。导入仓库里的：
+
+```text
+n8n-wattrel-query-gateway.json
+```
+
+导入并启用后，把 n8n Webhook 地址配置给值班平台：
+
+```bash
+export WATTREL_GATEWAY_WEBHOOK_URL='https://<n8n-domain>/webhook/wattrel-query'
+```
+
+如果中台开启了鉴权，再设置：
+
+```bash
+export WATTREL_GATEWAY_TOKEN='你的中台 token'
+```
+
+值班平台会按国家并发调用该 webhook；n8n 中台会按国家 SSH 到对应机器，读取远端 `.env.local`，再执行 mysql 查询 `wattrel_quality_result`。这与智能告警修复中通过 n8n/SSH 节点查询 Wattrel 的链路一致。
+
 #### 通过各国跳板机读取 Wattrel
 
 `config/wattrel.config.example.json` 已内置各国跳板机 SSH 连接方式。平台会 SSH 到对应国家机器，优先读取：

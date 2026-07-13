@@ -713,6 +713,43 @@ test("platform api queries country wattrel targets concurrently", async () => {
   assert.ok(elapsedMs < 180, `expected concurrent query, took ${elapsedMs}ms`);
 });
 
+test("platform api treats n8n wattrel gateway as configured", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/wattrel.config.json"),
+    JSON.stringify({
+      enabled: true,
+      gateway: { webhookUrl: "https://n8n.example/webhook/wattrel-query" },
+      countries: {
+        INE: { name: "印尼" },
+      },
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    wattrelQueryFn: async (config) => {
+      assert.equal(config.gateway.webhookUrl, "https://n8n.example/webhook/wattrel-query");
+      return [
+        {
+          name: "代扣请求数量校验",
+          dest_tbl: "dwd_asset_withhold_request",
+          src_tbl: "ods_repay_withhold_request",
+          src_value: 10,
+          dest_value: 8,
+          diff: 2,
+        },
+      ];
+    },
+  });
+
+  const result = await api.getCurrentWattrelAlerts({ countryCode: "INE", limit: 7 });
+
+  assert.equal(result.configEnabled, true);
+  assert.equal(result.summary.anomalyCount, 1);
+  assert.equal(result.countries[0].status, "success");
+  assert.equal(result.countries[0].anomalies[0].destTbl, "dwd_asset_withhold_request");
+});
+
 test("platform api locally queries wattrel with no active alerts", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

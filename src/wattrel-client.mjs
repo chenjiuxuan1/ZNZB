@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import http from "node:http";
+import https from "node:https";
 
 const DEFAULT_WATTREL_SQL = "SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY r.created_at DESC LIMIT ?";
 
@@ -9,6 +11,9 @@ export async function queryWattrelAlerts({ config = {}, limit = 100, queryFn = n
   }
   if (!normalized.enabled) {
     return [];
+  }
+  if (normalized.gateway.webhookUrl) {
+    return normalizeRows(await queryWithGateway(normalized));
   }
   if (normalized.ssh.host) {
     return normalizeRows(await queryWithSshMysqlCli(normalized));
@@ -96,6 +101,11 @@ function normalizeWattrelConfig(config = {}, limit = 100) {
       command: resolveEnvString(config.cli?.command || process.env.WATTREL_MYSQL_COMMAND || "mysql"),
     },
     ssh: normalizeSshConfig(config.ssh || config.remote || {}),
+    gateway: normalizeGatewayConfig(config.gateway || {}),
+    country: {
+      code: resolveEnvString(config.defaultCountryCode || config.countryCode || ""),
+      name: resolveEnvString(config.defaultCountryName || config.countryName || ""),
+    },
   };
 }
 
@@ -192,6 +202,82 @@ function queryWithSshMysqlCli(config) {
     const sql = interpolateSqlForCli(config.query.sql, config.query.params);
     child.stdin.end(`${sql.replace(/;*\s*$/, "")};\n`);
   });
+}
+
+async function queryWithGateway(config) {
+  const { statusCode, payload } = await postJson(config.gateway.webhookUrl, {
+    source: "duty-platform",
+    action: "query_current",
+    request_id: config.gateway.requestId || `wattrel-${Date.now()}`,
+    country: config.country.code,
+    countryCode: config.country.code,
+    countryName: config.country.name,
+    limit: config.query.limit,
+    sql: config.query.sql,
+    params: config.query.params,
+  }, config.gateway.headers);
+  if (statusCode < 200 || statusCode >= 300 || payload.success === false) {
+    const message = payload.error?.message || payload.error || `Wattrel gateway request failed: ${statusCode}`;
+    throw new Error(String(message));
+  }
+  return payload.rows || payload.data?.rows || [];
+}
+
+function postJson(urlString, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlString);
+    const data = JSON.stringify(body);
+    const client = url.protocol === "https:" ? https : http;
+    const request = client.request(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(data),
+        ...headers,
+      },
+    }, (response) => {
+      let text = "";
+      response.on("data", (chunk) => {
+        text += chunk.toString("utf8");
+      });
+      response.on("end", () => {
+        let payload = {};
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch {
+          payload = { error: text };
+        }
+        resolve({ statusCode: response.statusCode || 0, payload });
+      });
+    });
+    request.on("error", reject);
+    request.end(data);
+  });
+}
+
+function normalizeGatewayConfig(gateway = {}) {
+  const webhookUrl = resolveEnvString(gateway.webhookUrl || gateway.url || process.env.WATTREL_GATEWAY_WEBHOOK_URL || "");
+  return {
+    webhookUrl,
+    requestId: resolveEnvString(gateway.requestId || ""),
+    headers: normalizeGatewayHeaders(gateway.headers),
+  };
+}
+
+function normalizeGatewayHeaders(headers = {}) {
+  const result = {};
+  for (const [key, value] of Object.entries(headers || {})) {
+    const resolved = resolveEnvString(value);
+    if (resolved && !/^Bearer\s*$/i.test(resolved.trim())) {
+      result[key] = resolved;
+    }
+  }
+  const token = process.env.WATTREL_GATEWAY_TOKEN || "";
+  if (token && !result.Authorization) {
+    result.Authorization = `Bearer ${token}`;
+  }
+  return result;
 }
 
 function buildRemoteMysqlScript(envFiles = []) {
