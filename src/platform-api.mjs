@@ -38,7 +38,13 @@ const FILES = {
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
-const DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL = "http://localhost:5678/webhook/wattrel-query";
+const DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL = "https://sql-cn.kuainiujinke.com/webhook/wattrel-query";
+const DEFAULT_WATTREL_CONFIG = {
+  enabled: true,
+  gateway: {
+    webhookUrl: DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL,
+  },
+};
 const DEFAULT_BATCH_SCHEDULE = {
   enabled: false,
   dailyRunTime: "09:00",
@@ -200,7 +206,7 @@ export function createPlatformApi({
     },
 
     async queryWattrelAlerts(body = {}) {
-      const config = await readJsonFile(resolve("wattrel"), { enabled: false });
+      const config = await readJsonFile(resolve("wattrel"), DEFAULT_WATTREL_CONFIG);
       const countriesConfig = await readJsonFile(resolve("countries"), { countries: [] });
       const current = await queryCurrentWattrelTargets({
         config,
@@ -251,7 +257,7 @@ export function createPlatformApi({
     },
 
     async getCurrentWattrelAlerts(body = {}) {
-      const config = await readJsonFile(resolve("wattrel"), { enabled: false });
+      const config = await readJsonFile(resolve("wattrel"), DEFAULT_WATTREL_CONFIG);
       const checkedAt = body.checkedAt || new Date().toISOString();
       const countriesConfig = await readJsonFile(resolve("countries"), { countries: [] });
       const current = await queryCurrentWattrelTargets({
