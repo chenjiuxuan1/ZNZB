@@ -750,7 +750,7 @@ test("platform api treats n8n wattrel gateway as configured", async () => {
   assert.equal(result.countries[0].anomalies[0].destTbl, "dwd_asset_withhold_request");
 });
 
-test("platform api uses production n8n wattrel gateway by default", async () => {
+test("platform api uses local n8n wattrel gateway by default", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
     path.join(rootDir, "config/countries.config.json"),
@@ -765,7 +765,7 @@ test("platform api uses production n8n wattrel gateway by default", async () => 
   const api = createPlatformApi({
     rootDir,
     wattrelQueryFn: async (config) => {
-      assert.equal(config.gateway.webhookUrl, "https://sql-cn.kuainiujinke.com/webhook/wattrel-query");
+      assert.equal(config.gateway.webhookUrl, "http://127.0.0.1:5678/webhook/wattrel-query");
       assert.equal(config.country.code, "CN");
       return [];
     },
@@ -778,7 +778,7 @@ test("platform api uses production n8n wattrel gateway by default", async () => 
   assert.equal(result.countries[0].status, "success");
 });
 
-test("platform api falls back to production n8n gateway when env placeholder is empty", async () => {
+test("platform api falls back to local n8n gateway when env placeholder is empty", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
     path.join(rootDir, "config/countries.config.json"),
@@ -798,7 +798,7 @@ test("platform api falls back to production n8n gateway when env placeholder is 
   const api = createPlatformApi({
     rootDir,
     wattrelQueryFn: async (config) => {
-      assert.equal(config.gateway.webhookUrl, "https://sql-cn.kuainiujinke.com/webhook/wattrel-query");
+      assert.equal(config.gateway.webhookUrl, "http://127.0.0.1:5678/webhook/wattrel-query");
       return [];
     },
   });
@@ -818,7 +818,7 @@ test("platform api falls back to production n8n gateway when env placeholder is 
   }
 });
 
-test("platform api uses production n8n gateway when wattrel config file is missing", async () => {
+test("platform api uses local n8n gateway when wattrel config file is missing", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
     path.join(rootDir, "config/countries.config.json"),
@@ -829,7 +829,7 @@ test("platform api uses production n8n gateway when wattrel config file is missi
   const api = createPlatformApi({
     rootDir,
     wattrelQueryFn: async (config) => {
-      assert.equal(config.gateway.webhookUrl, "https://sql-cn.kuainiujinke.com/webhook/wattrel-query");
+      assert.equal(config.gateway.webhookUrl, "http://127.0.0.1:5678/webhook/wattrel-query");
       assert.equal(config.country.code, "CN");
       return [];
     },
