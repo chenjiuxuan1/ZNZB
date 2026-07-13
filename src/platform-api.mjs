@@ -38,6 +38,7 @@ const FILES = {
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
+const DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL = "http://localhost:5678/webhook/wattrel-query";
 const DEFAULT_BATCH_SCHEDULE = {
   enabled: false,
   dailyRunTime: "09:00",
@@ -1269,7 +1270,7 @@ function hasWattrelSsh(ssh = {}) {
 }
 
 function hasWattrelGateway(gateway = {}) {
-  return Boolean(resolveConfigString(gateway.webhookUrl || gateway.url));
+  return Boolean(resolveConfigString(gateway.webhookUrl || gateway.url || process.env.WATTREL_GATEWAY_WEBHOOK_URL || DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL));
 }
 
 function resolveConfigString(value) {

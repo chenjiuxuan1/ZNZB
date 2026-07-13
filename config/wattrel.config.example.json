@@ -2,7 +2,7 @@
   "enabled": true,
   "title": "Wattrel 数据质量巡检",
   "gateway": {
-    "webhookUrl": "${WATTREL_GATEWAY_WEBHOOK_URL}",
+    "webhookUrl": "http://localhost:5678/webhook/wattrel-query",
     "headers": {
       "Authorization": "Bearer ${WATTREL_GATEWAY_TOKEN}"
     }
