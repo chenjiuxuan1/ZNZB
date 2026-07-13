@@ -14,8 +14,8 @@
         "port": 36000,
         "user": "root",
         "envFiles": [
-          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
-          "/root/INE-Intelligent-Alarm-Repair-Assistant/.env.local"
+          "/root/INE-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local"
         ]
       },
       "database": {
@@ -32,8 +32,8 @@
         "host": "10.20.10.12",
         "user": "root",
         "envFiles": [
-          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
-          "/root/PH-Intelligent-Alarm-Repair-Assistant/.env.local"
+          "/root/PH-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local"
         ]
       },
       "database": {
@@ -51,8 +51,8 @@
         "port": 36000,
         "user": "root",
         "envFiles": [
-          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
-          "/root/TH-Intelligent-Alarm-Repair-Assistant/.env.local"
+          "/root/TH-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local"
         ]
       },
       "database": {
@@ -69,8 +69,8 @@
         "host": "10.20.84.176",
         "user": "root",
         "envFiles": [
-          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
-          "/root/PK-Intelligent-Alarm-Repair-Assistant/.env.local"
+          "/root/PK-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local"
         ]
       },
       "database": {
@@ -88,8 +88,8 @@
         "port": 36000,
         "user": "root",
         "envFiles": [
-          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
-          "/root/MX-Intelligent-Alarm-Repair-Assistant/.env.local"
+          "/root/MX-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local"
         ]
       },
       "database": {
@@ -107,8 +107,8 @@
         "port": 36000,
         "user": "root",
         "envFiles": [
-          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
-          "/root/CN-Intelligent-Alarm-Repair-Assistant/.env.local"
+          "/root/CN-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local"
         ]
       },
       "database": {
@@ -124,6 +124,8 @@
   "query": {
     "limit": 1000,
     "sql": "SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY r.created_at DESC LIMIT ?",
-    "params": ["${limit}"]
+    "params": [
+      "${limit}"
+    ]
   }
 }
