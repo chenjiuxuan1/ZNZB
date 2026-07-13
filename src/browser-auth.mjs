@@ -1,7 +1,7 @@
 import path from "node:path";
 import { access } from "node:fs/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { createInterface } from "node:readline/promises";
+import { createInterface } from "node:readline";
 import { readJsonFile } from "./utils.mjs";
 
 const DEFAULT_LOGIN_TIMEOUT_MS = 45_000;
@@ -175,7 +175,9 @@ async function waitForManualLogin(config) {
   logStep(config, "请在弹出的 Chrome 中完成登录并打开报表");
   const rl = createInterface({ input, output });
   try {
-    await rl.question("登录完成后回到这里按 Enter 保存登录态...");
+    await new Promise((resolve) => {
+      rl.question("登录完成后回到这里按 Enter 保存登录态...", resolve);
+    });
   } finally {
     rl.close();
   }

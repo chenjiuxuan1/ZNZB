@@ -1,0 +1,198 @@
+{
+  "name": "duty-platform-local-deploy",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "duty-platform-deploy",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6dc22fa2-b08f-4391-9df2-309c4e09a9d3",
+      "name": "接收部署请求",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "notes": "接收外部 HTTP POST 请求，用于触发值班平台在 n8n 本机部署、重启、停止、查看状态或查看日志。",
+      "notesInFlow": true,
+      "position": [
+        -520,
+        120
+      ],
+      "webhookId": "replace-with-your-webhook-id"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body ?? $json;\n\nconst ACTIONS = new Set(['deploy', 'restart', 'status', 'stop', 'logs']);\n\nfunction value(name, fallback) {\n  const v = raw[name];\n  if (v === undefined || v === null || String(v).trim() === '') return fallback;\n  return String(v).trim();\n}\n\nfunction shellQuote(v) {\n  return `'${String(v).replace(/'/g, `'\\\\''`)}'`;\n}\n\nfunction safePath(v) {\n  return /^\\/[A-Za-z0-9._\\-\\/]+$/.test(v) && !v.includes('..');\n}\n\nfunction safeRef(v) {\n  return /^[A-Za-z0-9._\\/-]+$/.test(v) && !v.startsWith('-') && !v.includes('..');\n}\n\nfunction safeHost(v) {\n  return /^[A-Za-z0-9._:-]+$/.test(v);\n}\n\nconst action = value('action', 'deploy').toLowerCase();\nconst repoUrl = value('repo_url', 'git@github.com:chenjiuxuan1/ZNZB.git');\nconst branch = value('branch', 'codex-show-scanned-dashboards');\nconst deployDir = value('deploy_dir', '/root/ZNZB');\nconst host = value('host', '0.0.0.0');\nconst port = Number(value('port', '8787'));\nconst lines = Math.max(20, Math.min(500, Number(value('lines', '120')) || 120));\nconst requestId = value('request_id', `duty-deploy-${Date.now()}`);\n\nconst errors = [];\nif (!ACTIONS.has(action)) errors.push(`unsupported action: ${action}`);\nif (!safePath(deployDir)) errors.push('deploy_dir must be an absolute safe path, for example /root/ZNZB');\nif (!safeRef(branch)) errors.push('branch contains unsafe characters');\nif (!safeHost(host)) errors.push('host contains unsafe characters');\nif (!Number.isInteger(port) || port < 1 || port > 65535) errors.push('port must be 1-65535');\nif (['deploy', 'restart'].includes(action) && !repoUrl) errors.push('repo_url is required');\n\nconst q = {\n  action: shellQuote(action),\n  repoUrl: shellQuote(repoUrl),\n  branch: shellQuote(branch),\n  deployDir: shellQuote(deployDir),\n  host: shellQuote(host),\n  port: shellQuote(String(port)),\n  lines: shellQuote(String(lines)),\n};\n\nconst common = `set -euo pipefail\\nACTION=${q.action}\\nREPO_URL=${q.repoUrl}\\nBRANCH=${q.branch}\\nDEPLOY_DIR=${q.deployDir}\\nHOST_VALUE=${q.host}\\nPORT_VALUE=${q.port}\\nLOG_LINES=${q.lines}\\nPID_FILE=\"$DEPLOY_DIR/platform.pid\"\\nLOG_FILE=\"$DEPLOY_DIR/platform.log\"\\ncd_or_create_parent() { mkdir -p \"$(dirname \\\"$DEPLOY_DIR\\\")\"; }\\nstop_existing() { if [ -f \"$PID_FILE\" ] && kill -0 \"$(cat \\\"$PID_FILE\\\")\" 2>/dev/null; then echo \"[stop] stopping pid $(cat \\\"$PID_FILE\\\")\"; kill \"$(cat \\\"$PID_FILE\\\")\" || true; sleep 2; fi; }\\nstart_platform() { cd \"$DEPLOY_DIR\"; echo \"[start] HOST=$HOST_VALUE PORT=$PORT_VALUE npm run platform\"; HOST=\"$HOST_VALUE\" PORT=\"$PORT_VALUE\" nohup npm run platform > \"$LOG_FILE\" 2>&1 & echo $! > \"$PID_FILE\"; sleep 3; if kill -0 \"$(cat \\\"$PID_FILE\\\")\" 2>/dev/null; then echo \"[ok] running pid $(cat \\\"$PID_FILE\\\")\"; echo \"[ok] url http://127.0.0.1:$PORT_VALUE/#/wattrel-alerts\"; else echo \"[error] platform exited during startup\"; tail -n 80 \"$LOG_FILE\" || true; exit 1; fi; }\\nstatus_platform() { if [ -f \"$PID_FILE\" ] && kill -0 \"$(cat \\\"$PID_FILE\\\")\" 2>/dev/null; then echo \"[status] running pid $(cat \\\"$PID_FILE\\\")\"; else echo \"[status] stopped\"; fi; if [ -f \"$LOG_FILE\" ]; then echo \"[log-tail]\"; tail -n 40 \"$LOG_FILE\" || true; fi; }\\n`;\n\nlet body = '';\nif (action === 'deploy') {\n  body = `echo \"[deploy] request ${requestId}\"\\ncd_or_create_parent\\nif [ ! -d \"$DEPLOY_DIR/.git\" ]; then echo \"[clone] $REPO_URL -> $DEPLOY_DIR\"; git clone --branch \"$BRANCH\" \"$REPO_URL\" \"$DEPLOY_DIR\"; fi\\ncd \"$DEPLOY_DIR\"\\necho \"[git] fetch origin $BRANCH\"\\ngit fetch origin \"$BRANCH\"\\ngit checkout \"$BRANCH\"\\ngit reset --hard \"origin/$BRANCH\"\\necho \"[npm] install\"\\nnpm install\\ncp -n config/wattrel.config.example.json config/wattrel.config.json 2>/dev/null || true\\nstop_existing\\nstart_platform\\n`;\n} else if (action === 'restart') {\n  body = `echo \"[restart] request ${requestId}\"\\nif [ ! -d \"$DEPLOY_DIR\" ]; then echo \"[error] deploy_dir not found: $DEPLOY_DIR\"; exit 1; fi\\nstop_existing\\nstart_platform\\n`;\n} else if (action === 'status') {\n  body = `echo \"[status] request ${requestId}\"\\nstatus_platform\\n`;\n} else if (action === 'stop') {\n  body = `echo \"[stop] request ${requestId}\"\\nstop_existing\\nstatus_platform\\n`;\n} else if (action === 'logs') {\n  body = `echo \"[logs] request ${requestId}\"\\nif [ -f \"$LOG_FILE\" ]; then tail -n \"$LOG_LINES\" \"$LOG_FILE\"; else echo \"[logs] log file not found: $LOG_FILE\"; fi\\n`;\n}\n\nreturn [{\n  json: {\n    valid: errors.length === 0,\n    errors,\n    request_id: requestId,\n    action,\n    repo_url: repoUrl,\n    branch,\n    deploy_dir: deployDir,\n    host,\n    port,\n    platform_url: `http://127.0.0.1:${port}/#/wattrel-alerts`,\n    command: `bash -lc ${shellQuote(common + body)}`,\n  },\n}];"
+      },
+      "id": "93b102b4-8f80-48db-a2db-a807a8bf687e",
+      "name": "解析部署请求",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notes": "解析 webhook 请求体，补齐默认仓库、分支、部署目录、监听地址和端口，并生成本机可执行的安全部署命令。",
+      "notesInFlow": true,
+      "position": [
+        -300,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b952447f-6be3-499d-bba9-f01a1b83d0d2",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "236c620e-5f03-4832-8b02-cf735fb7b983",
+      "name": "请求是否有效",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "notes": "校验 action、部署目录、分支名、host 和 port 是否有效。校验失败时直接返回错误信息，不执行本机命令。",
+      "notesInFlow": true,
+      "position": [
+        -80,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{$json.command}}"
+      },
+      "id": "a78bbef3-bb48-43d3-8fe8-86a815661c37",
+      "name": "本机执行部署命令",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "continueOnFail": true,
+      "notes": "在 n8n 所在机器执行部署命令：拉取或更新代码、安装依赖、复制 Wattrel 示例配置、停止旧进程并后台启动平台服务。",
+      "notesInFlow": true,
+      "position": [
+        160,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\nconst stdout = typeof raw.stdout === 'string' ? raw.stdout.trim() : '';\nconst stderr = typeof raw.stderr === 'string' ? raw.stderr.trim() : '';\nconst exitCode = raw.code ?? raw.exitCode ?? 0;\nreturn [{\n  json: {\n    success: Number(exitCode) === 0,\n    exit_code: exitCode,\n    stdout,\n    stderr,\n  },\n}];"
+      },
+      "id": "03a70418-36ce-485b-991b-172efca340ce",
+      "name": "内容解析",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "notes": "整理 Execute Command 的 stdout、stderr 和退出码，转换成统一 JSON 响应，方便调用方判断部署是否成功。",
+      "notesInFlow": true,
+      "position": [
+        380,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "c7b9fa4f-1120-4207-a692-d0b5d7a18d64",
+      "name": "返回调用结果",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "notes": "把校验错误或部署执行结果返回给 webhook 调用方。",
+      "notesInFlow": true,
+      "position": [
+        620,
+        120
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "接收部署请求": {
+      "main": [
+        [
+          {
+            "node": "解析部署请求",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "解析部署请求": {
+      "main": [
+        [
+          {
+            "node": "请求是否有效",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "请求是否有效": {
+      "main": [
+        [
+          {
+            "node": "本机执行部署命令",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "返回调用结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "本机执行部署命令": {
+      "main": [
+        [
+          {
+            "node": "内容解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "内容解析": {
+      "main": [
+        [
+          {
+            "node": "返回调用结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "replace-after-import",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "replace-after-import",
+  "tags": []
+}
