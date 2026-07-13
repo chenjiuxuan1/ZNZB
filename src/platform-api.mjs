@@ -1270,7 +1270,14 @@ function hasWattrelSsh(ssh = {}) {
 }
 
 function hasWattrelGateway(gateway = {}) {
-  return Boolean(resolveConfigString(gateway.webhookUrl || gateway.url || process.env.WATTREL_GATEWAY_WEBHOOK_URL || DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL));
+  return Boolean(resolveWattrelGatewayWebhookUrl(gateway));
+}
+
+function resolveWattrelGatewayWebhookUrl(gateway = {}) {
+  return resolveConfigString(gateway.webhookUrl)
+    || resolveConfigString(gateway.url)
+    || resolveConfigString(process.env.WATTREL_GATEWAY_WEBHOOK_URL)
+    || DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL;
 }
 
 function resolveConfigString(value) {
