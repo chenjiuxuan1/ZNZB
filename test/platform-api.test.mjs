@@ -673,6 +673,46 @@ test("platform api treats country ssh wattrel config as configured", async () =>
   assert.equal(result.countries[0].status, "success");
 });
 
+test("platform api queries country wattrel targets concurrently", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({
+      countries: [
+        { code: "INE", name: "印尼" },
+        { code: "PH", name: "菲律宾" },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/wattrel.config.json"),
+    JSON.stringify({
+      enabled: true,
+      countries: {
+        INE: { ssh: { host: "192.168.21.236", port: 36000, user: "root" } },
+        PH: { ssh: { host: "10.20.10.12", user: "root" } },
+      },
+    }),
+  );
+  const started = [];
+  const api = createPlatformApi({
+    rootDir,
+    wattrelQueryFn: async (config) => {
+      started.push(config.ssh.host);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return [];
+    },
+  });
+
+  const startedAt = Date.now();
+  const result = await api.getCurrentWattrelAlerts();
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.equal(result.countries.length, 2);
+  assert.deepEqual(started.sort(), ["10.20.10.12", "192.168.21.236"]);
+  assert.ok(elapsedMs < 180, `expected concurrent query, took ${elapsedMs}ms`);
+});
+
 test("platform api locally queries wattrel with no active alerts", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

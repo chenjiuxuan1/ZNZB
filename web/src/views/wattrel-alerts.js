@@ -18,10 +18,9 @@ export function renderWattrelAlerts(root) {
       <div class="detail-header compact-header">
         <div>
           <h2 class="panel-title">当前告警看板</h2>
-          <p class="muted">按国家连接 Wattrel 数据库并查询 <code>wattrel_quality_result</code> 当前告警；部署到 n8n 时可以用国家级环境变量注入连接。</p>
+        <p class="muted">按国家连接 Wattrel 数据库并实时查询 <code>wattrel_quality_result</code> 当前告警。</p>
         </div>
         <div class="wattrel-button-row">
-          <button id="load-wattrel-mock" class="secondary">加载模拟数据</button>
           <button id="refresh-wattrel-current" class="primary">刷新真实数据</button>
         </div>
       </div>
@@ -34,9 +33,6 @@ export function renderWattrelAlerts(root) {
   root.querySelector("#refresh-wattrel-current")?.addEventListener("click", () => {
     void loadWattrelCurrent(root, { force: true });
   });
-  root.querySelector("#load-wattrel-mock")?.addEventListener("click", () => {
-    loadWattrelMock(root);
-  });
   root.querySelectorAll("[data-wattrel-country]").forEach((button) => {
     button.addEventListener("click", () => {
       state.wattrelSelectedCountryCode = button.getAttribute("data-wattrel-country") || "";
@@ -46,29 +42,16 @@ export function renderWattrelAlerts(root) {
   });
 
   if (!state.wattrelCurrentLoaded && state.wattrelCurrentStatus?.type !== "loading") {
-    loadWattrelMock(root);
+    void loadWattrelCurrent(root);
   }
-}
-
-function loadWattrelMock(root) {
-  state.wattrelCurrentResult = buildMockWattrelResult();
-  state.wattrelCurrentLoaded = true;
-  ensureWattrelSelectedCountry(state.wattrelCurrentResult);
-  state.wattrelCurrentStatus = {
-    type: "success",
-    title: "已加载 Wattrel 模拟告警",
-    detail: "当前展示的是本地模拟数据，用于校准页面结构和交互效果，不会访问数据库。",
-  };
-  state.wattrelQueryError = "";
-  renderWattrelAlerts(root);
 }
 
 async function loadWattrelCurrent(root) {
   state.wattrelQueryStatus = null;
   state.wattrelCurrentStatus = {
     type: "loading",
-    title: "正在读取当前 Wattrel 告警",
-    detail: "正在按国家读取当前告警快照。",
+    title: "正在查询当前 Wattrel 告警",
+    detail: "正在按国家实时查询 wattrel_quality_result 当前告警。",
   };
   state.wattrelQueryError = "";
   renderWattrelAlerts(root);
@@ -138,12 +121,12 @@ function renderWattrelLoadingGuide() {
   return `
     <div class="wattrel-guide-grid">
       <article>
-        <strong>1. 先看模拟效果</strong>
-        <span>点击“加载模拟数据”可以直接预览国家汇总和包含 SQL 的国家明细。</span>
+        <strong>1. 自动查询真实数据</strong>
+        <span>进入页面会调用 <code>POST /api/wattrel/current</code> 查询各国 Wattrel。</span>
       </article>
       <article>
-        <strong>2. 接入真实数据库</strong>
-        <span>点击“刷新真实数据”会调用 <code>POST /api/wattrel/current</code> 查询各国 Wattrel。</span>
+        <strong>2. 按国家并发查询</strong>
+        <span>后端会按国家连接跳板机或数据库，读取当前 <code>wattrel_quality_result</code> 告警。</span>
       </article>
       <article>
         <strong>3. 点击国家看明细</strong>
@@ -347,182 +330,6 @@ function buildAnomalyMessage(item = {}) {
     pieces.push(`差值 ${formatWattrelValue(item.diff)}`);
   }
   return pieces.join("，") || "Wattrel 当前告警";
-}
-
-function buildMockWattrelResult() {
-  const checkedAt = new Date().toISOString();
-  const anomalies = [
-    mockWattrelAnomaly({
-      countryCode: "CN",
-      countryName: "中国",
-      destTbl: "dws_cst_pay_cost_statistics",
-      srcTbl: "dwd_cst_pay_cost_detail",
-      name: "支付成本金额校验",
-      expectedValue: 2368584.265999,
-      actualValue: 0,
-      diff: 2368584.265999,
-      window: "2026-07-04 00:00:00 至 2026-07-05 00:00:00",
-      message: "目标表当天无数据，源表存在 2,368,584.265999，疑似先删后插任务失败。",
-      srcSql: "SELECT COALESCE(ROUND(SUM(total_cost_cny), 6), 0) AS cnt FROM dwd_sec.dwd_cst_pay_cost_detail WHERE dt >= DATE('{begin}') AND dt < DATE('{end}')",
-      destSql: "SELECT COALESCE(ROUND(SUM(total_cost_cny), 6), 0) AS cnt FROM dws_sec.dws_cst_pay_cost_statistics WHERE fee_day >= DATE('{begin}') AND fee_day < DATE('{end}')",
-    }),
-    mockWattrelAnomaly({
-      countryCode: "CN",
-      countryName: "中国",
-      destTbl: "dwb_dd_onloan_balance",
-      srcTbl: "dwb_asset_info",
-      name: "月快照放款金额校验",
-      expectedValue: 52834501728,
-      actualValue: 52834506428,
-      diff: -4700,
-      window: "快照日 2026-07-01",
-      message: "月快照金额与源表当前存量口径差 4,700，疑似源表修数后快照未重刷。",
-      srcSql: "SELECT COALESCE(ROUND(SUM(granted_principal_amt), 2), 0) AS cnt FROM dwb.dwb_asset_info WHERE grant_time < DATE_FORMAT(DATE_SUB('{end}', INTERVAL 1 DAY), '%Y-%m-01')",
-      destSql: "SELECT COALESCE(ROUND(SUM(granted_principal_amt), 2), 0) AS cnt FROM dwb.dwb_dd_onloan_balance WHERE stat_date = DATE_FORMAT(DATE_SUB('{end}', INTERVAL 1 DAY), '%Y-%m-01')",
-    }),
-    mockWattrelAnomaly({
-      countryCode: "INE",
-      countryName: "印尼",
-      destTbl: "dwd_asset_withhold_detail",
-      srcTbl: "ods_repay_withhold_detail, ods_repay_history_withhold_detail_his",
-      name: "代扣明细数量校验",
-      expectedValue: 4657696,
-      actualValue: 4691425,
-      diff: -33729,
-      window: "2026-04-05 至 2026-07-04",
-      message: "DWD 比 ODS+历史表多 33,729 条，疑似 ODS 删数后 DWD 孤儿数据未清理。",
-      srcSql: "SELECT COUNT(DISTINCT withhold_detail_id) AS cnt FROM (SELECT withhold_detail_id FROM ods.ods_repay_withhold_detail WHERE withhold_detail_create_at >= '{begin}' AND withhold_detail_create_at < '{end}' UNION SELECT withhold_detail_id FROM ods.ods_repay_history_withhold_detail_his WHERE withhold_detail_create_at >= '{begin}' AND withhold_detail_create_at < '{end}') t",
-      destSql: "SELECT COUNT(*) AS cnt FROM dwd.dwd_asset_withhold_detail WHERE withhold_detail_create_at >= '{begin}' AND withhold_detail_create_at < '{end}'",
-    }),
-    mockWattrelAnomaly({
-      countryCode: "INE",
-      countryName: "印尼",
-      destTbl: "dwd_asset_withhold_request",
-      srcTbl: "ods_repay_withhold_request",
-      name: "代扣请求数量校验",
-      expectedValue: 1212966,
-      actualValue: 1219544,
-      diff: -6578,
-      window: "2026-04-05 至 2026-07-04",
-      message: "DWD 多 6,578 条，源端删除后目标表增量逻辑未同步删除。",
-      srcSql: "SELECT COUNT(*) AS cnt FROM ods.ods_repay_withhold_request WHERE withhold_request_create_at >= '{begin}' AND withhold_request_create_at < '{end}'",
-      destSql: "SELECT COUNT(*) AS cnt FROM dwd.dwd_asset_withhold_request WHERE withhold_request_create_at >= '{begin}' AND withhold_request_create_at < '{end}'",
-    }),
-    mockWattrelAnomaly({
-      countryCode: "PH",
-      countryName: "菲律宾",
-      destTbl: "ads_3602_asset_flow_d",
-      srcTbl: "dwd_asset_biz_report",
-      name: "资金流入流出金额校验",
-      expectedValue: 33602309.46,
-      actualValue: 34626129.27,
-      diff: -1023819.81,
-      window: "2026-06-01 至 2026-06-03",
-      message: "目标金额比源表多 1,023,819.81，需检查 ADS 是否存在历史残留或口径外数据。",
-      srcSql: "SELECT COALESCE(ROUND(SUM(`value`), 6), 0) AS cnt FROM dwd_sec.dwd_asset_biz_report WHERE type = 'v2401_dp_acct_flowinout_amount_daily' AND `date` >= '{begin}' AND `date` < '{end}'",
-      destSql: "SELECT COALESCE(ROUND(SUM(flow_amt), 6), 0) AS cnt FROM ads_sec.ads_3602_asset_flow_d WHERE stat_date >= '{begin}' AND stat_date < '{end}' AND sort_rank = 2",
-    }),
-    mockWattrelAnomaly({
-      countryCode: "MX",
-      countryName: "墨西哥",
-      destTbl: "dwd_cst_dataproxy_request_out",
-      srcTbl: "ods_r1_request_out",
-      name: "数据代理请求数量校验",
-      expectedValue: 421555,
-      actualValue: 361377,
-      diff: 60178,
-      window: "2026-06-28 至 2026-07-05",
-      message: "目标表少 60,178 条，疑似 DWD 补刷窗口未覆盖完整 ODS 分区。",
-      srcSql: "SELECT COUNT(*) AS cnt FROM hive.ods.ods_r1_request_out WHERE dt >= DATE_FORMAT(DATE('{begin}'), '%Y%m%d') AND dt < DATE_FORMAT(DATE('{end}'), '%Y%m%d') AND request_out_data_status = 1",
-      destSql: "SELECT COUNT(*) AS cnt FROM dwd_sec.dwd_cst_dataproxy_request_out WHERE dt >= DATE('{begin}') AND dt < DATE('{end}')",
-    }),
-  ];
-  const countries = [
-    mockWattrelCountry("CN", "中国", anomalies),
-    mockWattrelCountry("INE", "印尼", anomalies),
-    mockWattrelCountry("PH", "菲律宾", anomalies),
-    mockWattrelCountry("TH", "泰国", anomalies),
-    mockWattrelCountry("PK", "巴基斯坦", anomalies, { status: "failed", error: "模拟：数据库连接超时，请检查网络或账号权限。" }),
-    mockWattrelCountry("MX", "墨西哥", anomalies),
-  ];
-  const topTables = summarizeMockWattrelTables(anomalies);
-  return {
-    ok: true,
-    source: "wattrel",
-    mock: true,
-    configEnabled: true,
-    connectionMode: "mock",
-    checkedAt,
-    rowCount: anomalies.length,
-    summary: {
-      countryCount: countries.length,
-      configuredCountryCount: countries.filter((country) => country.configured).length,
-      failedCountryCount: countries.filter((country) => country.status === "failed").length,
-      anomalyCount: anomalies.length,
-      tableCount: topTables.length,
-      targetTableCount: topTables.length,
-    },
-    countries,
-    topTables,
-    anomalies,
-  };
-}
-
-function mockWattrelAnomaly(input) {
-  return {
-    source: "wattrel",
-    type: "wattrelQualityAlert",
-    dashboardTitle: "Wattrel 数据质量",
-    cardTitle: input.destTbl,
-    severity: "warning",
-    checkedAt: new Date().toISOString(),
-    ...input,
-  };
-}
-
-function mockWattrelCountry(countryCode, countryName, anomalies, options = {}) {
-  const items = anomalies.filter((item) => item.countryCode === countryCode);
-  const topTables = summarizeMockWattrelTables(items).slice(0, 5);
-  const status = options.status || "success";
-  return {
-    countryCode,
-    countryName,
-    configured: options.configured ?? true,
-    status,
-    rowCount: items.length,
-    anomalyCount: items.length,
-    tableCount: topTables.length,
-    topTables,
-    anomalies: items,
-    error: options.error || null,
-  };
-}
-
-function summarizeMockWattrelTables(anomalies = []) {
-  const groups = new Map();
-  for (const item of anomalies) {
-    const name = item.destTbl || item.cardTitle || "未知目标表";
-    if (!groups.has(name)) {
-      groups.set(name, {
-        name,
-        count: 0,
-        checks: new Set(),
-        countries: new Set(),
-      });
-    }
-    const group = groups.get(name);
-    group.count += 1;
-    if (item.name) {
-      group.checks.add(item.name);
-    }
-    group.countries.add(countryDisplayName(item));
-  }
-  return [...groups.values()].map((item) => ({
-    name: item.name,
-    count: item.count,
-    checks: [...item.checks],
-    countries: [...item.countries],
-  })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 function ensureWattrelSelectedCountry(result = {}) {

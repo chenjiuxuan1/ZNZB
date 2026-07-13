@@ -1079,11 +1079,7 @@ function externalSourceTitle(source) {
 
 async function queryCurrentWattrelTargets({ config = {}, countries = [], body = {}, queryFn = null } = {}) {
   const targets = buildWattrelTargets({ config, countries, body, forceConfigured: Boolean(queryFn) });
-  const allRows = [];
-  const allAnomalies = [];
-  const countryStatuses = [];
-
-  for (const target of targets) {
+  const countryStatuses = await Promise.all(targets.map(async (target) => {
     const status = {
       countryCode: target.countryCode,
       countryName: target.countryName,
@@ -1097,8 +1093,7 @@ async function queryCurrentWattrelTargets({ config = {}, countries = [], body = 
       error: null,
     };
     if (!target.configured) {
-      countryStatuses.push(status);
-      continue;
+      return status;
     }
     try {
       const rows = await queryWattrelAlertRows({ config: target.config, limit: target.limit, queryFn });
@@ -1111,16 +1106,17 @@ async function queryCurrentWattrelTargets({ config = {}, countries = [], body = 
       status.rowCount = rows.length;
       status.anomalyCount = anomalies.length;
       status.tableCount = tableCount;
+      status.rows = rows;
       status.anomalies = anomalies;
       status.topTables = summarizeWattrelTargetTables(anomalies).slice(0, 5);
-      allRows.push(...rows);
-      allAnomalies.push(...anomalies);
     } catch (error) {
       status.status = "failed";
       status.error = error.message || String(error);
     }
-    countryStatuses.push(status);
-  }
+    return status;
+  }));
+  const allRows = countryStatuses.flatMap((country) => country.rows || []);
+  const allAnomalies = countryStatuses.flatMap((country) => country.anomalies || []);
   return {
     rows: allRows,
     anomalies: allAnomalies,
