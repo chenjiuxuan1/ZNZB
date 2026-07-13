@@ -10,6 +10,9 @@ export async function queryWattrelAlerts({ config = {}, limit = 100, queryFn = n
   if (!normalized.enabled) {
     return [];
   }
+  if (normalized.ssh.host) {
+    return normalizeRows(await queryWithSshMysqlCli(normalized));
+  }
 
   try {
     return normalizeRows(await queryWithMysql2(normalized));
@@ -92,6 +95,7 @@ function normalizeWattrelConfig(config = {}, limit = 100) {
     cli: {
       command: resolveEnvString(config.cli?.command || process.env.WATTREL_MYSQL_COMMAND || "mysql"),
     },
+    ssh: normalizeSshConfig(config.ssh || config.remote || {}),
   };
 }
 
@@ -146,6 +150,71 @@ function queryWithMysqlCli(config) {
     });
     child.stdin.end(`${sql.replace(/;*\s*$/, "")};\n`);
   });
+}
+
+function queryWithSshMysqlCli(config) {
+  return new Promise((resolve, reject) => {
+    const ssh = config.ssh;
+    const args = [];
+    if (ssh.port) {
+      args.push("-p", String(ssh.port));
+    }
+    if (ssh.identityFile) {
+      args.push("-i", ssh.identityFile);
+    }
+    for (const option of ssh.options) {
+      args.push("-o", option);
+    }
+    args.push(`${ssh.user ? `${ssh.user}@` : ""}${ssh.host}`);
+    args.push(buildRemoteMysqlScript(ssh.envFiles));
+
+    const child = spawn(ssh.command, args, {
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ssh mysql command failed (${code}): ${stderr.slice(0, 800)}`));
+        return;
+      }
+      resolve(parseMysqlBatchOutput(stdout));
+    });
+
+    const sql = interpolateSqlForCli(config.query.sql, config.query.params);
+    child.stdin.end(`${sql.replace(/;*\s*$/, "")};\n`);
+  });
+}
+
+function buildRemoteMysqlScript(envFiles = []) {
+  const envFileList = envFiles.map(shellLiteral).join(" ");
+  return [
+    "bash",
+    "-lc",
+    shellLiteral(`set -euo pipefail
+for env_file in ${envFileList}; do
+  if [ -f "$env_file" ]; then
+    set -a
+    . "$env_file"
+    set +a
+    break
+  fi
+done
+: "\${DB_HOST:?DB_HOST missing from wattrel env file}"
+: "\${DB_PORT:?DB_PORT missing from wattrel env file}"
+: "\${DB_USER:?DB_USER missing from wattrel env file}"
+: "\${DB_PASSWORD:?DB_PASSWORD missing from wattrel env file}"
+: "\${DB_NAME:?DB_NAME missing from wattrel env file}"
+MYSQL_PWD="$DB_PASSWORD" mysql --batch --raw --silent --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" "$DB_NAME"`),
+  ].join(" ");
 }
 
 function parseMysqlBatchOutput(output) {
@@ -203,6 +272,42 @@ function normalizeQueryParams(params, limit) {
   });
 }
 
+function normalizeSshConfig(ssh = {}) {
+  const host = resolveEnvString(ssh.host || "");
+  const portValue = resolveEnvString(ssh.port || "");
+  return {
+    host,
+    port: portValue ? Number(portValue) : null,
+    user: resolveEnvString(ssh.user || "root"),
+    identityFile: resolveEnvString(ssh.identityFile || ssh.keyFile || ""),
+    command: resolveEnvString(ssh.command || process.env.WATTREL_SSH_COMMAND || "ssh"),
+    options: normalizeSshOptions(ssh.options),
+    envFiles: normalizeEnvFiles(ssh.envFiles || ssh.envFile || ssh.remoteEnvFiles),
+  };
+}
+
+function normalizeSshOptions(options) {
+  if (!options) {
+    return ["BatchMode=yes", "ConnectTimeout=30"];
+  }
+  if (Array.isArray(options)) {
+    return options.map((option) => resolveEnvString(option)).filter(Boolean);
+  }
+  return String(options)
+    .split(/[\n,]+/)
+    .map((option) => resolveEnvString(option).trim())
+    .filter(Boolean);
+}
+
+function normalizeEnvFiles(value) {
+  const defaults = ["/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local"];
+  const entries = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[\n,]+/);
+  const normalized = entries.map((entry) => resolveEnvString(entry).trim()).filter(Boolean);
+  return normalized.length ? normalized : defaults;
+}
+
 function normalizeRows(rows) {
   return Array.isArray(rows) ? rows : [];
 }
@@ -213,6 +318,10 @@ function isMissingMysql2(error) {
 
 function resolveEnvString(value) {
   return String(value ?? "").replace(/\$\{([^}]+)\}/g, (_match, key) => process.env[key] || "");
+}
+
+function shellLiteral(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
 function firstPresent(...values) {

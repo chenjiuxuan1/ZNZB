@@ -540,7 +540,7 @@ test("platform api ingests external wattrel alert runs into batch history", asyn
   assert.equal(result.summary.countryCount, 1);
   assert.equal(result.summary.checkedCardCount, 2);
   assert.equal(result.summary.anomalyCount, 1);
-  assert.match(result.detailUrl, /historyRunId=/);
+  assert.match(result.detailUrl, /^https:\/\/big-data-duty-management-platform\.kuainiujinke\.com\/#\/batch-check\?historyRunId=/);
 
   const history = await api.getBatchHistory({ countryCode: "CN", status: "anomaly" });
   assert.equal(history.runs.length, 1);
@@ -631,6 +631,46 @@ test("platform api locally queries wattrel alerts into batch history", async () 
   assert.equal(history.runs[0].trigger, "external_wattrel");
   assert.equal(history.runs[0].runs[0].result.anomalies[0].countryCode, "CN");
   assert.equal(history.runs[0].runs[0].result.anomalies[0].cardTitle, "dwd_asset_withhold");
+});
+
+test("platform api treats country ssh wattrel config as configured", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/wattrel.config.json"),
+    JSON.stringify({
+      enabled: true,
+      countries: {
+        INE: {
+          name: "印尼",
+          ssh: {
+            host: "192.168.21.236",
+            port: 36000,
+            user: "root",
+            envFiles: [
+              "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
+              "/root/INE-Intelligent-Alarm-Repair-Assistant/.env.local",
+            ],
+          },
+        },
+      },
+      query: { limit: 5 },
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    wattrelQueryFn: async (config) => {
+      assert.equal(config.ssh.host, "192.168.21.236");
+      assert.equal(config.ssh.port, 36000);
+      assert.equal(config.ssh.envFiles[1], "/root/INE-Intelligent-Alarm-Repair-Assistant/.env.local");
+      return [];
+    },
+  });
+
+  const result = await api.getCurrentWattrelAlerts({ countryCode: "INE" });
+
+  assert.equal(result.configEnabled, true);
+  assert.equal(result.countries[0].configured, true);
+  assert.equal(result.countries[0].status, "success");
 });
 
 test("platform api locally queries wattrel with no active alerts", async () => {

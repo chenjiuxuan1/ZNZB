@@ -217,10 +217,56 @@ export WATTREL_CN_DB_HOST='中国 Wattrel host'
 启动后访问：
 
 ```text
-http://<服务器IP>:8787/#/wattrel-alerts
+https://big-data-duty-management-platform.kuainiujinke.com/#/wattrel-alerts
 ```
 
 页面会自动按国家查询当前 Wattrel 告警。未配置连接的国家会显示“未配置连接”；已配置但查询失败会显示失败原因；点击国家卡片可以查看该国家当前具体告警。
+
+通知里的巡检明细链接默认使用：
+
+```text
+https://big-data-duty-management-platform.kuainiujinke.com/
+```
+
+如需临时覆盖，可在启动服务前设置 `DUTY_PLATFORM_BASE_URL` 或 `PLATFORM_BASE_URL`。
+
+#### 通过各国跳板机读取 Wattrel
+
+`config/wattrel.config.example.json` 已内置各国跳板机 SSH 连接方式。平台会 SSH 到对应国家机器，优先读取：
+
+```bash
+/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local
+```
+
+如果不存在，再读取对应国家老目录：
+
+```bash
+/root/<国家>-Intelligent-Alarm-Repair-Assistant/.env.local
+```
+
+远端 `.env.local` 需要包含 `DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME`。平台不会保存数据库密码，只通过远端环境变量执行 mysql。
+
+各国跳板机：
+
+```bash
+# 中国 CN
+ssh -p 36000 root@10.20.47.14
+
+# 泰国 TH
+ssh -p 36000 root@192.168.20.236
+
+# 印尼 INE
+ssh -p 36000 root@192.168.21.236
+
+# 巴基斯坦 PK
+ssh root@10.20.84.176
+
+# 墨西哥 MX
+ssh -p 36000 root@172.20.220.165
+
+# 菲律宾 PH
+ssh root@10.20.10.12
+```
 
 4. 运行一次巡检：
 

@@ -3,6 +3,15 @@
   "title": "Wattrel 数据质量巡检",
   "countries": {
     "INE": {
+      "ssh": {
+        "host": "192.168.21.236",
+        "port": 36000,
+        "user": "root",
+        "envFiles": [
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/INE-Intelligent-Alarm-Repair-Assistant/.env.local"
+        ]
+      },
       "database": {
         "host": "${WATTREL_INE_DB_HOST}",
         "port": "${WATTREL_INE_DB_PORT}",
@@ -13,6 +22,14 @@
       }
     },
     "PH": {
+      "ssh": {
+        "host": "10.20.10.12",
+        "user": "root",
+        "envFiles": [
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/PH-Intelligent-Alarm-Repair-Assistant/.env.local"
+        ]
+      },
       "database": {
         "host": "${WATTREL_PH_DB_HOST}",
         "port": "${WATTREL_PH_DB_PORT}",
@@ -23,6 +40,15 @@
       }
     },
     "TH": {
+      "ssh": {
+        "host": "192.168.20.236",
+        "port": 36000,
+        "user": "root",
+        "envFiles": [
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/TH-Intelligent-Alarm-Repair-Assistant/.env.local"
+        ]
+      },
       "database": {
         "host": "${WATTREL_TH_DB_HOST}",
         "port": "${WATTREL_TH_DB_PORT}",
@@ -33,6 +59,14 @@
       }
     },
     "PK": {
+      "ssh": {
+        "host": "10.20.84.176",
+        "user": "root",
+        "envFiles": [
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/PK-Intelligent-Alarm-Repair-Assistant/.env.local"
+        ]
+      },
       "database": {
         "host": "${WATTREL_PK_DB_HOST}",
         "port": "${WATTREL_PK_DB_PORT}",
@@ -43,6 +77,15 @@
       }
     },
     "MX": {
+      "ssh": {
+        "host": "172.20.220.165",
+        "port": 36000,
+        "user": "root",
+        "envFiles": [
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/MX-Intelligent-Alarm-Repair-Assistant/.env.local"
+        ]
+      },
       "database": {
         "host": "${WATTREL_MX_DB_HOST}",
         "port": "${WATTREL_MX_DB_PORT}",
@@ -53,6 +96,15 @@
       }
     },
     "CN": {
+      "ssh": {
+        "host": "10.20.47.14",
+        "port": 36000,
+        "user": "root",
+        "envFiles": [
+          "/root/Global-Intelligent-Alarm-Repair-Assistant/.env.local",
+          "/root/CN-Intelligent-Alarm-Repair-Assistant/.env.local"
+        ]
+      },
       "database": {
         "host": "${WATTREL_CN_DB_HOST}",
         "port": "${WATTREL_CN_DB_PORT}",

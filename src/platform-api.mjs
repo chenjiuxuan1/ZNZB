@@ -37,6 +37,7 @@ const FILES = {
   qualityRuleGeneration: "config/quality-rule-generation.config.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
+const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
 const DEFAULT_BATCH_SCHEDULE = {
   enabled: false,
   dailyRunTime: "09:00",
@@ -815,7 +816,7 @@ function isKnBotChannel(value) {
 
 function buildBatchHistoryDetailUrl(runId) {
   const baseUrl = String(process.env.DUTY_PLATFORM_BASE_URL || process.env.PLATFORM_BASE_URL || "").trim()
-    || `http://127.0.0.1:${process.env.PORT || 8787}`;
+    || DEFAULT_DUTY_PLATFORM_BASE_URL;
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
   const params = new URLSearchParams({ historyRunId: String(runId || "") });
   return `${normalizedBaseUrl}/#/batch-check?${params.toString()}`;
@@ -1139,7 +1140,7 @@ function buildWattrelTargets({ config = {}, countries = [], body = {}, forceConf
     ? countryList.filter((country) => country.code === selectedCountryCode)
     : countryList;
 
-  if (!forceConfigured && (hasCountryConnections || (!hasGlobalWattrelDatabase(config) && !config.defaultCountryCode && countryList.length))) {
+  if (hasCountryConnections || (!forceConfigured && !hasGlobalWattrelDatabase(config) && !config.defaultCountryCode && countryList.length)) {
     return visibleCountries.map((country) => {
       const code = String(country.code || country.countryCode || "").trim();
       const connection = countryConnections.find((item) => item.countryCode === code) || {};
@@ -1177,12 +1178,16 @@ function buildCountryWattrelTarget({ baseConfig = {}, country = {}, connection =
     ...envDatabase,
     ...(connection.database || connection.connection || {}),
   };
+  const ssh = {
+    ...(baseConfig.ssh || {}),
+    ...(connection.ssh || {}),
+  };
   const query = {
     ...(baseConfig.query || {}),
     ...(connection.query || {}),
   };
   const limit = clampNumber(body.limit ?? query.limit ?? baseConfig.limit, 1, 1000, 100);
-  const configured = forceConfigured || (connection.enabled !== false && baseConfig.enabled !== false && hasWattrelDatabase(database));
+  const configured = forceConfigured || (connection.enabled !== false && baseConfig.enabled !== false && hasWattrelConnection({ database, ssh }));
   return {
     countryCode: code,
     countryName: name,
@@ -1196,6 +1201,7 @@ function buildCountryWattrelTarget({ baseConfig = {}, country = {}, connection =
       defaultCountryCode: code,
       defaultCountryName: name,
       database,
+      ssh,
       query: {
         ...query,
         limit,
@@ -1239,7 +1245,14 @@ function countryEnvWattrelDatabase(countryCode) {
 }
 
 function hasGlobalWattrelDatabase(config = {}) {
-  return hasWattrelDatabase(config.database || config.connection || {});
+  return hasWattrelConnection({
+    database: config.database || config.connection || {},
+    ssh: config.ssh || {},
+  });
+}
+
+function hasWattrelConnection({ database = {}, ssh = {} } = {}) {
+  return hasWattrelDatabase(database) || hasWattrelSsh(ssh);
 }
 
 function hasWattrelDatabase(database = {}) {
@@ -1247,6 +1260,10 @@ function hasWattrelDatabase(database = {}) {
   const user = resolveConfigString(database.user);
   const dbName = resolveConfigString(database.database);
   return Boolean(host && user && dbName);
+}
+
+function hasWattrelSsh(ssh = {}) {
+  return Boolean(resolveConfigString(ssh.host));
 }
 
 function resolveConfigString(value) {
