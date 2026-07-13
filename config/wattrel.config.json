@@ -1,0 +1,30 @@
+{
+  "enabled": true,
+  "title": "Wattrel 数据质量巡检",
+  "gateway": {
+    "webhookUrl": "https://sql-cn.kuainiujinke.com/webhook/wattrel-query"
+  },
+  "countries": {
+    "CN": {
+      "name": "中国"
+    },
+    "INE": {
+      "name": "印尼"
+    },
+    "PK": {
+      "name": "巴基斯坦"
+    },
+    "TH": {
+      "name": "泰国"
+    },
+    "PH": {
+      "name": "菲律宾"
+    },
+    "MX": {
+      "name": "墨西哥"
+    }
+  },
+  "query": {
+    "limit": 1000
+  }
+}
