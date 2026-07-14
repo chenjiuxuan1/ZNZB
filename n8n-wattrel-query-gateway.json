@@ -22,7 +22,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $json.body ?? $json;\n\nconst DEFAULT_SQL = \"SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY r.created_at DESC LIMIT ?\";\n\nconst COUNTRIES = {\n  CN: {\n    key: 'cn', name: '中国', sshHost: '10.20.47.14', sshPort: 36000,\n    dbHost: 'rm-uf60p909s1lpp1urp.mysql.rds.aliyuncs.com', dbPort: 3306, dbName: 'cn_dolphin', dbUser: 'cn_dolphin', passwordEnv: 'WATTREL_CN_DB_PASSWORD',\n  },\n  PH: {\n    key: 'ph', name: '菲律宾', sshHost: '10.20.10.12', sshPort: null,\n    dbHost: '10.20.81.11', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'a_dolphinscheduler', passwordEnv: 'WATTREL_PH_DB_PASSWORD',\n  },\n  INE: {\n    key: 'ine', name: '印尼', sshHost: '192.168.21.236', sshPort: 36000,\n    dbHost: '192.168.25.249', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'e_ds', passwordEnv: 'WATTREL_INE_DB_PASSWORD',\n  },\n  MX: {\n    key: 'mx', name: '墨西哥', sshHost: '172.20.220.165', sshPort: 36000,\n    dbHost: 'rm-2ev5479nuworkbb0x.mysql.rds.aliyuncs.com', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'e_ds', passwordEnv: 'WATTREL_MX_DB_PASSWORD',\n  },\n  TH: {\n    key: 'th', name: '泰国', sshHost: '192.168.20.236', sshPort: 36000,\n    dbHost: 'rm-gs533qw7xj1e7wdp7.mysql.singapore.rds.aliyuncs.com', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'a_dolphinscheduler', passwordEnv: 'WATTREL_TH_DB_PASSWORD',\n  },\n  PK: {\n    key: 'pk', name: '巴基斯坦', sshHost: '10.20.84.176', sshPort: null,\n    dbHost: 'rm-gs5zsdzr5kr0sh70p.mysql.singapore.rds.aliyuncs.com', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'e_ds', passwordEnv: 'WATTREL_PK_DB_PASSWORD',\n  },\n};\n\nfunction shellQuote(value) {\n  return `'${String(value).replace(/'/g, `'\\\\''`)}'`;\n}\n\nfunction sqlLiteral(value) {\n  if (value === null || value === undefined) return 'NULL';\n  if (typeof value === 'number' && Number.isFinite(value)) return String(value);\n  return `'${String(value).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\")}'`;\n}\n\nfunction interpolateSql(sql, params) {\n  let index = 0;\n  return String(sql || '').replace(/\\?/g, () => sqlLiteral(params[index++]));\n}\n\nfunction normalizeParams(params, limit) {\n  if (!Array.isArray(params) || params.length === 0) return [limit];\n  return params.map((item) => (item === '${limit}' || item === '{limit}' ? limit : item));\n}\n\nfunction normalizeCountry(value) {\n  const code = String(value || '').trim().toUpperCase();\n  if (code === 'ID' || code === 'INDONESIA') return 'INE';\n  if (code === 'PHILIPPINES') return 'PH';\n  return code;\n}\n\nfunction envPassword(country) {\n  return $env?.[country.passwordEnv] || '';\n}\n\nfunction buildCountryCommand(code, country, sqlB64, requestId) {\n  const password = envPassword(country);\n  const meta = JSON.stringify({ countryCode: code, countryKey: country.key, countryName: country.name, requestId });\n  const remoteScript = [\n    'set -euo pipefail',\n    `printf '%s\\\\n' ${shellQuote(`__WATTREL_META__${meta}`)}`,\n    `DB_HOST=${shellQuote(country.dbHost)}`,\n    `DB_PORT=${shellQuote(country.dbPort)}`,\n    `DB_USER=${shellQuote(country.dbUser)}`,\n    `DB_PASSWORD=${shellQuote(password)}`,\n    `DB_NAME=${shellQuote(country.dbName)}`,\n    ': \"${DB_PASSWORD:?DB password missing in n8n env}\"',\n    `printf %s ${shellQuote(sqlB64)} | base64 -d | MYSQL_PWD=\"$DB_PASSWORD\" mysql --batch --raw --silent --host=\"$DB_HOST\" --port=\"$DB_PORT\" --user=\"$DB_USER\" \"$DB_NAME\"`,\n  ].join('\\n');\n\n  const sshParts = ['ssh'];\n  if (country.sshPort) sshParts.push('-p', String(country.sshPort));\n  sshParts.push('-o BatchMode=yes', '-o ConnectTimeout=20', shellQuote(`root@${country.sshHost}`), shellQuote(`bash -lc ${shellQuote(remoteScript)}`));\n  return sshParts.join(' ');\n}\n\nconst countryCode = normalizeCountry(raw.countryCode || raw.country);\nconst country = COUNTRIES[countryCode];\nconst limit = Math.max(1, Math.min(1000, Number(raw.limit || 1000) || 1000));\nconst params = normalizeParams(raw.params, limit);\nconst sql = interpolateSql(raw.sql || DEFAULT_SQL, params).replace(/;*\\s*$/, '') + ';';\nconst requestId = String(raw.request_id || raw.requestId || `wattrel-${Date.now()}`);\nconst errors = [];\n\nif (!country) errors.push(`unsupported country: ${countryCode || '(empty)'}`);\nif (country && !envPassword(country)) errors.push(`missing n8n environment variable: ${country.passwordEnv}`);\nif (!sql.trim()) errors.push('sql is required');\n\nif (errors.length) {\n  return [{ json: { valid: false, errors, country: country?.key || '', countryCode, countryName: country?.name || raw.countryName || '', requestId } }];\n}\n\nconst sqlB64 = Buffer.from(sql, 'utf8').toString('base64');\nconst commands = Object.fromEntries(Object.entries(COUNTRIES).map(([code, item]) => [code, buildCountryCommand(code, item, sqlB64, requestId)]));\n\nreturn [{\n  json: {\n    valid: true,\n    country: country.key,\n    countryCode,\n    countryName: raw.countryName || country.name,\n    requestId,\n    limit,\n    commands,\n  },\n}];"
+        "jsCode": "const raw = $json.body ?? $json;\n\nconst DEFAULT_SQL = \"SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY r.created_at DESC LIMIT ?\";\n\nconst COUNTRIES = {\n  CN: {\n    key: 'cn', name: '中国', sshHost: '10.20.47.14', sshPort: 36000,\n    dbHost: 'rm-uf60p909s1lpp1urp.mysql.rds.aliyuncs.com', dbPort: 3306, dbName: 'cn_dolphin', dbUser: 'cn_dolphin', passwordEnv: 'WATTREL_CN_DB_PASSWORD',\n  },\n  PH: {\n    key: 'ph', name: '菲律宾', sshHost: '10.20.10.12', sshPort: null,\n    dbHost: '10.20.81.11', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'a_dolphinscheduler', passwordEnv: 'WATTREL_PH_DB_PASSWORD',\n  },\n  INE: {\n    key: 'ine', name: '印尼', sshHost: '192.168.21.236', sshPort: 36000,\n    dbHost: '192.168.25.249', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'e_ds', passwordEnv: 'WATTREL_INE_DB_PASSWORD',\n  },\n  MX: {\n    key: 'mx', name: '墨西哥', sshHost: '172.20.220.165', sshPort: 36000,\n    dbHost: 'rm-2ev5479nuworkbb0x.mysql.rds.aliyuncs.com', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'e_ds', passwordEnv: 'WATTREL_MX_DB_PASSWORD',\n  },\n  TH: {\n    key: 'th', name: '泰国', sshHost: '192.168.20.236', sshPort: 36000,\n    dbHost: 'rm-gs533qw7xj1e7wdp7.mysql.singapore.rds.aliyuncs.com', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'a_dolphinscheduler', passwordEnv: 'WATTREL_TH_DB_PASSWORD',\n  },\n  PK: {\n    key: 'pk', name: '巴基斯坦', sshHost: '10.20.84.176', sshPort: null,\n    dbHost: 'rm-gs5zsdzr5kr0sh70p.mysql.singapore.rds.aliyuncs.com', dbPort: 3306, dbName: 'dolphin_scheduler', dbUser: 'e_ds', passwordEnv: 'WATTREL_PK_DB_PASSWORD',\n  },\n};\n\nfunction shellQuote(value) {\n  return `'${String(value).replace(/'/g, `'\\\\''`)}'`;\n}\n\nfunction sqlLiteral(value) {\n  if (value === null || value === undefined) return 'NULL';\n  if (typeof value === 'number' && Number.isFinite(value)) return String(value);\n  return `'${String(value).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\")}'`;\n}\n\nfunction interpolateSql(sql, params) {\n  let index = 0;\n  return String(sql || '').replace(/\\?/g, () => sqlLiteral(params[index++]));\n}\n\nfunction normalizeParams(params, limit) {\n  if (!Array.isArray(params) || params.length === 0) return [limit];\n  return params.map((item) => (item === '${limit}' || item === '{limit}' ? limit : item));\n}\n\nfunction normalizeCountry(value) {\n  const code = String(value || '').trim().toUpperCase();\n  if (code === 'ID' || code === 'INDONESIA') return 'INE';\n  if (code === 'PHILIPPINES') return 'PH';\n  return code;\n}\n\nfunction envPassword(country) {\n  return $vars?.[country.passwordEnv] || '';\n}\n\nfunction buildCountryCommand(code, country, sqlB64, requestId) {\n  const password = envPassword(country);\n  const meta = JSON.stringify({ countryCode: code, countryKey: country.key, countryName: country.name, requestId });\n  const remoteScript = [\n    'set -euo pipefail',\n    `printf '%s\\\\n' ${shellQuote(`__WATTREL_META__${meta}`)}`,\n    `DB_HOST=${shellQuote(country.dbHost)}`,\n    `DB_PORT=${shellQuote(country.dbPort)}`,\n    `DB_USER=${shellQuote(country.dbUser)}`,\n    `DB_PASSWORD=${shellQuote(password)}`,\n    `DB_NAME=${shellQuote(country.dbName)}`,\n    ': \"${DB_PASSWORD:?DB password missing in n8n variables}\"',\n    `printf %s ${shellQuote(sqlB64)} | base64 -d | MYSQL_PWD=\"$DB_PASSWORD\" mysql --batch --raw --silent --host=\"$DB_HOST\" --port=\"$DB_PORT\" --user=\"$DB_USER\" \"$DB_NAME\"`,\n  ].join('\\n');\n\n  const sshParts = ['ssh'];\n  if (country.sshPort) sshParts.push('-p', String(country.sshPort));\n  sshParts.push('-o BatchMode=yes', '-o ConnectTimeout=20', shellQuote(`root@${country.sshHost}`), shellQuote(`bash -lc ${shellQuote(remoteScript)}`));\n  return sshParts.join(' ');\n}\n\nconst countryCode = normalizeCountry(raw.countryCode || raw.country);\nconst country = COUNTRIES[countryCode];\nconst limit = Math.max(1, Math.min(1000, Number(raw.limit || 1000) || 1000));\nconst params = normalizeParams(raw.params, limit);\nconst sql = interpolateSql(raw.sql || DEFAULT_SQL, params).replace(/;*\\s*$/, '') + ';';\nconst requestId = String(raw.request_id || raw.requestId || `wattrel-${Date.now()}`);\nconst errors = [];\n\nif (!country) errors.push(`unsupported country: ${countryCode || '(empty)'}`);\nif (country && !envPassword(country)) errors.push(`missing n8n variable: ${country.passwordEnv}`);\nif (!sql.trim()) errors.push('sql is required');\n\nif (errors.length) {\n  return [{ json: { valid: false, errors, country: country?.key || '', countryCode, countryName: country?.name || raw.countryName || '', requestId } }];\n}\n\nconst sqlB64 = Buffer.from(sql, 'utf8').toString('base64');\nconst commands = Object.fromEntries(Object.entries(COUNTRIES).map(([code, item]) => [code, buildCountryCommand(code, item, sqlB64, requestId)]));\n\nreturn [{\n  json: {\n    valid: true,\n    country: country.key,\n    countryCode,\n    countryName: raw.countryName || country.name,\n    requestId,\n    limit,\n    commands,\n  },\n}];"
       },
       "id": "wattrel-parse-request",
       "name": "解析请求并生成各国 SSH 命令",
@@ -32,7 +32,7 @@
         -620,
         0
       ],
-      "notes": "按国家生成 SSH + mysql 查询命令。数据库 Host/User/DB 固定在此节点，密码从 n8n 环境变量读取，不写入工作流 JSON。",
+      "notes": "按国家生成 SSH + mysql 查询命令。数据库 Host/User/DB 固定在此节点，密码从 n8n Variables 读取，不写入工作流 JSON。",
       "notesInFlow": true
     },
     {
@@ -248,7 +248,7 @@
           "name": "中国跳板机"
         }
       },
-      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n 环境变量读取。",
+      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n Variables 读取。",
       "notesInFlow": true
     },
     {
@@ -271,7 +271,7 @@
           "name": "菲律宾跳板机"
         }
       },
-      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n 环境变量读取。",
+      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n Variables 读取。",
       "notesInFlow": true
     },
     {
@@ -294,7 +294,7 @@
           "name": "印尼跳板机"
         }
       },
-      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n 环境变量读取。",
+      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n Variables 读取。",
       "notesInFlow": true
     },
     {
@@ -317,7 +317,7 @@
           "name": "墨西哥跳板机"
         }
       },
-      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n 环境变量读取。",
+      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n Variables 读取。",
       "notesInFlow": true
     },
     {
@@ -340,7 +340,7 @@
           "name": "泰国跳板机"
         }
       },
-      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n 环境变量读取。",
+      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n Variables 读取。",
       "notesInFlow": true
     },
     {
@@ -363,7 +363,7 @@
           "name": "巴基斯坦跳板机"
         }
       },
-      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n 环境变量读取。",
+      "notes": "使用对应国家 n8n SSH 凭据进入执行机，再按国家数据库参数直接执行 mysql 查询 Wattrel 告警；密码从 n8n Variables 读取。",
       "notesInFlow": true
     },
     {
