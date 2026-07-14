@@ -472,6 +472,30 @@ test("platform api aggregates scheduled countries by same notification target", 
       captured.push({ config, message, metadata });
       return { sent: true, status: 200 };
     },
+    wattrelQueryFn: async (config) => {
+      const countryCode = config.country?.code || config.defaultCountryCode;
+      if (countryCode === "INE") {
+        return [
+          {
+            id: 1,
+            dest_tbl: "dwd_asset_withhold_detail",
+            name: "提现一致性",
+            src_value: 100,
+            dest_value: 98,
+            diff: 2,
+          },
+          {
+            id: 2,
+            dest_tbl: "dwd_asset_withhold_request",
+            name: "提现请求一致性",
+            src_value: 50,
+            dest_value: 49,
+            diff: 1,
+          },
+        ];
+      }
+      return [];
+    },
   });
 
   const schedule = await api.saveBatchSchedule({
@@ -501,6 +525,9 @@ test("platform api aggregates scheduled countries by same notification target", 
   assert.match(captured[0].message, /公共报表巡检汇总/);
   assert.match(captured[0].message, /印尼\(INE\)/);
   assert.match(captured[0].message, /菲律宾\(PH\)/);
+  assert.match(captured[0].message, /Wattrel 数据质量告警“未处理”统计/);
+  assert.match(captured[0].message, /印尼\(INE\)：2/);
+  assert.match(captured[0].message, /菲律宾\(PH\)：0/);
   assert.match(captured[0].message, /各国异常 Metabase 看板/);
 
   const history = await api.getBatchHistory();

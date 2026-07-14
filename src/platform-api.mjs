@@ -361,6 +361,11 @@ export function createPlatformApi({
         const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck(body), (event) => {
           batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
         });
+        const wattrelSummary = await buildScheduledWattrelSummary({
+          countryConfigs: enabledCountryConfigs,
+          wattrelConfigFile: resolve("wattrel"),
+          queryFn: wattrelQueryFn,
+        });
         batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "sending", currentCountryCode: "", currentCountryName: "" };
         const notificationSentCount = await sendScheduledAggregateNotifications({
           countryRuns,
@@ -368,6 +373,7 @@ export function createPlatformApi({
           rulesFile: resolve("rules"),
           notifyTextFn,
           detailUrl,
+          wattrelSummary,
         });
         const failedRuns = countryRuns.filter((item) => !item.ok);
         const saved = {
@@ -375,7 +381,7 @@ export function createPlatformApi({
           lastRunAt: startedAt,
           nextRunAt,
           lastError: failedRuns.length ? failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; ") : null,
-          lastResult: summarizeCountryScheduleRuns(countryRuns),
+          lastResult: summarizeCountryScheduleRuns(countryRuns, { wattrelSummary }),
         };
         batchScheduleRunProgress = {
           ...batchScheduleRunProgress,
@@ -679,6 +685,11 @@ export function createPlatformApi({
         const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck(body), (event) => {
           batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
         });
+        const wattrelSummary = await buildScheduledWattrelSummary({
+          countryConfigs: enabledCountryConfigs,
+          wattrelConfigFile: resolve("wattrel"),
+          queryFn: wattrelQueryFn,
+        });
         batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "sending", currentCountryCode: "", currentCountryName: "" };
         const notificationSentCount = await sendScheduledAggregateNotifications({
           countryRuns,
@@ -686,6 +697,7 @@ export function createPlatformApi({
           rulesFile: resolve("rules"),
           notifyTextFn,
           detailUrl,
+          wattrelSummary,
         });
         const failedRuns = countryRuns.filter((item) => !item.ok);
         const saved = {
@@ -693,7 +705,7 @@ export function createPlatformApi({
           lastRunAt: startedAt,
           nextRunAt,
           lastError: failedRuns.length ? failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; ") : null,
-          lastResult: summarizeCountryScheduleRuns(countryRuns),
+          lastResult: summarizeCountryScheduleRuns(countryRuns, { wattrelSummary }),
         };
         batchScheduleRunProgress = {
           ...batchScheduleRunProgress,
@@ -1143,7 +1155,7 @@ function buildWattrelTargets({ config = {}, countries = [], body = {}, forceConf
     ? countryList.filter((country) => country.code === selectedCountryCode)
     : countryList;
 
-  if (hasCountryConnections || (!forceConfigured && !hasGlobalWattrelDatabase(config) && !config.defaultCountryCode && countryList.length)) {
+  if (countryList.length && (!config.defaultCountryCode || selectedCountryCode) && (hasCountryConnections || forceConfigured || hasWattrelGateway(config.gateway || {}) || !hasGlobalWattrelDatabase(config))) {
     return visibleCountries.map((country) => {
       const code = String(country.code || country.countryCode || "").trim();
       const connection = countryConnections.find((item) => item.countryCode === code) || {};
@@ -1621,7 +1633,7 @@ function formatExternalValue(value) {
   return String(value);
 }
 
-function summarizeCountryScheduleRuns(countryRuns = []) {
+function summarizeCountryScheduleRuns(countryRuns = [], { wattrelSummary = null } = {}) {
   const successfulRuns = countryRuns.filter((item) => item.ok);
   const failedRuns = countryRuns.filter((item) => !item.ok);
   return {
@@ -1631,6 +1643,7 @@ function summarizeCountryScheduleRuns(countryRuns = []) {
     checkedCardCount: successfulRuns.reduce((sum, item) => sum + Number(item.result?.checkedCardCount || 0), 0),
     dashboardCount: successfulRuns.reduce((sum, item) => sum + Number(item.result?.dashboardCount || 0), 0),
     anomalyCount: successfulRuns.reduce((sum, item) => sum + Number(item.result?.anomalyCount || 0), 0),
+    wattrelSummary,
     runs: countryRuns,
   };
 }
@@ -1729,9 +1742,11 @@ function updateBatchScheduleRunProgress(progress, event) {
   };
 }
 
-async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs, rulesFile, notifyTextFn, detailUrl }) {
+async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs, rulesFile, notifyTextFn, detailUrl, wattrelSummary = null }) {
   const successfulRuns = countryRuns.filter((item) => item.ok);
-  if (!successfulRuns.some((item) => Number(item.result?.anomalyCount || 0) + Number(item.result?.dataQualityAnomalyCount || 0) > 0)) {
+  const hasMetabaseAnomalies = successfulRuns.some((item) => Number(item.result?.anomalyCount || 0) + Number(item.result?.dataQualityAnomalyCount || 0) > 0);
+  const hasWattrelAlerts = Number(wattrelSummary?.total || 0) > 0 || Number(wattrelSummary?.failedCount || 0) > 0;
+  if (!hasMetabaseAnomalies && !hasWattrelAlerts) {
     markCountryRunNotifications(countryRuns, {
       sent: false,
       skipped: true,
@@ -1748,10 +1763,14 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
   let sentMessages = 0;
 
   for (const group of groups) {
-    const result = combineScheduledCountryResults(group.countryRuns);
+    const result = {
+      ...combineScheduledCountryResults(group.countryRuns),
+      wattrelSummary,
+    };
     const messages = buildPublicCheckMessages(result, {
       ...group.alerts,
       countryDetailMode: "summary",
+      wattrelSummary,
     });
     const results = [];
     for (const message of messages) {
@@ -1788,6 +1807,57 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
   return sentMessages;
 }
 
+async function buildScheduledWattrelSummary({ countryConfigs = [], wattrelConfigFile, queryFn = null } = {}) {
+  const countries = countryConfigs.map((item) => ({
+    code: item.countryCode,
+    name: item.countryName || countryDisplayName(item.countryCode),
+  })).filter((item) => item.code);
+  if (!countries.length) {
+    return null;
+  }
+
+  try {
+    const config = await readJsonFile(wattrelConfigFile, DEFAULT_WATTREL_CONFIG);
+    const current = await queryCurrentWattrelTargets({
+      config,
+      countries,
+      body: { limit: 1000 },
+      queryFn,
+    });
+    const statusByCountry = new Map((current.countries || []).map((item) => [String(item.countryCode || "").toUpperCase(), item]));
+    const summaryCountries = countries.map((country) => {
+      const code = String(country.code || "").toUpperCase();
+      const status = statusByCountry.get(code) || {};
+      return {
+        countryCode: code,
+        countryName: country.name || status.countryName || countryDisplayName(code),
+        count: Number(status.anomalyCount || 0),
+        status: status.status || "unconfigured",
+        error: status.error || null,
+      };
+    });
+    return {
+      checkedAt: new Date().toISOString(),
+      countries: summaryCountries,
+      total: summaryCountries.reduce((sum, item) => sum + item.count, 0),
+      failedCount: summaryCountries.filter((item) => item.status === "failed").length,
+    };
+  } catch (error) {
+    return {
+      checkedAt: new Date().toISOString(),
+      countries: countries.map((country) => ({
+        countryCode: String(country.code || "").toUpperCase(),
+        countryName: country.name || countryDisplayName(country.code),
+        count: 0,
+        status: "failed",
+        error: error.message || String(error),
+      })),
+      total: 0,
+      failedCount: countries.length,
+    };
+  }
+}
+
 function groupScheduledRunsByNotifyTarget(countryRuns, configByCountry, configuredAlerts, detailUrl) {
   const groups = new Map();
   for (const countryRun of countryRuns) {
@@ -1814,6 +1884,19 @@ function notificationTargetKey(alerts = {}) {
     alerts.recipientEmails || "",
     (alerts.mentions || []).join(","),
   ].join("\u0000");
+}
+
+function countryDisplayName(countryCode) {
+  const code = String(countryCode || "").toUpperCase();
+  const names = {
+    CN: "中国",
+    MX: "墨西哥",
+    TH: "泰国",
+    INE: "印尼",
+    PH: "菲律宾",
+    PK: "巴基斯坦",
+  };
+  return names[code] || code;
 }
 
 function combineScheduledCountryResults(countryRuns = []) {

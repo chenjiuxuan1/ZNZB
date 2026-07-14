@@ -264,10 +264,15 @@ function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAno
     maxDashboards: options.maxHealthySummaryDashboards || 12,
   });
   appendDataQualitySummary(lines, result.dataQuality);
+  appendWattrelSummary(lines, options.wattrelSummary);
 
   if (anomalies.length === 0 && !hasDataQualityIssue(result.dataQuality)) {
     lines.push("");
-    lines.push("✅ 本次巡检未发现异常。");
+    if (hasWattrelIssue(options.wattrelSummary)) {
+      lines.push("✅ 报表巡检未发现异常；Wattrel 未处理告警见上方。");
+    } else {
+      lines.push("✅ 本次巡检未发现异常。");
+    }
     appendDetailUrl(lines, detailUrl);
     return lines.join("\n");
   }
@@ -621,6 +626,28 @@ function appendDataQualitySummary(lines, dataQuality) {
   }
 }
 
+function appendWattrelSummary(lines, wattrelSummary) {
+  const countries = wattrelSummary?.countries || [];
+  if (countries.length === 0) {
+    return;
+  }
+
+  lines.push("");
+  lines.push("🧪 Wattrel 数据质量告警“未处理”统计");
+  for (const country of countries) {
+    const label = formatCountryLabel(country) || country.countryCode || "未知国家";
+    if (country.status === "failed") {
+      lines.push(`• ${label}：查询失败（${formatDataQualityError(country.error, country.status)}）`);
+      continue;
+    }
+    if (country.status === "unconfigured") {
+      lines.push(`• ${label}：未配置`);
+      continue;
+    }
+    lines.push(`• ${label}：${formatCompactNumber(country.count || 0)}`);
+  }
+}
+
 function findDataQualityMetric(dataQuality, group) {
   const metrics = dataQuality?.countries || [];
   const groupLabel = group.label || "";
@@ -692,11 +719,15 @@ function groupAnomaliesByCountry(anomalies) {
 
 function getPublicAlertCount(result) {
   const reportAnomalyCount = result.anomalyCount ?? (result.anomalies || []).length;
-  return reportAnomalyCount + countDataQualityIssues(result.dataQuality);
+  return reportAnomalyCount + countDataQualityIssues(result.dataQuality) + countWattrelIssues(result.wattrelSummary);
 }
 
 function hasDataQualityIssue(dataQuality) {
   return countDataQualityIssues(dataQuality) > 0;
+}
+
+function hasWattrelIssue(wattrelSummary) {
+  return countWattrelIssues(wattrelSummary) > 0;
 }
 
 function countDataQualityIssues(dataQuality) {
@@ -707,6 +738,16 @@ function countDataQualityIssues(dataQuality) {
     }
 
     return sum + 1;
+  }, 0);
+}
+
+function countWattrelIssues(wattrelSummary) {
+  return (wattrelSummary?.countries || []).reduce((sum, country) => {
+    if (country.status === "failed") {
+      return sum + 1;
+    }
+    const count = Number(country.count || 0);
+    return sum + (Number.isFinite(count) && count > 0 ? count : 0);
   }, 0);
 }
 
