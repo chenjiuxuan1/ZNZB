@@ -329,7 +329,9 @@ test("platform api runs scoped batch check and sends TV notification", async () 
   assert.deepEqual(result.notification.mentions, ["strongliu@kn.group", "jerrycai@kn.group"]);
   assert.equal(captured[0].config.alerts.webhookUrl, "https://tv-service-alert.kuainiu.chat/alert/v2/array");
   assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
-  assert.ok(captured[0].message.includes("公共报表巡检"));
+  assert.match(captured[0].message, /【今日值班】/);
+  assert.match(captured[0].message, /2\.数据质量告警“未处理”统计/);
+  assert.doesNotMatch(captured[0].message, /公共报表巡检汇总/);
 });
 
 test("platform api skips TV notification when batch check is healthy", async () => {

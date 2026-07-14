@@ -629,7 +629,20 @@ export function createPlatformApi({
       const rules = await readJsonFile(resolve("rules"), { alerts: {} });
       const notifyChannel = normalizeNotifyChannel(body.notifyChannel || "tv");
       const alerts = buildBatchNotifyAlerts(body, rules.alerts || {}, notifyChannel);
-      const messages = buildPublicCheckMessages(result, alerts);
+      const wattrelSummary = await buildScheduledWattrelSummary({
+        countryConfigs: await buildBatchNotifyWattrelCountryConfigs({
+          countriesFile: resolve("countries"),
+          scheduleFile: resolve("batchSchedule"),
+          countryCode: body.countryCode,
+        }),
+        wattrelConfigFile: resolve("wattrel"),
+        queryFn: wattrelQueryFn,
+      });
+      const messages = buildPublicCheckMessages({ ...result, wattrelSummary }, {
+        ...alerts,
+        messageStyle: "dutySummary",
+        wattrelSummary,
+      });
       const results = [];
       for (const message of messages) {
         results.push(
@@ -1855,6 +1868,29 @@ async function buildScheduledWattrelSummary({ countryConfigs = [], wattrelConfig
       failedCount: countries.length,
     };
   }
+}
+
+async function buildBatchNotifyWattrelCountryConfigs({ countriesFile, scheduleFile, countryCode = "" } = {}) {
+  const selectedCode = String(countryCode || "").trim().toUpperCase();
+  const countriesConfig = await readJsonFile(countriesFile, { countries: [] });
+  const allCountries = (countriesConfig.countries || []).map((country) => ({
+    countryCode: String(country.code || country.countryCode || "").trim().toUpperCase(),
+    countryName: country.name || country.countryName || "",
+  })).filter((country) => country.countryCode);
+  if (selectedCode) {
+    return allCountries.filter((country) => country.countryCode === selectedCode);
+  }
+
+  const schedule = await readJsonFile(scheduleFile, DEFAULT_BATCH_SCHEDULE);
+  const enabledScheduleCountries = (schedule.countryConfigs || [])
+    .filter((country) => country.enabled !== false)
+    .map((country) => ({
+      countryCode: String(country.countryCode || "").trim().toUpperCase(),
+      countryName: country.countryName || countryDisplayName(country.countryCode),
+    }))
+    .filter((country) => country.countryCode);
+
+  return enabledScheduleCountries.length ? enabledScheduleCountries : allCountries;
 }
 
 function groupScheduledRunsByNotifyTarget(countryRuns, configByCountry, configuredAlerts, detailUrl) {
