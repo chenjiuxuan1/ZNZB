@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { fetchCompatible } from "./fetch-compatible.mjs";
 
 export class GrafanaClient {
   constructor(config) {
@@ -43,7 +44,7 @@ export class GrafanaClient {
 
     let response;
     try {
-      response = await fetch(`${this.baseUrl}${pathname}`, {
+      response = await fetchCompatible(`${this.baseUrl}${pathname}`, {
         ...options,
         headers,
         signal: controller.signal,

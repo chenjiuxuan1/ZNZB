@@ -1,3 +1,5 @@
+import { fetchCompatible } from "./fetch-compatible.mjs";
+
 export class MetabasePublicClient {
   constructor({ baseUrl, requestTimeoutSeconds = 30 }) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -26,7 +28,7 @@ export class MetabasePublicClient {
 
     let response;
     try {
-      response = await fetch(`${this.baseUrl}${pathname}`, {
+      response = await fetchCompatible(`${this.baseUrl}${pathname}`, {
         ...options,
         headers: {
           Accept: "application/json",
@@ -77,4 +79,3 @@ export function parsePublicDashboardUrl(urlString) {
     url: urlString,
   };
 }
-

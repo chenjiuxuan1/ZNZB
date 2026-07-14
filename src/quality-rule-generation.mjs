@@ -1,4 +1,5 @@
 import https from "node:https";
+import { fetchCompatible } from "./fetch-compatible.mjs";
 
 export const DEFAULT_QUALITY_RULE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1xh4MSxN-sgdfKZnpGmnY-OujnneimfAp7cgVdtct6SQ/edit?gid=160372088#gid=160372088";
 
@@ -429,7 +430,7 @@ function fetchHttpsText(url) {
 }
 
 async function postJsonWebhook(url, payload, { headers = {} } = {}) {
-  const response = await fetch(url, {
+  const response = await fetchCompatible(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

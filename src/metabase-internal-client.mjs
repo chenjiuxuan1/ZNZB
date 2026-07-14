@@ -1,10 +1,12 @@
+import { fetchCompatible } from "./fetch-compatible.mjs";
+
 export class MetabaseInternalClient {
   constructor({
     baseUrl,
     sessionToken = process.env.METABASE_SESSION || "",
     cookie = process.env.METABASE_COOKIE || "",
     requestTimeoutSeconds = 30,
-    fetchFn = fetch,
+    fetchFn = fetchCompatible,
   }) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.sessionToken = sessionToken;

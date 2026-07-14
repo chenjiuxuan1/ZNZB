@@ -1,3 +1,5 @@
+import { fetchCompatible } from "./fetch-compatible.mjs";
+
 const DEFAULT_DASHCARD_PATH = "/api/bi-monitor/metabase/public-dashcard-json";
 
 export class BiGatewayClient {
@@ -46,7 +48,7 @@ export class BiGatewayClient {
 
     let response;
     try {
-      response = await fetch(buildUrl(this.baseUrl, pathname), {
+      response = await fetchCompatible(buildUrl(this.baseUrl, pathname), {
         ...options,
         headers: {
           Accept: "application/json",

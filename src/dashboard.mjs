@@ -28,7 +28,7 @@ export function buildPanelQueries(panel, variables) {
 
   return targets
     .map((target, index) => {
-      const query = substituteVariables(structuredClone(target), variables);
+      const query = substituteVariables(deepClone(target), variables);
       query.datasource = normalizeDatasource(query.datasource || defaultDatasource);
       query.refId = query.refId || String.fromCharCode(65 + index);
       query.intervalMs = query.intervalMs || 60_000;
@@ -77,6 +77,10 @@ function visitPanels(panels, result) {
       result.push(panel);
     }
   }
+}
+
+function deepClone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
 function normalizeDatasource(datasource) {

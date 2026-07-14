@@ -1,3 +1,5 @@
+import { fetchCompatible } from "./fetch-compatible.mjs";
+
 export async function notify(config, payload) {
   const message = buildMessage(payload);
   return notifyText(config, message, {
@@ -154,7 +156,7 @@ async function fetchWithRetry(url, options, retries = 3) {
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      return await fetch(url, options);
+      return await fetchCompatible(url, options);
     } catch (error) {
       lastError = error;
       if (attempt === retries) {
