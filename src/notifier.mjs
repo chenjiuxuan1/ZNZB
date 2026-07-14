@@ -217,6 +217,14 @@ export function buildPublicCheckMessages(result, options = {}) {
   const countryGroups = groupAnomaliesByCountry(anomalies);
   const messages = [];
   const alertCount = getPublicAlertCount(result);
+  if (options.messageStyle === "dutySummary") {
+    messages.push({
+      title: alertCount > 0 ? `今日值班摘要 ${alertCount} 条` : "今日值班摘要",
+      body: buildDutySummaryMessage(result, countryGroups, options),
+      anomalyCount: alertCount,
+    });
+    return messages;
+  }
 
   messages.push({
     title: alertCount > 0 ? `公共报表巡检异常 ${alertCount} 条` : "公共报表巡检正常",
@@ -243,6 +251,23 @@ export function buildPublicCheckMessages(result, options = {}) {
   }
 
   return messages;
+}
+
+function buildDutySummaryMessage(result, countryGroups, options = {}) {
+  const lines = [];
+  const detailUrl = normalizeDetailUrl(options.detailUrl);
+  const actionableMetabaseAnomalies = filterDutyMetabaseAnomalies(result.anomalies || []);
+
+  lines.push(`【今日值班】${formatDutyDatePeriod(result.checkedAt)}`);
+  lines.push("1.Flink: 正常");
+  lines.push("2.数据质量告警“未处理”统计：");
+  appendDutyWattrelSummary(lines, options.wattrelSummary);
+  lines.push(`3.DS调度：${options.dsScheduleSummary || "暂未接入"}`);
+  lines.push(`4.BI报表(Metabase): ${formatDutyMetabaseSummary(actionableMetabaseAnomalies, countryGroups)}`);
+  if (detailUrl) {
+    lines.push(`详情：${detailUrl}`);
+  }
+  return lines.join("\n");
 }
 
 function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {
@@ -646,6 +671,75 @@ function appendWattrelSummary(lines, wattrelSummary) {
     }
     lines.push(`• ${label}：${formatCompactNumber(country.count || 0)}`);
   }
+}
+
+function appendDutyWattrelSummary(lines, wattrelSummary) {
+  const countries = wattrelSummary?.countries || [];
+  if (countries.length === 0) {
+    lines.push("暂无数据");
+    return;
+  }
+  const byCode = new Map(countries.map((country) => [String(country.countryCode || "").toUpperCase(), country]));
+  const orderedCodes = ["CN", "MX", "TH", "INE", "PH", "PK"];
+  const orderedCountries = [
+    ...orderedCodes.map((code) => byCode.get(code)).filter(Boolean),
+    ...countries.filter((country) => !orderedCodes.includes(String(country.countryCode || "").toUpperCase())),
+  ];
+
+  for (const country of orderedCountries) {
+    const name = country.countryName || country.countryCode || "未知国家";
+    if (country.status === "failed") {
+      lines.push(`${name}：查询失败`);
+    } else if (country.status === "unconfigured") {
+      lines.push(`${name}：未配置`);
+    } else {
+      lines.push(`${name}：${formatCompactNumber(country.count || 0)}`);
+    }
+  }
+}
+
+function filterDutyMetabaseAnomalies(anomalies = []) {
+  const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(anomalies);
+  return [
+    ...missingAnomalies,
+    ...fluctuationAnomalies.filter((anomaly) => extractAnomalySeverity(anomaly.message || "") > 100),
+  ];
+}
+
+function formatDutyMetabaseSummary(anomalies = []) {
+  if (anomalies.length === 0) {
+    return "正常";
+  }
+  const dashboardGroups = groupAnomaliesByDashboard(anomalies)
+    .map((group) => {
+      const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(group.items);
+      return {
+        ...group,
+        missingCount: missingAnomalies.length,
+        highFluctuationCount: fluctuationAnomalies.length,
+        severity: Math.max(...group.items.map((item) => extractAnomalySeverity(item.message || "")), 0),
+      };
+    })
+    .sort((left, right) => {
+      return right.missingCount - left.missingCount
+        || right.highFluctuationCount - left.highFluctuationCount
+        || right.severity - left.severity
+        || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN");
+    });
+  const shown = dashboardGroups.slice(0, 6).map((group) => {
+    const issueParts = [];
+    if (group.missingCount > 0) {
+      issueParts.push(`数据缺失${group.missingCount}条`);
+    }
+    if (group.highFluctuationCount > 0) {
+      issueParts.push(`波动>100% ${group.highFluctuationCount}条`);
+    }
+    return `${formatCountryLabel(group)}<${group.dashboardTitle || "未知看板"}>${issueParts.join("、")}`;
+  });
+  const hiddenCount = dashboardGroups.length - shown.length;
+  return hiddenCount > 0
+    ? `${shown.join("；")}；另有${hiddenCount}个看板异常`
+    : shown.join("；");
 }
 
 function findDataQualityMetric(dataQuality, group) {
@@ -1427,4 +1521,27 @@ function formatCompactZonedDateTime(value, timezone) {
     }, {});
 
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+function formatDutyDatePeriod(value) {
+  const date = value ? new Date(value) : new Date();
+  if (!Number.isFinite(date.getTime())) {
+    return "----";
+  }
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  })
+    .formatToParts(date)
+    .reduce((acc, part) => {
+      if (part.type !== "literal") {
+        acc[part.type] = part.value;
+      }
+      return acc;
+    }, {});
+  const period = Number(parts.hour || 0) < 12 ? "AM" : "PM";
+  return `${parts.month}${parts.day} ${period}`;
 }

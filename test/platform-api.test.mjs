@@ -522,13 +522,16 @@ test("platform api aggregates scheduled countries by same notification target", 
   await api.runDueBatchSchedule(new Date(Date.parse(schedule.nextRunAt) + 1000));
 
   assert.equal(captured.length, 1);
-  assert.match(captured[0].message, /公共报表巡检汇总/);
+  assert.match(captured[0].message, /【今日值班】0714 PM/);
+  assert.match(captured[0].message, /1\.Flink: 正常/);
+  assert.match(captured[0].message, /2\.数据质量告警“未处理”统计/);
   assert.match(captured[0].message, /印尼\(INE\)/);
   assert.match(captured[0].message, /菲律宾\(PH\)/);
-  assert.match(captured[0].message, /Wattrel 数据质量告警“未处理”统计/);
-  assert.match(captured[0].message, /印尼\(INE\)：2/);
-  assert.match(captured[0].message, /菲律宾\(PH\)：0/);
-  assert.match(captured[0].message, /各国异常 Metabase 看板/);
+  assert.match(captured[0].message, /印尼：2/);
+  assert.match(captured[0].message, /菲律宾：0/);
+  assert.match(captured[0].message, /4\.BI报表\(Metabase\):/);
+  assert.doesNotMatch(captured[0].message, /异常概览/);
+  assert.doesNotMatch(captured[0].message, /各国异常 Metabase 看板/);
 
   const history = await api.getBatchHistory();
   assert.equal(history.runs[0].notificationSentCount, 1);

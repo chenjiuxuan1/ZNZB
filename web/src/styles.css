@@ -1501,15 +1501,26 @@ a.dashboard-row {
 }
 
 .dashboard-summary-table table th:nth-child(3),
-.dashboard-summary-table table td:nth-child(3),
+.dashboard-summary-table table td:nth-child(3) {
+  text-align: center;
+  width: 64px;
+}
+
 .dashboard-summary-table table th:nth-child(4),
 .dashboard-summary-table table td:nth-child(4),
 .dashboard-summary-table table th:nth-child(5),
 .dashboard-summary-table table td:nth-child(5),
 .dashboard-summary-table table th:nth-child(6),
-.dashboard-summary-table table td:nth-child(6) {
+.dashboard-summary-table table td:nth-child(6),
+.dashboard-summary-table table th:nth-child(7),
+.dashboard-summary-table table td:nth-child(7) {
   text-align: center;
   width: 62px;
+}
+
+.compact-link {
+  min-height: 0;
+  padding: 5px 8px;
 }
 
 .dashboard-summary-table table th:last-child,

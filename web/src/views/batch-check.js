@@ -784,6 +784,7 @@ function renderHistoryDashboardSummary(result) {
             <tr>
               <th>国家</th>
               <th>看板</th>
+              <th>链接</th>
               <th>检查卡片</th>
               <th>查询失败</th>
               <th>异常数量</th>
@@ -794,6 +795,7 @@ function renderHistoryDashboardSummary(result) {
               <tr>
                 <td>${escapeHtml([dashboard.countryName, dashboard.countryCode].filter(Boolean).join(" / ") || "-")}</td>
                 <td>${escapeHtml(dashboard.dashboardTitle || "-")}</td>
+                <td>${dashboard.dashboardUrl ? `<a class="link-button compact-link" href="${escapeHtml(dashboard.dashboardUrl)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
                 <td>${escapeHtml(dashboard.checkedCardCount || 0)}</td>
                 <td>${escapeHtml(dashboard.failedCardCount || 0)}</td>
                 <td>${escapeHtml(dashboard.anomalyCount || 0)}</td>
@@ -1317,6 +1319,7 @@ function renderDashboardScanDetails(result) {
             <tr>
               <th>国家</th>
               <th>看板</th>
+              <th>链接</th>
               <th>检查卡片</th>
               <th>查询失败</th>
               <th>异常数量</th>
@@ -1329,6 +1332,7 @@ function renderDashboardScanDetails(result) {
               <tr>
                 <td>${escapeHtml([row.countryName, row.countryCode].filter(Boolean).join(" / ") || "-")}</td>
                 <td>${escapeHtml(row.dashboardTitle || "-")}</td>
+                <td>${row.dashboardUrl ? `<a class="link-button compact-link" href="${escapeHtml(row.dashboardUrl)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
                 <td>${escapeHtml(row.checkedCardCount)}</td>
                 <td>${escapeHtml(row.failedCardCount)}</td>
                 <td>${escapeHtml(row.anomalyCount)}</td>
@@ -1352,6 +1356,7 @@ function buildDashboardScanRows(result) {
         countryCode: card.countryCode || "",
         countryName: card.countryName || "",
         dashboardTitle: card.dashboardTitle || "",
+        dashboardUrl: card.dashboardUrl || "",
         checkedCardCount: 0,
         failedCardCount: 0,
         anomalyCount: 0,
@@ -1375,6 +1380,7 @@ function buildDashboardScanRows(result) {
         countryCode: anomaly.countryCode || "",
         countryName: anomaly.countryName || "",
         dashboardTitle: anomaly.dashboardTitle || "",
+        dashboardUrl: anomaly.dashboardUrl || "",
         checkedCardCount: 0,
         failedCardCount: 0,
         anomalyCount: 0,
@@ -1384,6 +1390,9 @@ function buildDashboardScanRows(result) {
     }
     const group = groups.get(key);
     group.anomalyCount += 1;
+    if (!group.dashboardUrl && anomaly.dashboardUrl) {
+      group.dashboardUrl = anomaly.dashboardUrl;
+    }
     const anomalySample = summarizeAnomalySituation(anomaly);
     if (group.anomalySamples.length < 4 && !group.anomalySamples.includes(anomalySample)) {
       group.anomalySamples.push(anomalySample);

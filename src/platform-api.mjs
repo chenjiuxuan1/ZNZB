@@ -1770,6 +1770,7 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
     const messages = buildPublicCheckMessages(result, {
       ...group.alerts,
       countryDetailMode: "summary",
+      messageStyle: "dutySummary",
       wattrelSummary,
     });
     const results = [];
@@ -1801,7 +1802,7 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
     for (const countryRun of group.countryRuns) {
       countryRun.result.notification = notification;
     }
-    sentMessages += messages.length;
+    sentMessages += results.filter((item) => item.sent).length;
   }
 
   return sentMessages;
@@ -2061,6 +2062,7 @@ function summarizeCheckedDashboards(result = {}) {
         countryName: card.countryName || "",
         dashboardUuid: card.dashboardUuid || "",
         dashboardTitle: card.dashboardTitle || "",
+        dashboardUrl: card.dashboardUrl || "",
         checkedCardCount: 0,
         failedCardCount: 0,
         anomalyCount: 0,
@@ -2080,12 +2082,17 @@ function summarizeCheckedDashboards(result = {}) {
         countryName: anomaly.countryName || "",
         dashboardUuid: anomaly.dashboardUuid || "",
         dashboardTitle: anomaly.dashboardTitle || "",
+        dashboardUrl: anomaly.dashboardUrl || "",
         checkedCardCount: 0,
         failedCardCount: 0,
         anomalyCount: 0,
       });
     }
-    groups.get(key).anomalyCount += 1;
+    const group = groups.get(key);
+    group.anomalyCount += 1;
+    if (!group.dashboardUrl && anomaly.dashboardUrl) {
+      group.dashboardUrl = anomaly.dashboardUrl;
+    }
   }
   return [...groups.values()];
 }
