@@ -701,7 +701,7 @@ function appendDutyWattrelSummary(lines, wattrelSummary) {
 function filterDutyMetabaseAnomalies(anomalies = []) {
   const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(anomalies);
   return [
-    ...missingAnomalies,
+    ...missingAnomalies.filter((anomaly) => !isMetabaseQueryFailureAnomaly(anomaly)),
     ...fluctuationAnomalies.filter((anomaly) => extractAnomalySeverity(anomaly.message || "") > 100),
   ];
 }
@@ -740,6 +740,14 @@ function formatDutyMetabaseSummary(anomalies = []) {
   return hiddenCount > 0
     ? `${shown.join("；")}；另有${hiddenCount}个看板异常`
     : shown.join("；");
+}
+
+function isMetabaseQueryFailureAnomaly(anomaly = {}) {
+  if (anomaly.type !== "queryError") {
+    return false;
+  }
+  const text = String(anomaly.message || "");
+  return /Metabase .*request failed|403 Forbidden|Forbidden|DOCTYPE|nginx|company network|查询失败/i.test(text);
 }
 
 function findDataQualityMetric(dataQuality, group) {

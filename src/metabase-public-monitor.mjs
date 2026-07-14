@@ -4,6 +4,8 @@ import { MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
 import { readJsonFile, writeJsonFile } from "./utils.mjs";
 
+const DEFAULT_PUBLIC_METABASE_API_BASE_URL = "http://172.16.0.212:80";
+
 export async function checkPublicDashboards({
   dataQualityFn = collectDataQualityMetrics,
   inventory = null,
@@ -107,9 +109,18 @@ export function createDefaultMetabaseClient(dashboard) {
     });
   }
   return new MetabasePublicClient({
-    baseUrl,
+    baseUrl: resolvePublicMetabaseApiBaseUrl(baseUrl),
     requestTimeoutSeconds: 30,
   });
+}
+
+export function resolvePublicMetabaseApiBaseUrl(fallbackBaseUrl) {
+  return String(
+    process.env.METABASE_PUBLIC_API_BASE_URL
+      || process.env.METABASE_API_BASE_URL
+      || DEFAULT_PUBLIC_METABASE_API_BASE_URL
+      || fallbackBaseUrl,
+  ).replace(/\/+$/, "");
 }
 
 function countDataQualityIssues(dataQuality) {

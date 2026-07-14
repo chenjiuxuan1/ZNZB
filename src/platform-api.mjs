@@ -1744,13 +1744,11 @@ function updateBatchScheduleRunProgress(progress, event) {
 
 async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs, rulesFile, notifyTextFn, detailUrl, wattrelSummary = null }) {
   const successfulRuns = countryRuns.filter((item) => item.ok);
-  const hasMetabaseAnomalies = successfulRuns.some((item) => Number(item.result?.anomalyCount || 0) + Number(item.result?.dataQualityAnomalyCount || 0) > 0);
-  const hasWattrelAlerts = Number(wattrelSummary?.total || 0) > 0 || Number(wattrelSummary?.failedCount || 0) > 0;
-  if (!hasMetabaseAnomalies && !hasWattrelAlerts) {
+  if (successfulRuns.length === 0) {
     markCountryRunNotifications(countryRuns, {
       sent: false,
       skipped: true,
-      reason: "no anomalies",
+      reason: "no successful country runs",
       sentMessages: 0,
       sentAt: null,
     });

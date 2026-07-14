@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildPublicCheckMessage, buildWebhookPayload, notifyText } from "../src/notifier.mjs";
+import { buildPublicCheckMessage, buildPublicCheckMessages, buildWebhookPayload, notifyText } from "../src/notifier.mjs";
 
 test("buildWebhookPayload supports TV alert payload", () => {
   const payload = buildWebhookPayload(
@@ -219,6 +219,51 @@ test("buildPublicCheckMessage separates missing data and fluctuations", () => {
   assert.match(message, /22\.3% → 33\.3%/);
   assert.match(message, /🌏 各国异常 Metabase 看板/);
   assert.match(message, /每期逾期率by日期（1条）：https:\/\/data\.kuainiu\.io\/public\/dashboard\/example-id/);
+});
+
+test("duty summary excludes Metabase 403 query failures from BI report", () => {
+  const messages = buildPublicCheckMessages(
+    {
+      checkedAt: "2026-07-14T10:42:00.000Z",
+      checkedCardCount: 18,
+      anomalyCount: 2,
+      anomalies: [
+        {
+          type: "queryError",
+          countryCode: "INE",
+          countryName: "印尼",
+          dashboardTitle: "OKR",
+          cardTitle: "转化漏斗",
+          message: "报表「OKR」的「转化漏斗」查询失败：Metabase public request failed (403 Forbidden): <!DOCTYPE html>",
+        },
+        {
+          type: "latestDayOverDayChange",
+          countryCode: "MX",
+          countryName: "墨西哥",
+          dashboardTitle: "业务概览-核心链路准实时监控",
+          cardTitle: "放款金额",
+          message: "完整日指标「放款金额」从 10 到 25，波动 +150%",
+        },
+      ],
+    },
+    {
+      messageStyle: "dutySummary",
+      wattrelSummary: {
+        countries: [
+          { countryCode: "CN", countryName: "中国", status: "success", count: 0 },
+          { countryCode: "MX", countryName: "墨西哥", status: "success", count: 2 },
+        ],
+      },
+    },
+  );
+
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].body, /【今日值班】0714 PM/);
+  assert.match(messages[0].body, /中国：0/);
+  assert.match(messages[0].body, /墨西哥：2/);
+  assert.match(messages[0].body, /业务概览-核心链路准实时监控/);
+  assert.doesNotMatch(messages[0].body, /403 Forbidden/);
+  assert.doesNotMatch(messages[0].body, /转化漏斗/);
 });
 
 test("buildPublicCheckMessage shows zero missing data explicitly", () => {

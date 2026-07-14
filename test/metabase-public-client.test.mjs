@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseInternalMetabaseUrl } from "../src/metabase-internal-client.mjs";
 import { parsePublicDashboardUrl } from "../src/metabase-public-client.mjs";
+import { createDefaultMetabaseClient } from "../src/metabase-public-monitor.mjs";
 import {
   discoverPublicDashboards,
   extractInternalMetabaseRefs,
@@ -20,6 +21,15 @@ test("parsePublicDashboardUrl extracts base url and uuid", () => {
       url: "https://data.kuainiu.io/public/dashboard/abc-123",
     },
   );
+});
+
+test("createDefaultMetabaseClient uses internal public Metabase API base", () => {
+  const client = createDefaultMetabaseClient({
+    access: "public",
+    url: "https://data.kuainiu.io/public/dashboard/abc-123",
+  });
+
+  assert.equal(client.baseUrl, "http://172.16.0.212:80");
 });
 
 test("extractPublicDashboardRefs dedupes links", () => {
