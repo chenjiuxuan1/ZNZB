@@ -243,6 +243,7 @@ test("duty summary excludes Metabase 403 query failures from BI report", () => {
           dashboardTitle: "业务概览-核心链路准实时监控",
           cardTitle: "放款金额",
           message: "完整日指标「放款金额」从 10 到 25，波动 +150%",
+          dashboardUrl: "https://data.kuainiu.io/public/dashboard/mx-core",
         },
       ],
     },
@@ -261,6 +262,8 @@ test("duty summary excludes Metabase 403 query failures from BI report", () => {
   assert.match(messages[0].body, /【今日值班】0714 PM/);
   assert.match(messages[0].body, /中国：0/);
   assert.match(messages[0].body, /墨西哥：2/);
+  assert.match(messages[0].body, /4\. BI报表\(Metabase\):/);
+  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 业务概览-核心链路准实时监控：波动>100% 1条\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.match(messages[0].body, /业务概览-核心链路准实时监控/);
   assert.doesNotMatch(messages[0].body, /403 Forbidden/);
   assert.doesNotMatch(messages[0].body, /转化漏斗/);

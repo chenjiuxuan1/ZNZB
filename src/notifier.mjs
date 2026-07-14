@@ -263,7 +263,7 @@ function buildDutySummaryMessage(result, countryGroups, options = {}) {
   lines.push("2.数据质量告警“未处理”统计：");
   appendDutyWattrelSummary(lines, options.wattrelSummary);
   lines.push(`3.DS调度：${options.dsScheduleSummary || "暂未接入"}`);
-  lines.push(`4.BI报表(Metabase): ${formatDutyMetabaseSummary(actionableMetabaseAnomalies, countryGroups)}`);
+  appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies);
   if (detailUrl) {
     lines.push(`详情：${detailUrl}`);
   }
@@ -706,9 +706,11 @@ function filterDutyMetabaseAnomalies(anomalies = []) {
   ];
 }
 
-function formatDutyMetabaseSummary(anomalies = []) {
+function appendDutyMetabaseSummary(lines, anomalies = []) {
+  lines.push("4. BI报表(Metabase):");
   if (anomalies.length === 0) {
-    return "正常";
+    lines.push("正常");
+    return;
   }
   const dashboardGroups = groupAnomaliesByDashboard(anomalies)
     .map((group) => {
@@ -717,6 +719,7 @@ function formatDutyMetabaseSummary(anomalies = []) {
         ...group,
         missingCount: missingAnomalies.length,
         highFluctuationCount: fluctuationAnomalies.length,
+        dashboardUrl: firstDashboardUrl(group.items),
         severity: Math.max(...group.items.map((item) => extractAnomalySeverity(item.message || "")), 0),
       };
     })
@@ -726,20 +729,36 @@ function formatDutyMetabaseSummary(anomalies = []) {
         || right.severity - left.severity
         || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN");
     });
-  const shown = dashboardGroups.slice(0, 6).map((group) => {
-    const issueParts = [];
-    if (group.missingCount > 0) {
-      issueParts.push(`数据缺失${group.missingCount}条`);
+  const shown = dashboardGroups.slice(0, 8);
+  const byCountry = new Map();
+  for (const group of shown) {
+    const countryLabel = formatCountryLabel(group) || "未知国家";
+    if (!byCountry.has(countryLabel)) {
+      byCountry.set(countryLabel, []);
     }
-    if (group.highFluctuationCount > 0) {
-      issueParts.push(`波动>100% ${group.highFluctuationCount}条`);
+    byCountry.get(countryLabel).push(group);
+  }
+
+  for (const [countryLabel, groups] of byCountry.entries()) {
+    lines.push(`${countryLabel}：`);
+    for (const group of groups) {
+      const issueParts = [];
+      if (group.missingCount > 0) {
+        issueParts.push(`数据缺失${group.missingCount}条`);
+      }
+      if (group.highFluctuationCount > 0) {
+        issueParts.push(`波动>100% ${group.highFluctuationCount}条`);
+      }
+      lines.push(`- ${group.dashboardTitle || "未知看板"}：${issueParts.join("、")}`);
+      if (group.dashboardUrl) {
+        lines.push(`  ${group.dashboardUrl}`);
+      }
     }
-    return `${formatCountryLabel(group)}<${group.dashboardTitle || "未知看板"}>${issueParts.join("、")}`;
-  });
+  }
   const hiddenCount = dashboardGroups.length - shown.length;
-  return hiddenCount > 0
-    ? `${shown.join("；")}；另有${hiddenCount}个看板异常`
-    : shown.join("；");
+  if (hiddenCount > 0) {
+    lines.push(`另有${hiddenCount}个看板异常，详见明细页。`);
+  }
 }
 
 function isMetabaseQueryFailureAnomaly(anomaly = {}) {

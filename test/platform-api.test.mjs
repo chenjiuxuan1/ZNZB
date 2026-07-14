@@ -531,7 +531,7 @@ test("platform api aggregates scheduled countries by same notification target", 
   assert.match(captured[0].message, /菲律宾\(PH\)/);
   assert.match(captured[0].message, /印尼：2/);
   assert.match(captured[0].message, /菲律宾：0/);
-  assert.match(captured[0].message, /4\.BI报表\(Metabase\):/);
+  assert.match(captured[0].message, /4\. BI报表\(Metabase\):/);
   assert.doesNotMatch(captured[0].message, /异常概览/);
   assert.doesNotMatch(captured[0].message, /各国异常 Metabase 看板/);
 
