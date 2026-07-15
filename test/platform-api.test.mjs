@@ -96,6 +96,65 @@ test("platform api returns summary and inventory", async () => {
   assert.equal(inventory.dashboards[0].cards.length, 1);
 });
 
+test("platform api lets country inventory override stale ready inventory", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [
+        {
+          countryCode: "MX",
+          countryName: "墨西哥",
+          access: "public",
+          title: "放款统计",
+          uuid: "old-public-mx-loan",
+          url: "https://data.kuainiu.io/public/dashboard/old-public-mx-loan",
+          cards: [{ title: "旧卡片", cardId: 1, dashcardId: 2 }],
+        },
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          access: "public",
+          title: "OKR",
+          uuid: "dash-ine",
+          url: "https://data.kuainiu.io/public/dashboard/dash-ine",
+          cards: [{ title: "规模", cardId: 3, dashcardId: 4 }],
+        },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.mx.json"),
+    JSON.stringify({
+      country: { code: "MX", name: "墨西哥" },
+      dashboards: [
+        {
+          countryCode: "MX",
+          countryName: "墨西哥",
+          access: "internal",
+          title: "资产管理-放款统计",
+          dashboardId: "280",
+          uuid: "internal-280",
+          url: "https://data.kuainiu.io/dashboard/280",
+          cards: [{ title: "新卡片", cardId: 5, dashcardId: 6 }],
+        },
+      ],
+    }),
+  );
+
+  const api = createPlatformApi({ rootDir });
+  const inventory = await api.getInventory();
+
+  assert.deepEqual(
+    inventory.dashboards.map((dashboard) => dashboard.uuid).sort(),
+    ["dash-ine", "internal-280"],
+  );
+  assert.equal(
+    inventory.dashboards.some((dashboard) => dashboard.uuid === "old-public-mx-loan"),
+    false,
+  );
+});
+
 test("platform api evaluates sandbox rules", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

@@ -2005,16 +2005,50 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
     }
   }
 
+  const primaryInventoryName = path.basename(primaryInventoryFile);
   const countryInventoryFiles = fileNames
+    .filter((fileName) => fileName !== primaryInventoryName)
     .filter((fileName) => /^discovered-public-dashboards\.[a-z]+\.json$/i.test(fileName))
     .map((fileName) => path.join(configDir, fileName));
-  const inventories = [primary];
+  const countryInventories = [];
 
   for (const filePath of countryInventoryFiles) {
-    inventories.push(await readJsonFile(filePath, { dashboards: [] }));
+    countryInventories.push(await readJsonFile(filePath, { dashboards: [] }));
   }
 
+  const overrideCountryCodes = getInventoryCountryCodes(countryInventories);
+  const filteredPrimary = overrideCountryCodes.size > 0
+    ? {
+        ...primary,
+        dashboards: (primary.dashboards || []).filter(
+          (dashboard) => !overrideCountryCodes.has(getDashboardCountryCode(dashboard)),
+        ),
+      }
+    : primary;
+  const inventories = [filteredPrimary, ...countryInventories];
+
   return mergeInventories(inventories);
+}
+
+function getInventoryCountryCodes(inventories) {
+  const codes = new Set();
+  for (const inventory of inventories) {
+    const inventoryCode = inventory.country?.code || inventory.countryCode;
+    if (inventoryCode) {
+      codes.add(String(inventoryCode).toUpperCase());
+    }
+    for (const dashboard of inventory.dashboards || []) {
+      const dashboardCode = getDashboardCountryCode(dashboard);
+      if (dashboardCode) {
+        codes.add(dashboardCode);
+      }
+    }
+  }
+  return codes;
+}
+
+function getDashboardCountryCode(dashboard) {
+  return String(dashboard?.countryCode || dashboard?.country?.code || "").toUpperCase();
 }
 
 function mergeInventories(inventories) {

@@ -1,6 +1,6 @@
 {
   "title": "核心报表监控仪表盘",
-  "uid": "aeqalqv4yq5fkf",
+  "uid": "",
   "timeRange": {
     "from": "now-6h",
     "to": "now"
@@ -8,115 +8,101 @@
   "panels": [
     {
       "id": 1,
-      "title": "OKR",
+      "title": "业务概览-OKR",
       "type": "text",
       "datasource": "unknown",
       "targetCount": 0,
       "links": [
         {
-          "title": "https://data.kuainiu.io/public/dashboard/5100336b-0a01-4de4-b284-bf14ca61488d",
-          "url": "https://data.kuainiu.io/public/dashboard/5100336b-0a01-4de4-b284-bf14ca61488d"
+          "title": "https://data.kuainiu.io/dashboard/497-dashboard?%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%25BB%259F%25E8%25AE%25A1%25E6%2597%25A5%25E6%259C%259F=past30days~&app=",
+          "url": "https://data.kuainiu.io/dashboard/497-dashboard?%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%25BB%259F%25E8%25AE%25A1%25E6%2597%25A5%25E6%259C%259F=past30days~&app="
         }
       ],
-      "textPreview": null
+      "textPreview": "Metabase 内部 dashboard/collection 链接，通过内网 API 与认证信息发现并巡检。"
     },
     {
       "id": 2,
-      "title": "核心链路准实时监控",
+      "title": "业务概览-核心链路准实时监控",
       "type": "text",
       "datasource": "unknown",
       "targetCount": 0,
       "links": [
         {
-          "title": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017",
-          "url": "https://data.kuainiu.io/public/dashboard/86e5e560-f7d7-4bc8-bbf0-b761e69af017"
+          "title": "https://data.kuainiu.io/dashboard/466?%25E6%2597%25A5%25E6%259C%259F=past1days~",
+          "url": "https://data.kuainiu.io/dashboard/466?%25E6%2597%25A5%25E6%259C%259F=past1days~"
         }
       ],
-      "textPreview": null
+      "textPreview": "Metabase 内部 dashboard/collection 链接，通过内网 API 与认证信息发现并巡检。"
     },
     {
       "id": 3,
-      "title": "新客转化率(注册~放款)",
+      "title": "投放获客-新客转化率:注册~放款",
       "type": "text",
       "datasource": "unknown",
       "targetCount": 0,
       "links": [
         {
-          "title": "https://data.kuainiu.io/public/dashboard/b3af7cb7-7ac0-4208-a1f6-76ebec8db721",
-          "url": "https://data.kuainiu.io/public/dashboard/b3af7cb7-7ac0-4208-a1f6-76ebec8db721"
+          "title": "https://data.kuainiu.io/dashboard/253?%25E4%25B8%2580%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25B8%2589%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25BA%258C%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E7%25BB%259F%25E8%25AE%25A1%25E7%25BB%25B4%25E5%25BA%25A6=%E6%95%B0%E5%80%BC&%25E8%25BD%25AC%25E5%258C%2596%25E5%2591%25A8%25E6%259C%259F=1&app=&tab=379-%E6%A6%82%E8%A7%88",
+          "url": "https://data.kuainiu.io/dashboard/253?%25E4%25B8%2580%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25B8%2589%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25BA%258C%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E7%25BB%259F%25E8%25AE%25A1%25E7%25BB%25B4%25E5%25BA%25A6=%E6%95%B0%E5%80%BC&%25E8%25BD%25AC%25E5%258C%2596%25E5%2591%25A8%25E6%259C%259F=1&app=&tab=379-%E6%A6%82%E8%A7%88"
         }
       ],
-      "textPreview": null
+      "textPreview": "Metabase 内部 dashboard/collection 链接，通过内网 API 与认证信息发现并巡检。"
     },
     {
       "id": 4,
-      "title": "营销数据统计",
+      "title": "营销活动-营销数据统计",
       "type": "text",
       "datasource": "unknown",
       "targetCount": 0,
       "links": [
         {
-          "title": "https://data.kuainiu.io/public/dashboard/784f57b7-ebb2-4f2a-ae7f-9d1bc7d6792d",
-          "url": "https://data.kuainiu.io/public/dashboard/784f57b7-ebb2-4f2a-ae7f-9d1bc7d6792d"
+          "title": "https://data.kuainiu.io/dashboard/253?%25E4%25B8%2580%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25B8%2589%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25BA%258C%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E7%25BB%259F%25E8%25AE%25A1%25E7%25BB%25B4%25E5%25BA%25A6=%E6%95%B0%E5%80%BC&%25E8%25BD%25AC%25E5%258C%2596%25E5%2591%25A8%25E6%259C%259F=1&app=&tab=379-%E6%A6%82%E8%A7%88",
+          "url": "https://data.kuainiu.io/dashboard/253?%25E4%25B8%2580%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25B8%2589%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25BA%258C%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E7%25BB%259F%25E8%25AE%25A1%25E7%25BB%25B4%25E5%25BA%25A6=%E6%95%B0%E5%80%BC&%25E8%25BD%25AC%25E5%258C%2596%25E5%2591%25A8%25E6%259C%259F=1&app=&tab=379-%E6%A6%82%E8%A7%88"
         }
       ],
-      "textPreview": null
-    },
-    {
-      "id": 6,
-      "title": "营销过程数据统计",
-      "type": "text",
-      "datasource": "unknown",
-      "targetCount": 0,
-      "links": [
-        {
-          "title": "https://data.kuainiu.io/public/dashboard/b68f6831-4063-42b5-a000-8506551b5c9a",
-          "url": "https://data.kuainiu.io/public/dashboard/b68f6831-4063-42b5-a000-8506551b5c9a"
-        }
-      ],
-      "textPreview": null
+      "textPreview": "Metabase 内部 dashboard/collection 链接，通过内网 API 与认证信息发现并巡检。"
     },
     {
       "id": 5,
-      "title": "放款统计",
+      "title": "资产管理-放款统计",
       "type": "text",
       "datasource": "unknown",
       "targetCount": 0,
       "links": [
         {
-          "title": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10",
-          "url": "https://data.kuainiu.io/public/dashboard/616c59e0-57d8-40ae-9883-c6511a606b10"
+          "title": "https://data.kuainiu.io/dashboard/282?%25E4%25BA%25A7%25E5%2593%2581%25E6%259C%259F%25E9%2599%2590=&%25E6%2594%25BE%25E6%25AC%25BE%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&app=&tab=426-by-%E6%97%A5%E6%9C%9F",
+          "url": "https://data.kuainiu.io/dashboard/282?%25E4%25BA%25A7%25E5%2593%2581%25E6%259C%259F%25E9%2599%2590=&%25E6%2594%25BE%25E6%25AC%25BE%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&app=&tab=426-by-%E6%97%A5%E6%9C%9F"
         }
       ],
-      "textPreview": null
+      "textPreview": "Metabase 内部 dashboard/collection 链接，通过内网 API 与认证信息发现并巡检。"
+    },
+    {
+      "id": 6,
+      "title": "资产管理-每期逾期率by日期",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/dashboard/668?%25E4%25BA%25A7%25E5%2593%2581%25E7%25B1%25BB%25E5%259E%258B=&%25E5%2588%25B0%25E6%259C%259F%25E6%2597%25A5%25E6%259C%259F=past90days~&%25E6%2594%25BE%25E6%25AC%25BE%25E6%2597%25A5%25E6%259C%259F=past35days-from-15days&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%25AC%25ACn%25E6%259C%259F=1&%25E7%25BB%259F%25E8%25AE%25A1%25E5%258F%25A3%25E5%25BE%2584=%E6%94%BE%E6%AC%BE%E6%97%A5%E6%9C%9F&%25E9%2587%2591%25E9%25A2%259Dor%25E4%25BB%25B6%25E6%2595%25B0=%E9%87%91%E9%A2%9D&app=&tab=895-%E6%A6%82%E8%A7%88",
+          "url": "https://data.kuainiu.io/dashboard/668?%25E4%25BA%25A7%25E5%2593%2581%25E7%25B1%25BB%25E5%259E%258B=&%25E5%2588%25B0%25E6%259C%259F%25E6%2597%25A5%25E6%259C%259F=past90days~&%25E6%2594%25BE%25E6%25AC%25BE%25E6%2597%25A5%25E6%259C%259F=past35days-from-15days&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%25AC%25ACn%25E6%259C%259F=1&%25E7%25BB%259F%25E8%25AE%25A1%25E5%258F%25A3%25E5%25BE%2584=%E6%94%BE%E6%AC%BE%E6%97%A5%E6%9C%9F&%25E9%2587%2591%25E9%25A2%259Dor%25E4%25BB%25B6%25E6%2595%25B0=%E9%87%91%E9%A2%9D&app=&tab=895-%E6%A6%82%E8%A7%88"
+        }
+      ],
+      "textPreview": "Metabase 内部 dashboard/collection 链接，通过内网 API 与认证信息发现并巡检。"
     },
     {
       "id": 7,
-      "title": "每期逾期率by日期",
+      "title": "贷后催收-核心指标概览",
       "type": "text",
       "datasource": "unknown",
       "targetCount": 0,
       "links": [
         {
-          "title": "https://data.kuainiu.io/public/dashboard/1f04f408-b7fe-4f84-a74a-ab7a7a8ea03d",
-          "url": "https://data.kuainiu.io/public/dashboard/1f04f408-b7fe-4f84-a74a-ab7a7a8ea03d"
+          "title": "https://data.kuainiu.io/dashboard/193?%25E4%25BA%25A7%25E5%2593%2581%25E7%25B1%25BB%25E5%259E%258B=&%25E5%2588%25B0%25E6%259C%259F%25E6%2597%25A5=past42days~&%25E6%2596%25B0%25E5%25A2%259E%25E5%2585%25A5%25E5%2582%25AC=%E6%98%AF&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E5%91%A8&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B-%25E7%25BB%2586%25E5%2588%2586=&%25E7%25AC%25ACn%25E6%259C%259F=&%25E9%2587%2591%25E9%25A2%259Dor%25E4%25BB%25B6%25E6%2595%25B0=%E9%87%91%E9%A2%9D&app=",
+          "url": "https://data.kuainiu.io/dashboard/193?%25E4%25BA%25A7%25E5%2593%2581%25E7%25B1%25BB%25E5%259E%258B=&%25E5%2588%25B0%25E6%259C%259F%25E6%2597%25A5=past42days~&%25E6%2596%25B0%25E5%25A2%259E%25E5%2585%25A5%25E5%2582%25AC=%E6%98%AF&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E5%91%A8&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B-%25E7%25BB%2586%25E5%2588%2586=&%25E7%25AC%25ACn%25E6%259C%259F=&%25E9%2587%2591%25E9%25A2%259Dor%25E4%25BB%25B6%25E6%2595%25B0=%E9%87%91%E9%A2%9D&app="
         }
       ],
-      "textPreview": null
-    },
-    {
-      "id": 8,
-      "title": "核心指标概览",
-      "type": "text",
-      "datasource": "unknown",
-      "targetCount": 0,
-      "links": [
-        {
-          "title": "https://data.kuainiu.io/public/dashboard/cd6ee6e9-a4b4-4df3-bcc4-2c1d7c68a586",
-          "url": "https://data.kuainiu.io/public/dashboard/cd6ee6e9-a4b4-4df3-bcc4-2c1d7c68a586"
-        }
-      ],
-      "textPreview": null
+      "textPreview": "Metabase 内部 dashboard/collection 链接，通过内网 API 与认证信息发现并巡检。"
     }
   ],
   "country": {
