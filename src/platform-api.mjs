@@ -2013,7 +2013,8 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
   const countryInventories = [];
 
   for (const filePath of countryInventoryFiles) {
-    countryInventories.push(await readJsonFile(filePath, { dashboards: [] }));
+    const inventory = await readJsonFile(filePath, { dashboards: [] });
+    countryInventories.push(await filterInventoryByCurrentPanelSources(configDir, filePath, inventory));
   }
 
   const overrideCountryCodes = getInventoryCountryCodes(countryInventories);
@@ -2028,6 +2029,36 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
   const inventories = [filteredPrimary, ...countryInventories];
 
   return mergeInventories(inventories);
+}
+
+async function filterInventoryByCurrentPanelSources(configDir, inventoryFilePath, inventory) {
+  const sourceLinks = await readCurrentPanelSourceLinks(configDir, inventoryFilePath);
+  if (sourceLinks.size === 0) {
+    return inventory;
+  }
+
+  return {
+    ...inventory,
+    dashboards: (inventory.dashboards || []).filter((dashboard) =>
+      sourceLinks.has(dashboard.sourceUrl || "") || sourceLinks.has(dashboard.url || ""),
+    ),
+  };
+}
+
+async function readCurrentPanelSourceLinks(configDir, inventoryFilePath) {
+  const match = path.basename(inventoryFilePath).match(/^discovered-public-dashboards\.([a-z]+)\.json$/i);
+  if (!match) {
+    return new Set();
+  }
+
+  const panelsFile = path.join(configDir, `discovered-panels.${match[1].toLowerCase()}.json`);
+  const panels = await readJsonFile(panelsFile, { panels: [] });
+  return new Set(
+    (panels?.panels || [])
+      .flatMap((panel) => panel.links || [])
+      .map((link) => link.url)
+      .filter(Boolean),
+  );
 }
 
 function getInventoryCountryCodes(inventories) {

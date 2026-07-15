@@ -136,7 +136,29 @@ test("platform api lets country inventory override stale ready inventory", async
           dashboardId: "280",
           uuid: "internal-280",
           url: "https://data.kuainiu.io/dashboard/280",
+          sourceUrl: "https://data.kuainiu.io/dashboard/280",
           cards: [{ title: "新卡片", cardId: 5, dashcardId: 6 }],
+        },
+        {
+          countryCode: "MX",
+          countryName: "墨西哥",
+          access: "public",
+          title: "放款统计",
+          uuid: "stale-country-public-mx-loan",
+          url: "https://data.kuainiu.io/public/dashboard/stale-country-public-mx-loan",
+          cards: [{ title: "残留卡片", cardId: 7, dashcardId: 8 }],
+        },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.mx.json"),
+    JSON.stringify({
+      country: { code: "MX", name: "墨西哥" },
+      panels: [
+        {
+          title: "资产管理-放款统计",
+          links: [{ url: "https://data.kuainiu.io/dashboard/280" }],
         },
       ],
     }),
@@ -150,7 +172,9 @@ test("platform api lets country inventory override stale ready inventory", async
     ["dash-ine", "internal-280"],
   );
   assert.equal(
-    inventory.dashboards.some((dashboard) => dashboard.uuid === "old-public-mx-loan"),
+    inventory.dashboards.some((dashboard) =>
+      ["old-public-mx-loan", "stale-country-public-mx-loan"].includes(dashboard.uuid),
+    ),
     false,
   );
 });

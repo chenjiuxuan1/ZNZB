@@ -994,3 +994,15 @@ test("evaluateRowsAgainstRule treats zero metric value as non-empty", () => {
 
   assert.equal(result, null);
 });
+
+test("evaluateRowsAgainstRule treats percent string metric value as non-empty", () => {
+  const result = evaluateRowsAgainstRule(
+    [{ "统计日期": "2026-07-14", "还款数": "1,532", "还款~复借": "13.2%" }],
+    {
+      type: "notEmpty",
+      columns: ["还款数", "还款~复借"],
+    },
+  );
+
+  assert.equal(result, null);
+});

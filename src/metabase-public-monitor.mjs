@@ -1857,6 +1857,13 @@ function toNumber(value) {
   if (value === null || value === undefined || value === "") {
     return Number.NaN;
   }
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(/,/g, "").replace(/%$/, "");
+    if (!normalized) {
+      return Number.NaN;
+    }
+    return Number(normalized);
+  }
   return Number(value);
 }
 
