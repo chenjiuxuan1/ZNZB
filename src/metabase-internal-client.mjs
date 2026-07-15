@@ -6,6 +6,7 @@ export class MetabaseInternalClient {
     baseUrl,
     sessionToken,
     cookie,
+    apiKey,
     requestTimeoutSeconds = 30,
     fetchFn = fetchCompatible,
   }) {
@@ -13,6 +14,7 @@ export class MetabaseInternalClient {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.sessionToken = sessionToken ?? auth.sessionToken;
     this.cookie = cookie ?? auth.cookie;
+    this.apiKey = apiKey ?? auth.apiKey;
     this.timeoutMs = requestTimeoutSeconds * 1000;
     this.fetchFn = fetchFn;
   }
@@ -40,8 +42,8 @@ export class MetabaseInternalClient {
   }
 
   async requestJson(pathname, options = {}) {
-    if (!this.sessionToken && !this.cookie) {
-      throw new Error("Metabase internal access requires METABASE_SESSION or METABASE_COOKIE");
+    if (!this.sessionToken && !this.cookie && !this.apiKey) {
+      throw new Error("Metabase internal access requires METABASE_SESSION, METABASE_COOKIE, or METABASE_API_KEY");
     }
 
     const controller = new AbortController();
@@ -54,7 +56,7 @@ export class MetabaseInternalClient {
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
-          ...authHeaders(this.sessionToken, this.cookie),
+          ...authHeaders(this.sessionToken, this.cookie, this.apiKey),
           ...options.headers,
         },
         signal: controller.signal,
@@ -114,7 +116,7 @@ export function parseInternalMetabaseUrl(urlString) {
 
 export function hasMetabaseInternalAuth() {
   const auth = resolveMetabaseAuth();
-  return Boolean(auth.sessionToken || auth.cookie);
+  return Boolean(auth.sessionToken || auth.cookie || auth.apiKey);
 }
 
 export function resolveMetabaseAuth() {
@@ -122,6 +124,7 @@ export function resolveMetabaseAuth() {
   return {
     sessionToken: process.env.METABASE_SESSION || fileAuth.sessionToken || "",
     cookie: process.env.METABASE_COOKIE || fileAuth.cookie || "",
+    apiKey: process.env.METABASE_API_KEY || fileAuth.apiKey || "",
   };
 }
 
@@ -135,16 +138,20 @@ function loadMetabaseAuthFile() {
     return {
       sessionToken: raw.sessionToken || raw.session || raw.metabaseSession || "",
       cookie: raw.cookie || raw.metabaseCookie || "",
+      apiKey: raw.apiKey || raw.metabaseApiKey || "",
     };
   } catch (error) {
     throw new Error(`Failed to read Metabase auth file ${authFile}: ${error.message}`);
   }
 }
 
-function authHeaders(sessionToken, cookie) {
+function authHeaders(sessionToken, cookie, apiKey) {
   const headers = {};
   if (sessionToken) {
     headers["X-Metabase-Session"] = sessionToken;
+  }
+  if (apiKey) {
+    headers["X-API-Key"] = apiKey;
   }
   if (cookie) {
     headers.Cookie = cookie.includes("=") ? cookie : `metabase.SESSION=${cookie}`;

@@ -9,7 +9,7 @@ import {
   evaluateRowsAgainstRule,
   mergeParameters,
 } from "../src/metabase-public-monitor.mjs";
-import { hasMetabaseInternalAuth, resolveMetabaseAuth } from "../src/metabase-internal-client.mjs";
+import { hasMetabaseInternalAuth, MetabaseInternalClient, resolveMetabaseAuth } from "../src/metabase-internal-client.mjs";
 
 test("buildDefaultCardParameters maps dashboard defaults to card targets", () => {
   const result = buildDefaultCardParameters(
@@ -241,18 +241,20 @@ test("checkPublicDashboards collapses missing internal Metabase auth to dashboar
 test("Metabase internal auth can be loaded from local auth file", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "metabase-auth-"));
   const authFile = path.join(tempDir, "metabase.auth.json");
-  await writeFile(authFile, JSON.stringify({ sessionToken: "test-session" }));
+  await writeFile(authFile, JSON.stringify({ apiKey: "test-api-key" }));
 
   const previousSession = process.env.METABASE_SESSION;
   const previousCookie = process.env.METABASE_COOKIE;
+  const previousApiKey = process.env.METABASE_API_KEY;
   const previousAuthFile = process.env.METABASE_AUTH_FILE;
   delete process.env.METABASE_SESSION;
   delete process.env.METABASE_COOKIE;
+  delete process.env.METABASE_API_KEY;
   process.env.METABASE_AUTH_FILE = authFile;
 
   try {
     assert.equal(hasMetabaseInternalAuth(), true);
-    assert.equal(resolveMetabaseAuth().sessionToken, "test-session");
+    assert.equal(resolveMetabaseAuth().apiKey, "test-api-key");
   } finally {
     if (previousSession === undefined) {
       delete process.env.METABASE_SESSION;
@@ -264,12 +266,45 @@ test("Metabase internal auth can be loaded from local auth file", async () => {
     } else {
       process.env.METABASE_COOKIE = previousCookie;
     }
+    if (previousApiKey === undefined) {
+      delete process.env.METABASE_API_KEY;
+    } else {
+      process.env.METABASE_API_KEY = previousApiKey;
+    }
     if (previousAuthFile === undefined) {
       delete process.env.METABASE_AUTH_FILE;
     } else {
       process.env.METABASE_AUTH_FILE = previousAuthFile;
     }
   }
+});
+
+test("MetabaseInternalClient sends API key header", async () => {
+  const requests = [];
+  const client = new MetabaseInternalClient({
+    baseUrl: "https://data.example",
+    apiKey: "test-api-key",
+    fetchFn: async (url, options) => {
+      requests.push({ url, options });
+      return {
+        ok: true,
+        headers: new Map([["content-type", "application/json"]]),
+        async text() {
+          return "[]";
+        },
+      };
+    },
+  });
+
+  await client.queryDashcardJson({
+    dashboardId: "642",
+    dashcardId: 2,
+    cardId: 1,
+    parameters: [],
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].options.headers["X-API-Key"], "test-api-key");
 });
 
 test("checkPublicDashboards classifies public 404 as stale public link", async () => {
