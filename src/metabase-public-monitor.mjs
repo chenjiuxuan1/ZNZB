@@ -30,7 +30,10 @@ export async function checkPublicDashboards({
   const anomalies = [];
   const checkedCards = [];
   const rules = ruleConfigData.rules || [];
-  const shouldRunBuiltIns = ruleConfigData.builtInChecks?.queryError !== false || ruleConfigData.builtInChecks?.noData !== false;
+  const shouldRunBuiltIns =
+    ruleConfigData.builtInChecks?.queryError !== false ||
+    ruleConfigData.builtInChecks?.noData !== false ||
+    ruleConfigData.builtInChecks?.emptyMetrics !== false;
 
   for (const dashboard of inventoryData.dashboards || []) {
     const client = metabaseClientFactory(dashboard);
@@ -326,6 +329,20 @@ function evaluateBuiltIns(config, dashboard, card, result) {
     anomalies.push(buildAnomaly(dashboard, card, "noData", `报表「${dashboardTitle}」的「${card.title}」没有值`));
   }
 
+  if (config.builtInChecks?.emptyMetrics !== false && result.ok && result.rows.length > 0) {
+    const metricColumns = getCardMetricColumns(card, result.rows);
+    if (metricColumns.length > 0 && !hasAnyMetricValue(result.rows, metricColumns)) {
+      anomalies.push(
+        buildAnomaly(
+          dashboard,
+          card,
+          "emptyMetrics",
+          `报表「${dashboardTitle}」的「${card.title}」没有有效指标值：${metricColumns.join("、")}`,
+        ),
+      );
+    }
+  }
+
   if (dashboardTitle && card.title) {
     return anomalies;
   }
@@ -494,6 +511,22 @@ function checkNotEmpty(rows, rule) {
   }
 
   return rule.message || `指标列没有有效数值：${explicitColumns.join("、")}`;
+}
+
+function getCardMetricColumns(card, rows) {
+  const metrics = (card.metrics || []).filter(Boolean);
+  if (!metrics.length) {
+    return [];
+  }
+
+  const existingColumns = new Set(rows.flatMap((row) => Object.keys(row || {})));
+  return metrics.filter((column) => existingColumns.has(column));
+}
+
+function hasAnyMetricValue(rows, metricColumns) {
+  return rows.some((row) =>
+    metricColumns.some((column) => Number.isFinite(toNumber(row?.[column]))),
+  );
 }
 
 function checkLatestValue(rows, rule) {

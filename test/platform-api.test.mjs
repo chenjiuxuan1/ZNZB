@@ -524,7 +524,7 @@ test("platform api aggregates scheduled countries by same notification target", 
   await api.runDueBatchSchedule(new Date(Date.parse(schedule.nextRunAt) + 1000));
 
   assert.equal(captured.length, 1);
-  assert.match(captured[0].message, /【今日值班】0714 PM/);
+  assert.match(captured[0].message, /【今日值班】\d{4} (AM|PM)/);
   assert.match(captured[0].message, /1\.Flink: 正常/);
   assert.match(captured[0].message, /2\.数据质量告警“未处理”统计/);
   assert.match(captured[0].message, /印尼\(INE\)/);

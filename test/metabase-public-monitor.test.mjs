@@ -111,6 +111,79 @@ test("checkPublicDashboards queries internal dashboards by dashboardId", async (
   ]);
 });
 
+test("checkPublicDashboards detects metric charts with rows but no metric values", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [
+        {
+          sourcePanelTitle: "复借数据",
+          title: "复借数据",
+          uuid: "dash-empty-metric",
+          url: "https://data.example/public/dashboard/dash-empty-metric",
+          cards: [
+            {
+              title: "还款7日复借率",
+              cardId: 468,
+              dashcardId: 562,
+              metrics: ["还款数", "还款~复借"],
+              parameterMappings: [],
+            },
+          ],
+        },
+      ],
+    },
+    ruleConfig: { builtInChecks: { queryError: false, noData: false, emptyMetrics: true }, rules: [] },
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [
+        { "统计日期": "2026-07-13", "还款数": null, "还款~复借": null },
+        { "统计日期": "2026-07-14", "还款数": "", "还款~复借": null },
+      ],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.checkedCardCount, 1);
+  assert.equal(result.anomalyCount, 1);
+  assert.equal(result.anomalies[0].type, "emptyMetrics");
+  assert.match(result.anomalies[0].message, /没有有效指标值：还款数、还款~复借/);
+});
+
+test("checkPublicDashboards treats zero metric chart value as present", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [
+        {
+          sourcePanelTitle: "复借数据",
+          title: "复借数据",
+          uuid: "dash-zero-metric",
+          url: "https://data.example/public/dashboard/dash-zero-metric",
+          cards: [
+            {
+              title: "还款7日复借率",
+              cardId: 468,
+              dashcardId: 562,
+              metrics: ["还款数", "还款~复借"],
+              parameterMappings: [],
+            },
+          ],
+        },
+      ],
+    },
+    ruleConfig: { builtInChecks: { queryError: false, noData: false, emptyMetrics: true }, rules: [] },
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [{ "统计日期": "2026-07-14", "还款数": 0, "还款~复借": null }],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.checkedCardCount, 1);
+  assert.equal(result.anomalyCount, 0);
+});
+
 test("checkPublicDashboards keeps OKR D0 freshness except PK D-1 exception", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "public-monitor-"));
   const inventoryFile = path.join(tempDir, "inventory.json");

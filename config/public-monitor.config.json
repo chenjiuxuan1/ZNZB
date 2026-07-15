@@ -1,7 +1,8 @@
 {
   "builtInChecks": {
     "queryError": false,
-    "noData": false
+    "noData": false,
+    "emptyMetrics": true
   },
   "alerts": {
     "channel": "tv",
