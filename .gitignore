@@ -8,4 +8,5 @@ tmp-*.png
 config/public-check-baseline-cache.json
 config/batch-check-schedule.json
 config/batch-check-run-history.json
+config/metabase.auth.json
 .DS_Store

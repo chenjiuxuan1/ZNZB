@@ -1,16 +1,18 @@
+import fs from "node:fs";
 import { fetchCompatible } from "./fetch-compatible.mjs";
 
 export class MetabaseInternalClient {
   constructor({
     baseUrl,
-    sessionToken = process.env.METABASE_SESSION || "",
-    cookie = process.env.METABASE_COOKIE || "",
+    sessionToken,
+    cookie,
     requestTimeoutSeconds = 30,
     fetchFn = fetchCompatible,
   }) {
+    const auth = resolveMetabaseAuth();
     this.baseUrl = baseUrl.replace(/\/$/, "");
-    this.sessionToken = sessionToken;
-    this.cookie = cookie;
+    this.sessionToken = sessionToken ?? auth.sessionToken;
+    this.cookie = cookie ?? auth.cookie;
     this.timeoutMs = requestTimeoutSeconds * 1000;
     this.fetchFn = fetchFn;
   }
@@ -108,6 +110,35 @@ export function parseInternalMetabaseUrl(urlString) {
   }
 
   return null;
+}
+
+export function hasMetabaseInternalAuth() {
+  const auth = resolveMetabaseAuth();
+  return Boolean(auth.sessionToken || auth.cookie);
+}
+
+export function resolveMetabaseAuth() {
+  const fileAuth = loadMetabaseAuthFile();
+  return {
+    sessionToken: process.env.METABASE_SESSION || fileAuth.sessionToken || "",
+    cookie: process.env.METABASE_COOKIE || fileAuth.cookie || "",
+  };
+}
+
+function loadMetabaseAuthFile() {
+  const authFile = process.env.METABASE_AUTH_FILE || "config/metabase.auth.json";
+  try {
+    if (!fs.existsSync(authFile)) {
+      return {};
+    }
+    const raw = JSON.parse(fs.readFileSync(authFile, "utf8"));
+    return {
+      sessionToken: raw.sessionToken || raw.session || raw.metabaseSession || "",
+      cookie: raw.cookie || raw.metabaseCookie || "",
+    };
+  } catch (error) {
+    throw new Error(`Failed to read Metabase auth file ${authFile}: ${error.message}`);
+  }
 }
 
 function authHeaders(sessionToken, cookie) {

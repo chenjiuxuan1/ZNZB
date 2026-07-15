@@ -1,6 +1,6 @@
 import path from "node:path";
 import { collectDataQualityMetrics } from "./grafana-quality-monitor.mjs";
-import { MetabaseInternalClient } from "./metabase-internal-client.mjs";
+import { hasMetabaseInternalAuth, MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
 import { readJsonFile, writeJsonFile } from "./utils.mjs";
 
@@ -36,6 +36,29 @@ export async function checkPublicDashboards({
     ruleConfigData.builtInChecks?.emptyMetrics !== false;
 
   for (const dashboard of inventoryData.dashboards || []) {
+    if (shouldSkipInternalDashboardWithoutAuth(dashboard, metabaseClientFactory)) {
+      const card = {
+        title: "看板访问配置",
+        cardId: null,
+        dashcardId: null,
+      };
+      const result = {
+        ok: false,
+        rows: [],
+        error: "Metabase internal access is not configured",
+      };
+      checkedCards.push(summarizeCardResult(dashboard, card, result, null));
+      anomalies.push(
+        buildAnomaly(
+          dashboard,
+          card,
+          "metabaseConfigError",
+          `报表「${dashboard.sourcePanelTitle || dashboard.title}」无法巡检：缺少 Metabase 登录态，请配置 METABASE_SESSION 或 METABASE_COOKIE`,
+        ),
+      );
+      continue;
+    }
+
     const client = metabaseClientFactory(dashboard);
 
     for (const card of dashboard.cards || []) {
@@ -315,11 +338,12 @@ function evaluateBuiltIns(config, dashboard, card, result) {
   const dashboardTitle = dashboard.sourcePanelTitle || dashboard.title;
 
   if (config.builtInChecks?.queryError !== false && !result.ok) {
+    const errorType = classifyMetabaseQueryError(result.error);
     anomalies.push(
       buildAnomaly(
         dashboard,
         card,
-        "queryError",
+        errorType,
         `报表「${dashboardTitle}」的「${card.title}」查询失败：${result.error || "unknown error"}`,
       ),
     );
@@ -472,6 +496,25 @@ function matchesTextSelector(text, selector) {
   }
 
   return true;
+}
+
+function shouldSkipInternalDashboardWithoutAuth(dashboard, metabaseClientFactory) {
+  return dashboard.access === "internal"
+    && metabaseClientFactory === createDefaultMetabaseClient
+    && !hasMetabaseInternalAuth();
+}
+
+function classifyMetabaseQueryError(error) {
+  const text = String(error || "");
+  if (/METABASE_SESSION|METABASE_COOKIE|internal access/i.test(text)) {
+    return "metabaseConfigError";
+  }
+
+  if (/Metabase public request failed \(404 Not Found\)|Not found/i.test(text)) {
+    return "metabaseStalePublicLink";
+  }
+
+  return "queryError";
 }
 
 function checkRowCount(rows, rule) {

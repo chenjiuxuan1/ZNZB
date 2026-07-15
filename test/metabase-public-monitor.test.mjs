@@ -9,6 +9,7 @@ import {
   evaluateRowsAgainstRule,
   mergeParameters,
 } from "../src/metabase-public-monitor.mjs";
+import { hasMetabaseInternalAuth, resolveMetabaseAuth } from "../src/metabase-internal-client.mjs";
 
 test("buildDefaultCardParameters maps dashboard defaults to card targets", () => {
   const result = buildDefaultCardParameters(
@@ -182,6 +183,119 @@ test("checkPublicDashboards treats zero metric chart value as present", async ()
 
   assert.equal(result.checkedCardCount, 1);
   assert.equal(result.anomalyCount, 0);
+});
+
+test("checkPublicDashboards collapses missing internal Metabase auth to dashboard config error", async () => {
+  const previousSession = process.env.METABASE_SESSION;
+  const previousCookie = process.env.METABASE_COOKIE;
+  const previousAuthFile = process.env.METABASE_AUTH_FILE;
+  delete process.env.METABASE_SESSION;
+  delete process.env.METABASE_COOKIE;
+  delete process.env.METABASE_AUTH_FILE;
+
+  try {
+    const result = await checkPublicDashboards({
+      inventory: {
+        dashboardCount: 1,
+        dashboards: [
+          {
+            access: "internal",
+            sourcePanelTitle: "业务概览-OKR",
+            title: "OKR",
+            dashboardId: "642",
+            uuid: "internal-642",
+            url: "https://data.kuainiu.io/dashboard/642",
+            cards: [
+              { title: "中国OKR", cardId: 1, dashcardId: 2, parameterMappings: [] },
+              { title: "续贷交易来源", cardId: 3, dashcardId: 4, parameterMappings: [] },
+            ],
+          },
+        ],
+      },
+      ruleConfig: { builtInChecks: { queryError: true, noData: true }, rules: [] },
+    });
+
+    assert.equal(result.checkedCardCount, 1);
+    assert.equal(result.anomalyCount, 1);
+    assert.equal(result.anomalies[0].type, "metabaseConfigError");
+    assert.match(result.anomalies[0].message, /缺少 Metabase 登录态/);
+  } finally {
+    if (previousSession === undefined) {
+      delete process.env.METABASE_SESSION;
+    } else {
+      process.env.METABASE_SESSION = previousSession;
+    }
+    if (previousCookie === undefined) {
+      delete process.env.METABASE_COOKIE;
+    } else {
+      process.env.METABASE_COOKIE = previousCookie;
+    }
+    if (previousAuthFile === undefined) {
+      delete process.env.METABASE_AUTH_FILE;
+    } else {
+      process.env.METABASE_AUTH_FILE = previousAuthFile;
+    }
+  }
+});
+
+test("Metabase internal auth can be loaded from local auth file", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "metabase-auth-"));
+  const authFile = path.join(tempDir, "metabase.auth.json");
+  await writeFile(authFile, JSON.stringify({ sessionToken: "test-session" }));
+
+  const previousSession = process.env.METABASE_SESSION;
+  const previousCookie = process.env.METABASE_COOKIE;
+  const previousAuthFile = process.env.METABASE_AUTH_FILE;
+  delete process.env.METABASE_SESSION;
+  delete process.env.METABASE_COOKIE;
+  process.env.METABASE_AUTH_FILE = authFile;
+
+  try {
+    assert.equal(hasMetabaseInternalAuth(), true);
+    assert.equal(resolveMetabaseAuth().sessionToken, "test-session");
+  } finally {
+    if (previousSession === undefined) {
+      delete process.env.METABASE_SESSION;
+    } else {
+      process.env.METABASE_SESSION = previousSession;
+    }
+    if (previousCookie === undefined) {
+      delete process.env.METABASE_COOKIE;
+    } else {
+      process.env.METABASE_COOKIE = previousCookie;
+    }
+    if (previousAuthFile === undefined) {
+      delete process.env.METABASE_AUTH_FILE;
+    } else {
+      process.env.METABASE_AUTH_FILE = previousAuthFile;
+    }
+  }
+});
+
+test("checkPublicDashboards classifies public 404 as stale public link", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [
+        {
+          sourcePanelTitle: "放款统计",
+          title: "放款统计",
+          uuid: "stale-public-uuid",
+          url: "https://data.example/public/dashboard/stale-public-uuid",
+          cards: [{ title: "件均&费率", cardId: 1, dashcardId: 2, parameterMappings: [] }],
+        },
+      ],
+    },
+    ruleConfig: { builtInChecks: { queryError: true, noData: true }, rules: [] },
+    queryCardFn: async () => ({
+      ok: false,
+      rows: [],
+      error: 'Metabase public request failed (404 Not Found): "Not found."',
+    }),
+  });
+
+  assert.equal(result.anomalyCount, 1);
+  assert.equal(result.anomalies[0].type, "metabaseStalePublicLink");
 });
 
 test("checkPublicDashboards keeps OKR D0 freshness except PK D-1 exception", async () => {
