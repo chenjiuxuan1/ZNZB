@@ -32,6 +32,15 @@ test("createDefaultMetabaseClient uses internal public Metabase API base", () =>
   assert.equal(client.baseUrl, "http://172.16.0.212:80");
 });
 
+test("createDefaultMetabaseClient uses internal Metabase API base for private dashboards", () => {
+  const client = createDefaultMetabaseClient({
+    access: "internal",
+    url: "https://data.kuainiu.io/dashboard/642",
+  });
+
+  assert.equal(client.baseUrl, "http://172.16.0.212:80");
+});
+
 test("extractPublicDashboardRefs dedupes links", () => {
   const refs = extractPublicDashboardRefs({
     panels: [

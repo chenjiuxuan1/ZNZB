@@ -4,7 +4,7 @@ import { hasMetabaseInternalAuth, MetabaseInternalClient } from "./metabase-inte
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
 import { readJsonFile, writeJsonFile } from "./utils.mjs";
 
-const DEFAULT_PUBLIC_METABASE_API_BASE_URL = "http://172.16.0.212:80";
+const DEFAULT_METABASE_API_BASE_URL = "http://172.16.0.212:80";
 
 export async function checkPublicDashboards({
   dataQualityFn = collectDataQualityMetrics,
@@ -130,7 +130,7 @@ export function createDefaultMetabaseClient(dashboard) {
   const baseUrl = new URL(dashboard.url).origin;
   if (dashboard.access === "internal") {
     return new MetabaseInternalClient({
-      baseUrl,
+      baseUrl: resolveInternalMetabaseApiBaseUrl(baseUrl),
       requestTimeoutSeconds: 30,
     });
   }
@@ -140,11 +140,20 @@ export function createDefaultMetabaseClient(dashboard) {
   });
 }
 
+export function resolveInternalMetabaseApiBaseUrl(fallbackBaseUrl) {
+  return String(
+    process.env.METABASE_INTERNAL_API_BASE_URL
+      || process.env.METABASE_API_BASE_URL
+      || DEFAULT_METABASE_API_BASE_URL
+      || fallbackBaseUrl,
+  ).replace(/\/+$/, "");
+}
+
 export function resolvePublicMetabaseApiBaseUrl(fallbackBaseUrl) {
   return String(
     process.env.METABASE_PUBLIC_API_BASE_URL
       || process.env.METABASE_API_BASE_URL
-      || DEFAULT_PUBLIC_METABASE_API_BASE_URL
+      || DEFAULT_METABASE_API_BASE_URL
       || fallbackBaseUrl,
   ).replace(/\/+$/, "");
 }

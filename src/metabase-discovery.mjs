@@ -1,7 +1,7 @@
 import path from "node:path";
 import { MetabaseInternalClient, parseInternalMetabaseUrl } from "./metabase-internal-client.mjs";
 import { MetabasePublicClient, parsePublicDashboardUrl } from "./metabase-public-client.mjs";
-import { resolvePublicMetabaseApiBaseUrl } from "./metabase-public-monitor.mjs";
+import { resolveInternalMetabaseApiBaseUrl, resolvePublicMetabaseApiBaseUrl } from "./metabase-public-monitor.mjs";
 import { readJsonFile, uniqueStrings, writeJsonFile } from "./utils.mjs";
 
 export async function discoverPublicDashboards({
@@ -13,7 +13,7 @@ export async function discoverPublicDashboards({
     requestTimeoutSeconds: 30,
   }),
   internalClientFactory = (ref) => new MetabaseInternalClient({
-    baseUrl: ref.baseUrl,
+    baseUrl: resolveInternalMetabaseApiBaseUrl(ref.baseUrl),
     requestTimeoutSeconds: 30,
   }),
 }) {
