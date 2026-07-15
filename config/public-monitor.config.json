@@ -27,6 +27,18 @@
   },
   "rules": [
     {
+      "type": "notEmpty",
+      "cardTitlePattern": "^(还款7日复借率|结清7日复借率|dashboard-用户还款后7日复借率)$",
+      "columns": [
+        "还款数",
+        "还款~再进件",
+        "再进件~通过",
+        "通过~放款",
+        "还款~复借"
+      ],
+      "message": "复借率图表没有有效指标值"
+    },
+    {
       "type": "requiredDatePresent",
       "dashboardTitle": "OKR",
       "cardTitles": [

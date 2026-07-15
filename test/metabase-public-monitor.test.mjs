@@ -745,3 +745,30 @@ test("evaluateRowsAgainstRule checks explicit empty data rule", () => {
 
   assert.equal(result, "这张表没有值");
 });
+
+test("evaluateRowsAgainstRule detects rows with empty metric columns", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "统计日期": "2026-07-13", "还款数": null, "还款~复借": null },
+      { "统计日期": "2026-07-14", "还款数": "", "还款~复借": null },
+    ],
+    {
+      type: "notEmpty",
+      columns: ["还款数", "还款~复借"],
+    },
+  );
+
+  assert.equal(result, "指标列没有有效数值：还款数、还款~复借");
+});
+
+test("evaluateRowsAgainstRule treats zero metric value as non-empty", () => {
+  const result = evaluateRowsAgainstRule(
+    [{ "统计日期": "2026-07-14", "还款数": 0, "还款~复借": null }],
+    {
+      type: "notEmpty",
+      columns: ["还款数", "还款~复借"],
+    },
+  );
+
+  assert.equal(result, null);
+});

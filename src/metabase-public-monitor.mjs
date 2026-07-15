@@ -470,11 +470,30 @@ function checkRowCount(rows, rule) {
 }
 
 function checkNotEmpty(rows, rule) {
-  if (rows.length > 0) {
+  if (!rows.length) {
+    return rule.message || "没有值";
+  }
+
+  const explicitColumns = rule.columns || rule.metricColumns || (rule.column ? [rule.column] : null);
+  if (!explicitColumns?.length) {
     return null;
   }
 
-  return rule.message || "没有值";
+  const existingColumns = [...new Set(rows.flatMap((row) => Object.keys(row || {})))];
+  const missingColumns = explicitColumns.filter((column) => !existingColumns.includes(column));
+  if (missingColumns.length === explicitColumns.length) {
+    return rule.message || `没有找到指标列：${explicitColumns.join("、")}`;
+  }
+
+  const hasMetricValue = rows.some((row) =>
+    explicitColumns.some((column) => Number.isFinite(toNumber(row?.[column]))),
+  );
+
+  if (hasMetricValue) {
+    return null;
+  }
+
+  return rule.message || `指标列没有有效数值：${explicitColumns.join("、")}`;
 }
 
 function checkLatestValue(rows, rule) {
