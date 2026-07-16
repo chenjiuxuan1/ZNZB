@@ -597,6 +597,55 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(filteredHistory.runs.length, 1);
 });
 
+test("platform api saves schedule with internal source inventory without discovering during save", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({
+      countries: [
+        { code: "PH", name: "菲律宾", timezone: "Asia/Manila", status: "ready" },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({ dashboardCount: 0, dashboards: [] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾", timezone: "Asia/Manila" },
+      panels: [
+        {
+          title: "业务概览-OKR",
+          links: [{ url: "https://data.kuainiu.io/dashboard/501-dashboard" }],
+        },
+      ],
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => {
+      throw new Error("save should not discover dashboards");
+    },
+  });
+
+  const schedule = await api.saveBatchSchedule({
+    enabled: true,
+    countryConfigs: [
+      {
+        countryCode: "PH",
+        enabled: true,
+        notifyChannel: "knBot",
+        recipientEmails: "owner@kn.group",
+      },
+    ],
+  });
+
+  assert.equal(schedule.enabled, true);
+  assert.equal(schedule.countryConfigs[0].countryCode, "PH");
+});
+
 test("platform api aggregates scheduled countries by same notification target", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

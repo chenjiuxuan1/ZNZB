@@ -320,16 +320,10 @@ export function createPlatformApi({
           countryCode: countryConfig.countryCode,
           dashboardUuids: countryConfig.dashboardUuids || [],
         });
-        const discoveredInventory = countryInventory.dashboardCount === 0
-          ? filterBatchInventory(
-              await discoverCountryInventoryFromPanelSources(rootDir, countryConfig.countryCode, discoverDashboardsFn),
-              {
-                countryCode: countryConfig.countryCode,
-                dashboardUuids: countryConfig.dashboardUuids || [],
-              },
-            )
-          : countryInventory;
-        if (discoveredInventory.dashboardCount === 0) {
+        const hasPanelSources = countryInventory.dashboardCount === 0
+          ? await hasCountryPanelSources(rootDir, countryConfig.countryCode)
+          : false;
+        if (countryInventory.dashboardCount === 0 && !hasPanelSources) {
           throw badRequest("No public dashboard for country", [
             await explainUnavailableCountryInventory(rootDir, countryConfig.countryCode, countries.countries || []),
           ]);
@@ -2102,6 +2096,14 @@ async function discoverCountryInventoryFromPanelSources(rootDir, countryCode, di
       dashboards: [],
     };
   }
+}
+
+async function hasCountryPanelSources(rootDir, countryCode) {
+  if (!countryCode) {
+    return false;
+  }
+  const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
+  return Array.isArray(source.panels) && source.panels.length > 0;
 }
 
 function getInventoryCountryCodes(inventories) {
