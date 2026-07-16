@@ -164,7 +164,7 @@ test("platform api lets country inventory override stale ready inventory", async
     }),
   );
 
-  const api = createPlatformApi({ rootDir });
+  const api = createPlatformApi({ rootDir, discoverDashboardsFn: null });
   const inventory = await api.getInventory();
 
   assert.deepEqual(
@@ -381,6 +381,93 @@ test("platform api explains countries that only have internal source dashboards"
       return true;
     },
   );
+});
+
+test("platform api discovers internal dashboards from source list when country inventory is stale", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({
+      countries: [
+        { code: "PH", name: "菲律宾", timezone: "Asia/Manila", status: "ready" },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({ dashboardCount: 0, dashboards: [] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾" },
+      dashboards: [
+        {
+          countryCode: "PH",
+          countryName: "菲律宾",
+          access: "public",
+          title: "旧 OKR",
+          uuid: "stale-public-ph",
+          url: "https://data.kuainiu.io/public/dashboard/stale-public-ph",
+          cards: [{ title: "旧卡片", cardId: 1, dashcardId: 2 }],
+        },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾", timezone: "Asia/Manila" },
+      panels: [
+        {
+          title: "业务概览-OKR",
+          links: [{ url: "https://data.kuainiu.io/dashboard/501-dashboard" }],
+        },
+      ],
+    }),
+  );
+
+  const discoveredInputs = [];
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async (options) => {
+      discoveredInputs.push(options.inputFile);
+      return {
+        country: { code: "PH", name: "菲律宾", timezone: "Asia/Manila" },
+        dashboardCount: 1,
+        dashboards: [
+          {
+            countryCode: "PH",
+            countryName: "菲律宾",
+            timezone: "Asia/Manila",
+            access: "internal",
+            title: "业务概览-OKR",
+            dashboardId: "501",
+            uuid: "internal-501",
+            url: "https://data.kuainiu.io/dashboard/501-dashboard",
+            sourceUrl: "https://data.kuainiu.io/dashboard/501-dashboard",
+            cards: [{ title: "规模", cardId: 10, dashcardId: 20 }],
+          },
+        ],
+      };
+    },
+    metabaseClientFactory: (dashboard) => ({
+      async queryDashcardJson(request) {
+        assert.equal(dashboard.access, "internal");
+        assert.equal(request.dashboardId, "501");
+        assert.equal(request.dashboardUuid, undefined);
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+
+  const result = await api.runBatchCheck({ countryCode: "PH" });
+
+  assert.equal(result.dashboardCount, 1);
+  assert.equal(result.checkedCardCount, 1);
+  assert.equal(result.checkedCards[0].dashboardUuid, "internal-501");
+  assert.equal(discoveredInputs.length, 1);
+  assert.match(discoveredInputs[0], /discovered-panels\.ph\.json$/);
 });
 
 test("platform api runs scoped batch check and sends TV notification", async () => {

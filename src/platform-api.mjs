@@ -8,6 +8,7 @@ import {
   evaluateRowsAgainstRule,
   mergeParameters,
 } from "./metabase-public-monitor.mjs";
+import { discoverPublicDashboards } from "./metabase-discovery.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import {
@@ -71,6 +72,7 @@ const MAX_BATCH_HISTORY_RUNS = 200;
 export function createPlatformApi({
   rootDir = process.cwd(),
   metabaseClientFactory = createDefaultMetabaseClient,
+  discoverDashboardsFn = discoverPublicDashboards,
   notifyTextFn = notifyText,
   wattrelQueryFn = null,
   qualityRuleGenerationSubmitFn = null,
@@ -318,7 +320,16 @@ export function createPlatformApi({
           countryCode: countryConfig.countryCode,
           dashboardUuids: countryConfig.dashboardUuids || [],
         });
-        if (countryInventory.dashboardCount === 0) {
+        const discoveredInventory = countryInventory.dashboardCount === 0
+          ? filterBatchInventory(
+              await discoverCountryInventoryFromPanelSources(rootDir, countryConfig.countryCode, discoverDashboardsFn),
+              {
+                countryCode: countryConfig.countryCode,
+                dashboardUuids: countryConfig.dashboardUuids || [],
+              },
+            )
+          : countryInventory;
+        if (discoveredInventory.dashboardCount === 0) {
           throw badRequest("No public dashboard for country", [
             await explainUnavailableCountryInventory(rootDir, countryConfig.countryCode, countries.countries || []),
           ]);
@@ -552,7 +563,11 @@ export function createPlatformApi({
       const countryCode = String(body.countryCode || "").trim();
       const dashboardUuid = String(body.dashboardUuid || "").trim();
       const dashboardUuids = normalizeDashboardUuids(body.dashboardUuids);
-      const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
+      let filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
+      if (countryCode && filteredInventory.dashboardCount === 0) {
+        const discoveredInventory = await discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn);
+        filteredInventory = filterBatchInventory(discoveredInventory, { countryCode, dashboardUuid, dashboardUuids });
+      }
       if (countryCode && filteredInventory.dashboardCount === 0) {
         const countries = await readJsonFile(resolve("countries"), { countries: [] });
         throw badRequest("No public dashboard for country", [
@@ -2059,6 +2074,34 @@ async function readCurrentPanelSourceLinks(configDir, inventoryFilePath) {
       .map((link) => link.url)
       .filter(Boolean),
   );
+}
+
+async function discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn) {
+  if (!countryCode || typeof discoverDashboardsFn !== "function") {
+    return { dashboards: [] };
+  }
+
+  const inputFile = panelSourceFilePath(rootDir, countryCode);
+  try {
+    return await discoverDashboardsFn({
+      inputFile,
+      outputFile: null,
+      sampleRows: 0,
+    });
+  } catch (error) {
+    return {
+      dashboardCount: 0,
+      totalCardCount: 0,
+      sourceErrorCount: 1,
+      sourceErrors: [
+        {
+          countryCode,
+          error: error.message,
+        },
+      ],
+      dashboards: [],
+    };
+  }
 }
 
 function getInventoryCountryCodes(inventories) {
