@@ -179,6 +179,52 @@ test("platform api lets country inventory override stale ready inventory", async
   );
 });
 
+test("platform api keeps country inventory dashboards matched by source panel id", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({ dashboardCount: 0, dashboards: [] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.mx.json"),
+    JSON.stringify({
+      country: { code: "MX", name: "墨西哥" },
+      dashboards: [
+        {
+          countryCode: "MX",
+          countryName: "墨西哥",
+          access: "public",
+          sourcePanelId: 2,
+          sourcePanelTitle: "核心链路准实时监控",
+          title: "核心链路准实时监控",
+          uuid: "mx-core",
+          url: "https://data.kuainiu.io/public/dashboard/mx-core",
+          cards: [{ title: "新客-启动次数", cardId: 1, dashcardId: 2 }],
+        },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.mx.json"),
+    JSON.stringify({
+      country: { code: "MX", name: "墨西哥" },
+      panels: [
+        {
+          id: 2,
+          title: "业务概览-核心链路准实时监控",
+          links: [{ url: "https://data.kuainiu.io/dashboard/464" }],
+        },
+      ],
+    }),
+  );
+
+  const api = createPlatformApi({ rootDir });
+  const inventory = await api.getInventory({ countryCode: "MX" });
+
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["mx-core"]);
+  assert.equal(inventory.totalCardCount, 1);
+});
+
 test("platform api evaluates sandbox rules", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

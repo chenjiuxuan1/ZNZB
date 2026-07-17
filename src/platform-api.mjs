@@ -2041,33 +2041,45 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
 }
 
 async function filterInventoryByCurrentPanelSources(configDir, inventoryFilePath, inventory) {
-  const sourceLinks = await readCurrentPanelSourceLinks(configDir, inventoryFilePath);
-  if (sourceLinks.size === 0) {
+  const sourceRefs = await readCurrentPanelSourceRefs(configDir, inventoryFilePath);
+  if (sourceRefs.urls.size === 0 && sourceRefs.panelIds.size === 0) {
     return inventory;
   }
 
   return {
     ...inventory,
-    dashboards: (inventory.dashboards || []).filter((dashboard) =>
-      sourceLinks.has(dashboard.sourceUrl || "") || sourceLinks.has(dashboard.url || ""),
-    ),
+    dashboards: (inventory.dashboards || []).filter((dashboard) => {
+      const sourcePanelId = dashboard.sourcePanelId == null ? "" : String(dashboard.sourcePanelId);
+      return sourceRefs.urls.has(dashboard.sourceUrl || "")
+        || sourceRefs.urls.has(dashboard.url || "")
+        || (sourcePanelId && sourceRefs.panelIds.has(sourcePanelId));
+    }),
   };
 }
 
-async function readCurrentPanelSourceLinks(configDir, inventoryFilePath) {
+async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
   const match = path.basename(inventoryFilePath).match(/^discovered-public-dashboards\.([a-z]+)\.json$/i);
   if (!match) {
-    return new Set();
+    return { urls: new Set(), panelIds: new Set() };
   }
 
   const panelsFile = path.join(configDir, `discovered-panels.${match[1].toLowerCase()}.json`);
   const panels = await readJsonFile(panelsFile, { panels: [] });
-  return new Set(
-    (panels?.panels || [])
+  const panelItems = panels?.panels || [];
+  return {
+    urls: new Set(
+      panelItems
       .flatMap((panel) => panel.links || [])
       .map((link) => link.url)
       .filter(Boolean),
-  );
+    ),
+    panelIds: new Set(
+      panelItems
+        .map((panel) => panel.id)
+        .filter((id) => id != null)
+        .map(String),
+    ),
+  };
 }
 
 async function discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn) {
