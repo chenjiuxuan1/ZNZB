@@ -1011,6 +1011,7 @@ function checkIntradayTimePointChange(rows, rule) {
   const baselineLookbackDays = rule.baselineLookbackDays ?? 30;
   const baselineMinSamples = rule.baselineMinSamples ?? 7;
   const minPrevious = rule.minPrevious ?? 1;
+  const scanPreviousDateAgainstBaseline = rule.scanPreviousDateAgainstBaseline === true;
   const series = buildIntradaySeries(
     rows,
     dateColumn,
@@ -1080,6 +1081,58 @@ function checkIntradayTimePointChange(rows, rule) {
               )}）`,
           });
         }
+      }
+    }
+
+    if (!scanPreviousDateAgainstBaseline) {
+      continue;
+    }
+
+    for (const time of expectedTimes) {
+      const previousValues = sumRowsAtTime(previousRows, timeColumn, numericColumns, time);
+      if (!previousValues) {
+        continue;
+      }
+
+      for (const column of numericColumns) {
+        const previous = previousValues[column];
+        if (!Number.isFinite(previous)) {
+          continue;
+        }
+
+        const baseline = resolveTimePointBaseline({
+          item,
+          column,
+          time,
+          timeColumn,
+          currentDate: previousDate,
+          previousDate: addDays(previousDate, -1),
+          lookbackDays: baselineLookbackDays,
+          minSamples: baselineMinSamples,
+          rule,
+        });
+        const hasBaseline = baseline && Number.isFinite(baseline.median) && baseline.sampleCount >= baselineMinSamples;
+        if (!hasBaseline || Math.abs(baseline.median) < minPrevious) {
+          continue;
+        }
+
+        const baselineChangeRate = (previous - baseline.median) / Math.abs(baseline.median);
+        if (Math.abs(baselineChangeRate) <= baselineMaxAbsChangeRate) {
+          continue;
+        }
+
+        messages.push({
+          absChangeRate: Math.abs(baselineChangeRate),
+          message:
+            `上一日同时间点指标「${column}」为 ${formatNumber(previous)}，近${baseline.lookbackDays}天同点中位数 ${formatNumber(
+              baseline.median,
+            )}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(
+              baselineChangeRate,
+            )}；判定：上一日同点相对近${baselineLookbackDays}天基线波动超过${formatSignedThreshold(
+              baselineMaxAbsChangeRate,
+            )}` +
+            `（${timezone} ${formatHourLabel(time / 60)}，${dateColumn} ${previousDate}${formatDimensionText(item)}）`,
+        });
       }
     }
   }

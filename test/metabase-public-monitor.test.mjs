@@ -959,6 +959,43 @@ test("evaluateRowsAgainstRule adds monthly time point baseline details", () => {
   ]);
 });
 
+test("evaluateRowsAgainstRule detects previous day time point drop against baseline after current day recovers", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "日期": "2026-06-01", "开始时间": "00:30", "launch_num": 100 },
+      { "日期": "2026-06-02", "开始时间": "00:30", "launch_num": 100 },
+      { "日期": "2026-06-03", "开始时间": "00:30", "launch_num": 100 },
+      { "日期": "2026-06-04", "开始时间": "00:30", "launch_num": 100 },
+      { "日期": "2026-06-05", "开始时间": "00:30", "launch_num": 100 },
+      { "日期": "2026-06-06", "开始时间": "00:30", "launch_num": 100 },
+      { "日期": "2026-06-07", "开始时间": "00:30", "launch_num": 100 },
+      { "日期": "2026-06-08", "开始时间": "00:30", "launch_num": 20 },
+      { "日期": "2026-06-09", "开始时间": "00:30", "launch_num": 100 },
+    ],
+    {
+      type: "intradayTimePointChange",
+      dateColumn: "日期",
+      timeColumn: "开始时间",
+      column: "launch_num",
+      timezone: "Asia/Jakarta",
+      now: "2026-06-08T17:30:00Z",
+      startTime: "00:30",
+      intervalMinutes: 30,
+      maxAbsChangeRate: 0.5,
+      baselineLookbackDays: 30,
+      baselineMinSamples: 7,
+      baselineMaxAbsChangeRate: 0.5,
+      scanPreviousDateAgainstBaseline: true,
+      minPrevious: 10,
+      ignoreDimensionColumns: ["开始时间"],
+    },
+  );
+
+  assert.deepEqual(result, [
+    "上一日同时间点指标「launch_num」为 20，近30天同点中位数 100（样本7天），较基线 -80.0%；判定：上一日同点相对近30天基线波动超过±50.0%（Asia/Jakarta 00:30，日期 2026-06-08）",
+  ]);
+});
+
 test("evaluateRowsAgainstRule checks explicit empty data rule", () => {
   const result = evaluateRowsAgainstRule([], {
     type: "notEmpty",

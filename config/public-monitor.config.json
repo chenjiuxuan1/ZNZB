@@ -526,6 +526,7 @@
       "baselineLookbackDays": 30,
       "baselineMinSamples": 7,
       "baselineMaxAbsChangeRate": 0.5,
+      "scanPreviousDateAgainstBaseline": true,
       "minPrevious": 100,
       "ignoreDimensionColumns": [
         "开始时间"
@@ -577,6 +578,7 @@
       "baselineLookbackDays": 30,
       "baselineMinSamples": 7,
       "baselineMaxAbsChangeRate": 0.5,
+      "scanPreviousDateAgainstBaseline": true,
       "minPrevious": 100,
       "ignoreDimensionColumns": [
         "开始时间"
