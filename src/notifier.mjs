@@ -702,7 +702,9 @@ function filterDutyMetabaseAnomalies(anomalies = []) {
   const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(anomalies);
   return [
     ...missingAnomalies.filter((anomaly) => !isMetabaseQueryFailureAnomaly(anomaly)),
-    ...fluctuationAnomalies.filter((anomaly) => extractAnomalySeverity(anomaly.message || "") > 100),
+    ...fluctuationAnomalies.filter((anomaly) =>
+      extractAnomalySeverity(anomaly.message || "") > 100 || isPreviousTimePointBaselineAnomaly(anomaly),
+    ),
   ];
 }
 
@@ -747,7 +749,7 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
         issueParts.push(`数据缺失${group.missingCount}条`);
       }
       if (group.highFluctuationCount > 0) {
-        issueParts.push(`波动>100% ${group.highFluctuationCount}条`);
+        issueParts.push(`波动异常${group.highFluctuationCount}条`);
       }
       lines.push(`- ${group.dashboardTitle || "未知看板"}：${issueParts.join("、")}`);
       if (group.dashboardUrl) {
@@ -767,6 +769,14 @@ function isMetabaseQueryFailureAnomaly(anomaly = {}) {
   }
   const text = String(anomaly.message || "");
   return /Metabase .*request failed|403 Forbidden|Forbidden|DOCTYPE|nginx|company network|查询失败/i.test(text);
+}
+
+function isPreviousTimePointBaselineAnomaly(anomaly = {}) {
+  if (anomaly.type !== "intradayTimePointChange") {
+    return false;
+  }
+  const text = String(anomaly.message || "");
+  return /上一日同时间点指标|上一日同点相对近\d+天基线波动超过/.test(text);
 }
 
 function findDataQualityMetric(dataQuality, group) {
@@ -1156,6 +1166,22 @@ function summarizeFluctuationMessage(message = "") {
       to: formatMetricValue(fromToMatch[2]),
       detail: "",
       numericChange,
+      context,
+      baseline,
+      trigger,
+    };
+  }
+
+  const previousBaselineMatch = text.match(
+    /上一日同时间点指标「([^」]+)」为\s*([0-9,.]+%?)，近\d+天同点中位数\s*([0-9,.]+%?)（样本\d+天），较基线\s*([+-]?\d+(?:\.\d+)?%)/,
+  );
+  if (previousBaselineMatch) {
+    return {
+      change: `较基线 ${previousBaselineMatch[4]}`,
+      from: formatMetricValue(previousBaselineMatch[3]),
+      to: formatMetricValue(previousBaselineMatch[2]),
+      detail: "",
+      numericChange: Number(String(previousBaselineMatch[4]).replace("%", "")),
       context,
       baseline,
       trigger,

@@ -263,10 +263,43 @@ test("duty summary excludes Metabase 403 query failures from BI report", () => {
   assert.match(messages[0].body, /中国：0/);
   assert.match(messages[0].body, /墨西哥：2/);
   assert.match(messages[0].body, /4\. BI报表\(Metabase\):/);
-  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 业务概览-核心链路准实时监控：波动>100% 1条\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
+  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 业务概览-核心链路准实时监控：波动异常1条\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.match(messages[0].body, /业务概览-核心链路准实时监控/);
   assert.doesNotMatch(messages[0].body, /403 Forbidden/);
   assert.doesNotMatch(messages[0].body, /转化漏斗/);
+});
+
+test("duty summary includes previous-day baseline intraday anomalies below 100 percent", () => {
+  const messages = buildPublicCheckMessages(
+    {
+      checkedAt: "2026-07-16T10:42:00.000Z",
+      checkedCardCount: 12,
+      anomalyCount: 1,
+      anomalies: [
+        {
+          type: "intradayTimePointChange",
+          countryCode: "MX",
+          countryName: "墨西哥",
+          dashboardTitle: "核心链路准实时监控",
+          cardTitle: "新客-启动次数",
+          message: "上一日同时间点指标「launch_num」为 300，近30天同点中位数 2500（样本26天），较基线 -88.0%；判定：上一日同点相对近30天基线波动超过±50.0%（America/Mexico_City 19:00，日期 2026-07-15）",
+          dashboardUrl: "https://data.kuainiu.io/public/dashboard/mx-core",
+        },
+      ],
+    },
+    {
+      messageStyle: "dutySummary",
+      wattrelSummary: {
+        countries: [
+          { countryCode: "MX", countryName: "墨西哥", status: "success", count: 0 },
+        ],
+      },
+    },
+  );
+
+  assert.match(messages[0].body, /4\. BI报表\(Metabase\):/);
+  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 核心链路准实时监控：波动异常1条\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
+  assert.doesNotMatch(messages[0].body, /4\. BI报表\(Metabase\):\n正常/);
 });
 
 test("buildPublicCheckMessage shows zero missing data explicitly", () => {
