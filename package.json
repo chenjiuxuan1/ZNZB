@@ -31,6 +31,7 @@
     "check-public-notify": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.json --notify --exit-zero",
     "check-public-notify:ready": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.ready.json --notify --exit-zero",
     "check-public-gateway-notify:ready": "node ./src/cli.mjs check-public --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/public-check-result.ready.json --query-mode gateway --notify --exit-zero",
+    "validate-cadence": "node ./src/cli.mjs validate-cadence --inventory ./config/discovered-public-dashboards.ready.json --rules ./config/public-monitor.config.json --out ./config/cadence-validation-report.json",
     "notify-test": "node ./src/cli.mjs notify-test --config ./config/public-monitor.config.json",
     "check": "node ./src/cli.mjs check --config ./config/monitor.config.json",
     "watch": "node ./src/cli.mjs watch --config ./config/monitor.config.json",

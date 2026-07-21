@@ -33,6 +33,7 @@ const FILES = {
   inventory: "config/discovered-public-dashboards.ready.json",
   result: "config/public-check-result.ready.json",
   baselineCache: "config/public-check-baseline-cache.json",
+  observationCache: "config/public-check-cadence-observations.json",
   batchSchedule: "config/batch-check-schedule.json",
   batchHistory: "config/batch-check-run-history.json",
   wattrel: "config/wattrel.config.json",
@@ -622,6 +623,7 @@ export function createPlatformApi({
           dataQuality: { ...(ruleConfig.dataQuality || {}), enabled: false },
         },
         baselineCacheFile: resolve("baselineCache"),
+        observationCacheFile: resolve("observationCache"),
         queryCardFn,
       });
     },

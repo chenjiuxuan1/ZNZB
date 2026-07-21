@@ -11,8 +11,14 @@
       "cadenceMinIntervals": 3,
       "cadenceMinConfidence": 0.75,
       "cadenceMaxIntervalDays": 31,
-      "cadenceMaxIntervalMonths": 1
+      "cadenceMaxIntervalMonths": 3
     }
+  },
+  "cadenceObservation": {
+    "retentionDays": 400,
+    "maxEventsPerCard": 500,
+    "graceMinutes": 120,
+    "holidayDates": {}
   },
   "alerts": {
     "channel": "tv",

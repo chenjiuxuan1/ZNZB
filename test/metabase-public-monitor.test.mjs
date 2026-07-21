@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -104,8 +104,24 @@ test("buildUpdateFrequencyHistoryParameters expands freshness queries for cadenc
 });
 
 test("checkPublicDashboards applies frequency defaults and the history window end to end", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "cadence-cache-"));
+  const observationCacheFile = path.join(tempDir, "observations.json");
+  await writeFile(observationCacheFile, JSON.stringify({ version: 1, entries: {
+    "CN::weekly-dashboard::2::1::": {
+      key: "CN::weekly-dashboard::2::1::", timezone: "Asia/Shanghai",
+      latestBusinessDate: "2026-07-18", firstObservedAt: "2026-06-20T02:00:00Z",
+      lastObservedAt: "2026-07-18T02:00:00Z", events: [
+        { observedAt: "2026-06-20T02:00:00Z", latestBusinessDate: "2026-06-20" },
+        { observedAt: "2026-06-27T02:00:00Z", latestBusinessDate: "2026-06-27" },
+        { observedAt: "2026-07-04T02:00:00Z", latestBusinessDate: "2026-07-04" },
+        { observedAt: "2026-07-11T02:00:00Z", latestBusinessDate: "2026-07-11" },
+        { observedAt: "2026-07-18T02:00:00Z", latestBusinessDate: "2026-07-18" },
+      ],
+    },
+  }}));
   const queriedParameters = [];
   const result = await checkPublicDashboards({
+    observationCacheFile,
     inventory: {
       dashboardCount: 1,
       dashboards: [{
@@ -161,19 +177,10 @@ test("checkPublicDashboards applies frequency defaults and the history window en
 
   assert.equal(result.anomalyCount, 0);
   assert.equal(queriedParameters[0][0].value, "past130days~");
-  assert.deepEqual(result.checkedCards[0].updateCadences, [{
-    dateColumn: "统计日期",
-    requiredLagDays: 1,
-    context: null,
-    unit: "week",
-    interval: 1,
-    label: "每周",
-    confidence: 1,
-    sampleCount: 5,
-    firstDate: "2026-06-20",
-    latestDate: "2026-07-18",
-    nextExpectedDate: "2026-07-25",
-  }]);
+  assert.equal(result.checkedCards[0].freshness.dataCadence.label, "每周");
+  assert.equal(result.checkedCards[0].freshness.refreshCadence.label, "每周");
+  assert.equal(result.checkedCards[0].updateCadences[0].label, "每周");
+  assert.equal(result.checkedCards[0].updateCadences[0].evidenceCount, 5);
 });
 
 test("checkPublicDashboards queries internal dashboards by dashboardId", async () => {
@@ -283,6 +290,54 @@ test("checkPublicDashboards treats zero metric chart value as present", async ()
 
   assert.equal(result.checkedCardCount, 1);
   assert.equal(result.anomalyCount, 0);
+});
+
+test("checkPublicDashboards resolves TH card 376 English schema instead of reporting empty Chinese metrics", async () => {
+  const result = await checkPublicDashboards({
+    inventory: { dashboardCount: 1, dashboards: [{
+      countryCode: "TH", timezone: "Asia/Bangkok", sourcePanelTitle: "复借率",
+      uuid: "2a587423-5279-49b7-824f-7b62a8c884a3", url: "https://data.example/public/dashboard/th",
+      cards: [{
+        title: "dashboard-用户还款后7日复借率", cardId: 376, dashcardId: 387,
+        dimensions: ["finish_date"], metrics: ["repay_cnt", "freeze_rate_7"], parameterMappings: [],
+      }],
+    }] },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: true },
+      rules: [{
+        type: "notEmpty", cardId: 376,
+        columns: ["还款数", "还款~再进件", "再进件~通过", "通过~放款", "还款~复借"],
+      }],
+    },
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [{ finish_date: "2026-07-21", repay_cnt: 1321, freeze_rate_7: 0.42 }],
+      error: null,
+    }),
+  });
+  assert.equal(result.anomalyCount, 0);
+  assert.equal(result.checkedCards[0].freshness.dateColumn, "finish_date");
+  assert.deepEqual(result.checkedCards[0].freshness.metricColumns, ["repay_cnt", "freeze_rate_7"]);
+  assert.equal(result.checkedCards[0].freshness.schemaMismatch, true);
+});
+
+test("checkPublicDashboards recovers a corrupted observation cache with an atomic rewrite", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "corrupt-cadence-cache-"));
+  const observationCacheFile = path.join(tempDir, "observations.json");
+  await writeFile(observationCacheFile, "{broken json");
+  const result = await checkPublicDashboards({
+    inventory: { dashboardCount: 1, dashboards: [{
+      countryCode: "MX", timezone: "America/Mexico_City", sourcePanelTitle: "日报",
+      uuid: "daily", url: "https://data.example/public/dashboard/daily",
+      cards: [{ title: "数量", cardId: 1, dashcardId: 2, dimensions: ["date"], metrics: ["count"], parameterMappings: [] }],
+    }] },
+    ruleConfig: { builtInChecks: { queryError: true, noData: false, emptyMetrics: false }, rules: [] },
+    observationCacheFile,
+    queryCardFn: async () => ({ ok: true, rows: [{ date: "2026-07-21", count: 0 }], error: null }),
+  });
+  const rewritten = JSON.parse(await readFile(observationCacheFile, "utf8"));
+  assert.equal(result.checkedCards[0].freshness.status, "learning");
+  assert.equal(Object.keys(rewritten.entries).length, 1);
 });
 
 test("checkPublicDashboards collapses missing internal Metabase auth to dashboard config error", async () => {
@@ -766,7 +821,7 @@ test("evaluateRowsAgainstRule accepts required D-1 data", () => {
   assert.equal(result, null);
 });
 
-test("evaluateRowsAgainstRule accepts a stable weekly series before its next update is due", () => {
+test("evaluateRowsAgainstRule does not treat a weekly-looking API result as refresh evidence", () => {
   const result = evaluateRowsAgainstRule(
     ["2026-06-20", "2026-06-27", "2026-07-04", "2026-07-11", "2026-07-18"]
       .map((date) => ({ "统计日期": date, "周指标": 100 })),
@@ -785,10 +840,10 @@ test("evaluateRowsAgainstRule accepts a stable weekly series before its next upd
     },
   );
 
-  assert.equal(result, null);
+  assert.match(result, /缺少 D-1/);
 });
 
-test("evaluateRowsAgainstRule accepts monthly data before the next calendar update", () => {
+test("evaluateRowsAgainstRule keeps explicit freshness strict while cross-run cadence is learning", () => {
   const result = evaluateRowsAgainstRule(
     ["2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30"]
       .map((date) => ({ "统计日期": date, "月指标": 100 })),
@@ -807,10 +862,10 @@ test("evaluateRowsAgainstRule accepts monthly data before the next calendar upda
     },
   );
 
-  assert.equal(result, null);
+  assert.match(result, /缺少 D-1/);
 });
 
-test("evaluateRowsAgainstRule alerts monthly data after the calendar update is due", () => {
+test("evaluateRowsAgainstRule never claims a monthly refresh from one API response", () => {
   const result = evaluateRowsAgainstRule(
     ["2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30"]
       .map((date) => ({ "统计日期": date, "月指标": 100 })),
@@ -829,11 +884,10 @@ test("evaluateRowsAgainstRule alerts monthly data after the calendar update is d
     },
   );
 
-  assert.match(result, /自动识别为每月更新/);
-  assert.match(result, /应于 2026-07-31 更新/);
+  assert.doesNotMatch(result, /自动识别/);
 });
 
-test("evaluateRowsAgainstRule alerts when a weekly series exceeds its inferred interval", () => {
+test("evaluateRowsAgainstRule never claims weekly refresh from business-date spacing", () => {
   const result = evaluateRowsAgainstRule(
     ["2026-06-20", "2026-06-27", "2026-07-04", "2026-07-11"]
       .map((date) => ({ "统计日期": date, "周指标": 100 })),
@@ -852,11 +906,10 @@ test("evaluateRowsAgainstRule alerts when a weekly series exceeds its inferred i
     },
   );
 
-  assert.match(result, /自动识别为每周更新/);
-  assert.match(result, /应于 2026-07-18 更新/);
+  assert.doesNotMatch(result, /自动识别/);
 });
 
-test("evaluateRowsAgainstRule keeps daily series on strict D-1 freshness", () => {
+test("evaluateRowsAgainstRule keeps daily-looking series on strict D-1 freshness while learning", () => {
   const result = evaluateRowsAgainstRule(
     ["2026-07-15", "2026-07-16", "2026-07-17", "2026-07-18"]
       .map((date) => ({ "统计日期": date, "日指标": 100 })),
@@ -876,8 +929,7 @@ test("evaluateRowsAgainstRule keeps daily series on strict D-1 freshness", () =>
   );
 
   assert.match(result, /缺少 D-1 2026-07-19/);
-  assert.match(result, /自动识别为每天更新/);
-  assert.match(result, /应于 2026-07-19 更新/);
+  assert.doesNotMatch(result, /自动识别/);
 });
 
 test("evaluateRowsAgainstRule does not infer a cadence from irregular sparse dates", () => {

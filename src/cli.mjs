@@ -44,6 +44,7 @@ async function main() {
         outputFile: options.out,
         rulesFile,
         baselineCacheFile: options["baseline-cache"] || "./config/public-check-baseline-cache.json",
+        observationCacheFile: options["observation-cache"] || "./config/public-check-cadence-observations.json",
         queryCardFn: buildPublicQueryCardFn(options, ruleConfig),
       });
       if (options.notify) {
@@ -51,6 +52,22 @@ async function main() {
       }
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = options["exit-zero"] ? 0 : hasPublicAlert(result) ? 2 : 0;
+      return;
+    }
+    case "validate-cadence": {
+      const rulesFile = options.rules || "./config/public-monitor.config.json";
+      const ruleConfig = await readJsonFile(path.resolve(rulesFile), {});
+      const result = await checkPublicDashboards({
+        inventoryFile: options.inventory || "./config/discovered-public-dashboards.ready.json",
+        outputFile: options.out || "./config/cadence-validation-report.json",
+        rulesFile,
+        baselineCacheFile: options["baseline-cache"] || "./config/public-check-baseline-cache.json",
+        observationCacheFile: options["observation-cache"] || "./config/public-check-cadence-observations.json",
+        queryCardFn: buildPublicQueryCardFn(options, ruleConfig),
+        validationMode: true,
+      });
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = 0;
       return;
     }
     case "notify-test": {

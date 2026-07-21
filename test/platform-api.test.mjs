@@ -270,7 +270,7 @@ test("platform api evaluates live sandbox through readonly Metabase client", asy
   assert.equal(result.request.parameterCount, 0);
 });
 
-test("platform live sandbox applies global cadence defaults and history parameters", async () => {
+test("platform live sandbox expands history but does not infer refresh from one response", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
     path.join(rootDir, "config/public-monitor.config.json"),
@@ -321,7 +321,7 @@ test("platform live sandbox applies global cadence defaults and history paramete
     },
   });
 
-  assert.equal(result.matched, false);
+  assert.equal(result.matched, true);
   assert.equal(result.rule.autoDetectCadence, true);
   assert.equal(result.request.parameterCount, 1);
 });

@@ -2,8 +2,11 @@ import path from "node:path";
 import { collectDataQualityMetrics } from "./grafana-quality-monitor.mjs";
 import { hasMetabaseInternalAuth, MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
-import { formatUpdateCadence, inferUpdateCadence, isCadenceUpdateDue } from "./update-cadence.mjs";
-import { readJsonFile, writeJsonFile } from "./utils.mjs";
+import {
+  observeCardResult,
+  pruneObservationCache,
+} from "./cadence-observation.mjs";
+import { readJsonFile, writeJsonFile, writeJsonFileAtomic } from "./utils.mjs";
 
 const DEFAULT_METABASE_API_BASE_URL = "http://172.16.0.212:80";
 
@@ -15,6 +18,8 @@ export async function checkPublicDashboards({
   outputFile,
   rulesFile,
   baselineCacheFile,
+  observationCacheFile,
+  validationMode = false,
   queryCardFn = queryCard,
   metabaseClientFactory = createDefaultMetabaseClient,
 }) {
@@ -28,8 +33,13 @@ export async function checkPublicDashboards({
     : { entries: [] };
   const baselineCacheEntries = new Map((baselineCache.entries || []).map((entry) => [entry.key, entry]));
   const baselineCacheUpdates = new Map();
+  const observationCache = observationCacheFile
+    ? await readObservationCache(path.resolve(observationCacheFile))
+    : { version: 1, entries: {} };
+  const checkedAt = new Date().toISOString();
   const anomalies = [];
   const checkedCards = [];
+  const validationEntries = [];
   const rules = ruleConfigData.rules || [];
   const shouldRunBuiltIns =
     ruleConfigData.builtInChecks?.queryError !== false ||
@@ -81,6 +91,18 @@ export async function checkPublicDashboards({
           queryGroup.parameters,
         );
         const cardResult = await queryCardFn(client, dashboard, card, parameters);
+        const observation = cardResult.ok
+          ? observeCardResult({
+              cache: observationCache,
+              dashboard,
+              card,
+              context: queryGroup.context,
+              rows: cardResult.rows,
+              rules: queryGroup.rules,
+              checkedAt,
+              options: resolveCadenceOptions(ruleConfigData, dashboard),
+            })
+          : null;
         checkedCards.push(summarizeCardResult(
           dashboard,
           card,
@@ -88,7 +110,11 @@ export async function checkPublicDashboards({
           queryGroup.context,
           queryGroup.rules,
           ruleConfigData.ruleDefaults,
+          observation?.freshness,
         ));
+        if (validationMode) {
+          validationEntries.push(buildValidationEntry(dashboard, card, queryGroup.context, cardResult, observation?.freshness));
+        }
 
         if (shouldRunBuiltIns) {
           anomalies.push(...evaluateBuiltIns(ruleConfigData, dashboard, card, cardResult));
@@ -99,7 +125,21 @@ export async function checkPublicDashboards({
           baselineCacheUpdates,
           context: queryGroup.context,
           ruleDefaults: ruleConfigData.ruleDefaults,
+          freshness: observation?.freshness,
         }));
+        if (
+          observation?.freshness?.historicalDateGap &&
+          observation.freshness.refreshCadence &&
+          queryGroup.rules.some((rule) => rule.type === "requiredDatePresent")
+        ) {
+          anomalies.push(buildAnomaly(
+            dashboard,
+            card,
+            "historicalDateGap",
+            `历史日期缺口：${observation.freshness.dateColumn} 最近预计数据点缺少 ${observation.freshness.historicalMissingDates.join("、")}`,
+            queryGroup.context,
+          ));
+        }
       }
     }
   }
@@ -109,7 +149,7 @@ export async function checkPublicDashboards({
     : null;
 
   const result = {
-    checkedAt: new Date().toISOString(),
+    checkedAt,
     dashboardCount: inventoryData.dashboardCount,
     checkedCardCount: checkedCards.length,
     anomalyCount: anomalies.length,
@@ -117,6 +157,11 @@ export async function checkPublicDashboards({
     anomalies,
     checkedCards,
     dataQuality,
+    ...(validationMode ? { validation: {
+      notificationSuppressed: true,
+      invariantFailureCount: validationEntries.filter((entry) => !Object.values(entry.invariants).every(Boolean)).length,
+      entries: validationEntries,
+    } } : {}),
   };
 
   if (outputFile) {
@@ -141,7 +186,74 @@ export async function checkPublicDashboards({
     });
   }
 
+  if (observationCacheFile) {
+    pruneObservationCache(observationCache, checkedAt, resolveCadenceOptions(ruleConfigData));
+    await writeJsonFileAtomic(path.resolve(observationCacheFile), observationCache);
+  }
+
   return result;
+}
+
+function buildValidationEntry(dashboard, card, context, result, freshness) {
+  const columns = [...new Set((result.rows || []).flatMap((row) => Object.keys(row || {})))];
+  const rawDates = freshness?.dateColumn
+    ? result.rows.map((row) => normalizeDateKey(row?.[freshness.dateColumn])).filter(Boolean).sort()
+    : [];
+  const rawLatestDate = rawDates.at(-1) || null;
+  const rawMetricsNonEmpty = freshness?.metricColumns?.length
+    ? hasAnyMetricValue(result.rows, freshness.metricColumns)
+    : false;
+  return {
+    countryCode: dashboard.countryCode || dashboard.country?.code || null,
+    dashboardUuid: dashboard.uuid || null,
+    dashcardId: card.dashcardId ?? null,
+    cardId: card.cardId ?? null,
+    cardTitle: card.title,
+    context,
+    rawEvidence: {
+      ok: result.ok,
+      error: result.error,
+      rowCount: result.rows.length,
+      columns,
+      maxDate: rawLatestDate,
+      metricsNonEmpty: rawMetricsNonEmpty,
+    },
+    dynamicDecision: freshness || null,
+    legacySingleResultCadence: freshness?.dataCadence || null,
+    invariants: {
+      rowCountConsistent: result.rows.length === Number(result.rows.length),
+      dateColumnExists: !freshness?.dateColumn || columns.includes(freshness.dateColumn),
+      latestDateConsistent: rawLatestDate === (freshness?.latestBusinessDate || null),
+      metricStateConsistent: !freshness?.metricColumns?.length || rawMetricsNonEmpty === !freshness.emptyMetrics,
+      timingDecisionConsistent: !freshness?.refreshCadence || !freshness.nextExpectedAt ||
+        (freshness.status === "overdue") === (Date.now() > Date.parse(freshness.nextExpectedAt)),
+    },
+  };
+}
+
+async function readObservationCache(filePath) {
+  try {
+    const value = await readJsonFile(filePath, { version: 1, entries: {} });
+    return value && typeof value.entries === "object" && !Array.isArray(value.entries)
+      ? value
+      : { version: 1, entries: {} };
+  } catch (error) {
+    if (error instanceof SyntaxError) return { version: 1, entries: {}, recoveredFromCorruption: true };
+    throw error;
+  }
+}
+
+function resolveCadenceOptions(config = {}, dashboard = {}) {
+  const defaults = config.ruleDefaults?.requiredDatePresent || {};
+  return {
+    lookbackDays: defaults.cadenceLookbackDays ?? 130,
+    minIntervals: defaults.cadenceMinIntervals ?? 3,
+    minConfidence: defaults.cadenceMinConfidence ?? 0.75,
+    retentionDays: config.cadenceObservation?.retentionDays ?? 400,
+    maxEvents: config.cadenceObservation?.maxEventsPerCard ?? 500,
+    graceMinutes: config.cadenceObservation?.graceMinutes ?? 120,
+    holidayDates: dashboard.holidayDates || config.cadenceObservation?.holidayDates?.[dashboard.countryCode] || [],
+  };
 }
 
 export function createDefaultMetabaseClient(dashboard) {
@@ -372,7 +484,7 @@ async function queryCard(client, dashboard, card, parameters = []) {
   }
 }
 
-function summarizeCardResult(dashboard, card, result, context = null, rules = [], ruleDefaults = {}) {
+function summarizeCardResult(dashboard, card, result, context = null, rules = [], ruleDefaults = {}, freshness = null) {
   return {
     country: dashboard.country || null,
     countryCode: dashboard.countryCode || dashboard.country?.code,
@@ -381,56 +493,39 @@ function summarizeCardResult(dashboard, card, result, context = null, rules = []
     dashboardUuid: dashboard.uuid,
     dashboardUrl: dashboard.url,
     cardTitle: card.title,
+    cardId: card.cardId ?? null,
+    dashcardId: card.dashcardId ?? null,
     context,
     rowCount: result.rows.length,
     ok: result.ok,
     error: result.error,
-    updateCadences: summarizeUpdateCadences(result.rows, dashboard, rules, ruleDefaults),
+    freshness: freshness || buildUnavailableFreshness(result),
+    updateCadences: freshness?.refreshCadence ? [{
+      ...freshness.refreshCadence,
+      dateColumn: freshness.dateColumn,
+      context,
+      nextExpectedAt: freshness.nextExpectedAt,
+      evidenceCount: freshness.evidenceCount,
+    }] : [],
   };
 }
 
-function summarizeUpdateCadences(rows, dashboard, rules, ruleDefaults) {
-  if (!rows?.length) {
-    return [];
-  }
-  const summaries = [];
-  const seen = new Set();
-  for (const rawRule of rules || []) {
-    const rule = applyDashboardRuleDefaults(rawRule, dashboard, ruleDefaults);
-    if (rule.type !== "requiredDatePresent" || !isAutomaticCadenceEnabled(rule)) {
-      continue;
-    }
-    const dateColumn = rule.dateColumn || inferDateColumn(rows);
-    if (!dateColumn) {
-      continue;
-    }
-    const requiredLagDays = rule.requiredLagDays ?? 0;
-    const requiredDate = rule.requiredDate || addDays(
-      getZonedDateKey(resolveNow(rule), rule.timezone || "Asia/Jakarta"),
-      -requiredLagDays,
-    );
-    const dates = rows.map((row) => normalizeDateKey(row?.[dateColumn])).filter(Boolean);
-    const cadence = inferRuleUpdateCadence(dates, requiredDate, rule);
-    const key = `${dateColumn}:${requiredLagDays}:${rule.context || ""}`;
-    if (!cadence || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    summaries.push({
-      dateColumn,
-      requiredLagDays,
-      context: rule.context || null,
-      unit: cadence.unit,
-      interval: cadence.interval,
-      label: formatUpdateCadence(cadence),
-      confidence: cadence.confidence,
-      sampleCount: cadence.sampleCount,
-      firstDate: cadence.firstDate,
-      latestDate: cadence.latestDate,
-      nextExpectedDate: cadence.nextExpectedDate,
-    });
-  }
-  return summaries;
+function buildUnavailableFreshness(result) {
+  return {
+    status: result.ok ? "learning" : "schema_error",
+    dateColumn: null,
+    metricColumns: [],
+    latestBusinessDate: null,
+    dataCadence: null,
+    refreshCadence: null,
+    nextExpectedAt: null,
+    evidenceCount: 0,
+    noData: result.ok && result.rows.length === 0,
+    emptyMetrics: false,
+    schemaMismatch: false,
+    historicalDateGap: false,
+    requiredDatePresent: null,
+  };
 }
 
 function evaluateBuiltIns(config, dashboard, card, result) {
@@ -492,6 +587,8 @@ function evaluateRules(rules, dashboard, card, result, options = {}) {
         cardTitle: card.title || "",
         context: options.context || effectiveRule.context || "",
       };
+      effectiveRule.freshness = options.freshness || null;
+      effectiveRule.metricColumnFallback = getCardMetricColumns(card, result.rows);
       const messages = normalizeMessages(evaluateRowsAgainstRule(result.rows, effectiveRule));
       return messages.map((message) =>
         buildAnomaly(
@@ -649,12 +746,13 @@ function checkNotEmpty(rows, rule) {
 
   const existingColumns = [...new Set(rows.flatMap((row) => Object.keys(row || {})))];
   const missingColumns = explicitColumns.filter((column) => !existingColumns.includes(column));
-  if (missingColumns.length === explicitColumns.length) {
-    return rule.message || `没有找到指标列：${explicitColumns.join("、")}`;
-  }
+  const effectiveColumns = missingColumns.length === explicitColumns.length && rule.metricColumnFallback?.length
+    ? rule.metricColumnFallback
+    : explicitColumns.filter((column) => existingColumns.includes(column));
+  if (!effectiveColumns.length) return rule.message || `没有找到指标列：${explicitColumns.join("、")}`;
 
   const hasMetricValue = rows.some((row) =>
-    explicitColumns.some((column) => Number.isFinite(toNumber(row?.[column]))),
+    effectiveColumns.some((column) => Number.isFinite(toNumber(row?.[column]))),
   );
 
   if (hasMetricValue) {
@@ -720,7 +818,8 @@ function checkStaleLatestDate(rows, rule) {
 }
 
 function checkRequiredDatePresent(rows, rule) {
-  const dateColumn = rule.dateColumn || inferDateColumn(rows);
+  const freshness = rule.freshness;
+  const dateColumn = freshness?.dateColumn || (rule.dateColumn && rows.some((row) => rule.dateColumn in row) ? rule.dateColumn : null) || inferDateColumn(rows);
   const timezone = rule.timezone || "Asia/Jakarta";
   const now = resolveNow(rule);
   const requiredLagDays = rule.requiredLagDays ?? 0;
@@ -737,35 +836,21 @@ function checkRequiredDatePresent(rows, rule) {
 
   const dates = [...new Set(rows.map((row) => normalizeDateKey(row[dateColumn])).filter(Boolean))].sort();
   if (dates.includes(requiredDate)) {
+    if (freshness) freshness.requiredDatePresent = true;
     return null;
   }
 
   const latestDate = dates[dates.length - 1] || "无";
-  const cadence = inferRuleUpdateCadence(dates, requiredDate, rule);
-  if (cadence && latestDate !== "无") {
-    if (!isCadenceUpdateDue(cadence, requiredDate)) {
-      return null;
-    }
+  if (freshness) freshness.requiredDatePresent = false;
+  if (freshness?.refreshCadence) {
+    if (freshness.status !== "overdue") return null;
     return `数据新鲜度异常：${dateColumn} 缺少 ${expectedLabel} ${requiredDate} 的数据，当前最新日期是 ${latestDate}` +
-      `；近${cadence.lookbackDays}天自动识别为${formatUpdateCadence(cadence)}更新` +
-      `（${cadence.sampleCount}个日期样本，置信度${formatPercent(cadence.confidence)}），应于 ${cadence.nextExpectedDate} 更新`;
+      `；跨巡检识别为${freshness.refreshCadence.label}刷新` +
+      `（${freshness.evidenceCount}个变化事件，置信度${formatPercent(freshness.refreshCadence.confidence)}），预计到达时间 ${freshness.nextExpectedAt}`;
   }
 
+  // 明确配置的 D0/D-1 规则在学习期保持原有严格判断；自动观察卡片不会进入此函数。
   return `数据新鲜度异常：${dateColumn} 缺少 ${expectedLabel} ${requiredDate} 的数据，当前最新日期是 ${latestDate}`;
-}
-
-function inferRuleUpdateCadence(dates, requiredDate, rule) {
-  if (!isAutomaticCadenceEnabled(rule)) {
-    return null;
-  }
-  return inferUpdateCadence(dates, {
-    anchorDate: requiredDate,
-    lookbackDays: rule.cadenceLookbackDays ?? rule.frequencyLookbackDays ?? 130,
-    minIntervals: rule.cadenceMinIntervals ?? rule.frequencyMinIntervals ?? 3,
-    minConfidence: rule.cadenceMinConfidence ?? rule.frequencyMinConfidence ?? 0.75,
-    maxIntervalDays: rule.cadenceMaxIntervalDays ?? rule.frequencyMaxDays ?? 31,
-    maxIntervalMonths: rule.cadenceMaxIntervalMonths ?? 3,
-  });
 }
 
 function isAutomaticCadenceEnabled(rule) {
