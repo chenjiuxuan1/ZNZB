@@ -270,6 +270,62 @@ test("platform api evaluates live sandbox through readonly Metabase client", asy
   assert.equal(result.request.parameterCount, 0);
 });
 
+test("platform live sandbox applies global cadence defaults and history parameters", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/public-monitor.config.json"),
+    JSON.stringify({
+      ruleDefaults: {
+        requiredDatePresent: {
+          autoDetectCadence: true,
+          cadenceLookbackDays: 130,
+          cadenceMinIntervals: 3,
+          cadenceMinConfidence: 0.75,
+          cadenceMaxIntervalDays: 31,
+          cadenceMaxIntervalMonths: 1,
+        },
+      },
+      rules: [],
+    }),
+  );
+  const target = ["dimension", ["template-tag", "stat_date"], { "stage-number": 0 }];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson(request) {
+        assert.equal(request.parameters[0].value, "past130days~");
+        return ["2026-06-20", "2026-06-27", "2026-07-04", "2026-07-11", "2026-07-18"]
+          .map((date) => ({ "统计日期": date, "周指标": 10 }));
+      },
+    }),
+  });
+
+  const result = await api.evaluateLiveSandbox({
+    dashboard: {
+      title: "周报",
+      uuid: "weekly-dashboard",
+      url: "https://data.example/public/dashboard/weekly-dashboard",
+      timezone: "Asia/Shanghai",
+      parameters: [{ id: "date-filter", type: "date/all-options", default: "past1days~" }],
+    },
+    card: {
+      title: "周指标",
+      cardId: 1,
+      dashcardId: 2,
+      parameterMappings: [{ parameter_id: "date-filter", target }],
+    },
+    rule: {
+      type: "requiredDatePresent",
+      dateColumn: "统计日期",
+      requiredDate: "2026-07-19",
+    },
+  });
+
+  assert.equal(result.matched, false);
+  assert.equal(result.rule.autoDetectCadence, true);
+  assert.equal(result.request.parameterCount, 1);
+});
+
 test("platform api runs scoped batch check", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({

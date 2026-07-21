@@ -4,6 +4,16 @@
     "noData": false,
     "emptyMetrics": true
   },
+  "ruleDefaults": {
+    "requiredDatePresent": {
+      "autoDetectCadence": true,
+      "cadenceLookbackDays": 130,
+      "cadenceMinIntervals": 3,
+      "cadenceMinConfidence": 0.75,
+      "cadenceMaxIntervalDays": 31,
+      "cadenceMaxIntervalMonths": 1
+    }
+  },
   "alerts": {
     "channel": "tv",
     "webhookUrl": "${TV_ALERT_WEBHOOK_URL}",
@@ -120,7 +130,8 @@
       "dashboardTitle": "核心链路准实时监控",
       "cardTitlePattern": "^(新客|老客)-",
       "timezone": "dashboard",
-      "requiredLagDays": 0
+      "requiredLagDays": 0,
+      "autoDetectCadence": false
     },
     {
       "type": "requiredDatePresent",

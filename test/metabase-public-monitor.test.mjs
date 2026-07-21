@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   checkPublicDashboards,
   buildDefaultCardParameters,
+  buildUpdateFrequencyHistoryParameters,
   evaluateRowsAgainstRule,
   mergeParameters,
 } from "../src/metabase-public-monitor.mjs";
@@ -74,6 +75,105 @@ test("mergeParameters overrides by target while keeping actual dashboard paramet
       },
     ],
   );
+});
+
+test("buildUpdateFrequencyHistoryParameters expands freshness queries for cadence detection", () => {
+  const target = ["dimension", ["template-tag", "stat_date"], { "stage-number": 0 }];
+  const result = buildUpdateFrequencyHistoryParameters(
+    {
+      parameters: [{ id: "date-filter", type: "date/all-options", default: "past1days~" }],
+    },
+    {
+      parameterMappings: [{ parameter_id: "date-filter", target }],
+    },
+    [{ type: "requiredDatePresent", dateColumn: "统计日期" }],
+    {
+      requiredDatePresent: {
+        autoDetectCadence: true,
+        cadenceLookbackDays: 130,
+      },
+    },
+  );
+
+  assert.deepEqual(result, [{
+    id: "date-filter",
+    type: "date/all-options",
+    target,
+    value: "past130days~",
+  }]);
+});
+
+test("checkPublicDashboards applies frequency defaults and the history window end to end", async () => {
+  const queriedParameters = [];
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [{
+        countryCode: "CN",
+        timezone: "Asia/Shanghai",
+        sourcePanelTitle: "周报",
+        uuid: "weekly-dashboard",
+        url: "https://data.example/public/dashboard/weekly-dashboard",
+        parameters: [{ id: "date-filter", type: "date/all-options", default: "past1days~" }],
+        cards: [{
+          title: "周指标",
+          cardId: 1,
+          dashcardId: 2,
+          parameterMappings: [{
+            parameter_id: "date-filter",
+            target: ["dimension", ["template-tag", "stat_date"], { "stage-number": 0 }],
+          }],
+        }],
+      }],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: false },
+      ruleDefaults: {
+        requiredDatePresent: {
+          autoDetectCadence: true,
+          cadenceLookbackDays: 130,
+          cadenceMinIntervals: 3,
+          cadenceMinConfidence: 0.75,
+          cadenceMaxIntervalDays: 31,
+          cadenceMaxIntervalMonths: 3,
+        },
+      },
+      rules: [{
+        type: "requiredDatePresent",
+        dashboardTitle: "周报",
+        cardTitle: "周指标",
+        dateColumn: "统计日期",
+        timezone: "dashboard",
+        now: "2026-07-20T04:00:00Z",
+        requiredLagDays: 1,
+      }],
+    },
+    queryCardFn: async (_client, _dashboard, _card, parameters) => {
+      queriedParameters.push(parameters);
+      return {
+        ok: true,
+        rows: ["2026-06-20", "2026-06-27", "2026-07-04", "2026-07-11", "2026-07-18"]
+          .map((date) => ({ "统计日期": date, "周指标": 100 })),
+        error: null,
+      };
+    },
+  });
+
+  assert.equal(result.anomalyCount, 0);
+  assert.equal(queriedParameters[0][0].value, "past130days~");
+  assert.deepEqual(result.checkedCards[0].updateCadences, [{
+    dateColumn: "统计日期",
+    requiredLagDays: 1,
+    context: null,
+    unit: "week",
+    interval: 1,
+    label: "每周",
+    confidence: 1,
+    sampleCount: 5,
+    firstDate: "2026-06-20",
+    latestDate: "2026-07-18",
+    nextExpectedDate: "2026-07-25",
+  }]);
 });
 
 test("checkPublicDashboards queries internal dashboards by dashboardId", async () => {
@@ -664,6 +764,143 @@ test("evaluateRowsAgainstRule accepts required D-1 data", () => {
   );
 
   assert.equal(result, null);
+});
+
+test("evaluateRowsAgainstRule accepts a stable weekly series before its next update is due", () => {
+  const result = evaluateRowsAgainstRule(
+    ["2026-06-20", "2026-06-27", "2026-07-04", "2026-07-11", "2026-07-18"]
+      .map((date) => ({ "统计日期": date, "周指标": 100 })),
+    {
+      type: "requiredDatePresent",
+      dateColumn: "统计日期",
+      timezone: "Asia/Shanghai",
+      now: "2026-07-20T04:00:00Z",
+      requiredLagDays: 1,
+      autoDetectCadence: true,
+      cadenceLookbackDays: 130,
+      cadenceMinIntervals: 3,
+      cadenceMinConfidence: 0.75,
+      cadenceMaxIntervalDays: 31,
+      cadenceMaxIntervalMonths: 3,
+    },
+  );
+
+  assert.equal(result, null);
+});
+
+test("evaluateRowsAgainstRule accepts monthly data before the next calendar update", () => {
+  const result = evaluateRowsAgainstRule(
+    ["2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30"]
+      .map((date) => ({ "统计日期": date, "月指标": 100 })),
+    {
+      type: "requiredDatePresent",
+      dateColumn: "统计日期",
+      timezone: "Asia/Shanghai",
+      now: "2026-07-20T04:00:00Z",
+      requiredLagDays: 1,
+      autoDetectCadence: true,
+      cadenceLookbackDays: 130,
+      cadenceMinIntervals: 3,
+      cadenceMinConfidence: 0.75,
+      cadenceMaxIntervalDays: 31,
+      cadenceMaxIntervalMonths: 1,
+    },
+  );
+
+  assert.equal(result, null);
+});
+
+test("evaluateRowsAgainstRule alerts monthly data after the calendar update is due", () => {
+  const result = evaluateRowsAgainstRule(
+    ["2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30"]
+      .map((date) => ({ "统计日期": date, "月指标": 100 })),
+    {
+      type: "requiredDatePresent",
+      dateColumn: "统计日期",
+      timezone: "Asia/Shanghai",
+      now: "2026-08-02T04:00:00Z",
+      requiredLagDays: 1,
+      autoDetectCadence: true,
+      cadenceLookbackDays: 130,
+      cadenceMinIntervals: 3,
+      cadenceMinConfidence: 0.75,
+      cadenceMaxIntervalDays: 31,
+      cadenceMaxIntervalMonths: 1,
+    },
+  );
+
+  assert.match(result, /自动识别为每月更新/);
+  assert.match(result, /应于 2026-07-31 更新/);
+});
+
+test("evaluateRowsAgainstRule alerts when a weekly series exceeds its inferred interval", () => {
+  const result = evaluateRowsAgainstRule(
+    ["2026-06-20", "2026-06-27", "2026-07-04", "2026-07-11"]
+      .map((date) => ({ "统计日期": date, "周指标": 100 })),
+    {
+      type: "requiredDatePresent",
+      dateColumn: "统计日期",
+      timezone: "Asia/Shanghai",
+      now: "2026-07-20T04:00:00Z",
+      requiredLagDays: 1,
+      autoDetectCadence: true,
+      cadenceLookbackDays: 130,
+      cadenceMinIntervals: 3,
+      cadenceMinConfidence: 0.75,
+      cadenceMaxIntervalDays: 31,
+      cadenceMaxIntervalMonths: 3,
+    },
+  );
+
+  assert.match(result, /自动识别为每周更新/);
+  assert.match(result, /应于 2026-07-18 更新/);
+});
+
+test("evaluateRowsAgainstRule keeps daily series on strict D-1 freshness", () => {
+  const result = evaluateRowsAgainstRule(
+    ["2026-07-15", "2026-07-16", "2026-07-17", "2026-07-18"]
+      .map((date) => ({ "统计日期": date, "日指标": 100 })),
+    {
+      type: "requiredDatePresent",
+      dateColumn: "统计日期",
+      timezone: "Asia/Shanghai",
+      now: "2026-07-20T04:00:00Z",
+      requiredLagDays: 1,
+      autoDetectCadence: true,
+      cadenceLookbackDays: 130,
+      cadenceMinIntervals: 3,
+      cadenceMinConfidence: 0.75,
+      cadenceMaxIntervalDays: 31,
+      cadenceMaxIntervalMonths: 3,
+    },
+  );
+
+  assert.match(result, /缺少 D-1 2026-07-19/);
+  assert.match(result, /自动识别为每天更新/);
+  assert.match(result, /应于 2026-07-19 更新/);
+});
+
+test("evaluateRowsAgainstRule does not infer a cadence from irregular sparse dates", () => {
+  const result = evaluateRowsAgainstRule(
+    ["2026-07-05", "2026-07-09", "2026-07-14", "2026-07-18"]
+      .map((date) => ({ "统计日期": date, "稀疏指标": 100 })),
+    {
+      type: "requiredDatePresent",
+      dateColumn: "统计日期",
+      timezone: "Asia/Shanghai",
+      now: "2026-07-20T04:00:00Z",
+      requiredLagDays: 1,
+      autoDetectCadence: true,
+      cadenceLookbackDays: 130,
+      cadenceMinIntervals: 3,
+      cadenceMinConfidence: 0.75,
+      cadenceMaxIntervalDays: 31,
+      cadenceMaxIntervalMonths: 3,
+    },
+  );
+
+  assert.match(result, /缺少 D-1 2026-07-19/);
+  assert.doesNotMatch(result, /推断每/);
 });
 
 test("evaluateRowsAgainstRule suppresses correlated same-direction changes", () => {

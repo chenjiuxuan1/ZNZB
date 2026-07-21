@@ -2,6 +2,7 @@ import path from "node:path";
 import { collectDataQualityMetrics } from "./grafana-quality-monitor.mjs";
 import { hasMetabaseInternalAuth, MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
+import { formatUpdateCadence, inferUpdateCadence, isCadenceUpdateDue } from "./update-cadence.mjs";
 import { readJsonFile, writeJsonFile } from "./utils.mjs";
 
 const DEFAULT_METABASE_API_BASE_URL = "http://172.16.0.212:80";
@@ -69,9 +70,25 @@ export async function checkPublicDashboards({
 
       const defaultParameters = buildDefaultCardParameters(dashboard, card);
       for (const queryGroup of buildQueryGroups(matchingRules, shouldRunBuiltIns)) {
-        const parameters = mergeParameters(defaultParameters, queryGroup.parameters);
+        const historyParameters = buildUpdateFrequencyHistoryParameters(
+          dashboard,
+          card,
+          queryGroup.rules,
+          ruleConfigData.ruleDefaults,
+        );
+        const parameters = mergeParameters(
+          mergeParameters(defaultParameters, historyParameters),
+          queryGroup.parameters,
+        );
         const cardResult = await queryCardFn(client, dashboard, card, parameters);
-        checkedCards.push(summarizeCardResult(dashboard, card, cardResult, queryGroup.context));
+        checkedCards.push(summarizeCardResult(
+          dashboard,
+          card,
+          cardResult,
+          queryGroup.context,
+          queryGroup.rules,
+          ruleConfigData.ruleDefaults,
+        ));
 
         if (shouldRunBuiltIns) {
           anomalies.push(...evaluateBuiltIns(ruleConfigData, dashboard, card, cardResult));
@@ -81,6 +98,7 @@ export async function checkPublicDashboards({
           baselineCacheEntries,
           baselineCacheUpdates,
           context: queryGroup.context,
+          ruleDefaults: ruleConfigData.ruleDefaults,
         }));
       }
     }
@@ -287,6 +305,34 @@ export function mergeParameters(defaultParameters, overrideParameters) {
   return [...merged.values()];
 }
 
+export function buildUpdateFrequencyHistoryParameters(dashboard, card, rules, ruleDefaults = {}) {
+  const lookbackDays = (rules || [])
+    .map((rule) => applyRuleTypeDefaults(rule, ruleDefaults))
+    .filter((rule) => rule.type === "requiredDatePresent" && isAutomaticCadenceEnabled(rule))
+    .map((rule) => rule.cadenceLookbackDays ?? rule.frequencyLookbackDays ?? 130)
+    .filter((days) => Number.isInteger(days) && days > 0)
+    .sort((left, right) => right - left)[0];
+
+  if (!lookbackDays) {
+    return [];
+  }
+
+  const dashboardParameters = new Map((dashboard.parameters || []).map((parameter) => [parameter.id, parameter]));
+  return (card.parameterMappings || []).flatMap((mapping) => {
+    const parameter = dashboardParameters.get(mapping.parameter_id);
+    if (!parameter?.type?.startsWith("date/")) {
+      return [];
+    }
+
+    return [{
+      id: parameter.id,
+      type: parameter.type,
+      target: mapping.target,
+      value: `past${lookbackDays}days~`,
+    }];
+  });
+}
+
 function parameterKey(parameter) {
   const targetKey = parameterTargetKey(parameter);
   if (targetKey) {
@@ -326,7 +372,7 @@ async function queryCard(client, dashboard, card, parameters = []) {
   }
 }
 
-function summarizeCardResult(dashboard, card, result, context = null) {
+function summarizeCardResult(dashboard, card, result, context = null, rules = [], ruleDefaults = {}) {
   return {
     country: dashboard.country || null,
     countryCode: dashboard.countryCode || dashboard.country?.code,
@@ -339,7 +385,52 @@ function summarizeCardResult(dashboard, card, result, context = null) {
     rowCount: result.rows.length,
     ok: result.ok,
     error: result.error,
+    updateCadences: summarizeUpdateCadences(result.rows, dashboard, rules, ruleDefaults),
   };
+}
+
+function summarizeUpdateCadences(rows, dashboard, rules, ruleDefaults) {
+  if (!rows?.length) {
+    return [];
+  }
+  const summaries = [];
+  const seen = new Set();
+  for (const rawRule of rules || []) {
+    const rule = applyDashboardRuleDefaults(rawRule, dashboard, ruleDefaults);
+    if (rule.type !== "requiredDatePresent" || !isAutomaticCadenceEnabled(rule)) {
+      continue;
+    }
+    const dateColumn = rule.dateColumn || inferDateColumn(rows);
+    if (!dateColumn) {
+      continue;
+    }
+    const requiredLagDays = rule.requiredLagDays ?? 0;
+    const requiredDate = rule.requiredDate || addDays(
+      getZonedDateKey(resolveNow(rule), rule.timezone || "Asia/Jakarta"),
+      -requiredLagDays,
+    );
+    const dates = rows.map((row) => normalizeDateKey(row?.[dateColumn])).filter(Boolean);
+    const cadence = inferRuleUpdateCadence(dates, requiredDate, rule);
+    const key = `${dateColumn}:${requiredLagDays}:${rule.context || ""}`;
+    if (!cadence || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    summaries.push({
+      dateColumn,
+      requiredLagDays,
+      context: rule.context || null,
+      unit: cadence.unit,
+      interval: cadence.interval,
+      label: formatUpdateCadence(cadence),
+      confidence: cadence.confidence,
+      sampleCount: cadence.sampleCount,
+      firstDate: cadence.firstDate,
+      latestDate: cadence.latestDate,
+      nextExpectedDate: cadence.nextExpectedDate,
+    });
+  }
+  return summaries;
 }
 
 function evaluateBuiltIns(config, dashboard, card, result) {
@@ -391,7 +482,7 @@ function evaluateRules(rules, dashboard, card, result, options = {}) {
   return rules
     .filter((rule) => ruleMatchesCard(rule, dashboard, card))
     .flatMap((rule) => {
-      const effectiveRule = applyDashboardRuleDefaults(rule, dashboard);
+      const effectiveRule = applyDashboardRuleDefaults(rule, dashboard, options.ruleDefaults);
       effectiveRule.baselineCacheEntries = options.baselineCacheEntries;
       effectiveRule.baselineCacheUpdates = options.baselineCacheUpdates;
       effectiveRule.baselineScope = {
@@ -415,14 +506,22 @@ function evaluateRules(rules, dashboard, card, result, options = {}) {
     .filter(Boolean);
 }
 
-function applyDashboardRuleDefaults(rule, dashboard) {
-  const timezone = rule.timezone === "dashboard" || !rule.timezone
+function applyDashboardRuleDefaults(rule, dashboard, ruleDefaults = {}) {
+  const defaultedRule = applyRuleTypeDefaults(rule, ruleDefaults);
+  const timezone = defaultedRule.timezone === "dashboard" || !defaultedRule.timezone
     ? dashboard.timezone || dashboard.country?.timezone || "Asia/Jakarta"
-    : rule.timezone;
+    : defaultedRule.timezone;
 
   return {
-    ...rule,
+    ...defaultedRule,
     timezone,
+  };
+}
+
+function applyRuleTypeDefaults(rule, ruleDefaults = {}) {
+  return {
+    ...(ruleDefaults?.[rule.type] || {}),
+    ...rule,
   };
 }
 
@@ -642,7 +741,35 @@ function checkRequiredDatePresent(rows, rule) {
   }
 
   const latestDate = dates[dates.length - 1] || "无";
+  const cadence = inferRuleUpdateCadence(dates, requiredDate, rule);
+  if (cadence && latestDate !== "无") {
+    if (!isCadenceUpdateDue(cadence, requiredDate)) {
+      return null;
+    }
+    return `数据新鲜度异常：${dateColumn} 缺少 ${expectedLabel} ${requiredDate} 的数据，当前最新日期是 ${latestDate}` +
+      `；近${cadence.lookbackDays}天自动识别为${formatUpdateCadence(cadence)}更新` +
+      `（${cadence.sampleCount}个日期样本，置信度${formatPercent(cadence.confidence)}），应于 ${cadence.nextExpectedDate} 更新`;
+  }
+
   return `数据新鲜度异常：${dateColumn} 缺少 ${expectedLabel} ${requiredDate} 的数据，当前最新日期是 ${latestDate}`;
+}
+
+function inferRuleUpdateCadence(dates, requiredDate, rule) {
+  if (!isAutomaticCadenceEnabled(rule)) {
+    return null;
+  }
+  return inferUpdateCadence(dates, {
+    anchorDate: requiredDate,
+    lookbackDays: rule.cadenceLookbackDays ?? rule.frequencyLookbackDays ?? 130,
+    minIntervals: rule.cadenceMinIntervals ?? rule.frequencyMinIntervals ?? 3,
+    minConfidence: rule.cadenceMinConfidence ?? rule.frequencyMinConfidence ?? 0.75,
+    maxIntervalDays: rule.cadenceMaxIntervalDays ?? rule.frequencyMaxDays ?? 31,
+    maxIntervalMonths: rule.cadenceMaxIntervalMonths ?? 3,
+  });
+}
+
+function isAutomaticCadenceEnabled(rule) {
+  return rule.autoDetectCadence === true || rule.inferUpdateFrequency === true;
 }
 
 function checkLatestZeroRate(rows, rule) {

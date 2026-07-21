@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createDefaultMetabaseClient } from "./metabase-public-monitor.mjs";
 import {
   buildDefaultCardParameters,
+  buildUpdateFrequencyHistoryParameters,
   checkPublicDashboards,
   evaluateRowsAgainstRule,
   mergeParameters,
@@ -492,7 +493,11 @@ export function createPlatformApi({
       if (!validation.ok) {
         throw badRequest("Invalid sandbox request", validation.errors);
       }
-      const rule = applyDashboardRuleDefaults(body.rule, body.dashboard);
+      const ruleConfig = await readJsonFile(resolve("rules"), {});
+      const rule = applyDashboardRuleDefaults(
+        applyRuleTypeDefaults(body.rule, ruleConfig.ruleDefaults),
+        body.dashboard,
+      );
       const raw = evaluateRowsAgainstRule(body.rows, rule);
       const messages = normalizeRuleMessages(raw);
       return {
@@ -510,9 +515,17 @@ export function createPlatformApi({
       validateLiveSandboxRequest(body);
       const dashboard = body.dashboard;
       const card = body.card;
-      const rule = applyDashboardRuleDefaults(body.rule, dashboard);
+      const ruleConfig = await readJsonFile(resolve("rules"), {});
+      const rule = applyDashboardRuleDefaults(
+        applyRuleTypeDefaults(body.rule, ruleConfig.ruleDefaults),
+        dashboard,
+      );
       const client = metabaseClientFactory(dashboard);
-      const parameters = mergeParameters(buildDefaultCardParameters(dashboard, card), rule.parameters || []);
+      const historyParameters = buildUpdateFrequencyHistoryParameters(dashboard, card, [rule]);
+      const parameters = mergeParameters(
+        mergeParameters(buildDefaultCardParameters(dashboard, card), historyParameters),
+        rule.parameters || [],
+      );
       const request = {
         cardId: card.cardId,
         dashcardId: card.dashcardId,
@@ -2450,6 +2463,13 @@ function applyDashboardRuleDefaults(rule = {}, dashboard = {}) {
   return {
     ...rule,
     timezone,
+  };
+}
+
+function applyRuleTypeDefaults(rule = {}, ruleDefaults = {}) {
+  return {
+    ...(ruleDefaults?.[rule.type] || {}),
+    ...rule,
   };
 }
 
