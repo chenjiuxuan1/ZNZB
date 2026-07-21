@@ -824,7 +824,7 @@ function renderHistoryAnomalyTable(anomalies) {
       </summary>
       <div class="anomaly-detail-list">
         ${anomalies.map((anomaly, index) => {
-          const detail = parseAnomalyMessage(anomaly.message || "");
+          const detail = parseAnomalyMessage(anomaly.message || "", anomaly.type);
           const reason = detail.reason || ruleTypeLabel(anomaly.type);
           const changeLabel = detail.changeValue || ruleTypeLabel(anomaly.type);
           return `
@@ -879,7 +879,7 @@ function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySumm
   return `<p class="success">该范围没有规则异常。</p>`;
 }
 
-function parseAnomalyMessage(message) {
+function parseAnomalyMessage(message, anomalyType = "") {
   const text = String(message || "");
   const detail = {
     reason: "",
@@ -888,8 +888,10 @@ function parseAnomalyMessage(message) {
     changeValue: "",
     timeText: "",
   };
-  if (/缺少|没有|最新日期|必须存在|查询失败|返回为空|无数据/.test(text)) {
-    detail.reason = "数据缺失或查询异常";
+  if (["queryError", "metabaseConfigError", "metabaseStalePublicLink"].includes(anomalyType)) {
+    detail.reason = "查询异常";
+  } else if (/缺少|没有|最新日期|必须存在|返回为空|无数据/.test(text)) {
+    detail.reason = "数据缺失";
   } else if (/波动|变化|从 .* 到 /.test(text)) {
     detail.reason = "指标波动超阈值";
   }
@@ -1432,12 +1434,12 @@ function summarizeDashboardIssue(group) {
 
 function summarizeAnomalySituation(anomaly) {
   const cardTitle = anomaly.cardTitle || "未命名卡片";
-  const detail = parseAnomalyMessage(anomaly.message || "");
+  const detail = parseAnomalyMessage(anomaly.message || "", anomaly.type);
   const pieces = [];
   if (detail.reason) {
     pieces.push(detail.reason);
   }
-  if (detail.reason === "数据缺失或查询异常" && anomaly.message) {
+  if (["数据缺失", "查询异常"].includes(detail.reason) && anomaly.message) {
     pieces.push(shortenText(anomaly.message, 72));
   }
   if (detail.baselineValue || detail.currentValue) {

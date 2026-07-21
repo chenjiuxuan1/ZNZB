@@ -8,6 +8,8 @@ export class MetabaseInternalClient {
     cookie,
     apiKey,
     requestTimeoutSeconds = 30,
+    retryCount = 2,
+    retryDelayMs = 250,
     fetchFn = fetchCompatible,
   }) {
     const auth = resolveMetabaseAuth();
@@ -16,6 +18,8 @@ export class MetabaseInternalClient {
     this.cookie = cookie ?? auth.cookie;
     this.apiKey = apiKey ?? auth.apiKey;
     this.timeoutMs = requestTimeoutSeconds * 1000;
+    this.retryCount = retryCount;
+    this.retryDelayMs = retryDelayMs;
     this.fetchFn = fetchFn;
   }
 
@@ -45,6 +49,23 @@ export class MetabaseInternalClient {
     if (!this.sessionToken && !this.cookie && !this.apiKey) {
       throw new Error("Metabase internal access requires METABASE_SESSION, METABASE_COOKIE, or METABASE_API_KEY");
     }
+
+    let lastError;
+    for (let attempt = 0; attempt <= this.retryCount; attempt += 1) {
+      try {
+        return await this.requestJsonOnce(pathname, options);
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableGatewayError(error) || attempt >= this.retryCount) {
+          throw error;
+        }
+        await delay(this.retryDelayMs * 2 ** attempt);
+      }
+    }
+    throw lastError;
+  }
+
+  async requestJsonOnce(pathname, options = {}) {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -87,6 +108,14 @@ export class MetabaseInternalClient {
 
     return JSON.parse(body);
   }
+}
+
+function isRetryableGatewayError(error) {
+  return /Metabase internal request failed \((502|503|504)\b/.test(String(error?.message || error));
+}
+
+function delay(ms) {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
 export function parseInternalMetabaseUrl(urlString) {

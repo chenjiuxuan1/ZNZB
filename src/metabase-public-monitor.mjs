@@ -20,6 +20,7 @@ export async function checkPublicDashboards({
   baselineCacheFile,
   observationCacheFile,
   validationMode = false,
+  checkedAt: explicitCheckedAt = null,
   queryCardFn = queryCard,
   metabaseClientFactory = createDefaultMetabaseClient,
 }) {
@@ -36,7 +37,7 @@ export async function checkPublicDashboards({
   const observationCache = observationCacheFile
     ? await readObservationCache(path.resolve(observationCacheFile))
     : { version: 1, entries: {} };
-  const checkedAt = new Date().toISOString();
+  const checkedAt = explicitCheckedAt || new Date().toISOString();
   const anomalies = [];
   const checkedCards = [];
   const validationEntries = [];
@@ -126,6 +127,7 @@ export async function checkPublicDashboards({
         anomalies.push(...evaluateRules(queryGroup.rules, dashboard, card, cardResult, {
           baselineCacheEntries,
           baselineCacheUpdates,
+          checkedAt,
           context: queryGroup.context,
           ruleDefaults: ruleConfigData.ruleDefaults,
           freshness: observation?.freshness,
@@ -582,6 +584,7 @@ function evaluateRules(rules, dashboard, card, result, options = {}) {
     .filter((rule) => ruleMatchesCard(rule, dashboard, card))
     .flatMap((rule) => {
       const effectiveRule = applyDashboardRuleDefaults(rule, dashboard, options.ruleDefaults);
+      effectiveRule.now = effectiveRule.now || options.checkedAt;
       effectiveRule.baselineCacheEntries = options.baselineCacheEntries;
       effectiveRule.baselineCacheUpdates = options.baselineCacheUpdates;
       effectiveRule.baselineScope = {

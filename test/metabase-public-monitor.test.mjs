@@ -462,6 +462,67 @@ test("MetabaseInternalClient sends API key header", async () => {
   assert.equal(requests[0].options.headers["X-API-Key"], "test-api-key");
 });
 
+test("MetabaseInternalClient retries transient gateway responses", async () => {
+  const statuses = [504, 200];
+  let requestCount = 0;
+  const client = new MetabaseInternalClient({
+    baseUrl: "https://data.example",
+    apiKey: "test-api-key",
+    retryCount: 2,
+    retryDelayMs: 0,
+    fetchFn: async () => {
+      const status = statuses[requestCount++];
+      return {
+        ok: status === 200,
+        status,
+        statusText: status === 200 ? "OK" : "Gateway Timeout",
+        headers: new Map([["content-type", "application/json"]]),
+        async text() { return status === 200 ? "[]" : "gateway timeout"; },
+      };
+    },
+  });
+
+  assert.deepEqual(await client.getDashboard("642"), []);
+  assert.equal(requestCount, 2);
+});
+
+test("checkPublicDashboards uses one fixed checkedAt for every rule", async () => {
+  const result = await checkPublicDashboards({
+    checkedAt: "2026-06-09T08:00:00.000Z",
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [{
+        countryCode: "CN",
+        timezone: "Asia/Shanghai",
+        sourcePanelTitle: "OKR",
+        title: "OKR",
+        uuid: "cn-okr",
+        url: "https://example.invalid/public/dashboard/cn-okr",
+        cards: [{ title: "规模", cardId: 1, dashcardId: 2, parameterMappings: [] }],
+      }],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: false },
+      rules: [{
+        type: "requiredDatePresent",
+        dashboardTitle: "OKR",
+        cardTitle: "规模",
+        dateColumn: "统计日期",
+        timezone: "dashboard",
+        requiredLagDays: 0,
+      }],
+    },
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [{ "统计日期": "2026-06-08", value: 1 }],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.checkedAt, "2026-06-09T08:00:00.000Z");
+  assert.match(result.anomalies[0].message, /D0 2026-06-09/);
+});
+
 test("checkPublicDashboards classifies public 404 as stale public link", async () => {
   const result = await checkPublicDashboards({
     inventory: {

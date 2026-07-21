@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseInternalMetabaseUrl } from "../src/metabase-internal-client.mjs";
-import { parsePublicDashboardUrl } from "../src/metabase-public-client.mjs";
+import { MetabasePublicClient, parsePublicDashboardUrl } from "../src/metabase-public-client.mjs";
 import { createDefaultMetabaseClient } from "../src/metabase-public-monitor.mjs";
 import {
   discoverPublicDashboards,
@@ -21,6 +21,51 @@ test("parsePublicDashboardUrl extracts base url and uuid", () => {
       url: "https://data.kuainiu.io/public/dashboard/abc-123",
     },
   );
+});
+
+test("MetabasePublicClient retries transient 502/503/504 responses", async () => {
+  const statuses = [502, 503, 200];
+  let requestCount = 0;
+  const client = new MetabasePublicClient({
+    baseUrl: "https://data.example",
+    retryCount: 2,
+    retryDelayMs: 0,
+    fetchFn: async () => {
+      const status = statuses[requestCount++];
+      return {
+        ok: status === 200,
+        status,
+        statusText: status === 200 ? "OK" : "Bad Gateway",
+        headers: new Map([["content-type", "application/json"]]),
+        async text() { return status === 200 ? "[]" : "gateway error"; },
+      };
+    },
+  });
+
+  assert.deepEqual(await client.getDashboard("dashboard-1"), []);
+  assert.equal(requestCount, 3);
+});
+
+test("MetabasePublicClient does not retry permanent 404 responses", async () => {
+  let requestCount = 0;
+  const client = new MetabasePublicClient({
+    baseUrl: "https://data.example",
+    retryCount: 2,
+    retryDelayMs: 0,
+    fetchFn: async () => {
+      requestCount += 1;
+      return {
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        headers: new Map([["content-type", "application/json"]]),
+        async text() { return "Not found"; },
+      };
+    },
+  });
+
+  await assert.rejects(() => client.getDashboard("missing"), /404 Not Found/);
+  assert.equal(requestCount, 1);
 });
 
 test("createDefaultMetabaseClient uses internal public Metabase API base", () => {

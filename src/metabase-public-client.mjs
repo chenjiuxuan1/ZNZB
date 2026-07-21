@@ -1,9 +1,18 @@
 import { fetchCompatible } from "./fetch-compatible.mjs";
 
 export class MetabasePublicClient {
-  constructor({ baseUrl, requestTimeoutSeconds = 30 }) {
+  constructor({
+    baseUrl,
+    requestTimeoutSeconds = 30,
+    retryCount = 2,
+    retryDelayMs = 250,
+    fetchFn = fetchCompatible,
+  }) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.timeoutMs = requestTimeoutSeconds * 1000;
+    this.retryCount = retryCount;
+    this.retryDelayMs = retryDelayMs;
+    this.fetchFn = fetchFn;
   }
 
   async getDashboard(uuid) {
@@ -23,12 +32,28 @@ export class MetabasePublicClient {
   }
 
   async requestJson(pathname, options = {}) {
+    let lastError;
+    for (let attempt = 0; attempt <= this.retryCount; attempt += 1) {
+      try {
+        return await this.requestJsonOnce(pathname, options);
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableGatewayError(error) || attempt >= this.retryCount) {
+          throw error;
+        }
+        await delay(this.retryDelayMs * 2 ** attempt);
+      }
+    }
+    throw lastError;
+  }
+
+  async requestJsonOnce(pathname, options = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     let response;
     try {
-      response = await fetchCompatible(`${this.baseUrl}${pathname}`, {
+      response = await this.fetchFn(`${this.baseUrl}${pathname}`, {
         ...options,
         headers: {
           Accept: "application/json",
@@ -63,6 +88,14 @@ export class MetabasePublicClient {
 
     return JSON.parse(body);
   }
+}
+
+function isRetryableGatewayError(error) {
+  return /Metabase public request failed \((502|503|504)\b/.test(String(error?.message || error));
+}
+
+function delay(ms) {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
 export function parsePublicDashboardUrl(urlString) {

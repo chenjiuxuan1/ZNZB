@@ -304,6 +304,8 @@ npm run watch
 
 ## 规则类型
 
+Metabase 数据缺失、各国时区、执行时间截止、动态更新周期和查询重试的简明说明见 [Metabase 数据缺失规则调整说明](./docs/metabase-missing-rule-adjustments.md)。
+
 - `latestValueOutsideRange`：最新值超出阈值。
 - `changeRateOutsideRange`：相邻两个点的变化率超出阈值。
 - `staleLatestTimestamp`：最新时间戳太旧。
