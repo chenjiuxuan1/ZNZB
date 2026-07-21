@@ -583,6 +583,57 @@ test("checkPublicDashboards keeps OKR D0 freshness except PK D-1 exception", asy
   assert.match(result.anomalies[0].message, /缺少 D0 2026-06-09/);
 });
 
+test("checkPublicDashboards skips explicitly ignored stopped-business cards", async () => {
+  let queryCount = 0;
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [
+        {
+          countryCode: "CN",
+          countryName: "中国",
+          timezone: "Asia/Shanghai",
+          sourcePanelTitle: "业务概览-核心链路准实时监控",
+          title: "核心链路准实时监控",
+          uuid: "cn-core",
+          url: "https://example.invalid/public/dashboard/cn-core",
+          cards: [
+            { dashcardId: 1, cardId: 2, title: "新客-通过次数 ", parameterMappings: [] },
+          ],
+        },
+      ],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: true, noData: true, emptyMetrics: true },
+      ignoredCards: [
+        {
+          countryCode: "CN",
+          dashboardTitlePattern: "核心链路准实时监控$",
+          cardTitlePattern: "^新客-通过次数\\s*$",
+        },
+      ],
+      rules: [
+        {
+          type: "intradayTimePointCompleteness",
+          dashboardTitle: "业务概览-核心链路准实时监控",
+          cardTitlePattern: "^新客-",
+          dateColumn: "日期",
+          timeColumn: "开始时间",
+          column: "pass_num",
+        },
+      ],
+    },
+    queryCardFn: async () => {
+      queryCount += 1;
+      return { ok: true, rows: [] };
+    },
+  });
+
+  assert.equal(queryCount, 0);
+  assert.equal(result.checkedCardCount, 0);
+  assert.equal(result.anomalyCount, 0);
+});
+
 test("evaluateRowsAgainstRule checks latest value range", () => {
   const result = evaluateRowsAgainstRule(
     [

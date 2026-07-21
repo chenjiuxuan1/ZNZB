@@ -20,6 +20,13 @@
     "graceMinutes": 120,
     "holidayDates": {}
   },
+  "ignoredCards": [
+    {
+      "countryCode": "CN",
+      "dashboardTitlePattern": "核心链路准实时监控$",
+      "cardTitlePattern": "^(新客-通过次数|老客-通过次数|新客-irr放款金额|老客-irr放款金额|新客-apr放款金额|老客-apr放款金额|老客-irr还款金额)\\s*$"
+    }
+  ],
   "alerts": {
     "channel": "tv",
     "webhookUrl": "${TV_ALERT_WEBHOOK_URL}",

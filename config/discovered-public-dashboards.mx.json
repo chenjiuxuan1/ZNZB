@@ -5694,11 +5694,14 @@
       "countryCode": "MX",
       "countryName": "墨西哥",
       "timezone": "America/Mexico_City",
+      "access": "internal",
       "sourcePanelId": 5,
-      "sourcePanelTitle": "放款统计",
-      "title": "放款统计",
-      "uuid": "099a3a68-b8fd-4780-ab4c-989e2fbc8347",
-      "url": "https://data.kuainiu.io/public/dashboard/099a3a68-b8fd-4780-ab4c-989e2fbc8347",
+      "sourcePanelTitle": "资产管理-放款统计",
+      "title": "资产管理-放款统计",
+      "dashboardId": "280",
+      "uuid": "internal-280",
+      "url": "https://data.kuainiu.io/dashboard/280",
+      "sourceUrl": "https://data.kuainiu.io/dashboard/280",
       "parameters": [
         {
           "id": "d99d148d",

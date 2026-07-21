@@ -62,6 +62,14 @@ test("schema resolver falls back from missing Chinese metrics to card English me
   assert.equal(schema.schemaMismatch, true);
 });
 
+test("schema resolver never mistakes HH:mm start time for a business date", () => {
+  const rows = [{ "日期": "2026-07-21", "开始时间": "08:30", value: 1 }];
+  const schema = resolveResultSchema(rows, {
+    dimensions: ["开始时间", "日期"], metrics: ["value"],
+  }, [{ dateColumn: "统计日期" }]);
+  assert.equal(schema.dateColumn, "日期");
+});
+
 test("zero is a valid metric while null and empty string are empty", () => {
   const cache = { entries: {} };
   const base = {

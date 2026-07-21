@@ -73,6 +73,9 @@ export async function checkPublicDashboards({
     const client = metabaseClientFactory(dashboard);
 
     for (const card of dashboard.cards || []) {
+      if ((ruleConfigData.ignoredCards || []).some((selector) => ruleMatchesCard(selector, dashboard, card))) {
+        continue;
+      }
       const matchingRules = rules.filter((rule) => ruleMatchesCard(rule, dashboard, card));
       if (!shouldRunBuiltIns && matchingRules.length === 0) {
         continue;

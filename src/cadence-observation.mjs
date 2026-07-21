@@ -13,7 +13,7 @@ export function resolveResultSchema(rows, card = {}, rules = []) {
   const columns = [...new Set((rows || []).flatMap((row) => Object.keys(row || {})))];
   const configuredDates = rules.map((rule) => rule.dateColumn).filter(Boolean);
   const dimensionDates = (card.dimensions || []).filter((column) => isDateColumnName(column));
-  const dateColumn = firstExisting(columns, [...configuredDates, ...dimensionDates]) || inferDateColumn(rows);
+  const dateColumn = firstExistingDateColumn(columns, [...configuredDates, ...dimensionDates], rows) || inferDateColumn(rows);
 
   const configuredMetrics = rules.flatMap((rule) => rule.columns || rule.metricColumns || (rule.column ? [rule.column] : []));
   const configuredExisting = unique(configuredMetrics).filter((column) => columns.includes(column));
@@ -225,6 +225,11 @@ function inferDateColumn(rows) {
 
 function isDateColumnName(column) { return /date|day|日期|时间/i.test(String(column)); }
 function firstExisting(columns, candidates) { return candidates.find((column) => columns.includes(column)) || null; }
+function firstExistingDateColumn(columns, candidates, rows) {
+  return candidates.find((column) =>
+    columns.includes(column) && rows.some((row) => normalizeDateKey(row?.[column])),
+  ) || null;
+}
 function unique(values) { return [...new Set(values)]; }
 function hasNumericValue(rows, column) { return rows.some((row) => isMetricValue(row?.[column])); }
 function hasAnyMetricValue(rows, columns) { return rows.some((row) => columns.some((column) => isMetricValue(row?.[column]))); }
