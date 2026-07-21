@@ -303,31 +303,32 @@ function countDataQualityIssues(dataQuality) {
 }
 
 export function evaluateRowsAgainstRule(rows, rule) {
+  const eligibleRows = filterRowsAtExecutionTime(rows, rule);
   switch (rule.type) {
     case "rowCountOutsideRange":
-      return checkRowCount(rows, rule);
+      return checkRowCount(eligibleRows, rule);
     case "latestValueOutsideRange":
-      return checkLatestValue(rows, rule);
+      return checkLatestValue(eligibleRows, rule);
     case "staleLatestDate":
-      return checkStaleLatestDate(rows, rule);
+      return checkStaleLatestDate(eligibleRows, rule);
     case "requiredDatePresent":
-      return checkRequiredDatePresent(rows, rule);
+      return checkRequiredDatePresent(eligibleRows, rule);
     case "latestZeroRate":
-      return checkLatestZeroRate(rows, rule);
+      return checkLatestZeroRate(eligibleRows, rule);
     case "latestDayOverDayChange":
-      return checkLatestDayOverDayChange(rows, rule);
+      return checkLatestDayOverDayChange(eligibleRows, rule);
     case "completeDayChange":
-      return checkCompleteDayChange(rows, rule);
+      return checkCompleteDayChange(eligibleRows, rule);
     case "intradayProgress":
-      return checkIntradayProgress(rows, rule);
+      return checkIntradayProgress(eligibleRows, rule);
     case "intradaySameTimeChange":
-      return checkIntradaySameTimeChange(rows, rule);
+      return checkIntradaySameTimeChange(eligibleRows, rule);
     case "intradayTimePointCompleteness":
-      return checkIntradayTimePointCompleteness(rows, rule);
+      return checkIntradayTimePointCompleteness(eligibleRows, rule);
     case "intradayTimePointChange":
-      return checkIntradayTimePointChange(rows, rule);
+      return checkIntradayTimePointChange(eligibleRows, rule);
     case "notEmpty":
-      return checkNotEmpty(rows, rule);
+      return checkNotEmpty(eligibleRows, rule);
     default:
       return `Unsupported rule type: ${rule.type}`;
   }
@@ -1107,9 +1108,11 @@ function checkIntradaySameTimeChange(rows, rule) {
 
   for (const item of series) {
     const currentRows = item.rowsByDate.get(currentDate) || [];
-    const currentCutoff = rule.cutoffTime
-      ? parseScheduleHour(rule.cutoffTime)
-      : resolveLatestTimeAtOrBefore(currentRows, timeColumn, currentTime);
+    const configuredCutoff = rule.cutoffTime ? parseScheduleHour(rule.cutoffTime) : Number.POSITIVE_INFINITY;
+    const latestObservedCutoff = resolveLatestTimeAtOrBefore(currentRows, timeColumn, currentTime);
+    const currentCutoff = Number.isFinite(latestObservedCutoff)
+      ? Math.min(configuredCutoff, latestObservedCutoff, currentTime)
+      : Number.NaN;
 
     if (!Number.isFinite(currentCutoff)) {
       if (rule.alertWhenTodayMissing) {
@@ -1982,9 +1985,13 @@ function buildExpectedTimePointMinutes(rule, localNow) {
   const nowMinutes = localNow.hour * 60 + localNow.minute;
   const allowedDelayMinutes = rule.allowedDelayMinutes ?? rule.dataDelayMinutes ?? 0;
   const effectiveNowMinutes = nowMinutes - allowedDelayMinutes;
-  const endMinutes = rule.cutoffTime
+  const configuredEndMinutes = rule.cutoffTime
     ? parseScheduleMinutes(rule.cutoffTime)
-    : Math.floor(effectiveNowMinutes / intervalMinutes) * intervalMinutes;
+    : Number.POSITIVE_INFINITY;
+  const endMinutes = Math.min(
+    configuredEndMinutes,
+    Math.floor(effectiveNowMinutes / intervalMinutes) * intervalMinutes,
+  );
   const times = [];
 
   if (
@@ -2043,6 +2050,43 @@ function formatTimePointList(times, maxItems = 8) {
 
 function resolveNow(rule) {
   return rule.now ? new Date(rule.now) : new Date();
+}
+
+function filterRowsAtExecutionTime(rows, rule) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return rows;
+  }
+
+  const dateColumn = rule.dateColumn || inferDateColumn(rows);
+  if (!dateColumn) {
+    return rows;
+  }
+
+  const timezone = rule.timezone || "Asia/Jakarta";
+  const localNow = getZonedNow(resolveNow(rule), timezone);
+  const currentDate = rule.currentDate || localNow.dateKey;
+  const timeColumn = rule.timeColumn;
+  const executionMinutes = localNow.hour * 60 + localNow.minute;
+  const configuredCutoff = rule.cutoffTime
+    ? parseScheduleMinutes(rule.cutoffTime)
+    : Number.POSITIVE_INFINITY;
+  const currentDateCutoff = Math.min(executionMinutes, configuredCutoff);
+
+  return rows.filter((row) => {
+    const dateKey = normalizeDateKey(row?.[dateColumn]);
+    if (!dateKey) {
+      return true;
+    }
+    if (dateKey > currentDate) {
+      return false;
+    }
+    if (dateKey < currentDate || !timeColumn) {
+      return true;
+    }
+
+    const rowMinutes = parseScheduleMinutes(row?.[timeColumn]);
+    return !Number.isFinite(rowMinutes) || rowMinutes <= currentDateCutoff;
+  });
 }
 
 function getZonedNow(date, timezone) {

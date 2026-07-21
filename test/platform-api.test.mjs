@@ -602,7 +602,7 @@ test("platform api runs scoped batch check and sends TV notification", async () 
   assert.equal(captured[0].config.alerts.webhookUrl, "https://tv-service-alert.kuainiu.chat/alert/v2/array");
   assert.equal(captured[0].config.alerts.botId, "tv-bot-001");
   assert.match(captured[0].message, /【今日值班】/);
-  assert.match(captured[0].message, /2\.数据质量告警“未处理”统计/);
+  assert.match(captured[0].message, /1\.数据质量告警“未处理”统计/);
   assert.doesNotMatch(captured[0].message, /公共报表巡检汇总/);
 });
 
@@ -846,13 +846,13 @@ test("platform api aggregates scheduled countries by same notification target", 
 
   assert.equal(captured.length, 1);
   assert.match(captured[0].message, /【今日值班】\d{4} (AM|PM)/);
-  assert.match(captured[0].message, /1\.Flink: 正常/);
-  assert.match(captured[0].message, /2\.数据质量告警“未处理”统计/);
+  assert.doesNotMatch(captured[0].message, /Flink/);
+  assert.match(captured[0].message, /1\.数据质量告警“未处理”统计/);
   assert.match(captured[0].message, /印尼\(INE\)/);
   assert.match(captured[0].message, /菲律宾\(PH\)/);
   assert.match(captured[0].message, /印尼：2/);
   assert.match(captured[0].message, /菲律宾：0/);
-  assert.match(captured[0].message, /4\. BI报表\(Metabase\):/);
+  assert.match(captured[0].message, /3\. BI报表\(Metabase\):/);
   assert.doesNotMatch(captured[0].message, /异常概览/);
   assert.doesNotMatch(captured[0].message, /各国异常 Metabase 看板/);
 

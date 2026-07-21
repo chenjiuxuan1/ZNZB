@@ -1236,6 +1236,94 @@ test("evaluateRowsAgainstRule aligns completeness to previous day time points", 
   assert.deepEqual(result, []);
 });
 
+test("evaluateRowsAgainstRule never checks time points after the local execution time", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "日期": "2026-06-07", "开始时间": "08:30", reg_cnt: 100 },
+      { "日期": "2026-06-07", "开始时间": "09:30", reg_cnt: 100 },
+      { "日期": "2026-06-08", "开始时间": "08:30", reg_cnt: 100 },
+    ],
+    {
+      type: "intradayTimePointCompleteness",
+      dateColumn: "日期",
+      timeColumn: "开始时间",
+      column: "reg_cnt",
+      timezone: "Asia/Shanghai",
+      now: "2026-06-08T01:00:00Z",
+      startTime: "00:00",
+      cutoffTime: "23:30",
+      intervalMinutes: 30,
+      expectedTimePointSource: "previousDay",
+      ignoreDimensionColumns: ["开始时间"],
+    },
+  );
+
+  assert.deepEqual(result, []);
+});
+
+test("evaluateRowsAgainstRule excludes future dates for every rule type", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "统计日期": "2026-06-08", value: 10 },
+      { "统计日期": "2026-06-09", value: 999 },
+    ],
+    {
+      type: "latestValueOutsideRange",
+      dateColumn: "统计日期",
+      column: "value",
+      max: 100,
+      timezone: "Asia/Shanghai",
+      now: "2026-06-08T01:00:00Z",
+    },
+  );
+
+  assert.equal(result, null);
+});
+
+test("evaluateRowsAgainstRule applies the execution cutoff before non-intraday rules", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "日期": "2026-06-08", "开始时间": "08:30", value: 10 },
+      { "日期": "2026-06-08", "开始时间": "09:30", value: 999 },
+    ],
+    {
+      type: "latestValueOutsideRange",
+      dateColumn: "日期",
+      timeColumn: "开始时间",
+      column: "value",
+      max: 100,
+      timezone: "Asia/Shanghai",
+      now: "2026-06-08T01:00:00Z",
+    },
+  );
+
+  assert.equal(result, null);
+});
+
+test("evaluateRowsAgainstRule ignores future rows in same-time changes", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "日期": "2026-06-07", "开始时间": "08:30", reg_cnt: 100 },
+      { "日期": "2026-06-07", "开始时间": "09:30", reg_cnt: 100 },
+      { "日期": "2026-06-08", "开始时间": "08:30", reg_cnt: 100 },
+      { "日期": "2026-06-08", "开始时间": "09:30", reg_cnt: 1000 },
+    ],
+    {
+      type: "intradaySameTimeChange",
+      dateColumn: "日期",
+      timeColumn: "开始时间",
+      column: "reg_cnt",
+      timezone: "Asia/Shanghai",
+      now: "2026-06-08T01:00:00Z",
+      cutoffTime: "23:30",
+      maxAbsChangeRate: 0.2,
+      ignoreDimensionColumns: ["开始时间"],
+    },
+  );
+
+  assert.deepEqual(result, []);
+});
+
 test("evaluateRowsAgainstRule checks intraday time point change", () => {
   const result = evaluateRowsAgainstRule(
     [

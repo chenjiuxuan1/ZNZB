@@ -259,10 +259,9 @@ function buildDutySummaryMessage(result, countryGroups, options = {}) {
   const actionableMetabaseAnomalies = filterDutyMetabaseAnomalies(result.anomalies || []);
 
   lines.push(`【今日值班】${formatDutyDatePeriod(result.checkedAt)}`);
-  lines.push("1.Flink: 正常");
-  lines.push("2.数据质量告警“未处理”统计：");
+  lines.push("1.数据质量告警“未处理”统计：");
   appendDutyWattrelSummary(lines, options.wattrelSummary);
-  lines.push(`3.DS调度：${options.dsScheduleSummary || "暂未接入"}`);
+  lines.push(`2.DS调度：${options.dsScheduleSummary || "暂未接入"}`);
   appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies);
   if (detailUrl) {
     lines.push(`详情：${detailUrl}`);
@@ -709,7 +708,7 @@ function filterDutyMetabaseAnomalies(anomalies = []) {
 }
 
 function appendDutyMetabaseSummary(lines, anomalies = []) {
-  lines.push("4. BI报表(Metabase):");
+  lines.push("3. BI报表(Metabase):");
   if (anomalies.length === 0) {
     lines.push("正常");
     return;

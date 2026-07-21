@@ -262,7 +262,7 @@ test("duty summary excludes Metabase 403 query failures from BI report", () => {
   assert.match(messages[0].body, /【今日值班】0714 PM/);
   assert.match(messages[0].body, /中国：0/);
   assert.match(messages[0].body, /墨西哥：2/);
-  assert.match(messages[0].body, /4\. BI报表\(Metabase\):/);
+  assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
   assert.match(messages[0].body, /墨西哥\(MX\)：\n- 业务概览-核心链路准实时监控：波动异常1条\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.match(messages[0].body, /业务概览-核心链路准实时监控/);
   assert.doesNotMatch(messages[0].body, /403 Forbidden/);
@@ -297,9 +297,9 @@ test("duty summary includes previous-day baseline intraday anomalies below 100 p
     },
   );
 
-  assert.match(messages[0].body, /4\. BI报表\(Metabase\):/);
+  assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
   assert.match(messages[0].body, /墨西哥\(MX\)：\n- 核心链路准实时监控：波动异常1条\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
-  assert.doesNotMatch(messages[0].body, /4\. BI报表\(Metabase\):\n正常/);
+  assert.doesNotMatch(messages[0].body, /3\. BI报表\(Metabase\):\n正常/);
 });
 
 test("buildPublicCheckMessage shows zero missing data explicitly", () => {
