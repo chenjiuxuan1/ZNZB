@@ -9,6 +9,7 @@ import { renderSandbox } from "./views/sandbox.js?v=20260707-sandbox-country";
 import { renderBatchCheck } from "./views/batch-check.js?v=20260708-metabase-schedule";
 import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
+import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260722-ds";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
@@ -20,6 +21,7 @@ const routes = [
   { path: "/wattrel-alerts", label: "Wattrel告警", short: "告", render: renderWattrelAlerts },
   { path: "/quality-rule-generation", label: "智能告警生成", short: "生", render: renderQualityRuleGeneration },
   { path: "/notify-preview", label: "通知预览", short: "通", render: renderNotifyPreview },
+  { path: "/ds-scheduler", label: "DS调度监控", short: "度", render: renderDsScheduler },
 ];
 
 window.addEventListener("hashchange", () => {

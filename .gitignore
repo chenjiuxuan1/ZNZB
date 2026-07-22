@@ -12,3 +12,4 @@ config/batch-check-schedule.json
 config/batch-check-run-history.json
 config/metabase.auth.json
 .DS_Store
+config/ds-scheduler.config.json

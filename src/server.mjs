@@ -105,6 +105,15 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/notify-test") {
     return sendJson(response, 200, await api.sendNotifyTest(await readBody(request, {})));
   }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/config") {
+    return sendJson(response, 200, await api.getDsSchedulerConfig());
+  }
+  if (method === "PUT" && url.pathname === "/api/ds-scheduler/config") {
+    return sendJson(response, 200, await api.saveDsSchedulerConfig(await readBody(request)));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/check") {
+    return sendJson(response, 200, await api.checkAllDsCountries());
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 

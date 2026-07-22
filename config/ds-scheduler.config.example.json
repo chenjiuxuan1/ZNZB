@@ -1,0 +1,11 @@
+{
+  "n8nWebhookUrl": "https://your-n8n-domain.com/webhook/ds-scheduler",
+  "countries": {
+    "cn": { "name": "中国", "token": "" },
+    "ine": { "name": "印尼", "token": "" },
+    "ph": { "name": "菲律宾", "token": "" },
+    "th": { "name": "泰国", "token": "" },
+    "pk": { "name": "巴基斯坦", "token": "" },
+    "mx": { "name": "墨西哥", "token": "" }
+  }
+}

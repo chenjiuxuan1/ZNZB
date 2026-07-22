@@ -13,6 +13,11 @@ import { discoverPublicDashboards } from "./metabase-discovery.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import {
+  loadDsSchedulerConfig,
+  saveDsSchedulerConfig,
+  checkAllCountries,
+} from "./ds-scheduler-monitor.mjs";
+import {
   mapWattrelRowsToAnomalies,
   queryWattrelAlerts as queryWattrelAlertRows,
 } from "./wattrel-client.mjs";
@@ -38,6 +43,7 @@ const FILES = {
   batchHistory: "config/batch-check-run-history.json",
   wattrel: "config/wattrel.config.json",
   qualityRuleGeneration: "config/quality-rule-generation.config.json",
+  dsScheduler: "config/ds-scheduler.config.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
@@ -841,6 +847,19 @@ export function createPlatformApi({
         botId,
         sentAt: new Date().toISOString(),
       };
+    },
+
+    async getDsSchedulerConfig() {
+      return loadDsSchedulerConfig(rootDir);
+    },
+
+    async saveDsSchedulerConfig(config) {
+      return saveDsSchedulerConfig(rootDir, config);
+    },
+
+    async checkAllDsCountries() {
+      const config = await loadDsSchedulerConfig(rootDir);
+      return checkAllCountries(rootDir, config);
     },
   };
 }
