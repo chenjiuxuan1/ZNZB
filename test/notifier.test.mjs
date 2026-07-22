@@ -302,6 +302,34 @@ test("duty summary includes previous-day baseline intraday anomalies below 100 p
   assert.doesNotMatch(messages[0].body, /3\. BI报表\(Metabase\):\n正常/);
 });
 
+test("duty summary lists every anomalous Metabase dashboard", () => {
+  const anomalies = Array.from({ length: 10 }, (_, index) => ({
+    type: "intradayTimePointCompleteness",
+    countryCode: "TH",
+    countryName: "泰国",
+    dashboardTitle: `异常看板${index + 1}`,
+    cardTitle: `指标${index + 1}`,
+    message: `半小时点数据缺失：日期 2026-07-21 缺少 08:00`,
+    dashboardUrl: `https://data.kuainiu.io/public/dashboard/th-${index + 1}`,
+  }));
+  const messages = buildPublicCheckMessages(
+    {
+      checkedAt: "2026-07-22T01:00:00.000Z",
+      checkedCardCount: 10,
+      anomalyCount: anomalies.length,
+      anomalies,
+    },
+    { messageStyle: "dutySummary" },
+  );
+
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].body, /异常看板1：数据缺失1条/);
+  assert.match(messages[0].body, /异常看板9：数据缺失1条/);
+  assert.match(messages[0].body, /异常看板10：数据缺失1条/);
+  assert.match(messages[0].body, /public\/dashboard\/th-10/);
+  assert.doesNotMatch(messages[0].body, /另有\d+个看板异常/);
+});
+
 test("buildPublicCheckMessage shows zero missing data explicitly", () => {
   const message = buildPublicCheckMessage({
     checkedAt: "2026-06-09T07:42:40.806Z",

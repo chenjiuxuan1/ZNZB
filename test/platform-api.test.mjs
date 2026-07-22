@@ -815,6 +815,14 @@ test("platform api aggregates scheduled countries by same notification target", 
             dest_value: 49,
             diff: 1,
           },
+          {
+            id: 3,
+            dest_tbl: "dwd_asset_withhold_detail",
+            name: "提现一致性",
+            src_value: 101,
+            dest_value: 98,
+            diff: 3,
+          },
         ];
       }
       return [];

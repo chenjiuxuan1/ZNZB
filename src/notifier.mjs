@@ -730,9 +730,8 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
         || right.severity - left.severity
         || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN");
     });
-  const shown = dashboardGroups.slice(0, 8);
   const byCountry = new Map();
-  for (const group of shown) {
+  for (const group of dashboardGroups) {
     const countryLabel = formatCountryLabel(group) || "未知国家";
     if (!byCountry.has(countryLabel)) {
       byCountry.set(countryLabel, []);
@@ -755,10 +754,6 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
         lines.push(`  ${group.dashboardUrl}`);
       }
     }
-  }
-  const hiddenCount = dashboardGroups.length - shown.length;
-  if (hiddenCount > 0) {
-    lines.push(`另有${hiddenCount}个看板异常，详见明细页。`);
   }
 }
 

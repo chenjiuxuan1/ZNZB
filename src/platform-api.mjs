@@ -1143,6 +1143,7 @@ async function queryCurrentWattrelTargets({ config = {}, countries = [], body = 
       status: target.configured ? "pending" : "unconfigured",
       rowCount: 0,
       anomalyCount: 0,
+      uniqueRuleCount: 0,
       tableCount: 0,
       topTables: [],
       anomalies: [],
@@ -1161,6 +1162,7 @@ async function queryCurrentWattrelTargets({ config = {}, countries = [], body = 
       status.status = "success";
       status.rowCount = rows.length;
       status.anomalyCount = anomalies.length;
+      status.uniqueRuleCount = new Set(anomalies.map((item) => wattrelRuleKey(item))).size;
       status.tableCount = tableCount;
       status.rows = rows;
       status.anomalies = anomalies;
@@ -1380,6 +1382,7 @@ function mergeWattrelCountryStatuses(summaryCountries = [], statusCountries = []
       status: country.status || (country.configured ? "success" : "unconfigured"),
       rowCount: country.rowCount || 0,
       anomalyCount: country.anomalyCount || 0,
+      uniqueRuleCount: country.uniqueRuleCount ?? country.anomalyCount ?? 0,
       tableCount: country.tableCount || 0,
       topTables: country.topTables || [],
       anomalies: country.anomalies || [],
@@ -1396,6 +1399,7 @@ function mergeWattrelCountryStatuses(summaryCountries = [], statusCountries = []
       status: existing.status === "failed" ? "failed" : "success",
       rowCount: existing.rowCount || country.anomalies?.length || 0,
       anomalyCount: country.anomalyCount || 0,
+      uniqueRuleCount: country.uniqueRuleCount ?? country.anomalyCount ?? 0,
       tableCount: country.tableCount || 0,
       topTables: country.topTables || [],
       anomalies: country.anomalies || [],
@@ -1424,6 +1428,7 @@ function summarizeWattrelCountries(anomalies = []) {
         countryCode,
         countryName,
         anomalyCount: 0,
+        rules: new Set(),
         tableCount: 0,
         tables: new Map(),
         anomalies: [],
@@ -1431,6 +1436,7 @@ function summarizeWattrelCountries(anomalies = []) {
     }
     const group = groups.get(key);
     group.anomalyCount += 1;
+    group.rules.add(wattrelRuleKey(anomaly));
     group.anomalies.push(anomaly);
     const tableName = String(anomaly.destTbl || anomaly.cardTitle || "未知目标表").trim();
     if (!group.tables.has(tableName)) {
@@ -1458,11 +1464,26 @@ function summarizeWattrelCountries(anomalies = []) {
       countryCode: group.countryCode,
       countryName: group.countryName,
       anomalyCount: group.anomalyCount,
+      uniqueRuleCount: group.rules.size,
       tableCount: topTables.length,
       topTables: topTables.slice(0, 5),
       anomalies: group.anomalies,
     };
   }).sort((a, b) => b.anomalyCount - a.anomalyCount || countryRunLabel(a).localeCompare(countryRunLabel(b)));
+}
+
+function wattrelRuleKey(anomaly = {}) {
+  const ruleName = String(
+    anomaly.checkName
+      || anomaly.name
+      || anomaly.metric
+      || anomaly.cardTitle
+      || anomaly.destTbl
+      || anomaly.destTable
+      || anomaly.table
+      || "未命名校验规则",
+  ).trim();
+  return ruleName.toLocaleLowerCase();
 }
 
 function summarizeWattrelTargetTables(anomalies = []) {
@@ -1867,7 +1888,7 @@ async function buildScheduledWattrelSummary({ countryConfigs = [], wattrelConfig
       return {
         countryCode: code,
         countryName: country.name || status.countryName || countryDisplayName(code),
-        count: Number(status.anomalyCount || 0),
+        count: Number(status.uniqueRuleCount ?? status.anomalyCount ?? 0),
         status: status.status || "unconfigured",
         error: status.error || null,
       };
