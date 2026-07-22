@@ -1473,6 +1473,10 @@ function summarizeWattrelCountries(anomalies = []) {
 }
 
 function wattrelRuleKey(anomaly = {}) {
+  const qualityId = anomaly.qualityId ?? anomaly.quality_id;
+  if (qualityId !== undefined && qualityId !== null && String(qualityId).trim()) {
+    return `quality:${String(qualityId).trim()}`;
+  }
   const ruleName = String(
     anomaly.checkName
       || anomaly.name
@@ -1483,7 +1487,7 @@ function wattrelRuleKey(anomaly = {}) {
       || anomaly.table
       || "未命名校验规则",
   ).trim();
-  return ruleName.toLocaleLowerCase();
+  return `name:${ruleName.toLocaleLowerCase()}`;
 }
 
 function summarizeWattrelTargetTables(anomalies = []) {
