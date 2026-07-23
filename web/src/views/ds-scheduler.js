@@ -76,14 +76,14 @@ export function renderDsScheduler(root) {
             <span class="ds-feature-icon">⛔</span>
             <div>
               <strong>卡死检测</strong>
-              <p>对每个已上线（ONLINE）的定时工作流，从最新调度实例开始，检查是否有连续 N 次（默认 3 次）运行失败。连续失败次数达到阈值则判定为"卡死"并告警。</p>
+              <p><em>1. 连续失败</em>：检查是否连续 N 次运行失败（默认 3 次）；<em>2. 长时间运行</em>：检查是否任务执行超过合理时间未结束。</p>
             </div>
           </div>
           <div class="ds-info-feature">
             <span class="ds-feature-icon">⚠️</span>
             <div>
               <strong>旷工/离线检测</strong>
-              <p>识别已下线（OFFLINE）或长时间未运行的定时任务。如果工作流之前是定时上线状态，但被误触下线后长时间未运行，系统会识别并提醒。</p>
+              <p>识别异常下线的工作流：<em>一周内曾保持上线</em> 且 <em>存在下游依赖</em> 但当前突然下线，将告警给负责人。</p>
             </div>
           </div>
         </div>
@@ -150,7 +150,6 @@ async function loadConfig(root) {
   }
 }
 
-// 渲染项目配置网格（左侧）
 function renderProjectGrid(root, config) {
   const container = root.querySelector("#ds-project-grid");
   const projectNames = config.projectNames || {};
@@ -192,7 +191,6 @@ function renderProjectGrid(root, config) {
   }).join("");
 }
 
-// 渲染 Token 配置网格（右侧）
 function renderTokenGrid(root, config) {
   const container = root.querySelector("#ds-token-grid");
   const countries = config.countries || {};
@@ -218,7 +216,6 @@ function setupEventListeners(root) {
   root.querySelector("#ds-save-config")?.addEventListener("click", () => saveConfig(root));
   root.querySelector("#ds-run-check")?.addEventListener("click", () => runCheck(root));
 
-  // Token toggle
   root.querySelector("#ds-token-toggle")?.addEventListener("click", () => {
     const grid = root.querySelector("#ds-token-grid");
     const arrow = root.querySelector("#ds-token-toggle .ds-toggle-arrow");
@@ -243,7 +240,6 @@ async function saveConfig(root) {
     const countries = {};
     const projectNames = {};
 
-    // 收集项目名称
     projectCards.forEach((card) => {
       const nameInput = card.querySelector(".ds-project-name");
       const code = nameInput?.dataset?.country;
@@ -251,7 +247,6 @@ async function saveConfig(root) {
       projectNames[code] = nameInput?.value?.trim() || "";
     });
 
-    // 收集 token（如果没有填写，保留原来的）
     tokenCards.forEach((card) => {
       const tokenInput = card.querySelector(".ds-country-token");
       const code = tokenInput?.dataset?.country;
@@ -272,7 +267,6 @@ async function saveConfig(root) {
     const result = await apiPut("/api/ds-scheduler/config", config);
     status.textContent = "✓ 配置已保存" + (result.resolved ? "，已匹配项目代码" : "");
     status.className = "ds-save-status ds-saved";
-    // Re-render with updated project codes
     const updatedConfig = { ...config, projectCodes: result.projectCodes || {} };
     renderProjectGrid(root, updatedConfig);
     renderTokenGrid(root, updatedConfig);
@@ -412,23 +406,29 @@ function renderStuckTable(workflows) {
               <th>工作流名称</th>
               <th>Code</th>
               <th>状态</th>
-              <th>连续失败</th>
-              <th>检查数</th>
+              <th>异常类型</th>
+              <th>详情</th>
               <th>最近失败时间</th>
+              <th>负责人</th>
             </tr>
           </thead>
           <tbody>
   `;
   for (const wf of workflows) {
     const recentTimes = (wf.recentFailures || []).slice(0, 2).map((f) => f.schedule_time || f.end_time || "").filter(Boolean);
+    const isLongRunning = (wf.stuckType || "").toLowerCase().includes("long_running");
+    const issueType = isLongRunning ? "⏱️ 长时间运行" : "❌ 连续失败";
+    const issueDetail = isLongRunning ? `已运行 ${wf.runningDuration || "未知"}` : `连续失败 ${wf.consecutiveFailures || 0} 次`;
+    const owner = wf.owner || wf.responsible || "-";
     html += `
       <tr>
         <td><strong>${escapeHtml(wf.workflowName || "-")}</strong></td>
         <td><code>${escapeHtml(wf.workflowCode || "")}</code></td>
         <td>${wf.scheduleStatus === "ONLINE" ? `<span class="ds-badge-sm ds-badge-ok">ONLINE</span>` : escapeHtml(wf.scheduleStatus || "-")}</td>
-        <td><span class="ds-danger-text">${wf.consecutiveFailures || 0} 次</span></td>
-        <td>${wf.totalChecked || 0}</td>
+        <td><span class="ds-badge-sm ${isLongRunning ? 'ds-badge-warn' : 'ds-badge-error'}">${issueType}</span></td>
+        <td>${escapeHtml(issueDetail)}</td>
         <td class="ds-time-cell">${recentTimes.length ? recentTimes.join("<br>") : "-"}</td>
+        <td>${escapeHtml(owner)}</td>
       </tr>
     `;
   }
@@ -450,18 +450,28 @@ function renderStaleTable(workflows) {
               <th>工作流名称</th>
               <th>Code</th>
               <th>状态</th>
-              <th>离线原因</th>
+              <th>异常类型</th>
+              <th>离线时长</th>
+              <th>下游依赖</th>
+              <th>负责人</th>
             </tr>
           </thead>
           <tbody>
   `;
   for (const wf of workflows) {
+    const hasDownstream = wf.downstreamCount && wf.downstreamCount > 0;
+    const downstreamInfo = hasDownstream ? `🔗 ${wf.downstreamCount} 个依赖` : "-";
+    const owner = wf.owner || wf.responsible || "-";
+    const offlineDuration = wf.offlineDuration || wf.staleDuration || "-";
     html += `
       <tr>
         <td><strong>${escapeHtml(wf.workflowName || "-")}</strong></td>
         <td><code>${escapeHtml(wf.workflowCode || "")}</code></td>
         <td>${wf.scheduleStatus === "OFFLINE" ? `<span class="ds-badge-sm ds-badge-warn">OFFLINE</span>` : escapeHtml(wf.scheduleStatus || "-")}</td>
-        <td><span class="ds-warn-text">${escapeHtml(wf.staleMessage || wf.staleReason || "-")}</span></td>
+        <td><span class="ds-badge-sm ds-badge-warn">💤 异常下线</span></td>
+        <td>${escapeHtml(offlineDuration)}</td>
+        <td>${hasDownstream ? `<span class="ds-warn-text">${downstreamInfo}</span>` : "-"}</td>
+        <td>${escapeHtml(owner)}</td>
       </tr>
     `;
   }
