@@ -3727,3 +3727,20 @@ body {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* --- Toggle Arrow --- */
+.ds-toggle-arrow {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-left: 6px;
+  transition: transform 0.2s;
+}
+.ds-config-toggle:hover .ds-toggle-arrow {
+  color: #3b82f6;
+}
+.ds-config-toggle:hover {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}

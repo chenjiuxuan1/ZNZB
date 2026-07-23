@@ -9,7 +9,7 @@ import { renderSandbox } from "./views/sandbox.js?v=20260707-sandbox-country";
 import { renderBatchCheck } from "./views/batch-check.js?v=20260708-metabase-schedule";
 import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
-import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260723-ds-ui";
+import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260723-ds-v2";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },

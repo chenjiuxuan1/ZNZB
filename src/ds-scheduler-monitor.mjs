@@ -14,6 +14,7 @@ export async function loadDsSchedulerConfig(rootDir) {
     n8nWebhookUrl: config.n8nWebhookUrl || "",
     countries: config.countries || {},
     projectCodes: config.projectCodes || {},
+    projectNames: config.projectNames || {},
   };
 }
 
@@ -30,11 +31,82 @@ export async function getDsSchedulerScope(rootDir) {
   return result;
 }
 
+/**
+ * Resolve a project name to a project code by calling the n8n gateway.
+ */
+export async function resolveProjectName(webhookUrl, countryCode, token, projectName) {
+  if (!projectName || !projectName.trim()) {
+    return { success: false, error: "project name is empty" };
+  }
+  try {
+    const response = await fetchCompatible(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        country: countryCode,
+        action: "resolve_project",
+        ds_token: token,
+        payload: {
+          project_name: projectName.trim(),
+        },
+      }),
+    });
+    const body = await response.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      return { success: false, error: `resolve_project returned invalid JSON: ${body.slice(0, 200)}` };
+    }
+    if (!parsed.success) {
+      return { success: false, error: parsed.error?.message || parsed.error?.code || "resolve_project failed" };
+    }
+    const projectCode = parsed.data?.project_code || parsed.data?.projectCode || "";
+    if (!projectCode) {
+      return { success: false, error: `未找到项目"${projectName}"，请确认项目名称是否正确` };
+    }
+    return { success: true, projectCode };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 export async function saveDsSchedulerConfig(rootDir, config) {
   const fs = await import("node:fs/promises");
   const filePath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
-  await fs.writeFile(filePath, JSON.stringify(config, null, 2), "utf8");
-  return config;
+
+  // Resolve project names to codes
+  const webhookUrl = config.n8nWebhookUrl || "";
+  const countries = config.countries || {};
+  const projectNames = config.projectNames || {};
+  const projectCodes = {};
+  const resolveResults = [];
+
+  for (const [code, c] of Object.entries(countries)) {
+    const token = String(c.token || "").trim();
+    const projectName = projectNames[code] || "";
+    projectCodes[code] = "";
+
+    if (token && projectName && webhookUrl) {
+      const result = await resolveProjectName(webhookUrl, code, token, projectName);
+      if (result.success && result.projectCode) {
+        projectCodes[code] = result.projectCode;
+        resolveResults.push({ country: code, name: projectName, code: result.projectCode, ok: true });
+      } else {
+        resolveResults.push({ country: code, name: projectName, error: result.error, ok: false });
+      }
+    }
+  }
+
+  const fullConfig = {
+    n8nWebhookUrl: webhookUrl,
+    projectNames,
+    projectCodes,
+    countries,
+  };
+
+  await fs.writeFile(filePath, JSON.stringify(fullConfig, null, 2), "utf8");
+  return { ...fullConfig, resolved: resolveResults.filter((r) => r.ok).length, resolveErrors: resolveResults.filter((r) => !r.ok) };
 }
 
 export async function checkAllCountries(rootDir, config) {
@@ -84,11 +156,14 @@ export async function checkAllCountries(rootDir, config) {
       try {
         parsed = JSON.parse(body);
       } catch {
+        const errorMsg = body.includes("403")
+          ? "n8n 网关拒绝访问，请确认服务器 IP 已加入公司网络白名单"
+          : `n8n 网关返回异常: ${body.slice(0, 200)}`;
         results.push({
           country: countryCode,
           countryName: countryConfig.name || countryCode,
           success: false,
-          error: `invalid JSON response: ${body.slice(0, 200)}`,
+          error: errorMsg,
           stuckCount: 0,
           checkedWorkflows: 0,
           stuckWorkflows: [],
