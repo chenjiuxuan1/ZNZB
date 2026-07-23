@@ -13,7 +13,21 @@ export async function loadDsSchedulerConfig(rootDir) {
   return {
     n8nWebhookUrl: config.n8nWebhookUrl || "",
     countries: config.countries || {},
+    projectCodes: config.projectCodes || {},
   };
+}
+
+export async function getDsSchedulerScope(rootDir) {
+  const config = await loadDsSchedulerConfig(rootDir);
+  const countries = config.countries || {};
+  const result = {};
+  for (const [code, c] of Object.entries(countries)) {
+    result[code] = {
+      name: c.name || code,
+      configured: Boolean(c.token && c.token.length > 0),
+    };
+  }
+  return result;
 }
 
 export async function saveDsSchedulerConfig(rootDir, config) {
