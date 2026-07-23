@@ -74,6 +74,7 @@ export async function checkAllCountries(rootDir, config) {
           payload: {
             consecutive_failures: 3,
             page_size: 20,
+            project_code: config.projectCodes?.[countryCode] || "",
           },
         }),
       });
@@ -115,6 +116,7 @@ export async function checkAllCountries(rootDir, config) {
         success: true,
         error: null,
         stuckCount: data.stuck_count || 0,
+        staleCount: data.stale_count || 0,
         checkedWorkflows: data.total_checked || 0,
         stuckWorkflows: (data.stuck_workflows || []).map((wf) => ({
           workflowCode: wf.workflow_code,
@@ -124,6 +126,15 @@ export async function checkAllCountries(rootDir, config) {
           consecutiveFailures: wf.consecutive_failures,
           totalChecked: wf.total_checked,
           recentFailures: (wf.recent_failures || []).slice(0, 5),
+        })),
+        staleWorkflows: (data.stale_workflows || []).map((wf) => ({
+          workflowCode: wf.workflow_code,
+          workflowName: wf.workflow_name,
+          scheduleId: wf.schedule_id,
+          scheduleStatus: wf.schedule_status,
+          staleReason: wf.stale_reason,
+          staleMessage: wf.stale_message,
+          totalInstancesChecked: wf.total_instances_checked,
         })),
       });
     } catch (error) {
@@ -140,12 +151,14 @@ export async function checkAllCountries(rootDir, config) {
   }
 
   const totalStuck = results.reduce((sum, r) => sum + r.stuckCount, 0);
+  const totalStale = results.reduce((sum, r) => sum + (r.staleCount || 0), 0);
   const totalChecked = results.reduce((sum, r) => sum + r.checkedWorkflows, 0);
   const failedCountries = results.filter((r) => !r.success).length;
 
   return {
     checkedAt: new Date().toISOString(),
     totalStuck,
+    totalStale,
     totalChecked,
     totalCountries: countries.length,
     failedCountries,
