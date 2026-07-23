@@ -3744,3 +3744,38 @@ body {
   padding: 2px 4px;
   margin: -2px -4px;
 }
+
+/* --- Project Field Styling --- */
+.ds-project-field {
+  display: flex;
+  flex-direction: column;
+}
+.ds-project-field .ds-input {
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.ds-project-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+}
+.ds-project-code-label {
+  font-size: 11px;
+  color: #166534;
+  font-weight: 500;
+}
+.ds-project-code {
+  font-size: 11px;
+  background: #dcfce7;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #166534;
+  font-weight: 600;
+}
+.ds-country-card-body {
+  padding: 14px 16px 16px;
+}

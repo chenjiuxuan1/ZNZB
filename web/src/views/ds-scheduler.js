@@ -205,19 +205,6 @@ function setupEventListeners(root) {
       arrow.textContent = "▶";
     }
   });
-
-  // Token toggle visibility
-  root.addEventListener("click", (event) => {
-    const toggleBtn = event.target.closest(".ds-btn-toggle-token");
-    if (toggleBtn) {
-      const country = toggleBtn.dataset.country;
-      const input = root.querySelector(`.ds-country-token[data-country="${country}"]`);
-      if (input) {
-        input.type = input.type === "password" ? "text" : "password";
-        toggleBtn.textContent = input.type === "password" ? "显示" : "隐藏";
-      }
-    }
-  });
 }
 
 async function saveConfig(root) {
@@ -225,17 +212,19 @@ async function saveConfig(root) {
   status.textContent = "保存中...";
   status.className = "ds-save-status ds-saving";
   try {
+    const currentConfig = await apiGet("/api/ds-scheduler/config");
     const countryCards = root.querySelectorAll(".ds-country-card");
     const countries = {};
     const projectNames = {};
     countryCards.forEach((card) => {
-      const tokenInput = card.querySelector(".ds-country-token");
       const nameInput = card.querySelector(".ds-project-name");
-      const code = tokenInput?.dataset?.country || nameInput?.dataset?.country;
+      const code = nameInput?.dataset?.country;
       if (!code) return;
+      // Keep existing token from config
+      const existingToken = currentConfig.countries?.[code]?.token || "";
       countries[code] = {
         name: COUNTRY_LABELS[code] || code,
-        token: tokenInput?.value?.trim() || "",
+        token: existingToken,
       };
       projectNames[code] = nameInput?.value?.trim() || "";
     });
