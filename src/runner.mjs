@@ -29,6 +29,7 @@ export async function discover(config, outputFile) {
       uid: dashboard.uid,
       timeRange: dashboard.time || null,
       panels: describePanels(panels),
+      manualDashboards: normalizeManualDashboards(config.manualDashboards),
     };
 
     if (outputFile) {
@@ -40,6 +41,23 @@ export async function discover(config, outputFile) {
   } finally {
     await client.close?.();
   }
+}
+
+function normalizeManualDashboards(dashboards) {
+  if (!Array.isArray(dashboards)) {
+    return [];
+  }
+  return dashboards
+    .filter((dashboard) => dashboard?.url)
+    .map((dashboard) => ({
+      id: String(dashboard.id || "").trim() || undefined,
+      title: String(dashboard.title || "").trim() || undefined,
+      url: String(dashboard.url).trim(),
+      parameterDefaults:
+        dashboard.parameterDefaults && typeof dashboard.parameterDefaults === "object"
+          ? dashboard.parameterDefaults
+          : {},
+    }));
 }
 
 export async function runCheck(config) {

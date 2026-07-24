@@ -143,6 +143,79 @@ test("extractInternalMetabaseRefs keeps marked internal dashboard sources", () =
   assert.equal(refs[0].country.code, "CN");
 });
 
+test("extractInternalMetabaseRefs includes persistent manual dashboards", () => {
+  const refs = extractInternalMetabaseRefs({
+    country: { code: "TH", name: "泰国" },
+    panels: [],
+    manualDashboards: [
+      {
+        id: "1054",
+        title: "还款时点分布",
+        url: "https://data.kuainiu.io/dashboard/1054",
+        parameterDefaults: {
+          日期: "past15days~",
+          小时: ["0", "1", "提前还款"],
+        },
+      },
+    ],
+  });
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].id, "1054");
+  assert.equal(refs[0].sourcePanelId, "manual-1054");
+  assert.equal(refs[0].country.code, "TH");
+  assert.deepEqual(refs[0].parameterDefaults, {
+    日期: "past15days~",
+    小时: ["0", "1", "提前还款"],
+  });
+});
+
+test("discoverPublicDashboards applies manual dashboard parameter defaults", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "metabase-manual-discovery-"));
+  const inputFile = path.join(rootDir, "panels.json");
+  await fs.writeFile(inputFile, JSON.stringify({
+    country: { code: "MX", name: "墨西哥", timezone: "America/Mexico_City" },
+    panels: [],
+    manualDashboards: [
+      {
+        id: "1039",
+        title: "还款时点分布",
+        url: "https://data.kuainiu.io/dashboard/1039",
+        parameterDefaults: {
+          日期: "past15days~",
+          是否包含提前还款: "否",
+        },
+      },
+    ],
+  }));
+
+  const result = await discoverPublicDashboards({
+    inputFile,
+    sampleRows: 0,
+    internalClientFactory: () => ({
+      async getDashboard(id) {
+        assert.equal(id, "1039");
+        return {
+          name: "还款时点分布",
+          parameters: [
+            { id: "date", name: "日期", type: "date/all-options", default: "past30days~" },
+            { id: "early", name: "是否包含提前还款", type: "string/=", default: "是" },
+          ],
+          dashcards: [],
+        };
+      },
+    }),
+  });
+
+  assert.equal(result.dashboardCount, 1);
+  assert.equal(result.dashboards[0].dashboardId, "1039");
+  assert.equal(result.dashboards[0].sourcePanelId, "manual-1039");
+  assert.deepEqual(
+    result.dashboards[0].parameters.map((parameter) => parameter.default),
+    ["past15days~", "否"],
+  );
+});
+
 test("discoverPublicDashboards expands internal collection dashboards with auth client", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "metabase-discovery-"));
   const inputFile = path.join(rootDir, "panels.json");

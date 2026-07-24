@@ -10,7 +10,10 @@ import {
   evaluateRowsAgainstRule,
   mergeParameters,
 } from "./metabase-public-monitor.mjs";
-import { discoverPublicDashboards } from "./metabase-discovery.mjs";
+import {
+  discoverPublicDashboards,
+  extractInternalMetabaseRefs,
+} from "./metabase-discovery.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import {
@@ -630,15 +633,39 @@ export function createPlatformApi({
       const countryCode = String(body.countryCode || "").trim();
       const dashboardUuid = String(body.dashboardUuid || "").trim();
       const dashboardUuids = normalizeDashboardUuids(body.dashboardUuids);
-      let filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
-      if (countryCode && filteredInventory.dashboardCount === 0) {
-        const discoveredInventory = await discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn);
-        filteredInventory = filterBatchInventory(discoveredInventory, { countryCode, dashboardUuid, dashboardUuids });
+      const countryConfig = await readJsonFile(resolve("countries"), { countries: [] });
+      const discoveryCountryCodes = countryCode
+        ? [countryCode]
+        : (countryConfig.countries || []).map((country) => country.code).filter(Boolean);
+      let currentInventory = inventory;
+
+      for (const discoveryCountryCode of discoveryCountryCodes) {
+        const countryInventory = filterBatchInventory(currentInventory, {
+          countryCode: discoveryCountryCode,
+          dashboardUuid: "",
+          dashboardUuids: [],
+        });
+        const [hasSources, needsSourceDiscovery] = await Promise.all([
+          hasCountryPanelSources(rootDir, discoveryCountryCode),
+          hasMissingInternalDashboardSources(rootDir, discoveryCountryCode, countryInventory),
+        ]);
+        if (!hasSources || (countryInventory.dashboardCount > 0 && !needsSourceDiscovery)) {
+          continue;
+        }
+        const discoveredInventory = await discoverCountryInventoryFromPanelSources(
+          rootDir,
+          discoveryCountryCode,
+          discoverDashboardsFn,
+        );
+        currentInventory = mergeInventories([currentInventory, discoveredInventory]);
       }
+      const filteredInventory = filterBatchInventory(
+        currentInventory,
+        { countryCode, dashboardUuid, dashboardUuids },
+      );
       if (countryCode && filteredInventory.dashboardCount === 0) {
-        const countries = await readJsonFile(resolve("countries"), { countries: [] });
         throw badRequest("No public dashboard for country", [
-          await explainUnavailableCountryInventory(rootDir, countryCode, countries.countries || []),
+          await explainUnavailableCountryInventory(rootDir, countryCode, countryConfig.countries || []),
         ]);
       }
       if ((dashboardUuid || dashboardUuids.length) && filteredInventory.dashboardCount === 0) {
@@ -2326,20 +2353,39 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
   const panelsFile = path.join(configDir, `discovered-panels.${match[1].toLowerCase()}.json`);
   const panels = await readJsonFile(panelsFile, { panels: [] });
   const panelItems = panels?.panels || [];
+  const manualDashboards = panels?.manualDashboards || [];
   return {
     urls: new Set(
-      panelItems
-      .flatMap((panel) => panel.links || [])
-      .map((link) => link.url)
-      .filter(Boolean),
+      [
+        ...panelItems.flatMap((panel) => panel.links || []).map((link) => link.url),
+        ...manualDashboards.map((dashboard) => dashboard.url),
+      ].filter(Boolean),
     ),
     panelIds: new Set(
-      panelItems
-        .map((panel) => panel.id)
-        .filter((id) => id != null)
+      [
+        ...panelItems.map((panel) => panel.id),
+        ...manualDashboards.map((dashboard) => `manual-${dashboard.id || ""}`),
+      ]
+        .filter((id) => id != null && id !== "manual-")
         .map(String),
     ),
   };
+}
+
+async function hasMissingInternalDashboardSources(rootDir, countryCode, inventory) {
+  const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
+  const expectedDashboardIds = extractInternalMetabaseRefs(source)
+    .filter((ref) => ref.type === "dashboard")
+    .map((ref) => String(ref.id));
+  if (expectedDashboardIds.length === 0) {
+    return false;
+  }
+  const discoveredDashboardIds = new Set(
+    (inventory.dashboards || [])
+      .filter((dashboard) => dashboard.access === "internal")
+      .map((dashboard) => String(dashboard.dashboardId || "")),
+  );
+  return expectedDashboardIds.some((id) => !discoveredDashboardIds.has(id));
 }
 
 async function discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn) {
@@ -2375,7 +2421,8 @@ async function hasCountryPanelSources(rootDir, countryCode) {
     return false;
   }
   const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
-  return Array.isArray(source.panels) && source.panels.length > 0;
+  return (Array.isArray(source.panels) && source.panels.length > 0)
+    || (Array.isArray(source.manualDashboards) && source.manualDashboards.length > 0);
 }
 
 function getInventoryCountryCodes(inventories) {
@@ -2608,7 +2655,9 @@ async function loadPanelSources(rootDir, countries, filters = {}) {
   for (const country of targetCountries) {
     const filePath = panelSourceFilePath(rootDir, country.code);
     const source = await readJsonFile(filePath, {});
-    if (!source || !Array.isArray(source.panels) || source.panels.length === 0) {
+    const panelItems = source?.panels || [];
+    const manualDashboards = source?.manualDashboards || [];
+    if (!source || (panelItems.length === 0 && manualDashboards.length === 0)) {
       continue;
     }
 
@@ -2618,15 +2667,26 @@ async function loadPanelSources(rootDir, countries, filters = {}) {
       timezone: country.timezone,
       sourceTitle: source.title || "",
       sourceUid: source.uid || "",
-      panels: source.panels.map((panel) => ({
-        id: panel.id,
-        title: panel.title || "-",
-        type: panel.type || "",
-        datasource: panel.datasource || "",
-        targetCount: Number(panel.targetCount || 0),
-        textPreview: panel.textPreview || "",
-        links: Array.isArray(panel.links) ? panel.links : [],
-      })),
+      panels: [
+        ...panelItems.map((panel) => ({
+          id: panel.id,
+          title: panel.title || "-",
+          type: panel.type || "",
+          datasource: panel.datasource || "",
+          targetCount: Number(panel.targetCount || 0),
+          textPreview: panel.textPreview || "",
+          links: Array.isArray(panel.links) ? panel.links : [],
+        })),
+        ...manualDashboards.map((dashboard) => ({
+          id: `manual-${dashboard.id || ""}`,
+          title: dashboard.title || `Metabase Dashboard ${dashboard.id || ""}`,
+          type: "metabase-dashboard",
+          datasource: "metabase",
+          targetCount: 0,
+          textPreview: "手工配置的 Metabase 巡检看板",
+          links: dashboard.url ? [{ title: dashboard.title || dashboard.url, url: dashboard.url }] : [],
+        })),
+      ],
     });
   }
 
@@ -2644,11 +2704,12 @@ async function explainUnavailableCountryInventory(rootDir, countryCode, countrie
   const country = countries.find((item) => item.code === countryCode) || {};
   const label = [country.name, countryCode].filter(Boolean).join(" / ") || countryCode || "该国家";
   const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
-  const sourceCount = Array.isArray(source.panels) ? source.panels.length : 0;
+  const sourceCount = (Array.isArray(source.panels) ? source.panels.length : 0)
+    + (Array.isArray(source.manualDashboards) ? source.manualDashboards.length : 0);
   if (sourceCount > 0) {
-    return `${label} 当前有 ${sourceCount} 个来源看板，但都是 Metabase 内部 collection/dashboard 链接，尚未发现可巡检的 /public/dashboard UUID；请先在 Metabase 开启 public sharing 并重新发现后再上线巡检。`;
+    return `${label} 当前有 ${sourceCount} 个 Metabase 来源看板，但尚未发现可巡检的卡片；请检查内部 API 登录凭据或 public sharing 配置后重新发现。`;
   }
-  return `${label} 当前没有可巡检的 public dashboard 清单，请先补充 /public/dashboard UUID 并重新发现。`;
+  return `${label} 当前没有可巡检的 Metabase 看板来源，请先补充内部 dashboard/collection 链接或 /public/dashboard UUID。`;
 }
 
 function summarizeCountries(countries, inventory, result) {

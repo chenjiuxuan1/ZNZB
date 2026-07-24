@@ -140,6 +140,23 @@ export function extractInternalMetabaseRefs(discoveredPanels) {
     }
   }
 
+  for (const dashboard of discoveredPanels.manualDashboards || []) {
+    const parsed = parseInternalMetabaseUrl(dashboard.url);
+    if (!parsed) {
+      continue;
+    }
+    refs.push({
+      ...parsed,
+      country: discoveredPanels.country || null,
+      sourcePanelId: `manual-${dashboard.id || parsed.id}`,
+      sourcePanelTitle: dashboard.title || `Metabase Dashboard ${parsed.id}`,
+      parameterDefaults:
+        dashboard.parameterDefaults && typeof dashboard.parameterDefaults === "object"
+          ? dashboard.parameterDefaults
+          : {},
+    });
+  }
+
   const seen = new Set();
   return refs.filter((ref) => {
     const key = `${ref.baseUrl}:${ref.type}:${ref.id}`;
@@ -222,7 +239,10 @@ async function discoverInternalDashboards(client, ref, sampleRows) {
       url: dashboardRef.url || `${ref.baseUrl}/dashboard/${dashboardRef.dashboardId}`,
       sourceUrl: ref.url,
       sourceType: ref.type,
-      parameters: summarizeParameters(dashboard.parameters || []),
+      parameters: summarizeParameters(
+        dashboard.parameters || [],
+        dashboardRef.parameterDefaults,
+      ),
       dashcardCount: dashboard.dashcards?.length || 0,
       cardCount: cards.length,
       cards: sampledCards,
@@ -277,12 +297,14 @@ function normalizeCollectionItems(response) {
   return [];
 }
 
-function summarizeParameters(parameters) {
+function summarizeParameters(parameters, parameterDefaults = {}) {
   return parameters.map((parameter) => ({
     id: parameter.id,
     name: parameter.name,
     type: parameter.type,
-    default: parameter.default,
+    default: Object.prototype.hasOwnProperty.call(parameterDefaults, parameter.name)
+      ? parameterDefaults[parameter.name]
+      : parameter.default,
     isMultiSelect: parameter.isMultiSelect || false,
   }));
 }

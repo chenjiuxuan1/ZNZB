@@ -478,7 +478,7 @@ test("platform api explains countries that only have internal source dashboards"
       assert.equal(error.message, "No public dashboard for country");
       assert.match(
         error.errors?.[0] || "",
-        /中国 \/ CN 当前有 1 个来源看板.*尚未发现可巡检的 \/public\/dashboard UUID/,
+        /中国 \/ CN 当前有 1 个 Metabase 来源看板.*尚未发现可巡检的卡片/,
       );
       return true;
     },
@@ -570,6 +570,88 @@ test("platform api discovers internal dashboards from source list when country i
   assert.equal(result.checkedCards[0].dashboardUuid, "internal-501");
   assert.equal(discoveredInputs.length, 1);
   assert.match(discoveredInputs[0], /discovered-panels\.ph\.json$/);
+});
+
+test("platform api discovers a missing manual dashboard during a full-scope run", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ine.json"),
+    JSON.stringify({
+      country: { code: "INE", name: "印尼" },
+      dashboards: [
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          access: "public",
+          title: "OKR",
+          uuid: "dash-1",
+          url: "https://data.example/public/dashboard/dash-1",
+          sourcePanelId: 1,
+          cards: [{ title: "规模", cardId: 1, dashcardId: 2 }],
+        },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({
+      country: { code: "INE", name: "印尼", timezone: "Asia/Jakarta" },
+      panels: [
+        {
+          id: 1,
+          title: "OKR",
+          links: [{ url: "https://data.example/public/dashboard/dash-1" }],
+        },
+      ],
+      manualDashboards: [
+        {
+          id: "1052",
+          title: "还款时点分布",
+          url: "https://data.kuainiu.io/dashboard/1052",
+        },
+      ],
+    }),
+  );
+
+  let discoveryCount = 0;
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => {
+      discoveryCount += 1;
+      return {
+        country: { code: "INE", name: "印尼", timezone: "Asia/Jakarta" },
+        dashboards: [
+          {
+            countryCode: "INE",
+            countryName: "印尼",
+            access: "internal",
+            title: "还款时点分布",
+            dashboardId: "1052",
+            uuid: "internal-1052",
+            url: "https://data.kuainiu.io/dashboard/1052",
+            sourceUrl: "https://data.kuainiu.io/dashboard/1052",
+            sourcePanelId: "manual-1052",
+            cards: [{ title: "按小时还款率", cardId: 30, dashcardId: 40 }],
+          },
+        ],
+      };
+    },
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ 日期: "2026-07-24", 还款率: 0.5 }];
+      },
+    }),
+  });
+
+  const result = await api.runBatchCheck();
+
+  assert.equal(discoveryCount, 1);
+  assert.equal(result.dashboardCount, 2);
+  assert.equal(result.checkedCardCount, 2);
+  assert.deepEqual(
+    result.checkedCards.map((card) => card.dashboardUuid).sort(),
+    ["dash-1", "internal-1052"],
+  );
 });
 
 test("platform api runs scoped batch check and sends TV notification", async () => {
