@@ -3952,3 +3952,67 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ===== DS 调度监控页面优化 ===== */
+
+.ds-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ds-form-label {
+  color: #344054;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ds-form-input,
+.ds-form-select {
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  color: #101828;
+  font-size: 13px;
+  padding: 8px 10px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+
+.ds-form-input:focus,
+.ds-form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  outline: none;
+}
+
+.ds-config-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+
+.ds-config-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .ds-config-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .ds-config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ds-entity-error {
+  border-color: #fecaca !important;
+  background: #fff7f7 !important;
+}
