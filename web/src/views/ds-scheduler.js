@@ -177,14 +177,11 @@ function renderProjectGrid(root, config) {
             <input class="ds-input ds-project-name" data-country="${escapeHtml(code)}"
                    type="text" value="${escapeHtml(projectName)}" placeholder="如：数据平台" />
           </div>
-          ${projectCode ? `
-            <div class="ds-project-meta">
-              <span class="ds-project-code-label">项目码:</span>
-              <code class="ds-project-code">${escapeHtml(projectCode)}</code>
-            </div>
-          ` : `
-            <div class="ds-field-hint">保存后自动匹配项目码</div>
-          `}
+          <div class="ds-field">
+            <label class="ds-field-label">项目码（可选）</label>
+            <input class="ds-input ds-project-code-input" data-country="${escapeHtml(code)}"
+                   type="text" value="${escapeHtml(projectCode)}" placeholder="名称无法匹配时可直接填写" />
+          </div>
         </div>
       </div>
     `;
@@ -239,12 +236,14 @@ async function saveConfig(root) {
     const tokenCards = root.querySelectorAll(".ds-token-card");
     const countries = {};
     const projectNames = {};
+    const projectCodes = {};
 
     projectCards.forEach((card) => {
       const nameInput = card.querySelector(".ds-project-name");
       const code = nameInput?.dataset?.country;
       if (!code) return;
       projectNames[code] = nameInput?.value?.trim() || "";
+      projectCodes[code] = card.querySelector(".ds-project-code-input")?.value?.trim() || "";
     });
 
     tokenCards.forEach((card) => {
@@ -262,11 +261,15 @@ async function saveConfig(root) {
     const config = {
       n8nWebhookUrl: "https://sql-cn.kuainiujinke.com/webhook/ds-scheduler",
       projectNames,
+      projectCodes,
       countries,
     };
     const result = await apiPut("/api/ds-scheduler/config", config);
-    status.textContent = "✓ 配置已保存" + (result.resolved ? "，已匹配项目代码" : "");
-    status.className = "ds-save-status ds-saved";
+    const resolveErrors = result.resolveErrors || [];
+    status.textContent = resolveErrors.length
+      ? "⚠ 配置已保存，但部分项目名称未匹配；请检查项目名称或直接填写项目码：" + resolveErrors.map((item) => `${item.country} ${item.error}`).join("；")
+      : "✓ 配置已保存" + (result.resolved ? "，已匹配项目代码" : "");
+    status.className = resolveErrors.length ? "ds-save-status ds-save-error" : "ds-save-status ds-saved";
     const updatedConfig = { ...config, projectCodes: result.projectCodes || {} };
     renderProjectGrid(root, updatedConfig);
     renderTokenGrid(root, updatedConfig);

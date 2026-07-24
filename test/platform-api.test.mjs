@@ -347,6 +347,73 @@ test("platform api runs scoped batch check", async () => {
   assert.ok(result.anomalyCount >= 1);
 });
 
+test("platform api merges newly discovered dashboards into an existing country during scheduled checks", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => ({
+      dashboards: [{
+        countryCode: "INE",
+        countryName: "印尼",
+        title: "提前还款监控",
+        access: "internal",
+        dashboardId: 1052,
+        uuid: "internal:1052",
+        url: "https://data.kuainiu.io/dashboard/1052",
+        cards: [{ title: "提前还款", cardId: 10521, dashcardId: 10522 }],
+      }],
+    }),
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-24", "注册数": 10 }];
+      },
+    }),
+  });
+
+  const result = await api.runBatchCheck({ countryCode: "INE" });
+
+  assert.equal(result.dashboardCount, 2);
+  assert.equal(result.checkedCardCount, 2);
+});
+
+test("DS scheduler config inherits Metabase recipients", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({ countries: {}, projectNames: {}, projectCodes: {} }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-schedule.json"),
+    JSON.stringify({
+      notifyChannel: "knBot",
+      recipientEmails: "metabase-owner@example.com",
+      botToken: "${KN_BOT_TOKEN}",
+      sendWhenHealthy: true,
+    }),
+  );
+
+  const config = await createPlatformApi({ rootDir }).getDsSchedulerConfig();
+
+  assert.equal(config.alerts.channel, "knBot");
+  assert.equal(config.alerts.recipientEmails, "metabase-owner@example.com");
+  assert.equal(config.alerts.botToken, "${KN_BOT_TOKEN}");
+  assert.equal(config.alerts.sendWhenHealthy, true);
+});
+
+test("requested hourly dashboards are stored in all four country sources", async () => {
+  const expected = new Map([
+    ["config/discovered-panels.json", "/dashboard/1052"],
+    ["config/discovered-panels.pk.json", "/dashboard/1053"],
+    ["config/discovered-panels.th.json", "/dashboard/1054"],
+    ["config/discovered-panels.ph.json", "/dashboard/1056"],
+  ]);
+  for (const [relativePath, dashboardPath] of expected) {
+    const source = JSON.parse(await fs.readFile(path.resolve(relativePath), "utf8"));
+    const urls = (source.panels || []).flatMap((panel) => (panel.links || []).map((link) => link.url));
+    assert.ok(urls.some((url) => url.includes(dashboardPath)), `${relativePath} should contain ${dashboardPath}`);
+  }
+});
+
 test("platform api scans full configured country scope by default", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

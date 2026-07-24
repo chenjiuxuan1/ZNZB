@@ -76,26 +76,40 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
 export async function saveDsSchedulerConfig(rootDir, config) {
   const fs = await import("node:fs/promises");
   const filePath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
+  const previous = await readJsonFile(filePath, {});
 
   // Resolve project names to codes
   const webhookUrl = config.n8nWebhookUrl || "";
   const countries = config.countries || {};
   const projectNames = config.projectNames || {};
+  const requestedProjectCodes = config.projectCodes || {};
+  const previousProjectCodes = previous.projectCodes || {};
+  const previousProjectNames = previous.projectNames || {};
   const projectCodes = {};
   const resolveResults = [];
 
   for (const [code, c] of Object.entries(countries)) {
     const token = String(c.token || "").trim();
     const projectName = projectNames[code] || "";
-    projectCodes[code] = "";
+    const requestedProjectCode = String(requestedProjectCodes[code] || "").trim();
+    const unchangedProjectCode = previousProjectNames[code] === projectName
+      ? String(previousProjectCodes[code] || "").trim()
+      : "";
+    projectCodes[code] = requestedProjectCode || unchangedProjectCode;
 
-    if (token && projectName && webhookUrl) {
+    if (!requestedProjectCode && token && projectName && webhookUrl) {
       const result = await resolveProjectName(webhookUrl, code, token, projectName);
       if (result.success && result.projectCode) {
         projectCodes[code] = result.projectCode;
         resolveResults.push({ country: code, name: projectName, code: result.projectCode, ok: true });
       } else {
-        resolveResults.push({ country: code, name: projectName, error: result.error, ok: false });
+        resolveResults.push({
+          country: code,
+          name: projectName,
+          code: projectCodes[code],
+          error: result.error,
+          ok: false,
+        });
       }
     }
   }

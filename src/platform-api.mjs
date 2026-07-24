@@ -578,9 +578,12 @@ export function createPlatformApi({
       const dashboardUuid = String(body.dashboardUuid || "").trim();
       const dashboardUuids = normalizeDashboardUuids(body.dashboardUuids);
       let filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
-      if (countryCode && filteredInventory.dashboardCount === 0) {
+      if (countryCode) {
         const discoveredInventory = await discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn);
-        filteredInventory = filterBatchInventory(discoveredInventory, { countryCode, dashboardUuid, dashboardUuids });
+        filteredInventory = filterBatchInventory(
+          mergeInventories([filteredInventory, discoveredInventory]),
+          { countryCode, dashboardUuid, dashboardUuids },
+        );
       }
       if (countryCode && filteredInventory.dashboardCount === 0) {
         const countries = await readJsonFile(resolve("countries"), { countries: [] });
@@ -850,15 +853,27 @@ export function createPlatformApi({
     },
 
     async getDsSchedulerConfig() {
-      return loadDsSchedulerConfig(rootDir);
+      const [config, batchSchedule, rules] = await Promise.all([
+        loadDsSchedulerConfig(rootDir),
+        readJsonFile(resolve("batchSchedule"), DEFAULT_BATCH_SCHEDULE),
+        readJsonFile(resolve("rules"), { alerts: {} }),
+      ]);
+      return {
+        ...config,
+        alerts: metabaseAlertConfig(batchSchedule, rules.alerts || {}),
+      };
     },
 
     async saveDsSchedulerConfig(config) {
-      return saveDsSchedulerConfig(rootDir, config);
+      const current = await this.getDsSchedulerConfig();
+      return saveDsSchedulerConfig(rootDir, {
+        ...config,
+        alerts: current.alerts,
+      });
     },
 
     async checkAllDsCountries() {
-      const config = await loadDsSchedulerConfig(rootDir);
+      const config = await this.getDsSchedulerConfig();
       return checkAllCountries(rootDir, config);
     },
   };
@@ -883,6 +898,20 @@ function normalizeNotifyChannel(value) {
     return "knBot";
   }
   return channel || "tv";
+}
+
+function metabaseAlertConfig(schedule = {}, ruleAlerts = {}) {
+  return {
+    ...ruleAlerts,
+    channel: schedule.notifyChannel || ruleAlerts.channel || "tv",
+    webhookUrl: schedule.webhookUrl || ruleAlerts.webhookUrl || "",
+    botId: schedule.botId || ruleAlerts.botId || "",
+    botToken: schedule.botToken || ruleAlerts.botToken || "",
+    chatId: schedule.chatId || ruleAlerts.chatId || "",
+    recipientEmails: schedule.recipientEmails || ruleAlerts.recipientEmails || "",
+    mentions: schedule.mentions || ruleAlerts.mentions || "",
+    sendWhenHealthy: schedule.sendWhenHealthy ?? ruleAlerts.sendWhenHealthy ?? false,
+  };
 }
 
 function isKnBotChannel(value) {
