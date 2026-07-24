@@ -240,3 +240,195 @@ export async function checkAllCountries(rootDir, config) {
     countries: results,
   };
 }
+
+const DS_COUNTRY_NAMES = {
+  cn: "中国",
+  ine: "印尼",
+  ph: "菲律宾",
+  th: "泰国",
+  pk: "巴基斯坦",
+  mx: "墨西哥",
+};
+
+function dsCountryName(code) {
+  const key = String(code || "").toLowerCase();
+  return DS_COUNTRY_NAMES[key] || code || "未知";
+}
+
+function formatDsCompactDateTime(isoString) {
+  if (!isoString) {
+    return "-";
+  }
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return String(isoString);
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function buildDsSummaryMessage(result, options = {}) {
+  const lines = [];
+  const detailUrl = options.detailUrl || "";
+  const totalCountries = result.totalCountries || 0;
+  const totalChecked = result.totalChecked || 0;
+  const totalStuck = result.totalStuck || 0;
+  const totalStale = result.totalStale || 0;
+  const failedCountries = result.failedCountries || 0;
+  const hasIssue = totalStuck > 0 || totalStale > 0 || failedCountries > 0;
+
+  lines.push(hasIssue ? "⚠️【DS 调度监控异常】" : "✅【DS 调度监控正常】");
+  lines.push("");
+  lines.push(`🕒 检查时间：${formatDsCompactDateTime(result.checkedAt)}（北京时间）`);
+  lines.push("");
+  lines.push("📊 异常概览");
+  lines.push(`• 检查范围：${totalCountries} 个国家 / ${totalChecked} 个工作流`);
+  lines.push(`• 卡死工作流：${totalStuck} 个`);
+  lines.push(`• 离线/旷工任务：${totalStale} 个`);
+  if (failedCountries > 0) {
+    lines.push(`• 检查失败国家：${failedCountries} 个`);
+  }
+
+  const countries = result.countries || [];
+  const issueCountries = countries.filter((c) => (c.stuckCount || 0) > 0 || (c.staleCount || 0) > 0);
+  const failedCountryList = countries.filter((c) => !c.success);
+
+  if (issueCountries.length > 0) {
+    lines.push("");
+    lines.push("🌍 异常国家明细");
+    for (const country of issueCountries.slice(0, 10)) {
+      const parts = [];
+      if ((country.stuckCount || 0) > 0) {
+        parts.push(`卡死 ${country.stuckCount} 个`);
+      }
+      if ((country.staleCount || 0) > 0) {
+        parts.push(`离线 ${country.staleCount} 个`);
+      }
+      lines.push(`• ${dsCountryName(country.country)}：${parts.join("，")}`);
+
+      const stuckTop = (country.stuckWorkflows || []).slice(0, 3);
+      for (const wf of stuckTop) {
+        lines.push(`  ⛔ ${wf.workflowName || wf.workflowCode}（连续失败 ${wf.consecutiveFailures || 0} 次）`);
+      }
+      const staleTop = (country.staleWorkflows || []).slice(0, 2);
+      for (const wf of staleTop) {
+        lines.push(`  ⚠️ ${wf.workflowName || wf.workflowCode}（${wf.staleReason || wf.staleMessage || "异常下线"}）`);
+      }
+    }
+    if (issueCountries.length > 10) {
+      lines.push(`  另有 ${issueCountries.length - 10} 个国家的异常未展开`);
+    }
+  }
+
+  if (failedCountryList.length > 0) {
+    lines.push("");
+    lines.push("❌ 检查失败国家");
+    for (const country of failedCountryList) {
+      lines.push(`• ${dsCountryName(country.country)}：${country.error || "未知错误"}`);
+    }
+  }
+
+  if (!hasIssue) {
+    lines.push("");
+    lines.push("✅ 本次检查未发现异常。");
+  }
+
+  if (detailUrl) {
+    lines.push("");
+    lines.push(`详情：${detailUrl}`);
+  }
+
+  return lines.join("\n");
+}
+
+export function buildDsCountryMessage(countryResult, options = {}) {
+  const lines = [];
+  const detailUrl = options.detailUrl || "";
+  const name = dsCountryName(countryResult.country);
+  const stuckCount = countryResult.stuckCount || 0;
+  const staleCount = countryResult.staleCount || 0;
+  const hasIssue = stuckCount > 0 || staleCount > 0 || !countryResult.success;
+
+  lines.push(hasIssue ? `⚠️【DS 调度 · ${name}异常】` : `✅【DS 调度 · ${name}正常】`);
+  lines.push("");
+  lines.push(`🕒 检查时间：${formatDsCompactDateTime(countryResult.checkedAt || new Date().toISOString())}`);
+  lines.push(`📋 检查工作流：${countryResult.checkedWorkflows || 0} 个`);
+  lines.push(`⛔ 卡死：${stuckCount} 个`);
+  lines.push(`⚠️ 离线：${staleCount} 个`);
+
+  if (!countryResult.success) {
+    lines.push("");
+    lines.push(`❌ 检查失败：${countryResult.error || "未知错误"}`);
+  }
+
+  const stuckWorkflows = countryResult.stuckWorkflows || [];
+  if (stuckWorkflows.length > 0) {
+    lines.push("");
+    lines.push("⛔ 卡死工作流");
+    for (const wf of stuckWorkflows.slice(0, 8)) {
+      const reason = wf.consecutiveFailures ? `连续失败 ${wf.consecutiveFailures} 次` : "运行超时";
+      lines.push(`• ${wf.workflowName || wf.workflowCode}：${reason}`);
+    }
+    if (stuckWorkflows.length > 8) {
+      lines.push(`• 另有 ${stuckWorkflows.length - 8} 个未展开`);
+    }
+  }
+
+  const staleWorkflows = countryResult.staleWorkflows || [];
+  if (staleWorkflows.length > 0) {
+    lines.push("");
+    lines.push("⚠️ 离线/旷工任务");
+    for (const wf of staleWorkflows.slice(0, 5)) {
+      lines.push(`• ${wf.workflowName || wf.workflowCode}：${wf.staleReason || wf.staleMessage || "异常下线"}`);
+    }
+    if (staleWorkflows.length > 5) {
+      lines.push(`• 另有 ${staleWorkflows.length - 5} 个未展开`);
+    }
+  }
+
+  if (!hasIssue) {
+    lines.push("");
+    lines.push("✅ 全部正常。");
+  }
+
+  if (detailUrl) {
+    lines.push("");
+    lines.push(`详情：${detailUrl}`);
+  }
+
+  return lines.join("\n");
+}
+
+export function buildDsNotifyMessages(result, options = {}) {
+  const messages = [];
+  const totalIssues = (result.totalStuck || 0) + (result.totalStale || 0) + (result.failedCountries || 0);
+
+  messages.push({
+    title: totalIssues > 0 ? `DS 调度监控异常 ${totalIssues} 项` : "DS 调度监控正常",
+    body: buildDsSummaryMessage(result, options),
+    issueCount: totalIssues,
+    scope: "summary",
+  });
+
+  if (options.includeCountryDetailMessages !== true) {
+    return messages;
+  }
+
+  const countries = result.countries || [];
+  for (const country of countries) {
+    const countryIssues = (country.stuckCount || 0) + (country.staleCount || 0) + (country.success ? 0 : 1);
+    if (countryIssues === 0 && options.sendWhenHealthy !== true) {
+      continue;
+    }
+    messages.push({
+      title: `${dsCountryName(country.country)} DS 调度 ${countryIssues > 0 ? `异常 ${countryIssues} 项` : "正常"}`,
+      body: buildDsCountryMessage(country, options),
+      issueCount: countryIssues,
+      scope: "country",
+      countryCode: country.country,
+      countryName: dsCountryName(country.country),
+    });
+  }
+
+  return messages;
+}
