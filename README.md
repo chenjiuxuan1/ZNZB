@@ -335,6 +335,21 @@ Metabase 数据缺失、动态更新周期、各国时区、执行时间截止�
 
 如果没填 `alerts.webhookUrl`，机器人只会在控制台输出。
 
+## 异常复核 Agent
+
+项目支持在波动规则与通知之间增加数据库二次复核层。复核 Agent 根据国家、Dashboard、Card 和异常类型匹配受控血缘计划，通过 SR Box 执行只读表结构检查和验证 SQL。
+
+Agent 使用 DashScope `qwen3.6-plus` 分析候选异常、提出血缘调查方向和解释数据库证据。模型只提供建议，最终误报过滤仍由 SR Box 查询结果和确定性置信度门槛控制。API Key 只从 `DASHSCOPE_API_KEY` 环境变量读取。
+
+复核状态包括：
+
+- `confirmed_anomaly`：数据库重算后确认异常，保留告警。
+- `false_positive`：数据库证据确认属于正常波动，标记正常并抑制告警。
+- `data_quality_issue`：发现延迟、缺分区或重复等数据质量问题，保留告警。
+- `unverified`：缺少血缘、权限或有效证据，保留原异常。
+
+示例配置见 `./config/anomaly-verifier.config.example.json`，完整接入说明见 `./docs/anomaly-verifier-agent.md`。复核功能默认关闭，启用前必须补充正式表血缘和只读 SQL，并完成 SR Box SSO 授权。
+
 TV 使用 `Content-Type: application/json`，请求体固定为 `{ "botId": "...", "message": "..." }`；通过 `alerts.botId` 或环境变量 `TV_ALERT_BOT_ID` 指定机器人。巡检消息会先发一条总览，再按国家各发一条聚合明细；国家明细采用运营卡片格式，包含巡检时间、异常概览、数据缺失、数据波动和看板链接。同一报表卡片的多条异常会合并为一组，只展示最大波动、核心数值变化和可点击的报表链接。当前 TV 文本消息不会渲染 HTML 折叠块，因此不会发送 `<details>/<summary>` 标签。
 
 ## 建议落地方式

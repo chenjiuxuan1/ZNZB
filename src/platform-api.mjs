@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { createAnomalyVerifierAgent } from "./anomaly-verifier-agent.mjs";
 import { createDefaultMetabaseClient } from "./metabase-public-monitor.mjs";
 import {
   buildDefaultCardParameters,
@@ -40,6 +41,7 @@ const FILES = {
   result: "config/public-check-result.ready.json",
   baselineCache: "config/public-check-baseline-cache.json",
   observationCache: "config/public-check-cadence-observations.json",
+  anomalyVerifier: "config/anomaly-verifier.config.json",
   batchSchedule: "config/batch-check-schedule.json",
   batchHistory: "config/batch-check-run-history.json",
   wattrel: "config/wattrel.config.json",
@@ -109,9 +111,23 @@ export function createPlatformApi({
   notifyTextFn = notifyText,
   wattrelQueryFn = null,
   qualityRuleGenerationSubmitFn = null,
+  anomalyVerifierFactory = createAnomalyVerifierAgent,
+  anomalyVerificationExecuteFn = null,
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
+  const verifyBatchResult = async (result, options = {}) => {
+    const storedConfig = await readJsonFile(resolve("anomalyVerifier"), { enabled: false, plans: [] });
+    const config = options.force === true ? { ...storedConfig, enabled: true } : storedConfig;
+    const agent = anomalyVerifierFactory({
+      config,
+      executeSql: anomalyVerificationExecuteFn,
+    });
+    return agent.verifyResult(result, {
+      rootDir,
+      trigger: options.trigger || "batch-check",
+    });
+  };
 
   return {
     async getSummary() {
@@ -157,6 +173,18 @@ export function createPlatformApi({
     async getBatchHistory(filters = {}) {
       const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
       return filterBatchHistory(history, filters);
+    },
+
+    async verifyAnomalies(body = {}) {
+      const result = body.result || await readJsonFile(resolve("result"), {
+        checkedAt: new Date().toISOString(),
+        anomalyCount: 0,
+        anomalies: [],
+      });
+      return verifyBatchResult(result, {
+        force: body.force === true,
+        trigger: "manual-verification",
+      });
     },
 
     async ingestExternalAlertRun(body = {}) {
@@ -643,7 +671,7 @@ export function createPlatformApi({
           };
         }
       };
-      return checkPublicDashboards({
+      const result = await checkPublicDashboards({
         inventory: filteredInventory,
         ruleConfig: {
           ...ruleConfig,
@@ -657,6 +685,10 @@ export function createPlatformApi({
         observationCacheFile: resolve("observationCache"),
         queryCardFn,
       });
+      if (body.skipVerification === true) {
+        return result;
+      }
+      return verifyBatchResult(result, { trigger: "batch-check" });
     },
 
     async runBatchCheckAndNotify(body = {}) {

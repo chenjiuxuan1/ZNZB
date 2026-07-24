@@ -155,6 +155,9 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/batch-check-and-notify") {
     return sendJsonCached(200, await api.runBatchCheckAndNotify(await readBody(request, {})));
   }
+  if (method === "POST" && url.pathname === "/api/anomaly-verifier/verify") {
+    return sendJson(response, 200, await api.verifyAnomalies(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});
     return sendJsonCached(200, await api.getNotifyPreview(body?.result || null, body?.options || {}));

@@ -8,6 +8,8 @@ tmp-*.png
 config/public-check-baseline-cache.json
 config/public-check-cadence-observations.json
 config/cadence-validation-report.json
+config/anomaly-verifier.config.json
+config/anomaly-verifier-evaluation.json
 config/batch-check-schedule.json
 config/batch-check-run-history.json
 config/metabase.auth.json

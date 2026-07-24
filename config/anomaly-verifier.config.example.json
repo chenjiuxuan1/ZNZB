@@ -1,0 +1,72 @@
+{
+  "enabled": false,
+  "eligibleTypes": [
+    "completeDayChange",
+    "latestDayOverDayChange",
+    "intradayProgress",
+    "intradaySameTimeChange",
+    "intradayTimePointChange",
+    "latestValueOutsideRange",
+    "changeRateOutsideRange"
+  ],
+  "minFalsePositiveConfidence": 0.85,
+  "maxCandidates": 20,
+  "llm": {
+    "enabled": true,
+    "provider": "dashscope",
+    "model": "qwen3.6-plus",
+    "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "apiKeyEnv": "DASHSCOPE_API_KEY",
+    "temperature": 0.1,
+    "maxTokens": 1800,
+    "timeoutSeconds": 60
+  },
+  "executor": {
+    "type": "sr-box",
+    "skillPath": "${SR_BOX_SKILL_PATH}",
+    "pythonExecutable": "${SR_BOX_PYTHON}",
+    "baseUrl": "https://data-map-dev.kuainiu.io",
+    "accessMode": "remote",
+    "purpose": "anomaly-verification",
+    "taskName": "anomaly-verifier-agent",
+    "timeoutSeconds": 60,
+    "pageSize": 100
+  },
+  "plans": [
+    {
+      "id": "replace-with-authoritative-metric-plan",
+      "enabled": false,
+      "match": {
+        "countryCodes": [
+          "INE"
+        ],
+        "dashboardTitle": "OKR",
+        "cardTitle": "规模",
+        "types": [
+          "completeDayChange"
+        ]
+      },
+      "route": "id",
+      "sourceTables": [
+        "dws.replace_with_authoritative_metric_table",
+        "dwd.replace_with_independent_detail_table"
+      ],
+      "schemaSql": [
+        "DESC dws.replace_with_authoritative_metric_table",
+        "DESC dwd.replace_with_independent_detail_table"
+      ],
+      "verificationSql": "SELECT 'unverified' AS verdict, 0.0 AS confidence, TRUE AS source_complete, NULL AS is_anomaly, FALSE AS data_quality_issue, NULL AS observed_value, NULL AS baseline_low, NULL AS baseline_high, CONCAT('请根据 ', {{dashboardTitle}}, ' / ', {{cardTitle}}, ' 的正式口径补充只读复核 SQL') AS reason",
+      "resultFields": {
+        "verdict": "verdict",
+        "confidence": "confidence",
+        "reason": "reason",
+        "sourceComplete": "source_complete",
+        "isAnomaly": "is_anomaly",
+        "dataQualityIssue": "data_quality_issue",
+        "observedValue": "observed_value",
+        "baselineLow": "baseline_low",
+        "baselineHigh": "baseline_high"
+      }
+    }
+  ]
+}

@@ -764,6 +764,7 @@ function renderHistoryCountryDetail(countryRun) {
         ${summaryItem("规则异常", result.anomalyCount || 0)}
         ${summaryItem("数据质量异常", result.dataQualityAnomalyCount || 0)}
       </div>
+      ${renderVerificationSummary(result)}
       ${renderDashboardScanDetails(result) || renderHistoryDashboardSummary(result)}
       ${renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary)}
     </div>
@@ -1270,6 +1271,7 @@ function renderBatchResult(result) {
         ${summaryItem("看板数量", result.dashboardCount)}
         ${summaryItem("巡检时间", formatDisplayTime(result.checkedAt))}
       </div>
+      ${renderVerificationSummary(result)}
       ${renderNotificationResult(notification)}
       ${renderDashboardScanDetails(result)}
       ${anomalies.length ? `
@@ -1305,6 +1307,87 @@ function renderBatchResult(result) {
       </details>
     </section>
   `;
+}
+
+function renderVerificationSummary(result = {}) {
+  const verification = result.verification || {};
+  if (!verification.enabled) {
+    return "";
+  }
+  const llm = verification.llm || {};
+  const suppressed = result.suppressedAnomalies || [];
+  const hasUnverified = Number(verification.unverifiedCount || 0) > 0;
+  return `
+    <div class="sub-panel">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">异常复核 Agent</h2>
+          <p class="muted">数据库二次复核只会过滤有充分证据的误报；未验证结果仍保留为异常。</p>
+        </div>
+        <span class="badge ${hasUnverified ? "warn" : "ok"}">${hasUnverified ? "部分完成" : "复核完成"}</span>
+      </div>
+      <div class="auto-summary small-summary">
+        ${summaryItem("候选异常", verification.candidateCount || 0)}
+        ${summaryItem("确认异常", verification.confirmedCount || 0)}
+        ${summaryItem("误报转正常", verification.falsePositiveCount || 0)}
+        ${summaryItem("数据质量问题", verification.dataQualityIssueCount || 0)}
+        ${summaryItem("证据不足", verification.unverifiedCount || 0)}
+        ${summaryItem("Qwen 分析", formatLlmVerificationSummary(llm))}
+      </div>
+      ${suppressed.length ? `
+        <details class="advanced compact">
+          <summary>查看 ${escapeHtml(suppressed.length)} 条已标为正常的候选异常</summary>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>国家</th>
+                  <th>看板</th>
+                  <th>卡片</th>
+                  <th>原触发类型</th>
+                  <th>复核依据</th>
+                  <th>置信度</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${suppressed.map((anomaly) => `
+                  <tr>
+                    <td>${escapeHtml([anomaly.countryName, anomaly.countryCode].filter(Boolean).join(" / ") || "-")}</td>
+                    <td>${escapeHtml(anomaly.dashboardTitle || "-")}</td>
+                    <td>${escapeHtml(anomaly.cardTitle || "-")}</td>
+                    <td>${escapeHtml(ruleTypeLabel(anomaly.type))}</td>
+                    <td>${escapeHtml(anomaly.verificationReason || "-")}</td>
+                    <td>${escapeHtml(formatVerificationConfidence(anomaly.verificationConfidence))}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ` : ""}
+    </div>
+  `;
+}
+
+function formatVerificationConfidence(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(0)}%` : "-";
+}
+
+function formatLlmVerificationSummary(llm = {}) {
+  if (!llm.enabled) {
+    return "关闭";
+  }
+  const completed = Number(llm.completedCount || 0);
+  const unavailable = Number(llm.unavailableCount || 0);
+  const failed = Number(llm.failedCount || 0);
+  if (unavailable > 0 && completed === 0) {
+    return `${llm.model || "Qwen"} 未配置 Key`;
+  }
+  if (failed > 0) {
+    return `${llm.model || "Qwen"} 完成 ${completed}，失败 ${failed}`;
+  }
+  return `${llm.model || "Qwen"} 完成 ${completed}`;
 }
 
 function renderDashboardScanDetails(result) {
