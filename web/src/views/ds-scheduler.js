@@ -97,7 +97,7 @@ function renderDsWorkspaceTabs(activeTab) {
     { key: "history", label: "历史明细", detail: "每次运行记录查看", index: "04" },
   ];
   return `
-    <div class="workspace-tabs" role="tablist">
+    <div class="workspace-tabs ds-workspace-tabs" role="tablist">
       ${tabs.map((tab) => `
         <button class="${activeTab === tab.key ? "active" : ""}" data-ds-tab="${escapeHtml(tab.key)}" type="button">
           <small>${escapeHtml(tab.index)}</small>
