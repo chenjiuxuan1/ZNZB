@@ -27,6 +27,7 @@ export function renderSandbox(root) {
   const card = (dashboard?.cards || []).find((item) => String(item.cardId) === String(state.selected.cardId)) || dashboard?.cards?.[0] || null;
   const rule = findSelectedRule();
   const rows = state.sandboxRows || card?.sampleRows || [];
+  const canRun = Boolean(dashboard && card && rule);
 
   root.innerHTML = `
     <div class="page-header">
@@ -35,14 +36,15 @@ export function renderSandbox(root) {
         <p class="page-note">在本机用已缓存的 Metabase sampleRows 试跑当前规则，判断这条规则是否会产生告警；不访问线上 API，不发送通知。</p>
       </div>
       <div class="button-group">
-        <button id="run-sandbox">离线试跑（不联网）</button>
-        <button class="primary" id="run-live-sandbox">真实只读试跑（访问 Metabase）</button>
+        <button id="run-sandbox" ${canRun ? "" : "disabled"}>离线试跑（不联网）</button>
+        <button class="primary" id="run-live-sandbox" ${canRun ? "" : "disabled"}>真实只读试跑（访问 Metabase）</button>
       </div>
     </div>
     <div class="notice">
       <strong>两种试跑</strong>
       <span>两种试跑都会执行当前选择的规则，只判断“是否会生成告警消息”。这里不保存巡检结果，不修改看板，不发送 TV/webhook。</span>
     </div>
+    ${canRun ? "" : `<div class="sandbox-status error"><strong>当前没有可试跑对象</strong><span>请先在“看板与卡片”确认该国家至少有一个可执行看板和卡片，再选择规则。</span></div>`}
     <div class="trial-compare">
       <article>
         <h2>离线试跑</h2>

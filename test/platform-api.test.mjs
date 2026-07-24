@@ -81,6 +81,57 @@ test("flattenInventory returns dashboard and card counts", () => {
   assert.equal(flat.cardCount, 2);
 });
 
+test("DS schedule inherits Metabase notification recipients", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({ countries: { ine: { name: "印尼", token: "token" } } }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler-schedule.json"),
+    JSON.stringify({
+      enabled: false,
+      countryConfigs: [{ countryCode: "INE", enabled: false }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-schedule.json"),
+    JSON.stringify({
+      notifyChannel: "tv",
+      webhookUrl: "https://alerts.example/webhook",
+      botId: "metabase-bot",
+      mentions: "owner@example.com",
+      countryConfigs: [{
+        countryCode: "INE",
+        notifyChannel: "knBot",
+        recipientEmails: "ine-owner@example.com",
+      }],
+    }),
+  );
+
+  const schedule = await createPlatformApi({ rootDir }).getDsSchedule();
+
+  assert.equal(schedule.botId, "metabase-bot");
+  assert.equal(schedule.mentions, "owner@example.com");
+  assert.equal(schedule.countryConfigs[0].notifyChannel, "knBot");
+  assert.equal(schedule.countryConfigs[0].recipientEmails, "ine-owner@example.com");
+});
+
+test("configured hourly dashboards are versioned in every requested country source", async () => {
+  const expected = new Map([
+    ["config/discovered-panels.json", "/dashboard/1052"],
+    ["config/discovered-panels.pk.json", "/dashboard/1053"],
+    ["config/discovered-panels.th.json", "/dashboard/1054"],
+    ["config/discovered-panels.ph.json", "/dashboard/1056"],
+  ]);
+
+  for (const [relativePath, dashboardPath] of expected) {
+    const source = JSON.parse(await fs.readFile(path.resolve(relativePath), "utf8"));
+    const urls = (source.panels || []).flatMap((panel) => (panel.links || []).map((link) => link.url));
+    assert.ok(urls.some((url) => url.includes(dashboardPath)), `${relativePath} should contain ${dashboardPath}`);
+  }
+});
+
 test("platform api returns summary and inventory", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

@@ -169,6 +169,34 @@ function renderDsOverviewPanel(root) {
         </div>
       </div>
 
+      <div class="sub-panel ds-project-config-area">
+        <div class="detail-header compact-header">
+          <div>
+            <h2 class="panel-title">DS 项目配置</h2>
+            <p class="muted">填写 n8n 网关、各国家 DS Token 和要监控的项目名称；保存时会自动解析项目码。</p>
+          </div>
+          <button id="ds-save-projects" class="primary">保存项目配置</button>
+        </div>
+        <label class="field">
+          n8n DS 网关地址
+          <input id="ds-gateway-url" value="${escapeHtml(config?.n8nWebhookUrl || "")}" placeholder="https://.../webhook/ds-scheduler">
+        </label>
+        <div class="ds-project-grid">
+          ${COUNTRY_ORDER.map((code) => {
+            const country = (config?.countries || {})[code] || {};
+            return `
+              <article class="ds-project-card" data-ds-project-country="${code}">
+                <div class="ds-project-head"><strong>${COUNTRY_FLAGS[code]} ${COUNTRY_LABELS[code]}</strong></div>
+                <label>项目名称<input class="ds-project-name" value="${escapeHtml((config?.projectNames || {})[code] || "")}" placeholder="DolphinScheduler 项目名称"></label>
+                <label>DS Token<input class="ds-project-token" type="password" value="${escapeHtml(country.token || "")}" placeholder="该国家 DS API Token"></label>
+                <small class="muted">项目码：${escapeHtml((config?.projectCodes || {})[code] || "保存后自动解析")}</small>
+              </article>
+            `;
+          }).join("")}
+        </div>
+        <div id="ds-project-status"></div>
+      </div>
+
       <div id="ds-result-area">
         ${result ? renderDsCheckResult(result) : `<p class="muted">点击"执行全面检查"开始巡检。</p>`}
       </div>
@@ -546,6 +574,34 @@ export function renderDsScheduler(root) {
   }
 
 function bindDsEvents(root) {
+  root.querySelector("#ds-save-projects")?.addEventListener("click", async () => {
+    const statusEl = root.querySelector("#ds-project-status");
+    if (statusEl) statusEl.innerHTML = `<div class="sandbox-status running"><strong>⏳</strong><span>正在保存并解析项目码...</span></div>`;
+    try {
+      const countries = {};
+      const projectNames = {};
+      root.querySelectorAll("[data-ds-project-country]").forEach((card) => {
+        const code = card.dataset.dsProjectCountry;
+        countries[code] = {
+          name: COUNTRY_LABELS[code],
+          token: card.querySelector(".ds-project-token")?.value.trim() || "",
+        };
+        projectNames[code] = card.querySelector(".ds-project-name")?.value.trim() || "";
+      });
+      dsConfigCache = await apiPut("/api/ds-scheduler/config", {
+        n8nWebhookUrl: root.querySelector("#ds-gateway-url")?.value.trim() || "",
+        countries,
+        projectNames,
+      });
+      const failed = dsConfigCache.resolveErrors || [];
+      if (statusEl) statusEl.innerHTML = failed.length
+        ? `<div class="sandbox-status error"><strong>部分项目未解析</strong><span>${escapeHtml(failed.map((item) => `${item.country}: ${item.error}`).join("；"))}</span></div>`
+        : `<div class="sandbox-status success"><strong>✓</strong><span>项目配置已保存并解析完成</span></div>`;
+    } catch (error) {
+      if (statusEl) statusEl.innerHTML = `<div class="sandbox-status error"><strong>保存失败</strong><span>${escapeHtml(error.message)}</span></div>`;
+    }
+  });
+
   // 总览 - 执行检查
   root.querySelector("#ds-run-check")?.addEventListener("click", async () => {
     const resultArea = root.querySelector("#ds-result-area");

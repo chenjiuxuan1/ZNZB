@@ -35,20 +35,22 @@ await loadData();
 render();
 
 export async function loadData() {
-  const [summary, countries, inventory, rulesConfig, batchSchedule, batchHistory] = await Promise.all([
+  const results = await Promise.allSettled([
     apiGet("/api/summary"),
     apiGet("/api/countries"),
     apiGet("/api/inventory"),
     apiGet("/api/rules"),
-    apiGet("/api/batch-schedule").catch(() => null),
-    apiGet("/api/batch-history?limit=200").catch(() => ({ runs: [] })),
+    apiGet("/api/batch-schedule"),
+    apiGet("/api/batch-history?limit=200"),
   ]);
-  state.summary = summary;
-  state.countries = countries;
-  state.inventory = inventory;
-  state.rulesConfig = rulesConfig;
-  state.batchSchedule = batchSchedule;
-  state.batchHistory = batchHistory;
+  const value = (index, fallback) => results[index].status === "fulfilled" ? results[index].value : fallback;
+  state.summary = value(0, state.summary || {});
+  state.countries = value(1, state.countries || { countries: [] });
+  state.inventory = value(2, state.inventory || { dashboards: [], panelSources: [], loadError: results[2].reason?.message || "" });
+  state.rulesConfig = value(3, state.rulesConfig || { rules: [] });
+  state.batchSchedule = value(4, state.batchSchedule);
+  state.batchHistory = value(5, state.batchHistory || { runs: [] });
+  const batchSchedule = state.batchSchedule;
   if (batchSchedule) {
     state.batchNotifyConfig = {
       webhookUrl: batchSchedule.webhookUrl || state.batchNotifyConfig.webhookUrl,

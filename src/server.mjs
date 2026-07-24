@@ -81,6 +81,13 @@ async function handleApi(request, response, url) {
   const isGet = method === "GET";
   const cacheKey = isGet ? `${url.pathname}${url.search || ""}` : "";
 
+  if (!isGet) {
+    // Every mutation can affect summary, inventory, schedules, or history.
+    // Clearing the small in-memory GET cache prevents the UI from showing
+    // stale data for up to JSON_CACHE_TTL_MS immediately after a save/run.
+    jsonResponseCache.clear();
+  }
+
   if (isGet && cacheKey) {
     const cached = getCachedJsonResponse(cacheKey);
     if (cached) {
