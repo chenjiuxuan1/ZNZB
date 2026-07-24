@@ -16,6 +16,7 @@ import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
   checkAllCountries,
+  buildDsNotifyMessages,
 } from "./ds-scheduler-monitor.mjs";
 import {
   mapWattrelRowsToAnomalies,
@@ -44,6 +45,8 @@ const FILES = {
   wattrel: "config/wattrel.config.json",
   qualityRuleGeneration: "config/quality-rule-generation.config.json",
   dsScheduler: "config/ds-scheduler.config.json",
+  dsSchedule: "config/ds-scheduler-schedule.json",
+  dsHistory: "config/ds-scheduler-history.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
@@ -76,6 +79,28 @@ const DEFAULT_BATCH_SCHEDULE = {
 };
 const DEFAULT_BATCH_HISTORY = { runs: [] };
 const MAX_BATCH_HISTORY_RUNS = 200;
+
+const DEFAULT_DS_SCHEDULE = {
+  enabled: false,
+  intervalMinutes: 60,
+  dailyRunTimes: ["09:00", "15:00", "21:00"],
+  notifyChannel: "tv",
+  webhookUrl: DEFAULT_TV_WEBHOOK_URL,
+  botId: "",
+  botToken: "",
+  chatId: "",
+  recipientEmails: "",
+  mentions: "",
+  sendWhenHealthy: false,
+  includeCountryDetailMessages: false,
+  countryConfigs: [],
+  nextRunAt: null,
+  lastRunAt: null,
+  lastError: null,
+  lastResult: null,
+};
+const DEFAULT_DS_HISTORY = { runs: [] };
+const MAX_DS_HISTORY_RUNS = 200;
 
 export function createPlatformApi({
   rootDir = process.cwd(),
@@ -861,8 +886,152 @@ export function createPlatformApi({
       const config = await loadDsSchedulerConfig(rootDir);
       return checkAllCountries(rootDir, config);
     },
+
+    async getDsSchedule() {
+      const schedule = await readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE);
+      const dsConfig = await loadDsSchedulerConfig(rootDir);
+      return normalizeDsSchedule(schedule, dsConfig, { preserveNextRunAt: true });
+    },
+
+    async getDsScheduleRunProgress() {
+      return dsScheduleRunProgress || { status: "idle", countries: [] };
+    },
+
+    async getDsHistory(filters = {}) {
+      const history = await readJsonFile(resolve("dsHistory"), DEFAULT_DS_HISTORY);
+      return filterDsHistory(history, filters);
+    },
+
+    async saveDsSchedule(input = {}) {
+      const previous = await readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE);
+      const dsConfig = await loadDsSchedulerConfig(rootDir);
+      const next = normalizeDsSchedule(input, previous, { countries: Object.keys(dsConfig.countries || {}) });
+      validateDsSchedule(next);
+      await writeJsonAtomic(resolve("dsSchedule"), next);
+      return next;
+    },
+
+    async runDueDsSchedule(now = new Date()) {
+      const schedule = await this.getDsSchedule();
+      if (!schedule.enabled) {
+        return { ran: false, reason: "disabled" };
+      }
+      const dueAt = schedule.nextRunAt ? Date.parse(schedule.nextRunAt) : Number.NaN;
+      if (Number.isFinite(dueAt) && dueAt > now.getTime()) {
+        return { ran: false, reason: "not due" };
+      }
+      if (dsScheduleRunProgress && dsScheduleRunProgress.status !== "idle" && dsScheduleRunProgress.status !== "done") {
+        return { ran: false, reason: "already running" };
+      }
+      await runDsScheduleCheck(schedule, {
+        rootDir,
+        notifyTextFn,
+        scheduleFile: resolve("dsSchedule"),
+        historyFile: resolve("dsHistory"),
+        trigger: "schedule",
+        onProgress: (event) => {
+          dsScheduleRunProgress = updateDsScheduleRunProgress(dsScheduleRunProgress, event);
+        },
+      });
+      return { ran: true };
+    },
+
+    async runDsScheduleNow() {
+      const schedule = await readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE);
+      if (dsScheduleRunProgress && dsScheduleRunProgress.status !== "idle" && dsScheduleRunProgress.status !== "done") {
+        throw badRequest("DS schedule already running", ["DS 调度巡检正在运行中，请稍候再试。"]);
+      }
+      const runPromise = runDsScheduleCheck(schedule, {
+        rootDir,
+        notifyTextFn,
+        scheduleFile: resolve("dsSchedule"),
+        historyFile: resolve("dsHistory"),
+        trigger: "manual",
+        onProgress: (event) => {
+          dsScheduleRunProgress = updateDsScheduleRunProgress(dsScheduleRunProgress, event);
+        },
+      });
+      dsScheduleRunProgress = {
+        status: "running",
+        startedAt: new Date().toISOString(),
+        countries: [],
+        trigger: "manual",
+      };
+      runPromise.catch((error) => {
+        console.error("DS schedule manual run failed:", error);
+        dsScheduleRunProgress = { status: "idle", countries: [], error: error.message };
+      });
+      return { ok: true, status: "running", startedAt: dsScheduleRunProgress.startedAt };
+    },
+
+    async runDsCheckAndNotify(body = {}) {
+      const dsConfig = await loadDsSchedulerConfig(rootDir);
+      const schedule = await readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE);
+      const notifyChannel = normalizeNotifyChannel(body.notifyChannel || body.channel || schedule.notifyChannel || "tv");
+      const alerts = buildBatchNotifyAlerts({ ...body, ...schedule }, schedule, notifyChannel);
+      const result = await checkAllCountries(rootDir, dsConfig);
+      const options = {
+        detailUrl: body.detailUrl || "",
+        includeCountryDetailMessages: body.includeCountryDetailMessages ?? schedule.includeCountryDetailMessages ?? false,
+        sendWhenHealthy: body.sendWhenHealthy ?? schedule.sendWhenHealthy ?? false,
+      };
+      const messages = buildDsNotifyMessages(result, options);
+      const results = [];
+      for (const message of messages) {
+        if (message.issueCount === 0 && options.sendWhenHealthy !== true && message.scope !== "summary") {
+          continue;
+        }
+        results.push(await notifyTextFn({ alerts }, message.body, {
+          title: message.title,
+          severity: message.issueCount > 0 ? "warning" : "info",
+          timestamp: result.checkedAt,
+          anomalyCount: message.issueCount || 0,
+        }));
+      }
+      const notification = {
+        sent: results.some((item) => item.sent),
+        sentMessages: results.filter((item) => item.sent).length,
+        results,
+        channel: alerts.channel,
+        botId: alerts.botId || "",
+        chatId: alerts.chatId || "",
+        recipientEmails: alerts.recipientEmails || "",
+        mentions: (alerts.mentions || []).join(","),
+        webhookUrl: alerts.webhookUrl || "",
+        sentAt: new Date().toISOString(),
+      };
+      return {
+        ...result,
+        notification,
+      };
+    },
+
+    async sendDsNotifyTest(body = {}) {
+      const schedule = await readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE);
+      const notifyChannel = normalizeNotifyChannel(body.notifyChannel || body.channel || schedule.notifyChannel || "tv");
+      const alerts = buildBatchNotifyAlerts({ ...body, ...schedule }, schedule, notifyChannel);
+      const testMessage = buildDsTestMessage(body);
+      const result = await notifyTextFn({ alerts }, testMessage, {
+        title: "DS 调度监控 · 通知测试",
+        severity: "info",
+      });
+      return { ok: result.sent, ...result };
+    },
+
+    async getDsNotifyPreview(body = {}) {
+      const schedule = await readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE);
+      const mockResult = buildMockDsResult();
+      const options = {
+        detailUrl: body.detailUrl || "",
+        includeCountryDetailMessages: body.includeCountryDetailMessages ?? schedule.includeCountryDetailMessages ?? true,
+        sendWhenHealthy: body.sendWhenHealthy ?? schedule.sendWhenHealthy ?? false,
+      };
+      return { messages: buildDsNotifyMessages(mockResult, options) };
+    },
   };
 }
+
+let dsScheduleRunProgress = null;
 
 function normalizeMentions(value) {
   if (Array.isArray(value)) {
@@ -2547,4 +2716,440 @@ function badRequest(message, errors) {
   error.statusCode = 400;
   error.errors = errors;
   return error;
+}
+
+function normalizeDsSchedule(input = {}, previous = {}, options = {}) {
+  const previousSchedule = { ...DEFAULT_DS_SCHEDULE, ...(previous || {}) };
+  const enabled = Boolean(input.enabled);
+  const intervalMinutes = clampNumber(
+    input.intervalMinutes ?? previousSchedule.intervalMinutes,
+    5, 1440, 60,
+  );
+  const dailyRunTimes = normalizeDailyRunTimes(
+    input.dailyRunTimes ?? input.dailyRunTime ?? previousSchedule.dailyRunTimes ?? previousSchedule.dailyRunTime,
+  );
+  const notifyChannel = normalizeNotifyChannel(input.notifyChannel ?? previousSchedule.notifyChannel ?? "tv");
+  const countryConfigs = normalizeDsCountryScheduleConfigs(
+    input.countryConfigs, previousSchedule, options.countries || [],
+  );
+  const requestedNextRunAt = normalizeScheduleTime(input.nextRunAt);
+  const next = {
+    ...previousSchedule,
+    enabled,
+    dailyRunTimes,
+    dailyRunTime: dailyRunTimes[0] || "09:00",
+    intervalMinutes,
+    notifyChannel,
+    webhookUrl: String(input.webhookUrl ?? previousSchedule.webhookUrl ?? DEFAULT_TV_WEBHOOK_URL).trim(),
+    botId: String(input.botId ?? previousSchedule.botId ?? "").trim(),
+    botToken: String(input.botToken ?? previousSchedule.botToken ?? "").trim(),
+    chatId: String(input.chatId ?? previousSchedule.chatId ?? "").trim(),
+    recipientEmails: String(input.recipientEmails ?? previousSchedule.recipientEmails ?? "").trim(),
+    mentions: normalizeMentions(input.mentions ?? previousSchedule.mentions).join(","),
+    sendWhenHealthy: Boolean(input.sendWhenHealthy ?? previousSchedule.sendWhenHealthy),
+    includeCountryDetailMessages: Boolean(input.includeCountryDetailMessages ?? previousSchedule.includeCountryDetailMessages),
+    countryConfigs,
+    lastRunAt: previousSchedule.lastRunAt || null,
+    lastError: previousSchedule.lastError || null,
+    lastResult: previousSchedule.lastResult || null,
+  };
+  if (!enabled) {
+    next.nextRunAt = null;
+    return next;
+  }
+  if (requestedNextRunAt) {
+    next.nextRunAt = requestedNextRunAt;
+    return next;
+  }
+  if (options.preserveNextRunAt && previousSchedule.nextRunAt) {
+    next.nextRunAt = previousSchedule.nextRunAt;
+    return next;
+  }
+  next.nextRunAt = computeNextRunAt(next);
+  return next;
+}
+
+function normalizeDsCountryScheduleConfigs(inputConfigs, previousSchedule, allCountryCodes = []) {
+  const previousConfigs = Array.isArray(previousSchedule.countryConfigs)
+    ? previousSchedule.countryConfigs
+    : [];
+  const previousMap = new Map(previousConfigs.map((item) => [String(item.countryCode || "").toUpperCase(), item]));
+  const inputList = Array.isArray(inputConfigs) ? inputConfigs : [];
+  const inputMap = new Map(inputList.map((item) => [String(item.countryCode || "").toUpperCase(), item]));
+  const codes = [...new Set([
+    ...allCountryCodes.map((c) => String(c).toUpperCase()),
+    ...previousMap.keys(),
+    ...inputMap.keys(),
+  ])].filter(Boolean);
+  return codes.map((code) => {
+    const prev = previousMap.get(code) || {};
+    const incoming = inputMap.get(code) || {};
+    const countryChannel = incoming.notifyChannel
+      ? normalizeNotifyChannel(incoming.notifyChannel)
+      : (prev.notifyChannel ? normalizeNotifyChannel(prev.notifyChannel) : "");
+    return {
+      countryCode: code,
+      enabled: Boolean(incoming.enabled ?? prev.enabled ?? false),
+      notifyChannel: countryChannel,
+      webhookUrl: String(incoming.webhookUrl ?? prev.webhookUrl ?? "").trim(),
+      botId: String(incoming.botId ?? prev.botId ?? "").trim(),
+      botToken: String(incoming.botToken ?? prev.botToken ?? "").trim(),
+      chatId: String(incoming.chatId ?? prev.chatId ?? "").trim(),
+      recipientEmails: String(incoming.recipientEmails ?? prev.recipientEmails ?? "").trim(),
+      mentions: normalizeMentions(incoming.mentions ?? prev.mentions).join(","),
+    };
+  });
+}
+
+function validateDsSchedule(schedule) {
+  if (!schedule.enabled) {
+    return;
+  }
+  const enabledCountries = (schedule.countryConfigs || []).filter((item) => item.enabled);
+  if (enabledCountries.length === 0) {
+    throw badRequest("No enabled countries", ["请至少启用一个国家的 DS 调度巡检。"]);
+  }
+  for (const countryConfig of enabledCountries) {
+    const channel = normalizeNotifyChannel(countryConfig.notifyChannel || schedule.notifyChannel);
+    if (isKnBotChannel(channel)) {
+      if (!countryConfig.chatId && !countryConfig.recipientEmails && !schedule.chatId && !schedule.recipientEmails) {
+        throw badRequest("KN Chat recipient is required", [
+          `${countryConfig.countryCode} 启用定时巡检前请填写接收人邮箱或群聊 chat_id。`,
+        ]);
+      }
+    } else {
+      const botId = countryConfig.botId || schedule.botId;
+      if (!botId) {
+        throw badRequest("TV bot_id is required", [
+          `${countryConfig.countryCode} 启用定时巡检前请填写 TV bot_id。`,
+        ]);
+      }
+    }
+  }
+}
+
+function buildDsTestMessage(body = {}) {
+  const lines = [];
+  lines.push("🧪【DS 调度监控 · 通知测试】");
+  lines.push("");
+  lines.push("这是一条来自值班平台 DS 调度监控的测试通知。");
+  lines.push("如果你收到了这条消息，说明通知配置已正确生效。");
+  lines.push("");
+  lines.push(`测试时间：${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}`);
+  return lines.join("\n");
+}
+
+function buildMockDsResult() {
+  return {
+    checkedAt: new Date().toISOString(),
+    totalCountries: 6,
+    totalChecked: 320,
+    totalStuck: 5,
+    totalStale: 2,
+    failedCountries: 1,
+    countries: [
+      {
+        country: "cn",
+        countryName: "中国",
+        success: true,
+        stuckCount: 2,
+        staleCount: 1,
+        checkedWorkflows: 80,
+        stuckWorkflows: [
+          { workflowCode: "wf_001", workflowName: "ODS层用户表同步", consecutiveFailures: 3, scheduleStatus: "ONLINE" },
+          { workflowCode: "wf_002", workflowName: "DWS层订单汇总", consecutiveFailures: 5, scheduleStatus: "ONLINE" },
+        ],
+        staleWorkflows: [
+          { workflowCode: "wf_003", workflowName: "ADS层财务报表", scheduleStatus: "OFFLINE", staleReason: "异常下线，存在下游依赖" },
+        ],
+      },
+      {
+        country: "ine",
+        countryName: "印尼",
+        success: true,
+        stuckCount: 3,
+        staleCount: 1,
+        checkedWorkflows: 60,
+        stuckWorkflows: [
+          { workflowCode: "wf_id_01", workflowName: "印尼用户画像更新", consecutiveFailures: 4, scheduleStatus: "ONLINE" },
+        ],
+        staleWorkflows: [],
+      },
+      {
+        country: "mx",
+        countryName: "墨西哥",
+        success: false,
+        error: "n8n 网关连接超时",
+        stuckCount: 0,
+        staleCount: 0,
+        checkedWorkflows: 0,
+        stuckWorkflows: [],
+        staleWorkflows: [],
+      },
+      { country: "ph", countryName: "菲律宾", success: true, stuckCount: 0, staleCount: 0, checkedWorkflows: 45, stuckWorkflows: [], staleWorkflows: [] },
+      { country: "th", countryName: "泰国", success: true, stuckCount: 0, staleCount: 0, checkedWorkflows: 50, stuckWorkflows: [], staleWorkflows: [] },
+      { country: "pk", countryName: "巴基斯坦", success: true, stuckCount: 0, staleCount: 0, checkedWorkflows: 45, stuckWorkflows: [], staleWorkflows: [] },
+    ],
+  };
+}
+
+async function runDsScheduleCheck(schedule, options = {}) {
+  const {
+    rootDir,
+    notifyTextFn,
+    scheduleFile,
+    historyFile,
+    trigger = "schedule",
+    onProgress,
+  } = options;
+  const dsConfig = await loadDsSchedulerConfig(rootDir);
+  const enabledCountries = (schedule.countryConfigs || []).filter((item) => item.enabled !== false);
+  const startedAt = new Date().toISOString();
+  const runId = randomUUID();
+
+  if (onProgress) {
+    onProgress({ type: "start", startedAt, trigger, runId });
+  }
+
+  const countryRuns = [];
+  for (const countryConfig of enabledCountries) {
+    const code = String(countryConfig.countryCode || "").toUpperCase();
+    if (onProgress) {
+      onProgress({ type: "country-start", countryCode: code });
+    }
+    const token = String((dsConfig.countries || {})[code.toLowerCase()]?.token || "").trim();
+    if (!token) {
+      countryRuns.push({
+        countryCode: code,
+        ok: false,
+        error: "token not configured",
+        result: null,
+      });
+      if (onProgress) {
+        onProgress({ type: "country-done", countryCode: code, status: "failed" });
+      }
+      continue;
+    }
+    try {
+      const result = await checkAllCountries(rootDir, {
+        ...dsConfig,
+        countries: { [code.toLowerCase()]: (dsConfig.countries || {})[code.toLowerCase()] || {} },
+        projectCodes: dsConfig.projectCodes || {},
+      });
+      const countryResult = (result.countries || [])[0] || { success: false, error: "no result" };
+      countryRuns.push({
+        countryCode: code,
+        ok: countryResult.success || false,
+        result: countryResult,
+      });
+      if (onProgress) {
+        onProgress({
+          type: "country-done",
+          countryCode: code,
+          status: countryResult.success ? "success" : "failed",
+          stuckCount: countryResult.stuckCount || 0,
+          staleCount: countryResult.staleCount || 0,
+        });
+      }
+    } catch (error) {
+      countryRuns.push({
+        countryCode: code,
+        ok: false,
+        error: error.message,
+        result: null,
+      });
+      if (onProgress) {
+        onProgress({ type: "country-done", countryCode: code, status: "failed", error: error.message });
+      }
+    }
+  }
+
+  if (onProgress) {
+    onProgress({ type: "sending" });
+  }
+
+  const notificationSentCount = await sendDsScheduleNotifications(schedule, countryRuns, notifyTextFn);
+  const finishedAt = new Date().toISOString();
+
+  const entry = buildDsHistoryEntry({
+    id: runId,
+    trigger,
+    startedAt,
+    finishedAt,
+    countryRuns,
+    notificationSentCount,
+  });
+  await appendDsHistoryRun(historyFile, entry);
+
+  const savedSchedule = { ...schedule, lastRunAt: finishedAt, lastResult: entry };
+  const hasFailure = countryRuns.some((r) => !r.ok);
+  if (hasFailure) {
+    savedSchedule.lastError = countryRuns.find((r) => !r.ok)?.error || "check failed";
+  } else {
+    savedSchedule.lastError = null;
+  }
+  if (trigger === "schedule") {
+    savedSchedule.nextRunAt = computeNextRunAt(savedSchedule);
+  }
+  await writeJsonAtomic(scheduleFile, savedSchedule);
+
+  if (onProgress) {
+    onProgress({ type: "done", entry });
+  }
+
+  return entry;
+}
+
+async function sendDsScheduleNotifications(schedule, countryRuns, notifyTextFn) {
+  const groups = groupDsCountryRunsByNotifyTarget(countryRuns, schedule);
+  let sentCount = 0;
+  for (const group of groups) {
+    const alerts = group.alerts;
+    const combinedResult = combineDsCountryResults(group.countryRuns);
+    const options = {
+      detailUrl: buildDsHistoryDetailUrl(""),
+      includeCountryDetailMessages: schedule.includeCountryDetailMessages ?? false,
+      sendWhenHealthy: schedule.sendWhenHealthy ?? false,
+    };
+    const messages = buildDsNotifyMessages(combinedResult, options);
+    for (const message of messages) {
+      if (message.issueCount === 0 && options.sendWhenHealthy !== true && message.scope !== "summary") {
+        continue;
+      }
+      try {
+        const result = await notifyTextFn({ alerts }, message.body, {
+          title: message.title,
+          severity: message.issueCount > 0 ? "warning" : "info",
+          timestamp: combinedResult.checkedAt,
+          anomalyCount: message.issueCount || 0,
+        });
+        if (result.sent) {
+          sentCount += 1;
+        }
+      } catch (error) {
+        console.error("DS notify failed:", error.message);
+      }
+    }
+  }
+  return sentCount;
+}
+
+function groupDsCountryRunsByNotifyTarget(countryRuns, schedule) {
+  const groups = new Map();
+  for (const countryRun of countryRuns) {
+    const countryConfig = (schedule.countryConfigs || [])
+      .find((c) => String(c.countryCode || "").toUpperCase() === countryRun.countryCode) || {};
+    const notifyChannel = normalizeNotifyChannel(countryConfig.notifyChannel || schedule.notifyChannel || "tv");
+    const alerts = buildBatchNotifyAlerts({ ...countryConfig, ...schedule }, schedule, notifyChannel);
+    const key = [
+      alerts.channel, alerts.webhookUrl, alerts.botId,
+      alerts.botToken, alerts.chatId, alerts.recipientEmails,
+      (alerts.mentions || []).join(","),
+    ].join("\u0000");
+    if (!groups.has(key)) {
+      groups.set(key, { alerts, countryRuns: [] });
+    }
+    groups.get(key).countryRuns.push(countryRun);
+  }
+  return [...groups.values()];
+}
+
+function combineDsCountryResults(countryRuns = []) {
+  const countries = countryRuns.map((r) => r.result || {}).filter(Boolean);
+  const checkedAt = countries.map((c) => c.checkedAt).filter(Boolean).sort().slice(-1)[0] || new Date().toISOString();
+  return {
+    checkedAt,
+    totalCountries: countries.length,
+    totalChecked: countries.reduce((sum, c) => sum + Number(c.checkedWorkflows || 0), 0),
+    totalStuck: countries.reduce((sum, c) => sum + Number(c.stuckCount || 0), 0),
+    totalStale: countries.reduce((sum, c) => sum + Number(c.staleCount || 0), 0),
+    failedCountries: countries.filter((c) => !c.success).length,
+    countries,
+  };
+}
+
+function buildDsHistoryEntry({ id, trigger, startedAt, finishedAt, countryRuns, notificationSentCount }) {
+  const successCount = countryRuns.filter((r) => r.ok).length;
+  const failedCount = countryRuns.filter((r) => !r.ok).length;
+  const countries = countryRuns.map((r) => r.result || {}).filter(Boolean);
+  return {
+    id,
+    trigger,
+    startedAt,
+    finishedAt,
+    status: failedCount > 0 ? (successCount > 0 ? "partial_failed" : "failed") : "success",
+    ok: failedCount === 0,
+    countryCount: countryRuns.length,
+    successCount,
+    failedCount,
+    totalStuck: countries.reduce((sum, c) => sum + Number(c.stuckCount || 0), 0),
+    totalStale: countries.reduce((sum, c) => sum + Number(c.staleCount || 0), 0),
+    totalChecked: countries.reduce((sum, c) => sum + Number(c.checkedWorkflows || 0), 0),
+    notificationSentCount,
+    countryRuns: countryRuns.map((r) => ({
+      countryCode: r.countryCode,
+      ok: r.ok,
+      error: r.error || null,
+      stuckCount: r.result?.stuckCount || 0,
+      staleCount: r.result?.staleCount || 0,
+      checkedWorkflows: r.result?.checkedWorkflows || 0,
+    })),
+  };
+}
+
+async function appendDsHistoryRun(historyFile, entry) {
+  const fs = await import("node:fs/promises");
+  let history = DEFAULT_DS_HISTORY;
+  try {
+    const raw = await fs.readFile(historyFile, "utf-8");
+    history = JSON.parse(raw);
+  } catch {
+    history = DEFAULT_DS_HISTORY;
+  }
+  history.runs = [entry, ...(history.runs || [])].slice(0, MAX_DS_HISTORY_RUNS);
+  await fs.writeFile(historyFile, JSON.stringify(history, null, 2), "utf-8");
+}
+
+function filterDsHistory(history = DEFAULT_DS_HISTORY, filters = {}) {
+  const runs = [...(history.runs || [])];
+  const limit = clampNumber(filters.limit ?? 50, 1, MAX_DS_HISTORY_RUNS, 50);
+  return { runs: runs.slice(0, limit) };
+}
+
+function updateDsScheduleRunProgress(progress, event) {
+  const current = progress || { status: "idle", countries: [] };
+  if (event.type === "start") {
+    return { ...current, status: "running", startedAt: event.startedAt, trigger: event.trigger, countries: [] };
+  }
+  if (event.type === "country-start") {
+    const countries = [...(current.countries || [])];
+    countries.push({ countryCode: event.countryCode, status: "running" });
+    return { ...current, countries };
+  }
+  if (event.type === "country-done") {
+    const countries = (current.countries || []).map((c) =>
+      c.countryCode === event.countryCode
+        ? { ...c, status: event.status, stuckCount: event.stuckCount || 0, staleCount: event.staleCount || 0, error: event.error || null }
+        : c,
+    );
+    return { ...current, countries };
+  }
+  if (event.type === "sending") {
+    return { ...current, status: "sending" };
+  }
+  if (event.type === "done") {
+    return { ...current, status: "done", entry: event.entry };
+  }
+  return current;
+}
+
+function buildDsHistoryDetailUrl(runId) {
+  const baseUrl = String(process.env.DUTY_PLATFORM_BASE_URL || process.env.PLATFORM_BASE_URL || "").trim()
+    || DEFAULT_DUTY_PLATFORM_BASE_URL;
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  if (!runId) {
+    return `${normalizedBaseUrl}/#/ds-scheduler`;
+  }
+  const params = new URLSearchParams({ historyRunId: String(runId) });
+  return `${normalizedBaseUrl}/#/ds-scheduler?${params.toString()}`;
 }

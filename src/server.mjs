@@ -35,6 +35,7 @@ server.listen(port, host, () => {
   console.log(`Duty platform running at http://${host}:${port}`);
 });
 startBatchScheduler();
+startDsScheduler();
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";
@@ -114,6 +115,30 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/ds-scheduler/check") {
     return sendJson(response, 200, await api.checkAllDsCountries());
   }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/schedule") {
+    return sendJson(response, 200, await api.getDsSchedule());
+  }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/schedule/progress") {
+    return sendJson(response, 200, await api.getDsScheduleRunProgress());
+  }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/history") {
+    return sendJson(response, 200, await api.getDsHistory(Object.fromEntries(url.searchParams.entries())));
+  }
+  if (method === "PUT" && url.pathname === "/api/ds-scheduler/schedule") {
+    return sendJson(response, 200, await api.saveDsSchedule(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/schedule/run-now") {
+    return sendJson(response, 200, await api.runDsScheduleNow());
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/check-and-notify") {
+    return sendJson(response, 200, await api.runDsCheckAndNotify(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/notify-test") {
+    return sendJson(response, 200, await api.sendDsNotifyTest(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/notify-preview") {
+    return sendJson(response, 200, await api.getDsNotifyPreview(await readBody(request, {})));
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 
@@ -140,6 +165,33 @@ function startBatchScheduler() {
     timer.unref();
   }
   setTimeout(tick, 5_000).unref?.();
+}
+
+function startDsScheduler() {
+  let running = false;
+  const tick = async () => {
+    if (running) {
+      return;
+    }
+    running = true;
+    try {
+      const result = await api.runDueDsSchedule?.();
+      if (result?.ran) {
+        console.log(`DS scheduler ran at ${new Date().toISOString()}`);
+      }
+    } catch (error) {
+      if (error && error.message && !String(error.message).includes("runDueDsSchedule")) {
+        console.error("DS scheduler failed:", error);
+      }
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(tick, 60_000);
+  if (typeof timer.unref === "function") {
+    timer.unref();
+  }
+  setTimeout(tick, 10_000).unref?.();
 }
 
 async function readBody(request, fallback = null) {
