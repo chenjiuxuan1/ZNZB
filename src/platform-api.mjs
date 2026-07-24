@@ -890,7 +890,10 @@ export function createPlatformApi({
     async getDsSchedule() {
       const schedule = await readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE);
       const dsConfig = await loadDsSchedulerConfig(rootDir);
-      return normalizeDsSchedule(schedule, dsConfig, { preserveNextRunAt: true });
+      return normalizeDsSchedule(schedule, schedule, {
+        preserveNextRunAt: true,
+        countries: Object.keys(dsConfig.countries || {}),
+      });
     },
 
     async getDsScheduleRunProgress() {
@@ -2765,7 +2768,7 @@ function normalizeDsSchedule(input = {}, previous = {}, options = {}) {
     next.nextRunAt = previousSchedule.nextRunAt;
     return next;
   }
-  next.nextRunAt = computeNextRunAt(next);
+  next.nextRunAt = nextDailyRunAt(next.dailyRunTimes || [next.dailyRunTime]);
   return next;
 }
 
@@ -2989,7 +2992,7 @@ async function runDsScheduleCheck(schedule, options = {}) {
     savedSchedule.lastError = null;
   }
   if (trigger === "schedule") {
-    savedSchedule.nextRunAt = computeNextRunAt(savedSchedule);
+    savedSchedule.nextRunAt = nextDailyRunAt(savedSchedule.dailyRunTimes || [savedSchedule.dailyRunTime]);
   }
   await writeJsonAtomic(scheduleFile, savedSchedule);
 

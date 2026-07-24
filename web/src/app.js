@@ -35,16 +35,20 @@ await loadData();
 render();
 
 export async function loadData() {
-  const [summary, countries, rulesConfig, batchSchedule] = await Promise.all([
+  const [summary, countries, inventory, rulesConfig, batchSchedule, batchHistory] = await Promise.all([
     apiGet("/api/summary"),
     apiGet("/api/countries"),
+    apiGet("/api/inventory"),
     apiGet("/api/rules"),
     apiGet("/api/batch-schedule").catch(() => null),
+    apiGet("/api/batch-history?limit=200").catch(() => ({ runs: [] })),
   ]);
   state.summary = summary;
   state.countries = countries;
+  state.inventory = inventory;
   state.rulesConfig = rulesConfig;
   state.batchSchedule = batchSchedule;
+  state.batchHistory = batchHistory;
   if (batchSchedule) {
     state.batchNotifyConfig = {
       webhookUrl: batchSchedule.webhookUrl || state.batchNotifyConfig.webhookUrl,
@@ -58,39 +62,6 @@ export async function loadData() {
       state.selected.dashboardUuid = batchSchedule.dashboardUuid;
     }
   }
-  loadLazyData();
-}
-
-let lazyDataLoading = false;
-let lazyDataLoaded = false;
-
-async function loadLazyData() {
-  if (lazyDataLoading) return;
-  lazyDataLoading = true;
-  try {
-    const [inventory, batchHistory] = await Promise.all([
-      apiGet("/api/inventory"),
-      apiGet("/api/batch-history?limit=200").catch(() => ({ runs: [] })),
-    ]);
-    state.inventory = inventory;
-    state.batchHistory = batchHistory;
-    lazyDataLoaded = true;
-  } catch (error) {
-    console.warn("Lazy data load failed:", error);
-    lazyDataLoading = false;
-  }
-}
-
-export async function ensureInventoryLoaded() {
-  if (state.inventory) {
-    return state.inventory;
-  }
-  await loadLazyData();
-  return state.inventory;
-}
-
-export function isInventoryLoaded() {
-  return Boolean(state.inventory);
 }
 
 export function render() {

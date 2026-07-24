@@ -1,28 +1,7 @@
 import { state } from "../state.js";
-import { ensureInventoryLoaded } from "../app.js";
 import { compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
 
 export function renderInventory(root) {
-  if (!state.inventory) {
-    root.innerHTML = `
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">看板与卡片</h1>
-          <p class="page-note">加载中...</p>
-        </div>
-      </div>
-      <div class="panel" style="text-align: center; padding: 48px 20px;">
-        <div style="font-size: 32px; margin-bottom: 8px;">⏳</div>
-        <strong>正在加载看板数据...</strong>
-        <p class="muted" style="margin-top: 6px;">首次加载可能需要几秒钟。</p>
-      </div>
-    `;
-    ensureInventoryLoaded().then(() => {
-      renderInventory(root);
-    }).catch(() => {});
-    return;
-  }
-
   const dashboards = state.inventory?.dashboards || [];
   const panelSources = state.inventory?.panelSources || [];
   const countries = state.countries?.countries || [];
