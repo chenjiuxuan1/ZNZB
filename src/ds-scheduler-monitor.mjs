@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fetchCompatible } from "./fetch-compatible.mjs";
 import { readJsonFile } from "./utils.mjs";
+import { notifyText } from "./notifier.mjs";
 
 const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
 
@@ -8,13 +9,14 @@ export async function loadDsSchedulerConfig(rootDir) {
   const configPath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
   const config = await readJsonFile(configPath, null);
   if (!config) {
-    return { n8nWebhookUrl: "", countries: {} };
+    return { n8nWebhookUrl: "", countries: {}, alerts: {} };
   }
   return {
     n8nWebhookUrl: config.n8nWebhookUrl || "",
     countries: config.countries || {},
     projectCodes: config.projectCodes || {},
     projectNames: config.projectNames || {},
+    alerts: config.alerts || {},
   };
 }
 
@@ -103,6 +105,7 @@ export async function saveDsSchedulerConfig(rootDir, config) {
     projectNames,
     projectCodes,
     countries,
+    alerts: config.alerts || {},
   };
 
   await fs.writeFile(filePath, JSON.stringify(fullConfig, null, 2), "utf8");
@@ -239,4 +242,117 @@ export async function checkAllCountries(rootDir, config) {
     failedCountries,
     countries: results,
   };
+}
+
+/**
+ * Send notification for DS scheduler check results.
+ */
+export async function notifyDsSchedulerCheck(config, checkResult) {
+  const alertConfig = config.alerts || {};
+  if (!alertConfig.channel && !alertConfig.webhookUrl) {
+    return { sent: false, reason: "alert not configured" };
+  }
+
+  const totalStuck = checkResult.totalStuck || 0;
+  const totalStale = checkResult.totalStale || 0;
+  const hasAnomalies = totalStuck > 0 || totalStale > 0;
+
+  if (!hasAnomalies && alertConfig.sendWhenHealthy === false) {
+    return { sent: false, reason: "healthy notification disabled" };
+  }
+
+  const messages = buildDsSchedulerMessages(checkResult, alertConfig);
+  const results = [];
+
+  for (const message of messages) {
+    results.push(
+      await notifyText(config, message.body, {
+        title: message.title,
+        severity: hasAnomalies ? "warning" : "info",
+      }),
+    );
+  }
+
+  return {
+    sent: results.some((resultItem) => resultItem.sent),
+    sentMessages: messages.length,
+    results,
+  };
+}
+
+/**
+ * Build notification messages for DS scheduler check results.
+ */
+function buildDsSchedulerMessages(checkResult, alertConfig = {}) {
+  const messages = [];
+  const totalStuck = checkResult.totalStuck || 0;
+  const totalStale = checkResult.totalStale || 0;
+  const hasAnomalies = totalStuck > 0 || totalStale > 0;
+
+  // Build overview message
+  let body = `## DS 调度监控巡检报告\n\n`;
+  body += `**检查时间**: ${new Date(checkResult.checkedAt).toLocaleString("zh-CN")}\n\n`;
+  body += `### 概览\n`;
+  body += `- 监控国家: ${checkResult.totalCountries}\n`;
+  body += `- 检查工作流: ${checkResult.totalChecked}\n`;
+  body += `- 卡死工作流: ${totalStuck}\n`;
+  body += `- 离线/旷工任务: ${totalStale}\n`;
+  body += `- 检查失败国家: ${checkResult.failedCountries}\n\n`;
+
+  if (hasAnomalies) {
+    body += `### 异常详情\n\n`;
+
+    // Add stuck workflows
+    if (totalStuck > 0) {
+      body += `#### ⛔ 卡死工作流 (${totalStuck})\n\n`;
+      for (const countryResult of checkResult.countries || []) {
+        if (countryResult.stuckWorkflows && countryResult.stuckWorkflows.length > 0) {
+          body += `**${countryResult.countryName} (${countryResult.country})**\n`;
+          for (const wf of countryResult.stuckWorkflows) {
+            body += `- \`${wf.workflowName}\` (${wf.workflowCode})\n`;
+            body += `  - 连续失败: ${wf.consecutiveFailures} 次\n`;
+            body += `  - 调度状态: ${wf.scheduleStatus || "未知"}\n`;
+          }
+          body += `\n`;
+        }
+      }
+    }
+
+    // Add stale workflows
+    if (totalStale > 0) {
+      body += `#### ⚠️ 离线/旷工任务 (${totalStale})\n\n`;
+      for (const countryResult of checkResult.countries || []) {
+        if (countryResult.staleWorkflows && countryResult.staleWorkflows.length > 0) {
+          body += `**${countryResult.countryName} (${countryResult.country})**\n`;
+          for (const wf of countryResult.staleWorkflows) {
+            body += `- \`${wf.workflowName}\` (${wf.workflowCode})\n`;
+            body += `  - 状态: ${wf.staleMessage || wf.staleReason || "离线"}\n`;
+            body += `  - 调度状态: ${wf.scheduleStatus || "未知"}\n`;
+          }
+          body += `\n`;
+        }
+      }
+    }
+
+    // Add failed countries
+    if (checkResult.failedCountries > 0) {
+      body += `#### ❌ 检查失败国家 (${checkResult.failedCountries})\n\n`;
+      for (const countryResult of checkResult.countries || []) {
+        if (!countryResult.success) {
+          body += `- **${countryResult.countryName} (${countryResult.country})**: ${countryResult.error || "未知错误"}\n`;
+        }
+      }
+      body += `\n`;
+    }
+  } else {
+    body += `### ✅ 一切正常\n\n`;
+    body += `所有检查通过，没有发现异常。\n`;
+  }
+
+  messages.push({
+    title: hasAnomalies ? "⚠️ DS 调度监控异常告警" : "✅ DS 调度监控健康报告",
+    body,
+  });
+
+  return messages;
 }
