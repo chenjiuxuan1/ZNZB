@@ -61,12 +61,12 @@ export async function loadData() {
   loadLazyData();
 }
 
+let lazyDataLoading = false;
 let lazyDataLoaded = false;
+
 async function loadLazyData() {
-  if (lazyDataLoaded) {
-    return;
-  }
-  lazyDataLoaded = true;
+  if (lazyDataLoading) return;
+  lazyDataLoading = true;
   try {
     const [inventory, batchHistory] = await Promise.all([
       apiGet("/api/inventory"),
@@ -74,8 +74,10 @@ async function loadLazyData() {
     ]);
     state.inventory = inventory;
     state.batchHistory = batchHistory;
+    lazyDataLoaded = true;
   } catch (error) {
     console.warn("Lazy data load failed:", error);
+    lazyDataLoading = false;
   }
 }
 
@@ -85,6 +87,10 @@ export async function ensureInventoryLoaded() {
   }
   await loadLazyData();
   return state.inventory;
+}
+
+export function isInventoryLoaded() {
+  return Boolean(state.inventory);
 }
 
 export function render() {
