@@ -3,6 +3,10 @@
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import zlib from "node:zlib";
+import { promisify } from "node:util";
+
+const gzip = promisify(zlib.gzip);
 import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
 import { loadEnvFile } from "./utils.mjs";
@@ -22,7 +26,7 @@ const server = http.createServer(async (request, response) => {
       await handleApi(request, response, url);
       return;
     }
-    await serveStatic(response, url.pathname);
+    await serveStatic(request, response, url.pathname);
   } catch (error) {
     sendJson(response, error.statusCode || 500, {
       error: error.message,
@@ -30,6 +34,41 @@ const server = http.createServer(async (request, response) => {
     });
   }
 });
+
+const staticFileCache = new Map();
+const JSON_CACHE_TTL_MS = Number(process.env.JSON_CACHE_TTL_MS || 30_000);
+const jsonResponseCache = new Map();
+
+function cacheJsonResponse(cacheKey, statusCode, payload) {
+  if (JSON_CACHE_TTL_MS <= 0) {
+    return;
+  }
+  jsonResponseCache.set(cacheKey, {
+    statusCode,
+    payload,
+    cachedAt: Date.now(),
+  });
+}
+
+function getCachedJsonResponse(cacheKey) {
+  const entry = jsonResponseCache.get(cacheKey);
+  if (!entry) {
+    return null;
+  }
+  if (Date.now() - entry.cachedAt > JSON_CACHE_TTL_MS) {
+    jsonResponseCache.delete(cacheKey);
+    return null;
+  }
+  return entry;
+}
+
+function invalidateJsonCachePrefix(prefix) {
+  for (const key of jsonResponseCache.keys()) {
+    if (key.startsWith(prefix)) {
+      jsonResponseCache.delete(key);
+    }
+  }
+}
 
 server.listen(port, host, () => {
   console.log(`Duty platform running at http://${host}:${port}`);
@@ -39,105 +78,122 @@ startDsScheduler();
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";
+  const isGet = method === "GET";
+  const cacheKey = isGet ? `${url.pathname}${url.search || ""}` : "";
+
+  if (isGet && cacheKey) {
+    const cached = getCachedJsonResponse(cacheKey);
+    if (cached) {
+      return sendJsonFromCache(request, response, cached.statusCode, cached.payload);
+    }
+  }
+
+  const sendJsonCached = async (statusCode, payload) => {
+    if (isGet && cacheKey && statusCode === 200) {
+      cacheJsonResponse(cacheKey, statusCode, payload);
+    }
+    return sendJsonCompressed(request, response, statusCode, payload);
+  };
+
   if (method === "GET" && url.pathname === "/api/summary") {
-    return sendJson(response, 200, await api.getSummary());
+    return sendJsonCached(200, await api.getSummary());
   }
   if (method === "GET" && url.pathname === "/api/countries") {
-    return sendJson(response, 200, await api.getCountries());
+    return sendJsonCached(200, await api.getCountries());
   }
   if (method === "PUT" && url.pathname === "/api/countries") {
-    return sendJson(response, 200, await api.saveCountriesConfig(await readBody(request)));
+    return sendJsonCached(200, await api.saveCountriesConfig(await readBody(request)));
   }
   if (method === "GET" && url.pathname === "/api/inventory") {
-    return sendJson(response, 200, await api.getInventory(Object.fromEntries(url.searchParams.entries())));
+    return sendJsonCached(200, await api.getInventory(Object.fromEntries(url.searchParams.entries())));
   }
   if (method === "GET" && url.pathname === "/api/rules") {
-    return sendJson(response, 200, await api.getRulesConfig());
+    return sendJsonCached(200, await api.getRulesConfig());
   }
   if (method === "PUT" && url.pathname === "/api/rules") {
-    return sendJson(response, 200, await api.saveRulesConfig(await readBody(request)));
+    return sendJsonCached(200, await api.saveRulesConfig(await readBody(request)));
   }
   if (method === "GET" && url.pathname === "/api/batch-schedule") {
-    return sendJson(response, 200, await api.getBatchSchedule());
+    return sendJsonCached(200, await api.getBatchSchedule());
   }
   if (method === "GET" && url.pathname === "/api/batch-schedule/progress") {
-    return sendJson(response, 200, await api.getBatchScheduleRunProgress());
+    return sendJsonCached(200, await api.getBatchScheduleRunProgress());
   }
   if (method === "GET" && url.pathname === "/api/batch-history") {
-    return sendJson(response, 200, await api.getBatchHistory(Object.fromEntries(url.searchParams.entries())));
+    return sendJsonCached(200, await api.getBatchHistory(Object.fromEntries(url.searchParams.entries())));
   }
   if (method === "POST" && url.pathname === "/api/external-alert-runs") {
-    return sendJson(response, 200, await api.ingestExternalAlertRun(await readBody(request, {})));
+    return sendJsonCached(200, await api.ingestExternalAlertRun(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/wattrel/query") {
-    return sendJson(response, 200, await api.queryWattrelAlerts(await readBody(request, {})));
+    return sendJsonCached(200, await api.queryWattrelAlerts(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/wattrel/current") {
-    return sendJson(response, 200, await api.getCurrentWattrelAlerts(await readBody(request, {})));
+    return sendJsonCached(200, await api.getCurrentWattrelAlerts(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/quality-rule-generation/sheet") {
-    return sendJson(response, 200, await api.getQualityRuleGenerationSheet(await readBody(request, {})));
+    return sendJsonCached(200, await api.getQualityRuleGenerationSheet(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/quality-rule-generation/submit") {
-    return sendJson(response, 200, await api.submitQualityRuleGenerationRow(await readBody(request, {})));
+    return sendJsonCached(200, await api.submitQualityRuleGenerationRow(await readBody(request, {})));
   }
   if (method === "PUT" && url.pathname === "/api/batch-schedule") {
-    return sendJson(response, 200, await api.saveBatchSchedule(await readBody(request, {})));
+    return sendJsonCached(200, await api.saveBatchSchedule(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/batch-schedule/run-now") {
-    return sendJson(response, 200, await api.runBatchScheduleNow());
+    return sendJsonCached(200, await api.runBatchScheduleNow());
   }
   if (method === "POST" && url.pathname === "/api/sandbox/evaluate") {
-    return sendJson(response, 200, await api.evaluateSandbox(await readBody(request)));
+    return sendJsonCached(200, await api.evaluateSandbox(await readBody(request)));
   }
   if (method === "POST" && url.pathname === "/api/sandbox/evaluate-live") {
-    return sendJson(response, 200, await api.evaluateLiveSandbox(await readBody(request)));
+    return sendJsonCached(200, await api.evaluateLiveSandbox(await readBody(request)));
   }
   if (method === "POST" && url.pathname === "/api/batch-check") {
-    return sendJson(response, 200, await api.runBatchCheck(await readBody(request, {})));
+    return sendJsonCached(200, await api.runBatchCheck(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/batch-check-and-notify") {
-    return sendJson(response, 200, await api.runBatchCheckAndNotify(await readBody(request, {})));
+    return sendJsonCached(200, await api.runBatchCheckAndNotify(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});
-    return sendJson(response, 200, await api.getNotifyPreview(body?.result || null, body?.options || {}));
+    return sendJsonCached(200, await api.getNotifyPreview(body?.result || null, body?.options || {}));
   }
   if (method === "POST" && url.pathname === "/api/notify-test") {
-    return sendJson(response, 200, await api.sendNotifyTest(await readBody(request, {})));
+    return sendJsonCached(200, await api.sendNotifyTest(await readBody(request, {})));
   }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/config") {
-    return sendJson(response, 200, await api.getDsSchedulerConfig());
+    return sendJsonCached(200, await api.getDsSchedulerConfig());
   }
   if (method === "PUT" && url.pathname === "/api/ds-scheduler/config") {
-    return sendJson(response, 200, await api.saveDsSchedulerConfig(await readBody(request)));
+    return sendJsonCached(200, await api.saveDsSchedulerConfig(await readBody(request)));
   }
   if (method === "POST" && url.pathname === "/api/ds-scheduler/check") {
-    return sendJson(response, 200, await api.checkAllDsCountries());
+    return sendJsonCached(200, await api.checkAllDsCountries());
   }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/schedule") {
-    return sendJson(response, 200, await api.getDsSchedule());
+    return sendJsonCached(200, await api.getDsSchedule());
   }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/schedule/progress") {
-    return sendJson(response, 200, await api.getDsScheduleRunProgress());
+    return sendJsonCached(200, await api.getDsScheduleRunProgress());
   }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/history") {
-    return sendJson(response, 200, await api.getDsHistory(Object.fromEntries(url.searchParams.entries())));
+    return sendJsonCached(200, await api.getDsHistory(Object.fromEntries(url.searchParams.entries())));
   }
   if (method === "PUT" && url.pathname === "/api/ds-scheduler/schedule") {
-    return sendJson(response, 200, await api.saveDsSchedule(await readBody(request, {})));
+    return sendJsonCached(200, await api.saveDsSchedule(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/ds-scheduler/schedule/run-now") {
-    return sendJson(response, 200, await api.runDsScheduleNow());
+    return sendJsonCached(200, await api.runDsScheduleNow());
   }
   if (method === "POST" && url.pathname === "/api/ds-scheduler/check-and-notify") {
-    return sendJson(response, 200, await api.runDsCheckAndNotify(await readBody(request, {})));
+    return sendJsonCached(200, await api.runDsCheckAndNotify(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/ds-scheduler/notify-test") {
-    return sendJson(response, 200, await api.sendDsNotifyTest(await readBody(request, {})));
+    return sendJsonCached(200, await api.sendDsNotifyTest(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/ds-scheduler/notify-preview") {
-    return sendJson(response, 200, await api.getDsNotifyPreview(await readBody(request, {})));
+    return sendJsonCached(200, await api.getDsNotifyPreview(await readBody(request, {})));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
@@ -206,26 +262,103 @@ async function readBody(request, fallback = null) {
   return JSON.parse(text);
 }
 
-async function serveStatic(response, pathname) {
+async function serveStatic(request, response, pathname) {
   const safePath = pathname === "/" ? "/index.html" : pathname;
   const filePath = path.normalize(path.join(webDir, safePath));
   if (!filePath.startsWith(webDir)) {
     return sendText(response, 403, "Forbidden");
   }
+  let data;
+  let contentTypeValue;
+  let cacheControl = "no-cache";
   try {
-    const data = await fs.readFile(filePath);
-    response.writeHead(200, { "Content-Type": contentType(filePath) });
-    response.end(data);
+    const cached = staticFileCache.get(filePath);
+    let stats = null;
+    try {
+      stats = await fs.stat(filePath);
+    } catch {
+      stats = null;
+    }
+    if (cached && stats && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+      data = cached.data;
+      contentTypeValue = cached.contentType;
+    } else {
+      data = await fs.readFile(filePath);
+      contentTypeValue = contentType(filePath);
+      if (stats && isCacheableAsset(filePath)) {
+        staticFileCache.set(filePath, {
+          data,
+          contentType: contentTypeValue,
+          mtimeMs: stats.mtimeMs,
+          size: stats.size,
+        });
+      }
+    }
+    if (isLongCacheAsset(filePath)) {
+      cacheControl = "public, max-age=31536000, immutable";
+    } else if (isCacheableAsset(filePath)) {
+      cacheControl = "public, max-age=60";
+    }
   } catch {
-    const data = await fs.readFile(path.join(webDir, "index.html"));
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    response.end(data);
+    data = await fs.readFile(path.join(webDir, "index.html"));
+    contentTypeValue = "text/html; charset=utf-8";
   }
+  await sendCompressedResponse(request, response, 200, data, {
+    "Content-Type": contentTypeValue,
+    "Cache-Control": cacheControl,
+  });
+}
+
+function isCacheableAsset(filePath) {
+  return /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf)$/i.test(filePath);
+}
+
+function isLongCacheAsset(filePath) {
+  return /[?&]v=/i.test(filePath) || /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf)$/i.test(filePath);
+}
+
+async function sendCompressedResponse(request, response, statusCode, body, headers = {}) {
+  const acceptEncoding = (request && request.headers && request.headers["accept-encoding"]) || "";
+  const canGzip = /gzip/i.test(acceptEncoding);
+  const bodyBuffer = Buffer.isBuffer(body) ? body : Buffer.from(body);
+
+  if (canGzip && bodyBuffer.length > 1024) {
+    const compressed = await gzip(bodyBuffer, { level: 6 });
+    response.writeHead(statusCode, {
+      ...headers,
+      "Content-Encoding": "gzip",
+      "Content-Length": compressed.length,
+    });
+    response.end(compressed);
+    return;
+  }
+
+  response.writeHead(statusCode, {
+    ...headers,
+    "Content-Length": bodyBuffer.length,
+  });
+  response.end(bodyBuffer);
 }
 
 function sendJson(response, statusCode, payload) {
-  response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
-  response.end(JSON.stringify(payload, null, 2));
+  const jsonStr = JSON.stringify(payload);
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+  });
+  response.end(jsonStr);
+}
+
+async function sendJsonCompressed(request, response, statusCode, payload) {
+  const jsonStr = JSON.stringify(payload);
+  await sendCompressedResponse(request, response, statusCode, jsonStr, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+  });
+}
+
+function sendJsonFromCache(request, response, statusCode, payload) {
+  return sendJsonCompressed(request, response, statusCode, payload);
 }
 
 function sendText(response, statusCode, text) {
