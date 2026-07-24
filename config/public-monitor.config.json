@@ -503,6 +503,48 @@
     },
     {
       "type": "intradayTimePointCompleteness",
+      "dashboardTitlePattern": "提前还款监控$",
+      "timeColumn": "小时",
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 60,
+      "allowedDelayMinutes": 120,
+      "expectedTimePointSource": "previousDay",
+      "ignoreDimensionColumns": [
+        "小时",
+        "开始时间",
+        "hour",
+        "stat_hour"
+      ],
+      "maxAnomaliesPerCard": 8,
+      "context": "提前还款每小时监控"
+    },
+    {
+      "type": "intradayTimePointChange",
+      "dashboardTitlePattern": "提前还款监控$",
+      "timeColumn": "小时",
+      "timezone": "dashboard",
+      "startTime": "00:00",
+      "intervalMinutes": 60,
+      "allowedDelayMinutes": 120,
+      "previousLagDays": 1,
+      "maxAbsChangeRate": 0.5,
+      "baselineLookbackDays": 30,
+      "baselineMinSamples": 7,
+      "baselineMaxAbsChangeRate": 0.5,
+      "scanPreviousDateAgainstBaseline": true,
+      "minPrevious": 100,
+      "ignoreDimensionColumns": [
+        "小时",
+        "开始时间",
+        "hour",
+        "stat_hour"
+      ],
+      "maxAnomaliesPerCard": 8,
+      "context": "提前还款每小时监控"
+    },
+    {
+      "type": "intradayTimePointCompleteness",
       "dashboardTitle": "核心链路准实时监控",
       "cardTitlePattern": "^(新客|老客)-",
       "dateColumn": "stat_date",

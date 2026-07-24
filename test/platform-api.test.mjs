@@ -400,12 +400,14 @@ test("DS scheduler config inherits Metabase recipients", async () => {
   assert.equal(config.alerts.sendWhenHealthy, true);
 });
 
-test("requested hourly dashboards are stored in all four country sources", async () => {
+test("requested hourly dashboards are stored in all six country sources", async () => {
   const expected = new Map([
     ["config/discovered-panels.json", "/dashboard/1052"],
     ["config/discovered-panels.pk.json", "/dashboard/1053"],
     ["config/discovered-panels.th.json", "/dashboard/1054"],
     ["config/discovered-panels.ph.json", "/dashboard/1056"],
+    ["config/discovered-panels.cn.json", "/dashboard/1206"],
+    ["config/discovered-panels.mx.json", "/dashboard/1039"],
   ]);
   for (const [relativePath, dashboardPath] of expected) {
     const source = JSON.parse(await fs.readFile(path.resolve(relativePath), "utf8"));

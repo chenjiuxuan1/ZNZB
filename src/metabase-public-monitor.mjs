@@ -1083,13 +1083,25 @@ function checkIntradayProgress(rows, rule) {
   );
 }
 
+function resolveIntradayTimeColumn(rows, preferredColumn) {
+  const availableColumns = new Set(rows.flatMap((row) => Object.keys(row || {})));
+  const candidates = [
+    preferredColumn,
+    "开始时间",
+    "小时",
+    "hour",
+    "stat_hour",
+  ].filter(Boolean);
+  return candidates.find((column) => availableColumns.has(column)) || preferredColumn || "开始时间";
+}
+
 function checkIntradaySameTimeChange(rows, rule) {
   const dateColumn = rule.dateColumn || inferDateColumn(rows);
   if (!dateColumn) {
     return "no parseable date column found";
   }
 
-  const timeColumn = rule.timeColumn || "开始时间";
+  const timeColumn = resolveIntradayTimeColumn(rows, rule.timeColumn);
   const numericColumns = selectNumericColumns(rows, rule);
   const timezone = rule.timezone || "Asia/Jakarta";
   const now = resolveNow(rule);
@@ -1166,7 +1178,7 @@ function checkIntradayTimePointCompleteness(rows, rule) {
     return "no parseable date column found";
   }
 
-  const timeColumn = rule.timeColumn || "开始时间";
+  const timeColumn = resolveIntradayTimeColumn(rows, rule.timeColumn);
   const numericColumns = selectNumericColumns(rows, rule);
   const timezone = rule.timezone || "Asia/Jakarta";
   const now = resolveNow(rule);
@@ -1199,8 +1211,9 @@ function checkIntradayTimePointCompleteness(rows, rule) {
     );
     const missingTimes = expectedTimes.filter((time) => !actualTimes.has(time));
     if (missingTimes.length) {
+      const pointLabel = Number(rule.intervalMinutes || 30) === 60 ? "小时点" : "半小时点";
       messages.push(
-        `半小时点数据缺失：${dateColumn} ${currentDate} 缺少 ${formatTimePointList(missingTimes)}` +
+        `${pointLabel}数据缺失：${dateColumn} ${currentDate} 缺少 ${formatTimePointList(missingTimes)}` +
           `（${timezone} ${localNow.timeLabel}，${formatCompletenessExpectation(
             rule,
             expectedTimes,
@@ -1219,7 +1232,7 @@ function checkIntradayTimePointChange(rows, rule) {
     return "no parseable date column found";
   }
 
-  const timeColumn = rule.timeColumn || "开始时间";
+  const timeColumn = resolveIntradayTimeColumn(rows, rule.timeColumn);
   const numericColumns = selectNumericColumns(rows, rule);
   const timezone = rule.timezone || "Asia/Jakarta";
   const now = resolveNow(rule);

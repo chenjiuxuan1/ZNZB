@@ -1246,6 +1246,29 @@ test("evaluateRowsAgainstRule detects missing intraday time points", () => {
   ]);
 });
 
+test("evaluateRowsAgainstRule falls back to an available hourly column", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "日期": "2026-06-08", "开始时间": "00:00", "放款数": 100 },
+      { "日期": "2026-06-08", "开始时间": "02:00", "放款数": 100 },
+    ],
+    {
+      type: "intradayTimePointCompleteness",
+      dateColumn: "日期",
+      timeColumn: "小时",
+      timezone: "Asia/Jakarta",
+      now: "2026-06-07T19:00:00Z",
+      startTime: "00:00",
+      intervalMinutes: 60,
+      ignoreDimensionColumns: ["小时", "开始时间"],
+    },
+  );
+
+  assert.deepEqual(result, [
+    "小时点数据缺失：日期 2026-06-08 缺少 01:00（Asia/Jakarta 02:00，期望 00:00~02:00 每 60 分钟）",
+  ]);
+});
+
 test("evaluateRowsAgainstRule allows intraday time point data delay", () => {
   const result = evaluateRowsAgainstRule(
     [
