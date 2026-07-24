@@ -187,6 +187,40 @@ test("platform API exposes manual anomaly verification with an injected read-onl
   assert.equal(result.verification.status, "completed");
 });
 
+test("platform API exposes safe anomaly verifier status for the main workspace", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "anomaly-verifier-status-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(
+    path.join(rootDir, "config/anomaly-verifier.config.json"),
+    JSON.stringify(verifierConfig({
+      maxCandidates: 40,
+      llm: {
+        enabled: true,
+        provider: "dashscope",
+        model: "qwen3.6-plus",
+        apiKeyEnv: "DASHSCOPE_API_KEY",
+      },
+    })),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/anomaly-verifier-evaluation.json"),
+    JSON.stringify({
+      evaluatedAt: "2026-07-24T10:00:00.000Z",
+      summary: { rawAlerts: 286, semanticAlerts: 113, falsePositives: 36 },
+    }),
+  );
+
+  const status = await createPlatformApi({ rootDir }).getAnomalyVerifierStatus();
+
+  assert.equal(status.enabled, true);
+  assert.equal(status.configured, true);
+  assert.equal(status.planCount, 1);
+  assert.equal(status.maxCandidates, 40);
+  assert.equal(status.llm.model, "qwen3.6-plus");
+  assert.equal(status.evaluation.summary.falsePositives, 36);
+  assert.equal("apiKey" in status.llm, false);
+});
+
 test("Qwen analysis is advisory and cannot override the deterministic database verdict", async () => {
   const reasonerCalls = [];
   const agent = new AnomalyVerifierAgent({

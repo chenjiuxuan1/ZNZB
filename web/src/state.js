@@ -48,6 +48,10 @@ export const state = {
     row: null,
     status: null,
   },
+  anomalyVerifierStatus: null,
+  anomalyVerifierResult: null,
+  anomalyVerifierRunStatus: null,
+  anomalyVerifierLoaded: false,
   batchNotifyConfig: {
     webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
     botId: "",

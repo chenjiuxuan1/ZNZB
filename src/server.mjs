@@ -158,6 +158,9 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/anomaly-verifier/verify") {
     return sendJson(response, 200, await api.verifyAnomalies(await readBody(request, {})));
   }
+  if (method === "GET" && url.pathname === "/api/anomaly-verifier/status") {
+    return sendJson(response, 200, await api.getAnomalyVerifierStatus());
+  }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});
     return sendJsonCached(200, await api.getNotifyPreview(body?.result || null, body?.options || {}));

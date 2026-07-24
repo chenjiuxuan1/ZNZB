@@ -6,10 +6,7 @@ const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
 
 export async function loadDsSchedulerConfig(rootDir) {
   const configPath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
-  const config = await readJsonFile(configPath, null);
-  if (!config) {
-    return { n8nWebhookUrl: "", countries: {} };
-  }
+  const config = await readJsonFile(configPath, {});
   return {
     n8nWebhookUrl: config.n8nWebhookUrl || "",
     countries: config.countries || {},

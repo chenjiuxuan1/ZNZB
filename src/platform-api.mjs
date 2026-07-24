@@ -45,6 +45,7 @@ const FILES = {
   baselineCache: "config/public-check-baseline-cache.json",
   observationCache: "config/public-check-cadence-observations.json",
   anomalyVerifier: "config/anomaly-verifier.config.json",
+  anomalyVerifierEvaluation: "config/anomaly-verifier-evaluation.json",
   batchSchedule: "config/batch-check-schedule.json",
   batchHistory: "config/batch-check-run-history.json",
   wattrel: "config/wattrel.config.json",
@@ -176,6 +177,44 @@ export function createPlatformApi({
     async getBatchHistory(filters = {}) {
       const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
       return filterBatchHistory(history, filters);
+    },
+
+    async getAnomalyVerifierStatus() {
+      const [config, result, evaluation] = await Promise.all([
+        readJsonFile(resolve("anomalyVerifier"), { enabled: false, plans: [] }),
+        readJsonFile(resolve("result"), {}),
+        readJsonFile(resolve("anomalyVerifierEvaluation"), {}),
+      ]);
+      const plans = Array.isArray(config.plans)
+        ? config.plans.filter((plan) => plan?.enabled !== false)
+        : [];
+      return {
+        enabled: config.enabled === true,
+        configured: plans.length > 0,
+        planCount: plans.length,
+        maxCandidates: Number(config.maxCandidates || 20),
+        eligibleTypes: Array.isArray(config.eligibleTypes) ? config.eligibleTypes : [],
+        llm: {
+          enabled: config.llm?.enabled === true,
+          provider: config.llm?.provider || "dashscope",
+          model: config.llm?.model || "qwen3.6-plus",
+          apiKeyEnv: config.llm?.apiKeyEnv || "DASHSCOPE_API_KEY",
+        },
+        lastResult: result.checkedAt || result.verification
+          ? {
+              checkedAt: result.checkedAt || null,
+              anomalyCount: Number(result.anomalyCount || 0),
+              verification: result.verification || null,
+            }
+          : null,
+        evaluation: evaluation.evaluatedAt || evaluation.summary
+          ? {
+              evaluatedAt: evaluation.evaluatedAt || null,
+              sourceCheckedAt: evaluation.sourceCheckedAt || null,
+              summary: evaluation.summary || null,
+            }
+          : null,
+      };
     },
 
     async verifyAnomalies(body = {}) {
