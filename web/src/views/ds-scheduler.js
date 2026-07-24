@@ -112,8 +112,6 @@ function renderDsWorkspaceTabs(activeTab) {
 // ==================== 总览 Tab ====================
 
 function renderDsOverviewPanel(root) {
-  loadDsConfig().then(() => renderDsScheduler(root));
-
   const config = dsConfigCache;
   const result = dsCheckResultCache;
 
@@ -252,8 +250,6 @@ function renderDsCheckResult(result) {
 // ==================== 通知配置 Tab ====================
 
 function renderDsNotifyPanel(root) {
-  loadDsSchedule().then(() => renderDsScheduler(root));
-
   const schedule = dsScheduleCache || {};
   const channel = schedule.notifyChannel || "tv";
   const isKn = channel === "knBot";
@@ -334,8 +330,6 @@ function renderDsNotifyPanel(root) {
 // ==================== 定时任务 Tab ====================
 
 function renderDsSchedulePanel(root) {
-  Promise.all([loadDsSchedule(), loadDsConfig()]).then(() => renderDsScheduler(root));
-
   const schedule = dsScheduleCache || {};
   const config = dsConfigCache || {};
   const enabled = Boolean(schedule.enabled);
@@ -468,8 +462,6 @@ function renderDsSchedulePanel(root) {
 // ==================== 历史 Tab ====================
 
 function renderDsHistoryPanel(root) {
-  loadDsHistory().then(() => renderDsScheduler(root));
-
   const history = dsHistoryCache || { runs: [] };
   const runs = history.runs || [];
 
@@ -533,9 +525,27 @@ function renderDsHistoryPanel(root) {
 
 // ==================== 事件绑定（重写 renderDsScheduler 以支持事件） ====================
 
+let dsDataLoading = false;
+
 export function renderDsScheduler(root) {
   buildDsSchedulerHtml(root);
+  bindDsEvents(root);
 
+  // 首屏并行加载所有数据，加载完后重渲染一次
+  if (!dsDataLoading) {
+    dsDataLoading = true;
+    Promise.allSettled([
+      loadDsConfig(),
+      loadDsSchedule(),
+      loadDsHistory(),
+    ]).then(() => {
+      dsDataLoading = false;
+      buildDsSchedulerHtml(root);
+      bindDsEvents(root);
+    });
+  }
+
+function bindDsEvents(root) {
   // 总览 - 执行检查
   root.querySelector("#ds-run-check")?.addEventListener("click", async () => {
     const resultArea = root.querySelector("#ds-result-area");
@@ -682,6 +692,8 @@ export function renderDsScheduler(root) {
       if (statusEl) statusEl.innerHTML = `<div class="sandbox-status error"><strong>✗</strong><span>${escapeHtml(error.message)}</span></div>`;
     }
   });
+}
+
 }
 
 // ==================== 数据收集函数 ====================
