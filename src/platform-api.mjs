@@ -576,7 +576,30 @@ export function createPlatformApi({
         throw badRequest("Country code is required", ["请选择需要重新发现的国家。"]);
       }
       const discoveredAt = new Date().toISOString();
-      const discovered = await discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn);
+      const [rawDiscovered, countries] = await Promise.all([
+        discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn),
+        readJsonFile(resolve("countries"), { countries: [] }),
+      ]);
+      const country = (countries.countries || []).find((item) => String(item.code || "").toUpperCase() === countryCode) || {};
+      const discovered = {
+        ...rawDiscovered,
+        country: rawDiscovered.country || {
+          code: countryCode,
+          name: country.name || countryCode,
+          timezone: country.timezone,
+        },
+        dashboards: (rawDiscovered.dashboards || []).map((dashboard) => ({
+          ...dashboard,
+          country: dashboard.country || {
+            code: countryCode,
+            name: country.name || countryCode,
+            timezone: country.timezone,
+          },
+          countryCode: dashboard.countryCode || countryCode,
+          countryName: dashboard.countryName || country.name || countryCode,
+          timezone: dashboard.timezone || country.timezone,
+        })),
+      };
       if ((discovered.sourceErrors || []).length > 0) {
         const message = discovered.sourceErrors.map((item) => item.error).filter(Boolean).join("; ") || "Metabase 看板发现失败";
         throw badRequest("Dashboard discovery failed", [message]);

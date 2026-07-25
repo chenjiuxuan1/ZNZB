@@ -155,6 +155,35 @@ test("platform api explicitly discovers and persists one country inventory", asy
   assert.equal(saved.dashboards[0].dashboardId, 1052);
 });
 
+test("country discovery assigns country metadata when Metabase source omits it", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({ panels: [{ id: 11, title: "每小时监控", links: [{ url: "https://data.kuainiu.io/dashboard/1052" }] }] }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => ({
+      dashboards: [{
+        title: "每小时监控",
+        dashboardId: 1052,
+        uuid: "internal:1052",
+        sourcePanelId: 11,
+        cards: [{ title: "小时指标", cardId: 1, dashcardId: 2 }],
+      }],
+    }),
+  });
+
+  await api.discoverCountryDashboards("INE");
+  const inventory = await api.getInventory({ countryCode: "INE" });
+  const hourly = inventory.dashboards.find((item) => Number(item.dashboardId) === 1052);
+
+  assert.equal(hourly.countryCode, "INE");
+  assert.equal(hourly.countryName, "印尼");
+  assert.equal(hourly.executable, true);
+  assert.equal(hourly.cards.length, 1);
+});
+
 test("platform api discovers all configured countries and isolates failures", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
