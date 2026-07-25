@@ -1697,7 +1697,8 @@ test("DS manual test records history with manual_test trigger", async () => {
     JSON.stringify({
       n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
       countries: { cn: { name: "中国", token: "real-token" } },
-      projectCodes: { cn: "" },
+      projectNames: { cn: "国内数仓" },
+      projectCodes: { cn: "123" },
     }),
   );
   const originalFetch = globalThis.fetch;
@@ -1731,6 +1732,7 @@ test("DS check surfaces a readable error for object error messages", async () =>
     JSON.stringify({
       n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
       countries: { cn: { name: "中国", token: "real-token" } },
+      projectNames: { cn: "国内数仓" },
       projectCodes: { cn: "123" },
     }),
   );
@@ -1751,6 +1753,48 @@ test("DS check surfaces a readable error for object error messages", async () =>
     assert.equal(result.countries[0].success, false);
     assert.equal(result.countries[0].error, "DS Token 无效或未授权 (HTTP 401)：http://10.20.47.14:12345/dolphinscheduler/projects/123/schedules");
     assert.ok(!result.countries[0].error.includes("[object Object]"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DS check skips countries without a configured project", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: {
+        cn: { name: "中国", token: "real-token" },
+        ine: { name: "印尼", token: "real-token" },
+      },
+      projectNames: { cn: "国内数仓", ine: "" },
+      projectCodes: { cn: "123", ine: "" },
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return {
+      status: 200,
+      ok: true,
+      async text() {
+        return JSON.stringify({ success: true, data: { total_checked: 5, stuck_count: 0, stale_count: 0, stuck_workflows: [], stale_workflows: [] } });
+      },
+    };
+  };
+  try {
+    const api = createPlatformApi({ rootDir });
+    const result = await api.checkAllDsCountries();
+    const byCode = Object.fromEntries(result.countries.map((c) => [c.country, c]));
+    assert.equal(byCode.cn.success, true);
+    assert.equal(byCode.cn.checkedWorkflows, 5);
+    assert.equal(byCode.ine.success, false);
+    assert.equal(byCode.ine.skipped, true);
+    assert.equal(byCode.ine.error, "未配置监控项目");
+    assert.equal(calls, 1);
+    assert.equal(result.failedCountries, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

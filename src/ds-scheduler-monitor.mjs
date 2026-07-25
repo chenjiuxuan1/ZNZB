@@ -156,12 +156,28 @@ export async function checkAllCountries(rootDir, config) {
 
   for (const [countryCode, countryConfig] of countries) {
     const token = String(countryConfig.token || "").trim();
-    if (!token) {
+    const projectName = String(config.projectNames?.[countryCode] || "").trim();
+    const projectCode = String(config.projectCodes?.[countryCode] || "").trim();
+    if (!token || !projectName) {
       results.push({
         country: countryCode,
         countryName: countryConfig.name || countryCode,
         success: false,
-        error: "token not configured",
+        skipped: true,
+        error: !token ? "未配置 Token" : "未配置监控项目",
+        stuckCount: 0,
+        checkedWorkflows: 0,
+        stuckWorkflows: [],
+      });
+      continue;
+    }
+    if (!projectCode) {
+      results.push({
+        country: countryCode,
+        countryName: countryConfig.name || countryCode,
+        success: false,
+        skipped: true,
+        error: "项目待匹配，请重新保存项目配置以解析项目码",
         stuckCount: 0,
         checkedWorkflows: 0,
         stuckWorkflows: [],
@@ -264,7 +280,7 @@ export async function checkAllCountries(rootDir, config) {
   const totalStuck = results.reduce((sum, r) => sum + r.stuckCount, 0);
   const totalStale = results.reduce((sum, r) => sum + (r.staleCount || 0), 0);
   const totalChecked = results.reduce((sum, r) => sum + r.checkedWorkflows, 0);
-  const failedCountries = results.filter((r) => !r.success).length;
+  const failedCountries = results.filter((r) => !r.success && !r.skipped).length;
 
   return {
     checkedAt: new Date().toISOString(),

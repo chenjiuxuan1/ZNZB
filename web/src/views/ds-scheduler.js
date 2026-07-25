@@ -127,7 +127,7 @@ function renderDsOverviewPanel(root) {
 
       <div class="notice compact-notice">
         <strong>检查说明</strong>
-        <span>会对 6 个国家逐一调用 n8n 网关检查卡死和离线任务；未配置 Token 的国家自动跳过。</span>
+        <span>仅检查已填写项目名称并解析项目码的国家；未配置 Token 或项目待匹配的国家自动跳过。</span>
       </div>
 
       <div class="manual-check-grid">
@@ -229,17 +229,19 @@ function renderDsCheckResult(result) {
     const isOk = country.success && (country.stuckCount || 0) === 0 && (country.staleCount || 0) === 0;
 
     html += `
-      <article class="schedule-country-card ${!isOk ? "is-enabled" : ""}" style="opacity: 1;">
+      <article class="schedule-country-card ${!isOk && !country.skipped ? "is-enabled" : ""}" style="opacity: 1;">
         <div class="schedule-country-card-header">
           <div>
             <strong>${COUNTRY_FLAGS[code] || "🌐"} ${COUNTRY_LABELS[code] || country.countryName || country.country}</strong>
-            <span class="badge ${country.success ? (isOk ? "ok" : "warn") : "danger"}">${country.success ? (isOk ? "正常" : "有异常") : "检查失败"}</span>
+            <span class="badge ${country.skipped ? "warn" : (country.success ? (isOk ? "ok" : "warn") : "danger")}">${country.skipped ? "已跳过" : (country.success ? (isOk ? "正常" : "有异常") : "检查失败")}</span>
           </div>
-          <div style="font-size: 12px; color: var(--muted);">📋 ${country.checkedWorkflows || 0} 个工作流</div>
+          <div style="font-size: 12px; color: var(--muted);">${country.skipped ? "⏭️ 未检查" : `📋 ${country.checkedWorkflows || 0} 个工作流`}</div>
         </div>
     `;
 
-    if (!country.success) {
+    if (country.skipped) {
+      html += `<div style="background: #f3f4f6; color: #6b7280; padding: 8px 10px; border-radius: 6px; font-size: 12px; margin-top: 8px;">⏭️ ${escapeHtml(country.error || "已跳过")}</div>`;
+    } else if (!country.success) {
       html += `<div style="background: #fef2f2; color: #991b1b; padding: 8px 10px; border-radius: 6px; font-size: 12px; margin-top: 8px;">❌ ${escapeHtml(country.error || "未知错误")}</div>`;
     }
 
@@ -247,11 +249,12 @@ function renderDsCheckResult(result) {
       html += `
         <div style="margin-top: 8px;">
           <div style="font-size: 12px; font-weight: 600; color: #991b1b; margin-bottom: 4px;">⛔ 卡死（${stuck.length}）</div>
-          ${stuck.slice(0, 3).map((wf) => {
+          <div style="max-height: 180px; overflow-y: auto; padding-right: 4px;">
+          ${stuck.map((wf) => {
             const detail = wf.consecutiveFailures ? `连续失败 ${wf.consecutiveFailures} 次` : "运行超时";
-            return `<div style="font-size: 12px; padding: 4px 0; color: #374151;">• ${escapeHtml(wf.workflowName || wf.workflowCode)} <span style="color: var(--muted)">(${detail})</span></div>`;
+            return `<div style="font-size: 12px; padding: 3px 0; color: #374151;">• ${escapeHtml(wf.workflowName || wf.workflowCode)} <span style="color: var(--muted)">(${detail})</span></div>`;
           }).join("")}
-          ${stuck.length > 3 ? `<div style="font-size: 11px; color: var(--muted);">还有 ${stuck.length - 3} 个...</div>` : ""}
+          </div>
         </div>
       `;
     }
@@ -260,10 +263,11 @@ function renderDsCheckResult(result) {
       html += `
         <div style="margin-top: 8px;">
           <div style="font-size: 12px; font-weight: 600; color: #92400e; margin-bottom: 4px;">⚠️ 离线（${stale.length}）</div>
-          ${stale.slice(0, 3).map((wf) => `
-            <div style="font-size: 12px; padding: 4px 0; color: #374151;">• ${escapeHtml(wf.workflowName || wf.workflowCode)} <span style="color: var(--muted)">(${escapeHtml(wf.staleReason || wf.staleMessage || "异常下线")})</span></div>
+          <div style="max-height: 180px; overflow-y: auto; padding-right: 4px;">
+          ${stale.map((wf) => `
+            <div style="font-size: 12px; padding: 3px 0; color: #374151;">• ${escapeHtml(wf.workflowName || wf.workflowCode)} <span style="color: var(--muted)">(${escapeHtml(wf.staleReason || wf.staleMessage || "异常下线")})</span></div>
           `).join("")}
-          ${stale.length > 3 ? `<div style="font-size: 11px; color: var(--muted);">还有 ${stale.length - 3} 个...</div>` : ""}
+          </div>
         </div>
       `;
     }
@@ -492,59 +496,63 @@ function renderDsSchedulePanel(root) {
 function renderDsHistoryPanel(root) {
   const history = dsHistoryCache || { runs: [] };
   const runs = history.runs || [];
+  const statusMap = {
+    success: { label: "成功", cls: "ok" },
+    partial_failed: { label: "部分失败", cls: "warn" },
+    failed: { label: "失败", cls: "danger" },
+  };
 
   return `
     <section class="panel schedule-history-panel">
       <div class="detail-header compact-header">
         <h2 class="panel-title">运行历史</h2>
-        <p class="muted">最近 50 条巡检记录，按时间倒序排列。</p>
+        <p class="muted">最近 50 条巡检记录，点击展开查看各国工作流明细。</p>
       </div>
 
       ${runs.length === 0 ? `
         <div style="text-align: center; padding: 48px 20px;">
           <div style="font-size: 36px; margin-bottom: 8px;">📭</div>
           <strong style="font-size: 14px;">暂无运行记录</strong>
-          <p class="muted" style="margin-top: 6px;">配置定时任务或手动运行后，历史记录会显示在这里。</p>
+          <p class="muted" style="margin-top: 6px;">手动执行检查或配置定时任务后，历史记录会显示在这里。</p>
         </div>
       ` : `
-        <div class="ds-table-wrap">
-          <table class="ds-table">
-            <thead>
-              <tr>
-                <th>运行时间</th>
-                <th>触发方式</th>
-                <th>状态</th>
-                <th>国家</th>
-                <th>工作流</th>
-                <th>卡死</th>
-                <th>离线</th>
-                <th>通知数</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${runs.map((run) => {
-                const statusMap = {
-                  success: { label: "成功", cls: "ok" },
-                  partial_failed: { label: "部分失败", cls: "warn" },
-                  failed: { label: "失败", cls: "danger" },
-                };
-                const s = statusMap[run.status] || { label: run.status || "-", cls: "" };
-                const triggerLabel = run.trigger === "schedule" ? "⏰ 定时" : "👆 手动";
-                return `
-                  <tr>
-                    <td>${formatTime(run.startedAt)}</td>
-                    <td>${triggerLabel}</td>
-                    <td><span class="badge ${s.cls}">${s.label}</span></td>
-                    <td>${run.countryCount || 0}</td>
-                    <td>${run.totalChecked || 0}</td>
-                    <td style="color: ${run.totalStuck ? "var(--error)" : "inherit"};">${run.totalStuck || 0}</td>
-                    <td style="color: ${run.totalStale ? "#b45309" : "inherit"};">${run.totalStale || 0}</td>
-                    <td>${run.notificationSentCount || 0}</td>
-                  </tr>
-                `;
-              }).join("")}
-            </tbody>
-          </table>
+        <div class="ds-history-list">
+          ${runs.map((run) => {
+            const s = statusMap[run.status] || { label: run.status || "-", cls: "" };
+            const triggerLabel = run.trigger === "schedule" ? "⏰ 定时" : (run.trigger === "manual_test" ? "👆 手动测试" : "👆 手动");
+            const countries = run.countryRuns || [];
+            return `
+              <details class="ds-history-run">
+                <summary class="ds-history-summary">
+                  <span class="badge ${s.cls}">${s.label}</span>
+                  <strong>${formatTime(run.startedAt)}</strong>
+                  <span class="muted">${triggerLabel}</span>
+                  <span>📋 ${run.totalChecked || 0}</span>
+                  <span style="color: ${run.totalStuck ? "var(--error)" : "inherit"};">⛔ ${run.totalStuck || 0}</span>
+                  <span style="color: ${run.totalStale ? "#b45309" : "inherit"};">⚠️ ${run.totalStale || 0}</span>
+                </summary>
+                <div class="ds-history-detail">
+                  ${countries.map((c) => {
+                    const code = String(c.countryCode || "").toLowerCase();
+                    const stuck = c.stuckWorkflows || [];
+                    const stale = c.staleWorkflows || [];
+                    const parts = [];
+                    parts.push(`<div style="font-weight:600; font-size:12px; margin:8px 0 4px;">${COUNTRY_FLAGS[code] || "🌐"} ${COUNTRY_LABELS[code] || c.countryCode} · 检查 ${c.checkedWorkflows || 0}${c.ok ? "" : ` · <span style="color:#991b1b;">${escapeHtml(c.error || "失败")}</span>`}</div>`);
+                    for (const wf of stuck) {
+                      parts.push(`<div style="font-size:12px; color:#374151; padding:2px 0 2px 12px;">⛔ ${escapeHtml(wf.workflowName || wf.workflowCode)} <span style="color:var(--muted)">(${wf.consecutiveFailures ? `连续失败 ${wf.consecutiveFailures} 次` : "运行超时"})</span></div>`);
+                    }
+                    for (const wf of stale) {
+                      parts.push(`<div style="font-size:12px; color:#374151; padding:2px 0 2px 12px;">⚠️ ${escapeHtml(wf.workflowName || wf.workflowCode)} <span style="color:var(--muted)">(${escapeHtml(wf.staleReason || wf.staleMessage || "异常下线")})</span></div>`);
+                    }
+                    if (!stuck.length && !stale.length && c.ok) {
+                      parts.push(`<div style="font-size:12px; color:var(--muted); padding:2px 0 2px 12px;">无异常</div>`);
+                    }
+                    return parts.join("");
+                  }).join("")}
+                </div>
+              </details>
+            `;
+          }).join("")}
         </div>
       `}
     </section>

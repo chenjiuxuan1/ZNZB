@@ -3161,6 +3161,8 @@ function buildDsHistoryEntry({ id, trigger, startedAt, finishedAt, countryRuns, 
       stuckCount: r.result?.stuckCount || 0,
       staleCount: r.result?.staleCount || 0,
       checkedWorkflows: r.result?.checkedWorkflows || 0,
+      stuckWorkflows: r.result?.stuckWorkflows || [],
+      staleWorkflows: r.result?.staleWorkflows || [],
     })),
   };
 }
