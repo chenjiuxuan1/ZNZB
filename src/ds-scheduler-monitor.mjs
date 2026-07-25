@@ -5,6 +5,18 @@ import { notifyText } from "./notifier.mjs";
 
 const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
 
+const DEFAULT_DS_SCHEDULER_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/ds-scheduler";
+
+function resolveEnvString(value) {
+  return String(value ?? "").replace(/\$\{([^}]+)\}/g, (_match, key) => process.env[key] || "").trim();
+}
+
+export function resolveDsWebhookUrl(value) {
+  return resolveEnvString(value)
+    || resolveEnvString(process.env.DS_SCHEDULER_WEBHOOK_URL)
+    || DEFAULT_DS_SCHEDULER_WEBHOOK_URL;
+}
+
 export function parseProjectNames(value) {
   const values = Array.isArray(value) ? value : String(value || "").split(/[\n,，;；]+/);
   return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
@@ -31,10 +43,10 @@ export async function loadDsSchedulerConfig(rootDir) {
     if (error.code !== "ENOENT") throw error;
   }
   if (!config) {
-    return { n8nWebhookUrl: "", countries: {}, alerts: {} };
+    return { n8nWebhookUrl: resolveDsWebhookUrl(), countries: {}, alerts: {} };
   }
   return {
-    n8nWebhookUrl: config.n8nWebhookUrl || "",
+    n8nWebhookUrl: resolveDsWebhookUrl(config.n8nWebhookUrl),
     countries: config.countries || {},
     projectCodes: config.projectCodes || {},
     projectNames: config.projectNames || {},
@@ -54,6 +66,13 @@ export async function getDsSchedulerScope(rootDir) {
     };
   }
   return result;
+}
+
+function gatewayErrorMessage(status, body) {
+  if (status === 403 || body.includes("403") || body.includes("Forbidden")) {
+    return "n8n 网关拒绝访问，请确认服务器 IP 已加入公司网络白名单";
+  }
+  return `n8n 网关返回异常: ${body.slice(0, 200)}`;
 }
 
 /**
@@ -81,7 +100,7 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
     try {
       parsed = JSON.parse(body);
     } catch {
-      return { success: false, error: `resolve_project returned invalid JSON: ${body.slice(0, 200)}` };
+      return { success: false, error: gatewayErrorMessage(response.status, body) };
     }
     if (!parsed.success) {
       return { success: false, error: parsed.error?.message || parsed.error?.code || "resolve_project failed" };
@@ -102,7 +121,7 @@ export async function saveDsSchedulerConfig(rootDir, config) {
   const previous = await readJsonFile(filePath, {});
 
   // Resolve project names to codes
-  const webhookUrl = config.n8nWebhookUrl || "";
+  const webhookUrl = resolveDsWebhookUrl(config.n8nWebhookUrl);
   const countries = config.countries || {};
   const projectNames = config.projectNames || {};
   const requestedProjectCodes = config.projectCodes || {};
@@ -146,7 +165,7 @@ export async function saveDsSchedulerConfig(rootDir, config) {
   }
 
   const fullConfig = {
-    n8nWebhookUrl: webhookUrl,
+    n8nWebhookUrl: String(config.n8nWebhookUrl || "").trim(),
     projectNames,
     projectCodes,
     projects,
@@ -210,9 +229,7 @@ export async function checkAllCountries(rootDir, config) {
       try {
         parsed = JSON.parse(body);
       } catch {
-        const errorMsg = body.includes("403")
-          ? "n8n 网关拒绝访问，请确认服务器 IP 已加入公司网络白名单"
-          : `n8n 网关返回异常: ${body.slice(0, 200)}`;
+        const errorMsg = gatewayErrorMessage(response.status, body);
         projectResults.push({
           projectName: project.name,
           projectCode: project.code,

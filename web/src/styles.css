@@ -1119,6 +1119,12 @@ th {
   color: #c2410c;
 }
 
+.sandbox-status.warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+
 .sandbox-status.error pre {
   background: #111827;
   border-radius: 8px;

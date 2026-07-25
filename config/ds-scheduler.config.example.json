@@ -1,5 +1,5 @@
 {
-  "n8nWebhookUrl": "https://your-n8n-domain.com/webhook/ds-scheduler",
+  "n8nWebhookUrl": "http://127.0.0.1:5678/webhook/ds-scheduler",
   "countries": {
     "cn": { "name": "中国", "token": "" },
     "ine": { "name": "印尼", "token": "" },

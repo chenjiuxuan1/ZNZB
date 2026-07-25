@@ -57,7 +57,7 @@ function paint(root) {
       <details class="advanced compact ds-token-details">
         <summary>高级：DS Token 与 n8n 网关</summary>
         <div class="ds-project-fields ds-gateway-field">
-          <label>n8n webhook<input id="ds-webhook-url" value="${escapeHtml(model.config.n8nWebhookUrl || "https://sql-cn.kuainiujinke.com/webhook/ds-scheduler")}"></label>
+          <label>n8n webhook<input id="ds-webhook-url" value="${escapeHtml(model.config.n8nWebhookUrl || "http://127.0.0.1:5678/webhook/ds-scheduler")}"></label>
         </div>
         <div class="schedule-country-grid ds-token-grid">
           ${COUNTRY_ORDER.map((code) => `<label>${COUNTRY_LABELS[code]} Token<input class="ds-country-token" data-country="${code}" type="password" value="${escapeHtml(model.config.countries?.[code]?.token || "")}" placeholder="首次配置时填写"></label>`).join("")}
@@ -129,7 +129,7 @@ async function saveProjects(root) {
     });
     model.config = await apiGet("/api/ds-scheduler/config");
     model.status = saved.resolveErrors?.length
-      ? { type: "error", text: `配置已保存，但部分项目名称匹配失败：${saved.resolveErrors.map((item) => `${item.country} ${item.error}`).join("；")}` }
+      ? { type: "warn", text: `配置已保存，但部分项目名称匹配失败：${saved.resolveErrors.map((item) => `${item.country} ${item.error}`).join("；")}` }
       : { type: "success", text: "DS 项目配置已保存。" };
   } catch (error) {
     model.status = { type: "error", text: `项目配置保存失败：${error.message}` };
