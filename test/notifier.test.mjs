@@ -275,20 +275,30 @@ test("duty summary renders concise DS status by country", () => {
     {
       messageStyle: "dutySummary",
       dsScheduleSummary: {
-        countries: [{
-          country: "ine",
-          countryName: "印尼",
-          success: true,
-          checkedWorkflows: 40,
-          stuckCount: 0,
-          staleCount: 1,
-          staleWorkflows: [{ workflowName: "每日放款" }],
-        }],
+        countries: [
+          {
+            country: "ine",
+            countryName: "印尼",
+            success: true,
+            checkedWorkflows: 40,
+            stuckCount: 0,
+            staleCount: 0,
+          },
+          {
+            country: "cn",
+            countryName: "中国",
+            success: true,
+            checkedWorkflows: 48,
+            stuckCount: 0,
+            staleCount: 1,
+            staleWorkflows: [{ workflowName: "每日放款" }],
+          },
+        ],
       },
     },
   );
 
-  assert.match(messages[0].body, /2\.DS调度：印尼：40 个任务，卡死 0、旷工 1（每日放款）/);
+  assert.match(messages[0].body, /2\.DS调度：\n印尼：40 个任务正常\n中国：48 个任务，卡死 0、旷工 1（每日放款）/);
 });
 
 test("duty summary includes previous-day baseline intraday anomalies below 100 percent", () => {

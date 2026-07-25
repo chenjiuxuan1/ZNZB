@@ -261,7 +261,8 @@ function buildDutySummaryMessage(result, countryGroups, options = {}) {
   lines.push(`【今日值班】${formatDutyDatePeriod(result.checkedAt)}`);
   lines.push("1.数据质量告警“未处理”统计：");
   appendDutyWattrelSummary(lines, options.wattrelSummary);
-  lines.push(`2.DS调度：${formatDutyDsScheduleSummary(options.dsScheduleSummary)}`);
+  lines.push("2.DS调度：");
+  lines.push(formatDutyDsScheduleSummary(options.dsScheduleSummary));
   appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies);
   if (detailUrl) {
     lines.push(`详情：${detailUrl}`);
@@ -278,13 +279,19 @@ function formatDutyDsScheduleSummary(summary) {
   return countries.map((country) => {
     const label = country.countryName || country.country || "未知国家";
     if (!country.success) return `${label}：检查失败`;
+    const checkedWorkflows = Number(country.checkedWorkflows || 0);
+    const stuckCount = Number(country.stuckCount || 0);
+    const staleCount = Number(country.staleCount || 0);
+    if (stuckCount === 0 && staleCount === 0) {
+      return `${label}：${checkedWorkflows} 个任务正常`;
+    }
     const staleNames = (country.staleWorkflows || [])
       .map((workflow) => workflow.workflowName)
       .filter(Boolean)
       .join("、");
-    const base = `${label}：${Number(country.checkedWorkflows || 0)} 个任务，卡死 ${Number(country.stuckCount || 0)}、旷工 ${Number(country.staleCount || 0)}`;
+    const base = `${label}：${checkedWorkflows} 个任务，卡死 ${stuckCount}、旷工 ${staleCount}`;
     return staleNames ? `${base}（${staleNames}）` : base;
-  }).join("；");
+  }).join("\n");
 }
 
 function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {
