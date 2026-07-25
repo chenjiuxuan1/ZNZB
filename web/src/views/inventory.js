@@ -107,7 +107,7 @@ export function renderInventory(root) {
       const failures = (result.results || []).filter((item) => !item.ok);
       discoveryStatus = failures.length
         ? { type: "error", title: `完成 ${result.succeeded}/${result.total} 个国家`, detail: failures.map((item) => `${item.countryCode}：${item.error}`).join("；") }
-        : { type: "success", title: "六国看板发现完成", detail: `已成功刷新 ${result.succeeded || 0} 个国家的看板与卡片。` };
+        : { type: "success", title: "六国看板发现完成", detail: `已刷新 ${Math.max(0, (result.succeeded || 0) - (result.skipped || 0))} 个待发现国家，跳过 ${result.skipped || 0} 个已发现国家。` };
     } catch (error) {
       discoveryStatus = { type: "error", title: "六国看板发现失败", detail: error.payload?.errors?.join("；") || error.message };
     }

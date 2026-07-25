@@ -263,6 +263,7 @@ export async function checkAllCountries(rootDir, config) {
             consecutive_failures: 3,
             page_size: 20,
             project_code: project.code,
+            stale_policy: "one_full_schedule_cycle",
           },
         }),
       });
@@ -301,11 +302,11 @@ export async function checkAllCountries(rootDir, config) {
 
       const data = parsed.data || {};
       console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${data.stale_count || 0} checked=${data.total_checked || 0}`);
-      // Only monitor ONLINE schedules; OFFLINE schedules are completely ignored.
-      // stale_workflows from n8n includes both OFFLINE ("schedule_offline")
-      // and ONLINE-but-no-recent-run schedules. Filter to keep only ONLINE ones.
+      // The gateway determines schedule lateness from DS's schedule definition.
+      // Legacy "no_recent_run" entries have an unspecified fixed lookback and
+      // must not create false alerts for infrequent schedules such as monthly jobs.
       const staleWorkflows = (data.stale_workflows || [])
-        .filter((wf) => wf.schedule_status !== "OFFLINE" && wf.stale_reason !== "schedule_offline")
+        .filter((wf) => wf.schedule_status === "ONLINE" && wf.stale_reason === "missed_schedule_cycle")
         .map((wf) => ({
           projectName: project.name,
           projectCode: project.code,
@@ -315,6 +316,9 @@ export async function checkAllCountries(rootDir, config) {
           scheduleStatus: wf.schedule_status,
           staleReason: wf.stale_reason,
           staleMessage: wf.stale_message,
+          scheduleCycle: wf.schedule_cycle || "",
+          lastRunAt: wf.last_run_at || null,
+          nextRunAt: wf.next_run_at || null,
           totalInstancesChecked: wf.total_instances_checked,
         }));
       projectResults.push({

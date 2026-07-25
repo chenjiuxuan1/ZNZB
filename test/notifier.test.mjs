@@ -269,6 +269,28 @@ test("duty summary excludes Metabase 403 query failures from BI report", () => {
   assert.doesNotMatch(messages[0].body, /转化漏斗/);
 });
 
+test("duty summary renders concise DS status by country", () => {
+  const messages = buildPublicCheckMessages(
+    { checkedAt: "2026-07-25T13:34:55.000Z", anomalies: [] },
+    {
+      messageStyle: "dutySummary",
+      dsScheduleSummary: {
+        countries: [{
+          country: "ine",
+          countryName: "印尼",
+          success: true,
+          checkedWorkflows: 40,
+          stuckCount: 0,
+          staleCount: 1,
+          staleWorkflows: [{ workflowName: "每日放款" }],
+        }],
+      },
+    },
+  );
+
+  assert.match(messages[0].body, /2\.DS调度：印尼：40 个任务，卡死 0、旷工 1（每日放款）/);
+});
+
 test("duty summary includes previous-day baseline intraday anomalies below 100 percent", () => {
   const messages = buildPublicCheckMessages(
     {

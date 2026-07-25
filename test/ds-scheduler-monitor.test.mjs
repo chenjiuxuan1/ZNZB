@@ -198,7 +198,7 @@ test("DS check surfaces a readable error when the gateway returns an object erro
   }
 });
 
-test("DS check filters out OFFLINE schedules and only monitors ONLINE ones", async () => {
+test("DS check only reports ONLINE workflows that missed one full schedule cycle", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
     status: 200,
@@ -209,10 +209,11 @@ test("DS check filters out OFFLINE schedules and only monitors ONLINE ones", asy
         data: {
           total_checked: 5,
           stuck_count: 0,
-          stale_count: 3,
+          stale_count: 2,
           stuck_workflows: [],
           stale_workflows: [
-            { workflow_code: "1001", workflow_name: "online-no-run-wf", schedule_id: 1, schedule_status: "ONLINE", stale_reason: "no_recent_run", stale_message: "定时任务在线但近期无运行记录", total_instances_checked: 0 },
+            { workflow_code: "1001", workflow_name: "online-missed-cycle-wf", schedule_id: 1, schedule_status: "ONLINE", stale_reason: "missed_schedule_cycle", stale_message: "已跨过一个完整调度周期仍未运行", schedule_cycle: "每天 09:00", last_run_at: "2026-07-23T01:00:00.000Z", next_run_at: "2026-07-24T01:00:00.000Z", total_instances_checked: 0 },
+            { workflow_code: "1004", workflow_name: "online-legacy-stale-wf", schedule_id: 4, schedule_status: "ONLINE", stale_reason: "no_recent_run", stale_message: "定时任务在线但近期无运行记录", total_instances_checked: 0 },
             { workflow_code: "1002", workflow_name: "offline-wf-a", schedule_id: 2, schedule_status: "OFFLINE", stale_reason: "schedule_offline", stale_message: "定时任务已下线，长时间未运行", total_instances_checked: 0 },
             { workflow_code: "1003", workflow_name: "offline-wf-b", schedule_id: 3, schedule_status: "OFFLINE", stale_reason: "schedule_offline", stale_message: "定时任务已下线，长时间未运行", total_instances_checked: 0 },
           ],
@@ -227,9 +228,12 @@ test("DS check filters out OFFLINE schedules and only monitors ONLINE ones", asy
       projects: { cn: [{ name: "数据平台", code: "123" }] },
     });
     const country = result.countries[0];
-    assert.equal(country.staleCount, 1, "only online-no-recent-run counts as stale");
+    assert.equal(country.staleCount, 1, "only online workflows missing a complete schedule cycle count as stale");
     assert.equal(country.staleWorkflows.length, 1);
-    assert.equal(country.staleWorkflows[0].workflowName, "online-no-run-wf");
+    assert.equal(country.staleWorkflows[0].workflowName, "online-missed-cycle-wf");
+    assert.equal(country.staleWorkflows[0].scheduleCycle, "每天 09:00");
+    assert.equal(country.staleWorkflows[0].lastRunAt, "2026-07-23T01:00:00.000Z");
+    assert.equal(country.staleWorkflows[0].nextRunAt, "2026-07-24T01:00:00.000Z");
     assert.equal(result.totalStale, 1);
     assert.ok(!country.inactiveWorkflows, "inactiveWorkflows should not exist");
     assert.ok(!result.totalInactive, "totalInactive should not exist");

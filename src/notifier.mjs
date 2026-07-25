@@ -261,12 +261,30 @@ function buildDutySummaryMessage(result, countryGroups, options = {}) {
   lines.push(`【今日值班】${formatDutyDatePeriod(result.checkedAt)}`);
   lines.push("1.数据质量告警“未处理”统计：");
   appendDutyWattrelSummary(lines, options.wattrelSummary);
-  lines.push(`2.DS调度：${options.dsScheduleSummary || "暂未接入"}`);
+  lines.push(`2.DS调度：${formatDutyDsScheduleSummary(options.dsScheduleSummary)}`);
   appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies);
   if (detailUrl) {
     lines.push(`详情：${detailUrl}`);
   }
   return lines.join("\n");
+}
+
+function formatDutyDsScheduleSummary(summary) {
+  if (!summary) return "暂未接入";
+  if (typeof summary === "string") return summary;
+  if (summary.skipped) return summary.reason || "未配置";
+  const countries = Array.isArray(summary.countries) ? summary.countries : [];
+  if (!countries.length) return "暂无可检查任务";
+  return countries.map((country) => {
+    const label = country.countryName || country.country || "未知国家";
+    if (!country.success) return `${label}：检查失败`;
+    const staleNames = (country.staleWorkflows || [])
+      .map((workflow) => workflow.workflowName)
+      .filter(Boolean)
+      .join("、");
+    const base = `${label}：${Number(country.checkedWorkflows || 0)} 个任务，卡死 ${Number(country.stuckCount || 0)}、旷工 ${Number(country.staleCount || 0)}`;
+    return staleNames ? `${base}（${staleNames}）` : base;
+  }).join("；");
 }
 
 function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {

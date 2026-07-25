@@ -17,7 +17,6 @@ import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
   checkAllCountries,
-  notifyDsSchedulerCheck,
 } from "./ds-scheduler-monitor.mjs";
 import {
   mapWattrelRowsToAnomalies,
@@ -108,10 +107,7 @@ export function createPlatformApi({
     if (!schedule.includeDsScheduler) {
       return null;
     }
-    const [config, rules] = await Promise.all([
-      loadDsSchedulerConfig(rootDir),
-      readJsonFile(resolve("rules"), { alerts: {} }),
-    ]);
+    const config = await loadDsSchedulerConfig(rootDir);
     const eligibleCodes = Object.keys(config.countries || {}).filter((code) => (
       String(config.countries?.[code]?.token || "").trim()
       && ((config.projects?.[code] || []).some((item) => String(item.code || "").trim())
@@ -137,31 +133,10 @@ export function createPlatformApi({
       projects: Object.fromEntries(eligibleCodes.map((code) => [code, config.projects?.[code] || []])),
     };
     const result = await checkAllCountries(rootDir, scoped);
-    const notifications = [];
-    for (const countryConfig of (schedule.countryConfigs || []).filter((item) => item.enabled)) {
-      const countryResult = (result.countries || []).find(
-        (item) => String(item.country || "").toLowerCase() === String(countryConfig.countryCode || "").toLowerCase(),
-      );
-      if (!countryResult) continue;
-      const countryCheck = {
-        ...result,
-        totalCountries: 1,
-        totalChecked: Number(countryResult.checkedWorkflows || 0),
-        totalStuck: Number(countryResult.stuckCount || 0),
-        totalStale: Number(countryResult.staleCount || 0),
-        failedCountries: countryResult.success ? 0 : 1,
-        countries: [countryResult],
-      };
-      const alerts = metabaseAlertConfig({ ...schedule, ...countryConfig }, rules.alerts || {});
-      notifications.push({
-        countryCode: countryConfig.countryCode,
-        target: dsNotificationTargetSummary(alerts),
-        result: await notifyDsSchedulerCheck({ ...scoped, alerts }, countryCheck),
-      });
-    }
     result.notification = {
-      sent: notifications.some((item) => item.result?.sent),
-      notifications,
+      sent: false,
+      skipped: true,
+      reason: "included in duty summary",
     };
     return result;
   };
@@ -484,6 +459,7 @@ export function createPlatformApi({
           notifyTextFn,
           detailUrl,
           wattrelSummary,
+          dsSchedulerSummary,
         });
         const failedRuns = countryRuns.filter((item) => !item.ok);
         const lastResult = {
@@ -631,6 +607,10 @@ export function createPlatformApi({
       const results = [];
       for (const country of countries.countries || []) {
         try {
+          if (await isCountryInventoryFullyDiscovered(rootDir, country.code)) {
+            results.push({ ok: true, skipped: true, countryCode: String(country.code || "").toUpperCase() });
+            continue;
+          }
           results.push(await this.discoverCountryDashboards(country.code));
         } catch (error) {
           results.push({
@@ -644,6 +624,7 @@ export function createPlatformApi({
         ok: results.every((item) => item.ok),
         total: results.length,
         succeeded: results.filter((item) => item.ok).length,
+        skipped: results.filter((item) => item.skipped).length,
         failed: results.filter((item) => !item.ok).length,
         results,
       };
@@ -931,6 +912,7 @@ export function createPlatformApi({
           notifyTextFn,
           detailUrl,
           wattrelSummary,
+          dsSchedulerSummary,
         });
         const failedRuns = countryRuns.filter((item) => !item.ok);
         const lastResult = {
@@ -2286,7 +2268,7 @@ function updateBatchScheduleRunProgress(progress, event) {
   };
 }
 
-async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs, rulesFile, notifyTextFn, detailUrl, wattrelSummary = null }) {
+async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs, rulesFile, notifyTextFn, detailUrl, wattrelSummary = null, dsSchedulerSummary = null }) {
   const successfulRuns = countryRuns.filter((item) => item.ok);
   if (successfulRuns.length === 0) {
     markCountryRunNotifications(countryRuns, {
@@ -2314,6 +2296,7 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
       countryDetailMode: "summary",
       messageStyle: "dutySummary",
       wattrelSummary,
+      dsScheduleSummary: dsSchedulerSummary,
     });
     const results = [];
     for (const message of messages) {
@@ -2651,6 +2634,35 @@ async function hasCountryPanelSources(rootDir, countryCode) {
   }
   const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
   return Array.isArray(source.panels) && source.panels.length > 0;
+}
+
+async function isCountryInventoryFullyDiscovered(rootDir, countryCode) {
+  const code = String(countryCode || "").trim().toLowerCase();
+  if (!code) return false;
+  const [sources, inventory] = await Promise.all([
+    readJsonFile(panelSourceFilePath(rootDir, code), { panels: [] }),
+    readJsonFile(path.join(rootDir, `config/discovered-public-dashboards.${code}.json`), { dashboards: [] }),
+  ]);
+  const refs = [
+    ...extractPanelUrls(sources),
+    ...extractPanelIds(sources),
+  ];
+  if (refs.length === 0) return false;
+  const dashboards = inventory.dashboards || [];
+  return refs.every((ref) => dashboards.some((dashboard) => (
+    (ref.type === "url" && (dashboard.sourceUrl === ref.value || dashboard.url === ref.value))
+    || (ref.type === "id" && String(dashboard.sourcePanelId || "") === ref.value)
+  ) && Array.isArray(dashboard.cards) && dashboard.cards.length > 0));
+}
+
+function extractPanelUrls(source) {
+  return (source.panels || []).flatMap((panel) => (panel.links || []).map((link) => link.url))
+    .filter(Boolean).map((value) => ({ type: "url", value }));
+}
+
+function extractPanelIds(source) {
+  return (source.panels || []).filter((panel) => panel.id != null)
+    .map((panel) => ({ type: "id", value: String(panel.id) }));
 }
 
 function getInventoryCountryCodes(inventories) {
