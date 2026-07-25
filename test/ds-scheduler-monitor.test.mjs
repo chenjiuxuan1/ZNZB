@@ -197,3 +197,44 @@ test("DS check surfaces a readable error when the gateway returns an object erro
     globalThis.fetch = originalFetch;
   }
 });
+
+test("DS check splits stale workflows into recently-offline (anomaly) and long-term-inactive (not counted)", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    async text() {
+      return JSON.stringify({
+        success: true,
+        data: {
+          total_checked: 5,
+          stuck_count: 0,
+          stale_count: 3,
+          stuck_workflows: [],
+          stale_workflows: [
+            { workflow_code: "1001", workflow_name: "recently-offline-wf", schedule_id: 1, schedule_status: "OFFLINE", stale_reason: "schedule_offline", stale_message: "定时任务已下线", total_instances_checked: 2 },
+            { workflow_code: "1002", workflow_name: "old-offline-wf-a", schedule_id: 2, schedule_status: "OFFLINE", stale_reason: "schedule_offline", stale_message: "定时任务已下线，长时间未运行", total_instances_checked: 0 },
+            { workflow_code: "1003", workflow_name: "old-offline-wf-b", schedule_id: 3, schedule_status: "OFFLINE", stale_reason: "schedule_offline", stale_message: "定时任务已下线，长时间未运行", total_instances_checked: 0 },
+          ],
+        },
+      });
+    },
+  });
+  try {
+    const result = await checkAllCountries(process.cwd(), {
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { cn: { name: "中国", token: "real-token" } },
+      projects: { cn: [{ name: "数据平台", code: "123" }] },
+    });
+    const country = result.countries[0];
+    assert.equal(country.staleCount, 1, "only recently-offline counts as anomaly");
+    assert.equal(country.inactiveCount, 2, "long-term offline moved to inactive");
+    assert.equal(country.staleWorkflows.length, 1);
+    assert.equal(country.inactiveWorkflows.length, 2);
+    assert.equal(country.staleWorkflows[0].workflowName, "recently-offline-wf");
+    assert.equal(result.totalStale, 1);
+    assert.equal(result.totalInactive, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
