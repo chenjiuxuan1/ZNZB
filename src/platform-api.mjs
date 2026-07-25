@@ -73,6 +73,7 @@ const DEFAULT_BATCH_SCHEDULE = {
   chatId: "",
   recipientEmails: "",
   mentions: "",
+  includeDsScheduler: false,
   countryConfigs: [],
   nextRunAt: null,
   lastRunAt: null,
@@ -102,6 +103,65 @@ export function createPlatformApi({
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
+  const runIntegratedDsCheck = async (schedule) => {
+    if (!schedule.includeDsScheduler) {
+      return null;
+    }
+    const [config, rules] = await Promise.all([
+      loadDsSchedulerConfig(rootDir),
+      readJsonFile(resolve("rules"), { alerts: {} }),
+    ]);
+    const eligibleCodes = Object.keys(config.countries || {}).filter((code) => (
+      String(config.countries?.[code]?.token || "").trim()
+      && String(config.projectCodes?.[code] || "").trim()
+    ));
+    if (eligibleCodes.length === 0) {
+      return {
+        checkedAt: new Date().toISOString(),
+        skipped: true,
+        reason: "没有已配置 Token 且项目名称已匹配的国家",
+        totalCountries: 0,
+        totalChecked: 0,
+        totalStuck: 0,
+        totalStale: 0,
+        failedCountries: 0,
+        countries: [],
+      };
+    }
+    const scoped = {
+      ...config,
+      countries: Object.fromEntries(eligibleCodes.map((code) => [code, config.countries[code]])),
+      projectCodes: Object.fromEntries(eligibleCodes.map((code) => [code, config.projectCodes[code]])),
+    };
+    const result = await checkAllCountries(rootDir, scoped);
+    const notifications = [];
+    for (const countryConfig of (schedule.countryConfigs || []).filter((item) => item.enabled)) {
+      const countryResult = (result.countries || []).find(
+        (item) => String(item.country || "").toLowerCase() === String(countryConfig.countryCode || "").toLowerCase(),
+      );
+      if (!countryResult) continue;
+      const countryCheck = {
+        ...result,
+        totalCountries: 1,
+        totalChecked: Number(countryResult.checkedWorkflows || 0),
+        totalStuck: Number(countryResult.stuckCount || 0),
+        totalStale: Number(countryResult.staleCount || 0),
+        failedCountries: countryResult.success ? 0 : 1,
+        countries: [countryResult],
+      };
+      const alerts = metabaseAlertConfig({ ...schedule, ...countryConfig }, rules.alerts || {});
+      notifications.push({
+        countryCode: countryConfig.countryCode,
+        target: dsNotificationTargetSummary(alerts),
+        result: await notifyDsSchedulerCheck({ ...scoped, alerts }, countryCheck),
+      });
+    }
+    result.notification = {
+      sent: notifications.some((item) => item.result?.sent),
+      notifications,
+    };
+    return result;
+  };
 
   return {
     async getSummary() {
@@ -398,6 +458,13 @@ export function createPlatformApi({
           wattrelConfigFile: resolve("wattrel"),
           queryFn: wattrelQueryFn,
         });
+        let dsSchedulerSummary = null;
+        let dsSchedulerError = null;
+        try {
+          dsSchedulerSummary = await runIntegratedDsCheck(schedule);
+        } catch (error) {
+          dsSchedulerError = error.message;
+        }
         batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "sending", currentCountryCode: "", currentCountryName: "" };
         const notificationSentCount = await sendScheduledAggregateNotifications({
           countryRuns,
@@ -408,16 +475,21 @@ export function createPlatformApi({
           wattrelSummary,
         });
         const failedRuns = countryRuns.filter((item) => !item.ok);
+        const lastResult = {
+          ...summarizeCountryScheduleRuns(countryRuns, { wattrelSummary }),
+          dsSchedulerSummary,
+          dsSchedulerError,
+        };
         const saved = {
           ...schedule,
           lastRunAt: startedAt,
           nextRunAt,
-          lastError: failedRuns.length ? failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; ") : null,
-          lastResult: summarizeCountryScheduleRuns(countryRuns, { wattrelSummary }),
+          lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
+          lastResult,
         };
         batchScheduleRunProgress = {
           ...batchScheduleRunProgress,
-          status: failedRuns.length ? "partial_failed" : "success",
+          status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success",
           finishedAt: new Date().toISOString(),
           result: saved.lastResult,
           notificationSentCount,
@@ -432,6 +504,8 @@ export function createPlatformApi({
           schedule,
           countryRuns,
           notificationSentCount,
+          dsSchedulerSummary,
+          dsSchedulerError,
         }));
         return { ran: true, schedule: saved, result: saved.lastResult };
       } catch (error) {
@@ -491,6 +565,28 @@ export function createPlatformApi({
       return {
         ...filtered,
         panelSources,
+      };
+    },
+
+    async discoverCountryDashboards(countryCodeInput) {
+      const countryCode = String(countryCodeInput || "").trim().toUpperCase();
+      if (!countryCode) {
+        throw badRequest("Country code is required", ["请选择需要重新发现的国家。"]);
+      }
+      const discoveredAt = new Date().toISOString();
+      const discovered = await discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn);
+      if ((discovered.sourceErrors || []).length > 0) {
+        const message = discovered.sourceErrors.map((item) => item.error).filter(Boolean).join("; ") || "Metabase 看板发现失败";
+        throw badRequest("Dashboard discovery failed", [message]);
+      }
+      const outputFile = path.join(rootDir, `config/discovered-public-dashboards.${countryCode.toLowerCase()}.json`);
+      await writeJsonAtomic(outputFile, { ...discovered, discoveredAt });
+      return {
+        ok: true,
+        countryCode,
+        discoveredAt,
+        discoveredDashboardCount: (discovered.dashboards || []).length,
+        executableDashboardCount: (discovered.dashboards || []).filter((item) => (item.cards || []).length > 0).length,
       };
     },
 
@@ -756,6 +852,13 @@ export function createPlatformApi({
           wattrelConfigFile: resolve("wattrel"),
           queryFn: wattrelQueryFn,
         });
+        let dsSchedulerSummary = null;
+        let dsSchedulerError = null;
+        try {
+          dsSchedulerSummary = await runIntegratedDsCheck(schedule);
+        } catch (error) {
+          dsSchedulerError = error.message;
+        }
         batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "sending", currentCountryCode: "", currentCountryName: "" };
         const notificationSentCount = await sendScheduledAggregateNotifications({
           countryRuns,
@@ -766,16 +869,21 @@ export function createPlatformApi({
           wattrelSummary,
         });
         const failedRuns = countryRuns.filter((item) => !item.ok);
+        const lastResult = {
+          ...summarizeCountryScheduleRuns(countryRuns, { wattrelSummary }),
+          dsSchedulerSummary,
+          dsSchedulerError,
+        };
         const saved = {
           ...schedule,
           lastRunAt: startedAt,
           nextRunAt,
-          lastError: failedRuns.length ? failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; ") : null,
-          lastResult: summarizeCountryScheduleRuns(countryRuns, { wattrelSummary }),
+          lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
+          lastResult,
         };
         batchScheduleRunProgress = {
           ...batchScheduleRunProgress,
-          status: failedRuns.length ? "partial_failed" : "success",
+          status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success",
           finishedAt: new Date().toISOString(),
           result: saved.lastResult,
           notificationSentCount,
@@ -790,6 +898,8 @@ export function createPlatformApi({
           schedule,
           countryRuns,
           notificationSentCount,
+          dsSchedulerSummary,
+          dsSchedulerError,
         }));
         return { ran: true, schedule: saved, result: saved.lastResult };
       } catch (error) {
@@ -1250,6 +1360,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
     chatId: String(input.chatId ?? previousSchedule.chatId ?? "").trim(),
     recipientEmails: String(input.recipientEmails ?? previousSchedule.recipientEmails ?? "").trim(),
     mentions: normalizeMentions(input.mentions ?? previousSchedule.mentions).join(","),
+    includeDsScheduler: Boolean(input.includeDsScheduler ?? previousSchedule.includeDsScheduler),
     countryConfigs,
     lastRunAt: previousSchedule.lastRunAt || null,
     lastError: previousSchedule.lastError || null,
@@ -2300,7 +2411,18 @@ function markCountryRunNotifications(countryRuns, notification) {
   }
 }
 
-function buildBatchHistoryEntry({ trigger = "schedule", id = randomUUID(), startedAt, finishedAt, nextRunAt, schedule, countryRuns, notificationSentCount = null }) {
+function buildBatchHistoryEntry({
+  trigger = "schedule",
+  id = randomUUID(),
+  startedAt,
+  finishedAt,
+  nextRunAt,
+  schedule,
+  countryRuns,
+  notificationSentCount = null,
+  dsSchedulerSummary = null,
+  dsSchedulerError = null,
+}) {
   const summary = summarizeCountryScheduleRuns(countryRuns);
   const sentCount = notificationSentCount ?? countryRuns.reduce((sum, run) => {
     const notification = run.result?.notification;
@@ -2313,8 +2435,8 @@ function buildBatchHistoryEntry({ trigger = "schedule", id = randomUUID(), start
     finishedAt,
     nextRunAt,
     intervalMinutes: schedule.intervalMinutes || null,
-    status: summary.failedCount > 0 ? "partial_failed" : "success",
-    ok: summary.failedCount === 0,
+    status: summary.failedCount > 0 || dsSchedulerError ? "partial_failed" : "success",
+    ok: summary.failedCount === 0 && !dsSchedulerError,
     countryCount: summary.countryCount,
     successCount: summary.successCount,
     failedCount: summary.failedCount,
@@ -2323,6 +2445,8 @@ function buildBatchHistoryEntry({ trigger = "schedule", id = randomUUID(), start
     anomalyCount: summary.anomalyCount,
     dataQualityAnomalyCount: countryRuns.reduce((sum, run) => sum + Number(run.result?.dataQualityAnomalyCount || 0), 0),
     notificationSentCount: sentCount,
+    dsSchedulerSummary,
+    dsSchedulerError,
     runs: countryRuns,
   };
 }

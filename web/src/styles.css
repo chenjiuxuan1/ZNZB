@@ -1266,6 +1266,22 @@ th {
   padding: 12px;
 }
 
+.dashboard-row > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dashboard-row > span small {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-row > b {
+  flex: 0 0 auto;
+  max-width: 46%;
+  text-align: right;
+}
+
 a.dashboard-row {
   color: inherit;
   text-decoration: none;

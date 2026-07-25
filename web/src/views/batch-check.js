@@ -434,6 +434,14 @@ function renderBatchSchedulePanel() {
             <small id="batch-schedule-enabled-copy">${enabled ? "已开启，到点会自动巡检已上线国家" : "已关闭，不会自动触发；仍可手动测试"}</small>
           </span>
         </label>
+        <label class="switch-field">
+          <input id="batch-include-ds-scheduler" type="checkbox" ${schedule.includeDsScheduler ? "checked" : ""}>
+          <span class="switch-track"></span>
+          <span>
+            <strong>同时执行 DS 调度巡检</strong>
+            <small>开启后，每次 Metabase 定时巡检会检查所有已配置 DS 项目的国家，并共用本页通知配置。</small>
+          </span>
+        </label>
         <div class="field">
           <label>每日运行时间（北京时间，可多个）</label>
           <input id="batch-schedule-daily-run-times" value="${escapeHtml(formatDailyRunTimes(schedule))}" placeholder="例如：09:00, 14:30, 20:00">
@@ -1093,6 +1101,7 @@ function renderBatchScheduleStatus(status) {
 function buildBatchSchedulePayload(root, scope) {
   return {
     enabled: Boolean(root.querySelector("#batch-schedule-enabled")?.checked),
+    includeDsScheduler: Boolean(root.querySelector("#batch-include-ds-scheduler")?.checked),
     dailyRunTimes: parseDailyRunTimes(root.querySelector("#batch-schedule-daily-run-times")?.value || "09:00"),
     intervalMinutes: 1440,
     countryCode: scope.countryCode || "",

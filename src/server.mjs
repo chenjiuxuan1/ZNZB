@@ -35,7 +35,6 @@ server.listen(port, host, () => {
   console.log(`Duty platform running at http://${host}:${port}`);
 });
 startBatchScheduler();
-startDsScheduler();
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";
@@ -50,6 +49,10 @@ async function handleApi(request, response, url) {
   }
   if (method === "GET" && url.pathname === "/api/inventory") {
     return sendJson(response, 200, await api.getInventory(Object.fromEntries(url.searchParams.entries())));
+  }
+  if (method === "POST" && url.pathname === "/api/inventory/discover") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await api.discoverCountryDashboards(body.countryCode));
   }
   if (method === "GET" && url.pathname === "/api/rules") {
     return sendJson(response, 200, await api.getRulesConfig());

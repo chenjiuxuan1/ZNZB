@@ -1,5 +1,8 @@
+import { apiGet, apiPost } from "../api.js";
 import { getDashboards, isDashboardExecutable, state } from "../state.js";
 import { compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
+
+let discoveryStatus = null;
 
 export function renderInventory(root) {
   const dashboards = getDashboards();
@@ -18,7 +21,11 @@ export function renderInventory(root) {
         <h1 class="page-title">看板与卡片</h1>
         <p class="page-note">按国家查看 Metabase inventory。已标记来源表示业务要求巡检的看板范围；可执行卡片表示系统已经能通过接口读取并参与异常判断。</p>
       </div>
+      <div class="button-group">
+        <button id="discover-country-dashboards" ${selectedCountry ? "" : "disabled"}>重新发现当前国家看板</button>
+      </div>
     </div>
+    ${discoveryStatus ? `<div class="sandbox-status ${discoveryStatus.type}"><strong>${escapeHtml(discoveryStatus.title)}</strong><span>${escapeHtml(discoveryStatus.detail)}</span></div>` : ""}
     <div class="notice">
       <strong>怎么读</strong>
       <span>先选国家，再选看板；右侧会展示该看板下的卡片、字段、样例行和查询状态。用于确认“规则会检查哪些卡片”。</span>
@@ -68,6 +75,27 @@ export function renderInventory(root) {
       state.selected.dashboardUuid = button.dataset.dashboardUuid;
       renderInventory(root);
     });
+  });
+  root.querySelector("#discover-country-dashboards")?.addEventListener("click", async () => {
+    discoveryStatus = { type: "loading", title: "正在重新发现", detail: `正在读取 ${countryLabel(selectedCountry, countries)} 的内部 Metabase 看板和卡片。` };
+    renderInventory(root);
+    try {
+      const result = await apiPost("/api/inventory/discover", { countryCode: selectedCountry });
+      state.inventory = await apiGet("/api/inventory");
+      state.selected.dashboardUuid = "";
+      discoveryStatus = {
+        type: "success",
+        title: "看板发现完成",
+        detail: `发现 ${result.discoveredDashboardCount || 0} 个看板，其中 ${result.executableDashboardCount || 0} 个可执行。`,
+      };
+    } catch (error) {
+      discoveryStatus = {
+        type: "error",
+        title: "看板发现失败",
+        detail: error.payload?.errors?.join("；") || error.message,
+      };
+    }
+    renderInventory(root);
   });
 }
 

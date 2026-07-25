@@ -127,6 +127,34 @@ test("platform api merges pending panel sources into the dashboard inventory", a
   assert.equal(pending.sourcePanelId, 11);
 });
 
+test("platform api explicitly discovers and persists one country inventory", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({ panels: [{ id: 8, title: "资产管理-提前还款监控", links: [{ url: "https://data.kuainiu.io/dashboard/1052" }] }] }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => ({
+      country: { code: "INE", name: "印尼" },
+      dashboards: [{
+        countryCode: "INE",
+        title: "提前还款监控",
+        dashboardId: 1052,
+        uuid: "internal:1052",
+        cards: [{ title: "小时指标", cardId: 1, dashcardId: 2 }],
+      }],
+    }),
+  });
+
+  const result = await api.discoverCountryDashboards("INE");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.discoveredDashboardCount, 1);
+  const saved = JSON.parse(await fs.readFile(path.join(rootDir, "config/discovered-public-dashboards.ine.json"), "utf8"));
+  assert.equal(saved.dashboards[0].dashboardId, 1052);
+});
+
 test("platform api does not duplicate a ready internal dashboard from panel sources", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
@@ -938,6 +966,21 @@ test("platform api saves batch schedule and runs it when due", async () => {
 
   const filteredHistory = await api.getBatchHistory({ countryCode: "INE", status: "anomaly" });
   assert.equal(filteredHistory.runs.length, 1);
+});
+
+test("platform api persists the global DS switch on Metabase schedule", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  const defaults = await api.getBatchSchedule();
+  assert.equal(defaults.includeDsScheduler, false);
+
+  const saved = await api.saveBatchSchedule({
+    ...defaults,
+    includeDsScheduler: true,
+  });
+  assert.equal(saved.includeDsScheduler, true);
+  assert.equal((await api.getBatchSchedule()).includeDsScheduler, true);
 });
 
 test("platform api saves schedule with internal source inventory without discovering during save", async () => {
