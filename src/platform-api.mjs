@@ -2185,34 +2185,41 @@ function summarizeCountryScheduleRuns(countryRuns = [], { wattrelSummary = null 
   };
 }
 
-async function runScheduledCountryChecks(countryConfigs, runBatchCheckFn, onProgress = null) {
-  const countryRuns = [];
-  for (const countryConfig of countryConfigs) {
-    onProgress?.({ type: "start", countryConfig });
-    try {
-      const result = await runBatchCheckFn({
-        countryCode: countryConfig.countryCode,
-        dashboardUuids: countryConfig.dashboardUuids || [],
-      });
-      const countryRun = {
-        countryCode: countryConfig.countryCode,
-        countryName: countryConfig.countryName || "",
-        ok: true,
-        result: summarizeBatchScheduleRun(result),
-      };
-      countryRuns.push(countryRun);
-      onProgress?.({ type: "success", countryConfig, countryRun });
-    } catch (error) {
-      const countryRun = {
-        countryCode: countryConfig.countryCode,
-        countryName: countryConfig.countryName || "",
-        ok: false,
-        error: error.message,
-      };
-      countryRuns.push(countryRun);
-      onProgress?.({ type: "failed", countryConfig, countryRun });
+async function runScheduledCountryChecks(countryConfigs, runBatchCheckFn, onProgress = null, concurrency = 1) {
+  const countryRuns = new Array(countryConfigs.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < countryConfigs.length) {
+      const i = nextIndex++;
+      const countryConfig = countryConfigs[i];
+      onProgress?.({ type: "start", countryConfig });
+      try {
+        const result = await runBatchCheckFn({
+          countryCode: countryConfig.countryCode,
+          dashboardUuids: countryConfig.dashboardUuids || [],
+        });
+        const countryRun = {
+          countryCode: countryConfig.countryCode,
+          countryName: countryConfig.countryName || "",
+          ok: true,
+          result: summarizeBatchScheduleRun(result),
+        };
+        countryRuns[i] = countryRun;
+        onProgress?.({ type: "success", countryConfig, countryRun });
+      } catch (error) {
+        const countryRun = {
+          countryCode: countryConfig.countryCode,
+          countryName: countryConfig.countryName || "",
+          ok: false,
+          error: error.message,
+        };
+        countryRuns[i] = countryRun;
+        onProgress?.({ type: "failed", countryConfig, countryRun });
+      }
     }
   }
+  const workers = Array.from({ length: Math.min(concurrency, countryConfigs.length) }, () => worker());
+  await Promise.all(workers);
   return countryRuns;
 }
 

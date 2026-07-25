@@ -10,6 +10,26 @@ import { readJsonFile, writeJsonFile, writeJsonFileAtomic } from "./utils.mjs";
 
 const DEFAULT_METABASE_API_BASE_URL = "http://172.16.0.212:80";
 
+const CARD_QUERY_CONCURRENCY = 3;
+
+async function runWithConcurrency(tasks, limit, fn) {
+  const results = new Array(tasks.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < tasks.length) {
+      const i = nextIndex++;
+      try {
+        results[i] = await fn(tasks[i], i);
+      } catch (error) {
+        results[i] = { ok: false, rows: [], error: error.message };
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 export async function checkPublicDashboards({
   dataQualityFn = collectDataQualityMetrics,
   inventory = null,
@@ -73,6 +93,7 @@ export async function checkPublicDashboards({
 
     const client = metabaseClientFactory(dashboard);
 
+    const queryTasks = [];
     for (const card of dashboard.cards || []) {
       if ((ruleConfigData.ignoredCards || []).some((selector) => ruleMatchesCard(selector, dashboard, card))) {
         continue;
@@ -81,7 +102,6 @@ export async function checkPublicDashboards({
       if (!shouldRunBuiltIns && matchingRules.length === 0) {
         continue;
       }
-
       const defaultParameters = buildDefaultCardParameters(dashboard, card);
       for (const queryGroup of buildQueryGroups(matchingRules, shouldRunBuiltIns)) {
         const historyParameters = buildUpdateFrequencyHistoryParameters(
@@ -94,8 +114,18 @@ export async function checkPublicDashboards({
           mergeParameters(defaultParameters, historyParameters),
           queryGroup.parameters,
         );
-        const cardResult = await queryCardFn(client, dashboard, card, parameters);
-        const observation = cardResult.ok
+        queryTasks.push({ card, queryGroup, parameters });
+      }
+    }
+    const cardResults = await runWithConcurrency(
+      queryTasks,
+      CARD_QUERY_CONCURRENCY,
+      (task) => queryCardFn(client, dashboard, task.card, task.parameters),
+    );
+    for (let taskIdx = 0; taskIdx < queryTasks.length; taskIdx++) {
+      const { card, queryGroup } = queryTasks[taskIdx];
+      const cardResult = cardResults[taskIdx];
+      const observation = cardResult.ok
           ? observeCardResult({
               cache: observationCache,
               dashboard,
@@ -145,7 +175,6 @@ export async function checkPublicDashboards({
             queryGroup.context,
           ));
         }
-      }
     }
   }
 
