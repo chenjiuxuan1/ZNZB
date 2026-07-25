@@ -5,6 +5,23 @@ import { notifyText } from "./notifier.mjs";
 
 const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
 
+export function parseProjectNames(value) {
+  const values = Array.isArray(value) ? value : String(value || "").split(/[\n,，;；]+/);
+  return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+function normalizeProjects(config, code) {
+  const detailed = Array.isArray(config.projects?.[code]) ? config.projects[code] : [];
+  if (detailed.length > 0) {
+    return detailed
+      .map((item) => ({ name: String(item.name || "").trim(), code: String(item.code || "").trim(), error: String(item.error || "") }))
+      .filter((item) => item.name || item.code);
+  }
+  const names = parseProjectNames(config.projectNames?.[code]);
+  const legacyCode = String(config.projectCodes?.[code] || "").trim();
+  return names.map((name, index) => ({ name, code: index === 0 ? legacyCode : "", error: "" }));
+}
+
 export async function loadDsSchedulerConfig(rootDir) {
   const configPath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
   let config = null;
@@ -21,6 +38,7 @@ export async function loadDsSchedulerConfig(rootDir) {
     countries: config.countries || {},
     projectCodes: config.projectCodes || {},
     projectNames: config.projectNames || {},
+    projects: config.projects || {},
     alerts: config.alerts || {},
   };
 }
@@ -90,39 +108,48 @@ export async function saveDsSchedulerConfig(rootDir, config) {
   const requestedProjectCodes = config.projectCodes || {};
   const previousProjectCodes = previous.projectCodes || {};
   const previousProjectNames = previous.projectNames || {};
+  const requestedProjects = config.projects || {};
+  const previousProjects = previous.projects || {};
   const projectCodes = {};
+  const projects = {};
   const resolveResults = [];
 
   for (const [code, c] of Object.entries(countries)) {
     const token = String(c.token || "").trim();
-    const projectName = projectNames[code] || "";
+    const names = parseProjectNames(projectNames[code]);
+    projectNames[code] = names.join("，");
     const requestedProjectCode = String(requestedProjectCodes[code] || "").trim();
-    const unchangedProjectCode = previousProjectNames[code] === projectName
+    const unchangedProjectCode = previousProjectNames[code] === projectNames[code]
       ? String(previousProjectCodes[code] || "").trim()
       : "";
-    projectCodes[code] = requestedProjectCode || unchangedProjectCode;
-
-    if (!requestedProjectCode && token && projectName && webhookUrl) {
-      const result = await resolveProjectName(webhookUrl, code, token, projectName);
-      if (result.success && result.projectCode) {
-        projectCodes[code] = result.projectCode;
-        resolveResults.push({ country: code, name: projectName, code: result.projectCode, ok: true });
-      } else {
-        resolveResults.push({
-          country: code,
-          name: projectName,
-          code: projectCodes[code],
-          error: result.error,
-          ok: false,
-        });
+    const supplied = Array.isArray(requestedProjects[code]) ? requestedProjects[code] : [];
+    const prior = Array.isArray(previousProjects[code]) ? previousProjects[code] : [];
+    projects[code] = [];
+    for (const [index, name] of names.entries()) {
+      const suppliedMatch = supplied.find((item) => String(item.name || "").trim() === name);
+      const priorMatch = prior.find((item) => String(item.name || "").trim() === name);
+      let projectCode = String(suppliedMatch?.code || priorMatch?.code || (index === 0 ? requestedProjectCode || unchangedProjectCode : "")).trim();
+      let error = "";
+      if (!projectCode && token && webhookUrl) {
+        const result = await resolveProjectName(webhookUrl, code, token, name);
+        if (result.success && result.projectCode) {
+          projectCode = result.projectCode;
+          resolveResults.push({ country: code, name, code: projectCode, ok: true });
+        } else {
+          error = result.error;
+          resolveResults.push({ country: code, name, code: "", error, ok: false });
+        }
       }
+      projects[code].push({ name, code: projectCode, error });
     }
+    projectCodes[code] = projects[code].find((item) => item.code)?.code || "";
   }
 
   const fullConfig = {
     n8nWebhookUrl: webhookUrl,
     projectNames,
     projectCodes,
+    projects,
     countries,
     alerts: config.alerts || {},
   };
@@ -155,7 +182,12 @@ export async function checkAllCountries(rootDir, config) {
       continue;
     }
 
-    try {
+    const configuredProjects = normalizeProjects(config, countryCode).filter((item) => item.code);
+    const projectTargets = configuredProjects.length > 0
+      ? configuredProjects
+      : [{ name: "", code: String(config.projectCodes?.[countryCode] || "") }];
+    const projectResults = [];
+    for (const project of projectTargets) try {
       const response = await fetchCompatible(webhookUrl, {
         method: "POST",
         headers: {
@@ -168,7 +200,7 @@ export async function checkAllCountries(rootDir, config) {
           payload: {
             consecutive_failures: 3,
             page_size: 20,
-            project_code: config.projectCodes?.[countryCode] || "",
+            project_code: project.code,
           },
         }),
       });
@@ -181,9 +213,9 @@ export async function checkAllCountries(rootDir, config) {
         const errorMsg = body.includes("403")
           ? "n8n 网关拒绝访问，请确认服务器 IP 已加入公司网络白名单"
           : `n8n 网关返回异常: ${body.slice(0, 200)}`;
-        results.push({
-          country: countryCode,
-          countryName: countryConfig.name || countryCode,
+        projectResults.push({
+          projectName: project.name,
+          projectCode: project.code,
           success: false,
           error: errorMsg,
           stuckCount: 0,
@@ -194,9 +226,9 @@ export async function checkAllCountries(rootDir, config) {
       }
 
       if (!parsed.success) {
-        results.push({
-          country: countryCode,
-          countryName: countryConfig.name || countryCode,
+        projectResults.push({
+          projectName: project.name,
+          projectCode: project.code,
           success: false,
           error: parsed.error?.message || parsed.error?.code || "unknown error",
           stuckCount: 0,
@@ -207,15 +239,17 @@ export async function checkAllCountries(rootDir, config) {
       }
 
       const data = parsed.data || {};
-      results.push({
-        country: countryCode,
-        countryName: countryConfig.name || countryCode,
+      projectResults.push({
+        projectName: project.name,
+        projectCode: project.code,
         success: true,
         error: null,
         stuckCount: data.stuck_count || 0,
         staleCount: data.stale_count || 0,
         checkedWorkflows: data.total_checked || 0,
         stuckWorkflows: (data.stuck_workflows || []).map((wf) => ({
+          projectName: project.name,
+          projectCode: project.code,
           workflowCode: wf.workflow_code,
           workflowName: wf.workflow_name,
           scheduleId: wf.schedule_id,
@@ -225,6 +259,8 @@ export async function checkAllCountries(rootDir, config) {
           recentFailures: (wf.recent_failures || []).slice(0, 5),
         })),
         staleWorkflows: (data.stale_workflows || []).map((wf) => ({
+          projectName: project.name,
+          projectCode: project.code,
           workflowCode: wf.workflow_code,
           workflowName: wf.workflow_name,
           scheduleId: wf.schedule_id,
@@ -235,9 +271,9 @@ export async function checkAllCountries(rootDir, config) {
         })),
       });
     } catch (error) {
-      results.push({
-        country: countryCode,
-        countryName: countryConfig.name || countryCode,
+      projectResults.push({
+        projectName: project.name,
+        projectCode: project.code,
         success: false,
         error: error.message,
         stuckCount: 0,
@@ -245,6 +281,19 @@ export async function checkAllCountries(rootDir, config) {
         stuckWorkflows: [],
       });
     }
+    results.push({
+      country: countryCode,
+      countryName: countryConfig.name || countryCode,
+      success: projectResults.some((item) => item.success),
+      partialFailure: projectResults.some((item) => !item.success),
+      error: projectResults.filter((item) => !item.success).map((item) => `${item.projectName || item.projectCode}: ${item.error}`).join("；") || null,
+      stuckCount: projectResults.reduce((sum, item) => sum + (item.stuckCount || 0), 0),
+      staleCount: projectResults.reduce((sum, item) => sum + (item.staleCount || 0), 0),
+      checkedWorkflows: projectResults.reduce((sum, item) => sum + (item.checkedWorkflows || 0), 0),
+      stuckWorkflows: projectResults.flatMap((item) => item.stuckWorkflows || []),
+      staleWorkflows: projectResults.flatMap((item) => item.staleWorkflows || []),
+      projects: projectResults,
+    });
   }
 
   const totalStuck = results.reduce((sum, r) => sum + r.stuckCount, 0);

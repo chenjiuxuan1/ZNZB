@@ -113,7 +113,8 @@ export function createPlatformApi({
     ]);
     const eligibleCodes = Object.keys(config.countries || {}).filter((code) => (
       String(config.countries?.[code]?.token || "").trim()
-      && String(config.projectCodes?.[code] || "").trim()
+      && ((config.projects?.[code] || []).some((item) => String(item.code || "").trim())
+        || String(config.projectCodes?.[code] || "").trim())
     ));
     if (eligibleCodes.length === 0) {
       return {
@@ -132,6 +133,7 @@ export function createPlatformApi({
       ...config,
       countries: Object.fromEntries(eligibleCodes.map((code) => [code, config.countries[code]])),
       projectCodes: Object.fromEntries(eligibleCodes.map((code) => [code, config.projectCodes[code]])),
+      projects: Object.fromEntries(eligibleCodes.map((code) => [code, config.projects?.[code] || []])),
     };
     const result = await checkAllCountries(rootDir, scoped);
     const notifications = [];
@@ -587,6 +589,29 @@ export function createPlatformApi({
         discoveredAt,
         discoveredDashboardCount: (discovered.dashboards || []).length,
         executableDashboardCount: (discovered.dashboards || []).filter((item) => (item.cards || []).length > 0).length,
+      };
+    },
+
+    async discoverAllCountryDashboards() {
+      const countries = await readJsonFile(resolve("countries"), { countries: [] });
+      const results = [];
+      for (const country of countries.countries || []) {
+        try {
+          results.push(await this.discoverCountryDashboards(country.code));
+        } catch (error) {
+          results.push({
+            ok: false,
+            countryCode: String(country.code || "").toUpperCase(),
+            error: error.errors?.join("；") || error.message,
+          });
+        }
+      }
+      return {
+        ok: results.every((item) => item.ok),
+        total: results.length,
+        succeeded: results.filter((item) => item.ok).length,
+        failed: results.filter((item) => !item.ok).length,
+        results,
       };
     },
 
@@ -1225,9 +1250,13 @@ function buildDsProjectStatus(config = {}) {
   return Object.fromEntries(Object.keys(config.countries || {}).map((code) => [
     code,
     {
-      status: config.projectCodes?.[code] ? "resolved" : "unresolved",
+      status: (config.projects?.[code] || []).length
+        ? ((config.projects[code] || []).every((item) => item.code) ? "resolved" : (config.projects[code] || []).some((item) => item.code) ? "partial" : "unresolved")
+        : config.projectCodes?.[code] ? "resolved" : "unresolved",
       projectName: config.projectNames?.[code] || "",
-      error: config.projectNames?.[code] && !config.projectCodes?.[code] ? "项目名称尚未匹配" : "",
+      projects: config.projects?.[code] || [],
+      error: (config.projects?.[code] || []).filter((item) => !item.code).map((item) => `${item.name}：${item.error || "尚未匹配"}`).join("；")
+        || (config.projectNames?.[code] && !config.projectCodes?.[code] ? "项目名称尚未匹配" : ""),
     },
   ]));
 }

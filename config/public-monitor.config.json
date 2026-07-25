@@ -503,7 +503,7 @@
     },
     {
       "type": "intradayTimePointCompleteness",
-      "dashboardTitlePattern": "提前还款监控$",
+      "dashboardTitlePattern": "每小时监控$",
       "timeColumn": "小时",
       "timezone": "dashboard",
       "startTime": "00:00",
@@ -521,7 +521,7 @@
     },
     {
       "type": "intradayTimePointChange",
-      "dashboardTitlePattern": "提前还款监控$",
+      "dashboardTitlePattern": "每小时监控$",
       "timeColumn": "小时",
       "timezone": "dashboard",
       "startTime": "00:00",

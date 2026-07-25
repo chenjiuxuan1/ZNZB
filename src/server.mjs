@@ -54,6 +54,9 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 200, await api.discoverCountryDashboards(body.countryCode));
   }
+  if (method === "POST" && url.pathname === "/api/inventory/discover-all") {
+    return sendJson(response, 200, await api.discoverAllCountryDashboards());
+  }
   if (method === "GET" && url.pathname === "/api/rules") {
     return sendJson(response, 200, await api.getRulesConfig());
   }

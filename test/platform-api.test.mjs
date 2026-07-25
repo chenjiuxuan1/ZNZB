@@ -155,6 +155,31 @@ test("platform api explicitly discovers and persists one country inventory", asy
   assert.equal(saved.dashboards[0].dashboardId, 1052);
 });
 
+test("platform api discovers all configured countries and isolates failures", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({ countries: [{ code: "INE", name: "印尼" }, { code: "PH", name: "菲律宾" }] }),
+  );
+  let attempts = 0;
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async ({ inputFile }) => {
+      attempts += 1;
+      if (inputFile.endsWith(".ph.json")) throw new Error("Metabase authentication failed");
+      return { dashboards: [] };
+    },
+  });
+
+  const result = await api.discoverAllCountryDashboards();
+
+  assert.equal(attempts, 2);
+  assert.equal(result.total, 2);
+  assert.equal(result.failed, 1);
+  assert.equal(result.results.find((item) => item.countryCode === "PH").ok, false);
+  assert.match(result.results.find((item) => item.countryCode === "PH").error, /authentication failed/);
+});
+
 test("platform api does not duplicate a ready internal dashboard from panel sources", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
@@ -611,9 +636,15 @@ test("requested hourly dashboards are stored in all six country sources", async 
   ]);
   for (const [relativePath, dashboardPath] of expected) {
     const source = JSON.parse(await fs.readFile(path.resolve(relativePath), "utf8"));
+    const target = (source.panels || []).find((panel) => (panel.links || []).some((link) => link.url.includes(dashboardPath)));
     const urls = (source.panels || []).flatMap((panel) => (panel.links || []).map((link) => link.url));
     assert.ok(urls.some((url) => url.includes(dashboardPath)), `${relativePath} should contain ${dashboardPath}`);
+    assert.equal(target?.title, "每小时监控");
   }
+  const rules = JSON.parse(await fs.readFile(path.resolve("config/public-monitor.config.json"), "utf8")).rules;
+  const hourlyRules = rules.filter((rule) => rule.context === "提前还款每小时监控");
+  assert.equal(hourlyRules.length, 2);
+  assert.ok(hourlyRules.every((rule) => rule.dashboardTitlePattern === "每小时监控$"));
 });
 
 test("platform api scans full configured country scope by default", async () => {

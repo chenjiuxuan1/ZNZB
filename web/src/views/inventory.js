@@ -23,6 +23,7 @@ export function renderInventory(root) {
       </div>
       <div class="button-group">
         <button id="discover-country-dashboards" ${selectedCountry ? "" : "disabled"}>重新发现当前国家看板</button>
+        <button class="primary" id="discover-all-dashboards">一键发现六国看板</button>
       </div>
     </div>
     ${discoveryStatus ? `<div class="sandbox-status ${discoveryStatus.type}"><strong>${escapeHtml(discoveryStatus.title)}</strong><span>${escapeHtml(discoveryStatus.detail)}</span></div>` : ""}
@@ -97,6 +98,22 @@ export function renderInventory(root) {
     }
     renderInventory(root);
   });
+  root.querySelector("#discover-all-dashboards")?.addEventListener("click", async () => {
+    discoveryStatus = { type: "loading", title: "正在发现六国看板", detail: "正在逐国读取内部 Metabase 看板和卡片，请稍候。" };
+    renderInventory(root);
+    try {
+      const result = await apiPost("/api/inventory/discover-all", {});
+      state.inventory = await apiGet("/api/inventory");
+      state.selected.dashboardUuid = "";
+      const failures = (result.results || []).filter((item) => !item.ok);
+      discoveryStatus = failures.length
+        ? { type: "error", title: `完成 ${result.succeeded}/${result.total} 个国家`, detail: failures.map((item) => `${item.countryCode}：${item.error}`).join("；") }
+        : { type: "success", title: "六国看板发现完成", detail: `已成功刷新 ${result.succeeded || 0} 个国家的看板与卡片。` };
+    } catch (error) {
+      discoveryStatus = { type: "error", title: "六国看板发现失败", detail: error.payload?.errors?.join("；") || error.message };
+    }
+    renderInventory(root);
+  });
 }
 
 function renderDashboardDetail(dashboard, cards) {
@@ -123,7 +140,7 @@ function renderDashboardDetail(dashboard, cards) {
 }
 
 function isHourlyDashboard(dashboard = {}) {
-  return /提前还款监控\s*$/.test(String(dashboard.sourcePanelTitle || dashboard.title || ""));
+  return /(?:每小时监控|提前还款监控)\s*$/.test(String(dashboard.sourcePanelTitle || dashboard.title || ""));
 }
 
 function renderCard(card) {

@@ -40,7 +40,7 @@ function paint(root) {
       <div class="detail-header compact-header">
         <div>
           <h2 class="panel-title">项目配置</h2>
-          <p class="muted">只填写项目名称，系统在后台自动匹配。项目码不会在页面展示。</p>
+          <p class="muted">可填写多个项目名称，用逗号、分号或换行分隔；系统逐个匹配，项目码不会在页面展示。</p>
         </div>
         <div class="button-group">
           <button id="ds-save-projects">保存项目配置</button>
@@ -82,8 +82,9 @@ function renderProjectCard(code) {
         </div>
       </div>
       <div class="ds-project-fields ds-project-name-only">
-        <label>项目名称<input class="ds-project-name" value="${escapeHtml(model.config.projectNames?.[code] || "")}" placeholder="如：数据平台"></label>
+        <label>项目名称（可多个）<input class="ds-project-name" value="${escapeHtml(model.config.projectNames?.[code] || "")}" placeholder="如：数据平台，风控平台"></label>
       </div>
+      ${(status.projects || []).length ? `<div class="project-match-list">${status.projects.map((item) => `<span class="badge ${item.code ? "ok" : "warn"}">${escapeHtml(item.name)} · ${item.code ? "已匹配" : "待匹配"}</span>`).join("")}</div>` : ""}
       ${status.error ? `<p class="field-error">${escapeHtml(status.error)}</p>` : ""}
     </article>`;
 }
