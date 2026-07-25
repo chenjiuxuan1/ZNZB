@@ -5,7 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
-import { loadEnvFile } from "./utils.mjs";
+import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -198,15 +198,7 @@ function startDsScheduler() {
 }
 
 async function readBody(request, fallback = null) {
-  const chunks = [];
-  for await (const chunk of request) {
-    chunks.push(chunk);
-  }
-  const text = Buffer.concat(chunks).toString("utf8");
-  if (!text.trim()) {
-    return fallback;
-  }
-  return JSON.parse(text);
+  return readJsonRequestBody(request, { fallback });
 }
 
 async function serveStatic(response, pathname) {

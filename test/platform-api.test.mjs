@@ -8,6 +8,15 @@ import {
   flattenInventory,
 } from "../src/platform-api.mjs";
 
+test("Wattrel n8n gateway keeps MySQL column headers for row mapping", async () => {
+  const workflow = await fs.readFile(new URL("../n8n-wattrel-query-gateway.json", import.meta.url), "utf8");
+  const client = await fs.readFile(new URL("../src/wattrel-client.mjs", import.meta.url), "utf8");
+  assert.match(workflow, /mysql --batch --raw/);
+  assert.doesNotMatch(workflow, /mysql --batch --raw --silent --host=/);
+  assert.doesNotMatch(client, /"--silent"/);
+  assert.match(client, /request\.setTimeout\(/);
+});
+
 async function makeFixture() {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "duty-platform-"));
   await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
@@ -98,6 +107,10 @@ test("platform api returns summary and inventory", async () => {
 
 test("platform api merges pending panel sources into the dashboard inventory", async () => {
   const rootDir = await makeFixture();
+  await fs.copyFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    path.join(rootDir, "config/discovered-public-dashboards.json"),
+  );
   await fs.writeFile(
     path.join(rootDir, "config/discovered-panels.json"),
     JSON.stringify({
@@ -207,6 +220,32 @@ test("platform api discovers all configured countries and isolates failures", as
   assert.equal(result.failed, 1);
   assert.equal(result.results.find((item) => item.countryCode === "PH").ok, false);
   assert.match(result.results.find((item) => item.countryCode === "PH").error, /authentication failed/);
+});
+
+test("platform api skips INE when its default inventory already contains every source dashboard", async () => {
+  const rootDir = await makeFixture();
+  await fs.copyFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    path.join(rootDir, "config/discovered-public-dashboards.json"),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({ panels: [{ id: 1, links: [{ url: "https://data.example/public/dashboard/dash-1" }] }] }),
+  );
+  let attempts = 0;
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => {
+      attempts += 1;
+      return { dashboards: [] };
+    },
+  });
+
+  const result = await api.discoverAllCountryDashboards();
+
+  assert.equal(attempts, 0);
+  assert.equal(result.skipped, 1);
+  assert.deepEqual(result.results[0], { ok: true, skipped: true, countryCode: "INE" });
 });
 
 test("platform api does not duplicate a ready internal dashboard from panel sources", async () => {

@@ -2639,14 +2639,14 @@ async function hasCountryPanelSources(rootDir, countryCode) {
 async function isCountryInventoryFullyDiscovered(rootDir, countryCode) {
   const code = String(countryCode || "").trim().toLowerCase();
   if (!code) return false;
+  const inventoryFile = code === "ine"
+    ? "config/discovered-public-dashboards.json"
+    : `config/discovered-public-dashboards.${code}.json`;
   const [sources, inventory] = await Promise.all([
-    readJsonFile(panelSourceFilePath(rootDir, code), { panels: [] }),
-    readJsonFile(path.join(rootDir, `config/discovered-public-dashboards.${code}.json`), { dashboards: [] }),
+    readJsonFile(panelSourceFilePath(rootDir, code.toUpperCase()), { panels: [] }),
+    readJsonFile(path.join(rootDir, inventoryFile), { dashboards: [] }),
   ]);
-  const refs = [
-    ...extractPanelUrls(sources),
-    ...extractPanelIds(sources),
-  ];
+  const refs = extractPanelSourceRefs(sources);
   if (refs.length === 0) return false;
   const dashboards = inventory.dashboards || [];
   return refs.every((ref) => dashboards.some((dashboard) => (
@@ -2655,14 +2655,12 @@ async function isCountryInventoryFullyDiscovered(rootDir, countryCode) {
   ) && Array.isArray(dashboard.cards) && dashboard.cards.length > 0));
 }
 
-function extractPanelUrls(source) {
-  return (source.panels || []).flatMap((panel) => (panel.links || []).map((link) => link.url))
-    .filter(Boolean).map((value) => ({ type: "url", value }));
-}
-
-function extractPanelIds(source) {
-  return (source.panels || []).filter((panel) => panel.id != null)
-    .map((panel) => ({ type: "id", value: String(panel.id) }));
+function extractPanelSourceRefs(source) {
+  return (source.panels || []).flatMap((panel) => {
+    const urls = (panel.links || []).map((link) => link.url).filter(Boolean);
+    if (urls.length > 0) return urls.map((value) => ({ type: "url", value }));
+    return panel.id == null ? [] : [{ type: "id", value: String(panel.id) }];
+  });
 }
 
 function getInventoryCountryCodes(inventories) {
