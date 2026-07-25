@@ -92,7 +92,8 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await api.saveBatchSchedule(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/batch-schedule/run-now") {
-    return sendJson(response, 200, await api.runBatchScheduleNow());
+    api.runBatchScheduleNow().catch((error) => console.error("[batch-schedule] run-now background error:", error.message));
+    return sendJson(response, 200, { started: true });
   }
   if (method === "POST" && url.pathname === "/api/sandbox/evaluate") {
     return sendJson(response, 200, await api.evaluateSandbox(await readBody(request)));

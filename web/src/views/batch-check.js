@@ -155,19 +155,8 @@ export function renderBatchCheck(root) {
     renderBatchCheck(root);
     try {
       state.batchSchedule = await apiPut("/api/batch-schedule", payload);
+      await apiPost("/api/batch-schedule/run-now", {});
       startBatchScheduleProgressPolling(root);
-      const result = await apiPost("/api/batch-schedule/run-now", {});
-      state.batchSchedule = result.schedule || state.batchSchedule;
-      await refreshBatchScheduleProgress();
-      const summary = result.result || {};
-      state.batchScheduleStatus = {
-        type: summary.failedCount > 0 ? "error" : "success",
-        title: summary.failedCount > 0 ? "定时巡检测试完成，部分国家失败" : "定时巡检测试完成",
-        detail: `国家 ${summary.countryCount || 0} 个，成功 ${summary.successCount || 0} 个，失败 ${summary.failedCount || 0} 个；检查 ${summary.checkedCardCount || 0} 张卡片，异常 ${summary.anomalyCount || 0} 条。`,
-      };
-      stopBatchScheduleProgressPolling();
-      await reloadBatchHistory(root);
-      return;
     } catch (error) {
       stopBatchScheduleProgressPolling();
       await refreshBatchScheduleProgress().catch(() => {});
@@ -177,8 +166,8 @@ export function renderBatchCheck(root) {
         title: "定时巡检测试失败",
         detail: "请检查已启用国家、看板范围和通知接收目标。",
       };
+      renderBatchCheck(root);
     }
-    renderBatchCheck(root);
   });
   root.querySelector("#run-batch-check")?.addEventListener("click", async () => {
     updateBatchNotifyConfigFromDom(root);
@@ -393,11 +382,28 @@ function startBatchScheduleProgressPolling(root) {
       renderBatchCheck(root);
       if (["success", "partial_failed", "failed"].includes(progress.status)) {
         stopBatchScheduleProgressPolling();
+        state.batchSchedule = await apiGet("/api/batch-schedule");
+        await reloadBatchHistory(root);
+        if (progress.status === "failed") {
+          state.batchScheduleStatus = {
+            type: "error",
+            title: "定时巡检测试失败",
+            detail: progress.error || "运行失败",
+          };
+        } else {
+          const summary = progress.result || {};
+          state.batchScheduleStatus = {
+            type: summary.failedCount > 0 ? "error" : "success",
+            title: summary.failedCount > 0 ? "定时巡检测试完成，部分国家失败" : "定时巡检测试完成",
+            detail: `国家 ${summary.countryCount || 0} 个，成功 ${summary.successCount || 0} 个，失败 ${summary.failedCount || 0} 个；检查 ${summary.checkedCardCount || 0} 张卡片，异常 ${summary.anomalyCount || 0} 条。`,
+          };
+        }
+        renderBatchCheck(root);
       }
     } catch {
       stopBatchScheduleProgressPolling();
     }
-  }, 1000);
+  }, 2000);
 }
 
 function stopBatchScheduleProgressPolling() {
