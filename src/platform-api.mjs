@@ -1164,6 +1164,9 @@ export function createPlatformApi({
       if (!schedule.enabled || !schedule.nextRunAt || new Date(schedule.nextRunAt) > now) {
         return { ran: false, schedule };
       }
+      if (batchScheduleRunning) {
+        return { ran: false, reason: "batch check running", schedule };
+      }
       return runDsSchedule({ api: this, schedule, trigger: "schedule", rootDir, scheduleFile: resolve("dsSchedule"), historyFile: resolve("dsHistory"), now });
     },
   };
