@@ -201,3 +201,37 @@ test("discoverPublicDashboards expands internal collection dashboards with auth 
   assert.equal(result.dashboards[0].countryCode, "CN");
   assert.equal(result.dashboards[0].cards[0].queryStatus, "ok");
 });
+
+test("discoverPublicDashboards queries cards concurrently", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "metabase-discovery-"));
+  const inputFile = path.join(rootDir, "panels.json");
+  await fs.writeFile(inputFile, JSON.stringify({
+    panels: [{ id: 1, title: "并发看板", links: [{ url: "https://data.kuainiu.io/public/dashboard/concurrent" }] }],
+  }));
+  let active = 0;
+  let maxActive = 0;
+  const fakeClient = {
+    async getDashboard() {
+      return {
+        name: "并发看板",
+        parameters: [],
+        dashcards: [1, 2, 3, 4].map((id) => ({
+          id,
+          card_id: id,
+          card: { name: `卡片${id}`, display: "line", visualization_settings: {} },
+        })),
+      };
+    },
+    async queryDashcardJson() {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return [{ value: 1 }];
+    },
+  };
+
+  await discoverPublicDashboards({ inputFile, publicClientFactory: () => fakeClient });
+
+  assert.ok(maxActive > 1);
+});

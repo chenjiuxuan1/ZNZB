@@ -4,17 +4,20 @@ import { MetabasePublicClient, parsePublicDashboardUrl } from "./metabase-public
 import { resolveInternalMetabaseApiBaseUrl, resolvePublicMetabaseApiBaseUrl } from "./metabase-public-monitor.mjs";
 import { readJsonFile, uniqueStrings, writeJsonFile } from "./utils.mjs";
 
+const DISCOVERY_CARD_CONCURRENCY = 4;
+const DISCOVERY_REQUEST_TIMEOUT_SECONDS = 8;
+
 export async function discoverPublicDashboards({
   inputFile,
   outputFile,
   sampleRows = 3,
   publicClientFactory = (ref) => new MetabasePublicClient({
     baseUrl: resolvePublicMetabaseApiBaseUrl(ref.baseUrl),
-    requestTimeoutSeconds: 30,
+    requestTimeoutSeconds: DISCOVERY_REQUEST_TIMEOUT_SECONDS,
   }),
   internalClientFactory = (ref) => new MetabaseInternalClient({
     baseUrl: resolveInternalMetabaseApiBaseUrl(ref.baseUrl),
-    requestTimeoutSeconds: 30,
+    requestTimeoutSeconds: DISCOVERY_REQUEST_TIMEOUT_SECONDS,
   }),
 }) {
   const input = await readJsonFile(path.resolve(inputFile));
@@ -27,11 +30,9 @@ export async function discoverPublicDashboards({
     const client = publicClientFactory(ref);
     const dashboard = await client.getDashboard(ref.uuid);
     const cards = extractCards(dashboard);
-    const sampledCards = [];
-
-    for (const card of cards) {
-      sampledCards.push(await sampleCard(client, ref, card, sampleRows));
-    }
+    const sampledCards = await mapWithConcurrency(cards, DISCOVERY_CARD_CONCURRENCY, (card) => (
+      sampleCard(client, ref, card, sampleRows)
+    ));
 
     dashboards.push({
       country: ref.country || null,
@@ -165,6 +166,20 @@ function extractCards(dashboard) {
     }));
 }
 
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return results;
+}
+
 async function sampleCard(client, dashboardRef, card, sampleRows) {
   try {
     const rows = await client.queryDashcardJson({
@@ -202,11 +217,9 @@ async function discoverInternalDashboards(client, ref, sampleRows) {
   for (const dashboardRef of dashboardRefs) {
     const dashboard = await client.getDashboard(dashboardRef.dashboardId);
     const cards = extractCards(dashboard);
-    const sampledCards = [];
-
-    for (const card of cards) {
-      sampledCards.push(await sampleCard(client, dashboardRef, card, sampleRows));
-    }
+    const sampledCards = await mapWithConcurrency(cards, DISCOVERY_CARD_CONCURRENCY, (card) => (
+      sampleCard(client, dashboardRef, card, sampleRows)
+    ));
 
     dashboards.push({
       country: ref.country || null,

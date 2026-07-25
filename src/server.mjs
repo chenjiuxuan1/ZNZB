@@ -222,11 +222,17 @@ async function serveStatic(response, pathname) {
   }
   try {
     const data = await fs.readFile(filePath);
-    response.writeHead(200, { "Content-Type": contentType(filePath) });
+    response.writeHead(200, {
+      "Content-Type": contentType(filePath),
+      "Cache-Control": "no-store",
+    });
     response.end(data);
   } catch {
     const data = await fs.readFile(path.join(webDir, "index.html"));
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     response.end(data);
   }
 }
