@@ -155,8 +155,17 @@ export function renderBatchCheck(root) {
     renderBatchCheck(root);
     try {
       state.batchSchedule = await apiPut("/api/batch-schedule", payload);
-      await apiPost("/api/batch-schedule/run-now", {});
-      startBatchScheduleProgressPolling(root);
+      const runResp = await apiPost("/api/batch-schedule/run-now", {});
+      if (runResp.error) {
+        state.batchScheduleStatus = {
+          type: "warn",
+          title: "巡检已在运行中",
+          detail: runResp.error,
+        };
+        startBatchScheduleProgressPolling(root);
+      } else {
+        startBatchScheduleProgressPolling(root);
+      }
     } catch (error) {
       stopBatchScheduleProgressPolling();
       await refreshBatchScheduleProgress().catch(() => {});

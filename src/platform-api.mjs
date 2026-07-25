@@ -103,6 +103,7 @@ export function createPlatformApi({
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
+  let batchScheduleRunning = false;
   const runIntegratedDsCheck = async (schedule) => {
     if (!schedule.includeDsScheduler) {
       return null;
@@ -208,6 +209,10 @@ export function createPlatformApi({
 
     async getBatchScheduleRunProgress() {
       return batchScheduleRunProgress || { status: "idle", countries: [] };
+    },
+
+    isBatchScheduleRunning() {
+      return batchScheduleRunning;
     },
 
     async getBatchHistory(filters = {}) {
@@ -435,6 +440,9 @@ export function createPlatformApi({
     },
 
     async runBatchScheduleNow(now = new Date()) {
+      if (batchScheduleRunning) {
+        throw badRequest("Batch check already running", ["巡检正在运行中，请等待完成后再试。"]);
+      }
       const schedule = await this.getBatchSchedule();
       const enabledCountryConfigs = schedule.countryConfigs.filter((item) => item.enabled);
       if (enabledCountryConfigs.length === 0) {
@@ -445,6 +453,7 @@ export function createPlatformApi({
       const nextRunAt = schedule.nextRunAt;
       const historyRunId = randomUUID();
       const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
+      batchScheduleRunning = true;
       batchScheduleRunProgress = createBatchScheduleRunProgress({
         id: historyRunId,
         trigger: "manual_test",
@@ -545,6 +554,8 @@ export function createPlatformApi({
           runs: [],
         });
         return { ran: true, schedule: saved, error: error.message };
+      } finally {
+        batchScheduleRunning = false;
       }
     },
 
@@ -880,10 +891,15 @@ export function createPlatformApi({
         return { ran: false, reason: "not due", schedule };
       }
 
+      if (batchScheduleRunning) {
+        return { ran: false, reason: "already running", schedule };
+      }
+
       const startedAt = now.toISOString();
       const nextRunAt = nextDailyRunAt(schedule.dailyRunTimes || [schedule.dailyRunTime], new Date(now.getTime() + 60_000));
       const historyRunId = randomUUID();
       const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
+      batchScheduleRunning = true;
       try {
         const enabledCountryConfigs = schedule.countryConfigs.filter((item) => item.enabled);
         batchScheduleRunProgress = createBatchScheduleRunProgress({
@@ -985,6 +1001,8 @@ export function createPlatformApi({
           runs: [],
         });
         return { ran: true, schedule: saved, error: error.message };
+      } finally {
+        batchScheduleRunning = false;
       }
     },
 

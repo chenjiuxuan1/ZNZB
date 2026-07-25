@@ -92,6 +92,9 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await api.saveBatchSchedule(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/batch-schedule/run-now") {
+    if (api.isBatchScheduleRunning()) {
+      return sendJson(response, 409, { error: "巡检正在运行中，请等待完成后再试。" });
+    }
     api.runBatchScheduleNow().catch((error) => console.error("[batch-schedule] run-now background error:", error.message));
     return sendJson(response, 200, { started: true });
   }
