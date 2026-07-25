@@ -222,6 +222,30 @@ test("platform api discovers all configured countries and isolates failures", as
   assert.match(result.results.find((item) => item.countryCode === "PH").error, /authentication failed/);
 });
 
+test("platform api starts all-country discovery in the background and exposes progress", async () => {
+  const rootDir = await makeFixture();
+  let resolveDiscovery;
+  let markRequested;
+  const requested = new Promise((resolve) => { markRequested = resolve; });
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => new Promise((resolve) => {
+      resolveDiscovery = resolve;
+      markRequested();
+    }),
+  });
+
+  const started = api.startDiscoverAllCountryDashboards();
+  const pending = api.getDiscoverAllCountryDashboardsProgress();
+
+  assert.equal(started.started, true);
+  assert.equal(pending.status, "running");
+  await requested;
+  resolveDiscovery({ dashboards: [] });
+  await started.completed;
+  assert.equal(api.getDiscoverAllCountryDashboardsProgress().status, "completed");
+});
+
 test("platform api skips INE when its default inventory already contains every source dashboard", async () => {
   const rootDir = await makeFixture();
   await fs.copyFile(

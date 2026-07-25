@@ -104,6 +104,8 @@ export function createPlatformApi({
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
   let batchScheduleRunning = false;
+  let dashboardDiscoveryRunning = false;
+  let dashboardDiscoveryProgress = { status: "idle", result: null, error: null, startedAt: null, finishedAt: null };
   const runIntegratedDsCheck = async (schedule) => {
     if (!schedule.includeDsScheduler) {
       return null;
@@ -748,6 +750,49 @@ export function createPlatformApi({
         failed: results.filter((item) => !item.ok).length,
         results,
       };
+    },
+
+    startDiscoverAllCountryDashboards() {
+      if (dashboardDiscoveryRunning) {
+        return { started: false, progress: dashboardDiscoveryProgress, completed: null };
+      }
+      dashboardDiscoveryRunning = true;
+      dashboardDiscoveryProgress = {
+        status: "running",
+        result: null,
+        error: null,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+      };
+      const completed = this.discoverAllCountryDashboards()
+        .then((result) => {
+          dashboardDiscoveryProgress = {
+            status: "completed",
+            result,
+            error: null,
+            startedAt: dashboardDiscoveryProgress.startedAt,
+            finishedAt: new Date().toISOString(),
+          };
+          return result;
+        })
+        .catch((error) => {
+          dashboardDiscoveryProgress = {
+            status: "failed",
+            result: null,
+            error: error.errors?.join("；") || error.message,
+            startedAt: dashboardDiscoveryProgress.startedAt,
+            finishedAt: new Date().toISOString(),
+          };
+          return null;
+        })
+        .finally(() => {
+          dashboardDiscoveryRunning = false;
+        });
+      return { started: true, progress: dashboardDiscoveryProgress, completed };
+    },
+
+    getDiscoverAllCountryDashboardsProgress() {
+      return { ...dashboardDiscoveryProgress };
     },
 
     async getRulesConfig() {

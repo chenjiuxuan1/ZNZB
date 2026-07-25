@@ -61,6 +61,13 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 200, await api.discoverCountryDashboards(body.countryCode));
   }
+  if (method === "POST" && url.pathname === "/api/inventory/discover-all/start") {
+    const started = api.startDiscoverAllCountryDashboards();
+    return sendJson(response, 202, { started: started.started, progress: started.progress });
+  }
+  if (method === "GET" && url.pathname === "/api/inventory/discover-all/progress") {
+    return sendJson(response, 200, api.getDiscoverAllCountryDashboardsProgress());
+  }
   if (method === "POST" && url.pathname === "/api/inventory/discover-all") {
     return sendJson(response, 200, await api.discoverAllCountryDashboards());
   }

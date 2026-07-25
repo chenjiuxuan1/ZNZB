@@ -146,21 +146,39 @@ export function renderInventory(root) {
     renderInventory(root);
   });
   root.querySelector("#discover-all-dashboards")?.addEventListener("click", async () => {
-    discoveryStatus = { type: "loading", title: "正在发现六国看板", detail: "正在逐国读取内部 Metabase 看板和卡片，请稍候。" };
+    discoveryStatus = { type: "loading", title: "六国看板发现已启动", detail: "正在后台逐国读取 Metabase 看板和卡片；此页面不会因耗时任务断开。" };
     renderInventory(root);
     try {
-      const result = await apiPost("/api/inventory/discover-all", {});
+      const started = await apiPost("/api/inventory/discover-all/start", {});
+      if (!started.started) {
+        discoveryStatus = { type: "loading", title: "六国看板发现进行中", detail: "已有发现任务正在后台执行，请稍候。" };
+        renderInventory(root);
+      }
+      const result = await waitForAllDashboardDiscovery();
+      if (result.status === "failed") {
+        throw new Error(result.error || "Metabase 看板发现失败");
+      }
       state.inventory = await apiGet("/api/inventory");
       state.selected.dashboardUuid = "";
-      const failures = (result.results || []).filter((item) => !item.ok);
+      const failures = (result.result?.results || []).filter((item) => !item.ok);
       discoveryStatus = failures.length
-        ? { type: "error", title: `完成 ${result.succeeded}/${result.total} 个国家`, detail: failures.map((item) => `${item.countryCode}：${item.error}`).join("；") }
-        : { type: "success", title: "六国看板发现完成", detail: `已刷新 ${Math.max(0, (result.succeeded || 0) - (result.skipped || 0))} 个待发现国家，跳过 ${result.skipped || 0} 个已发现国家。` };
+        ? { type: "error", title: `完成 ${result.result.succeeded}/${result.result.total} 个国家`, detail: failures.map((item) => `${item.countryCode}：${item.error}`).join("；") }
+        : { type: "success", title: "六国看板发现完成", detail: `已刷新 ${Math.max(0, (result.result.succeeded || 0) - (result.result.skipped || 0))} 个待发现国家，跳过 ${result.result.skipped || 0} 个已发现国家。` };
     } catch (error) {
       discoveryStatus = { type: "error", title: "六国看板发现失败", detail: error.payload?.errors?.join("；") || error.message };
     }
     renderInventory(root);
   });
+}
+
+async function waitForAllDashboardDiscovery() {
+  for (;;) {
+    const progress = await apiGet("/api/inventory/discover-all/progress");
+    if (progress.status !== "running") {
+      return progress;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
 }
 
 function renderDashboardDetail(dashboard, cards) {
