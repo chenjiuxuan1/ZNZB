@@ -3,6 +3,21 @@ import { fetchCompatible } from "./fetch-compatible.mjs";
 import { readJsonFile } from "./utils.mjs";
 import { notifyText } from "./notifier.mjs";
 
+const DS_FETCH_TIMEOUT_MS = 45_000;
+
+function fetchWithTimeout(url, options = {}, timeoutMs = DS_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetchCompatible(url, { ...options, signal: controller.signal })
+    .catch((error) => {
+      if (error.name === "AbortError") {
+        throw new Error(`请求超时（${Math.round(timeoutMs / 1000)}秒），n8n 网关未响应，可能 DS 服务器连接缓慢或不可达`);
+      }
+      throw error;
+    })
+    .finally(() => clearTimeout(timer));
+}
+
 const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
 
 const DEFAULT_DS_SCHEDULER_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/ds-scheduler";
@@ -98,7 +113,7 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
     return { success: false, error: "project name is empty" };
   }
   try {
-    const response = await fetchCompatible(webhookUrl, {
+    const response = await fetchWithTimeout(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -224,7 +239,7 @@ export async function checkAllCountries(rootDir, config) {
       : [{ name: "", code: String(config.projectCodes?.[countryCode] || "") }];
     const projectResults = [];
     for (const project of projectTargets) try {
-      const response = await fetchCompatible(webhookUrl, {
+      const response = await fetchWithTimeout(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

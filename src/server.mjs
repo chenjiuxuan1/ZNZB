@@ -31,6 +31,7 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
+server.requestTimeout = 600_000;
 server.listen(port, host, () => {
   console.log(`Duty platform running at http://${host}:${port}`);
 });
