@@ -8,8 +8,15 @@ const DS_FETCH_TIMEOUT_MS = 45_000;
 function fetchWithTimeout(url, options = {}, timeoutMs = DS_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const t0 = Date.now();
+  console.log(`[ds-scheduler] fetch START -> ${url} (timeout=${timeoutMs}ms)`);
   return fetchCompatible(url, { ...options, signal: controller.signal })
+    .then((res) => {
+      console.log(`[ds-scheduler] fetch OK <- ${url} (${Date.now() - t0}ms) status=${res.status}`);
+      return res;
+    })
     .catch((error) => {
+      console.log(`[ds-scheduler] fetch FAIL <- ${url} (${Date.now() - t0}ms) ${error.name}: ${error.message}`);
       if (error.name === "AbortError") {
         throw new Error(`请求超时（${Math.round(timeoutMs / 1000)}秒），n8n 网关未响应，可能 DS 服务器连接缓慢或不可达`);
       }
@@ -218,8 +225,10 @@ export async function checkAllCountries(rootDir, config) {
   const countries = Object.entries(config.countries || {});
   const results = [];
 
+  console.log(`[ds-scheduler] checkAllCountries START: ${countries.length} countries, webhook=${webhookUrl}`);
   for (const [countryCode, countryConfig] of countries) {
     const token = String(countryConfig.token || "").trim();
+    console.log(`[ds-scheduler] country=${countryCode} token=${token ? "yes" : "no"}`);
     if (!token) {
       results.push({
         country: countryCode,
@@ -238,7 +247,9 @@ export async function checkAllCountries(rootDir, config) {
       ? configuredProjects
       : [{ name: "", code: String(config.projectCodes?.[countryCode] || "") }];
     const projectResults = [];
+    console.log(`[ds-scheduler] country=${countryCode} projects=${projectTargets.length} -> ${projectTargets.map((p) => p.code || p.name).join(",")}`);
     for (const project of projectTargets) try {
+      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || project.name || "-"} START`);
       const response = await fetchWithTimeout(webhookUrl, {
         method: "POST",
         headers: {
@@ -289,6 +300,7 @@ export async function checkAllCountries(rootDir, config) {
       }
 
       const data = parsed.data || {};
+      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${data.stale_count || 0} checked=${data.total_checked || 0}`);
       // Only monitor ONLINE schedules; OFFLINE schedules are completely ignored.
       // stale_workflows from n8n includes both OFFLINE ("schedule_offline")
       // and ONLINE-but-no-recent-run schedules. Filter to keep only ONLINE ones.
@@ -358,6 +370,7 @@ export async function checkAllCountries(rootDir, config) {
   const totalChecked = results.reduce((sum, r) => sum + r.checkedWorkflows, 0);
   const failedCountries = results.filter((r) => !r.success).length;
 
+  console.log(`[ds-scheduler] checkAllCountries DONE: stuck=${totalStuck} stale=${totalStale} checked=${totalChecked}`);
   return {
     checkedAt: new Date().toISOString(),
     totalStuck,
