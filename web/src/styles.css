@@ -3101,18 +3101,6 @@ body {
   background: var(--surface-soft);
 }
 
-.dashboard-kind {
-  display: inline-flex;
-  margin-left: 8px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: #fff3d6;
-  color: #a75a00;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 700;
-}
-
 .ds-token-details {
   margin-top: 14px;
 }

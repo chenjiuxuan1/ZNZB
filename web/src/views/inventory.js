@@ -48,7 +48,6 @@ export function renderInventory(root) {
             <button class="dashboard-row ${dashboard === selectedDashboard ? "selected" : ""}" data-dashboard-uuid="${escapeHtml(dashboard.uuid || "")}">
               <span>
                 <strong>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "-")}</strong>
-                ${isHourlyDashboard(dashboard) ? `<em class="dashboard-kind">每小时监控</em>` : ""}
                 <small title="${escapeHtml(dashboard.url || "")}">${escapeHtml(compactDashboardUrl(dashboard.url))}</small>
               </span>
               ${isDashboardExecutable(dashboard)
@@ -137,10 +136,6 @@ function renderDashboardDetail(dashboard, cards) {
       <pre class="code">${escapeHtml(json(cards[0]?.sampleRows || []))}</pre>
     </details>` : ""}
   `;
-}
-
-function isHourlyDashboard(dashboard = {}) {
-  return /(?:每小时监控|提前还款监控)\s*$/.test(String(dashboard.sourcePanelTitle || dashboard.title || ""));
 }
 
 function renderCard(card) {
