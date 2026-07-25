@@ -3152,6 +3152,73 @@ body {
   margin: 10px 0 0;
 }
 
+.ds-result-card {
+  align-items: flex-start;
+}
+
+.ds-detail-toggle {
+  margin-top: 8px;
+}
+
+.ds-detail-toggle > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+  list-style: none;
+  user-select: none;
+}
+
+.ds-detail-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ds-detail-toggle > summary::before {
+  content: "\25B6 ";
+  font-size: 10px;
+}
+
+.ds-detail-toggle[open] > summary::before {
+  content: "\25BC ";
+}
+
+.ds-detail-body {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.ds-detail-group {
+  margin-bottom: 8px;
+}
+
+.ds-detail-group:last-child {
+  margin-bottom: 0;
+}
+
+.ds-detail-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ds-detail-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ds-detail-item {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  padding-left: 4px;
+}
+
+.ds-detail-item .muted {
+  color: var(--muted);
+}
+
 @media (max-width: 760px) {
   .ds-project-fields {
     grid-template-columns: minmax(0, 1fr);

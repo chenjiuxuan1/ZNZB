@@ -89,22 +89,49 @@ function renderProjectCard(code) {
     </article>`;
 }
 
+function renderDsWorkflowDetails(country) {
+  const stuck = country.stuckWorkflows || [];
+  const stale = country.staleWorkflows || [];
+  const issueCount = stuck.length + stale.length;
+  if (issueCount === 0) return "";
+  let body = "";
+  if (stuck.length) {
+    body += '<div class="ds-detail-group"><div class="ds-detail-title" style="color:#991b1b;">\u2935\ufe0f \u5361\u6b7b\uff08' + stuck.length + '\uff09</div>';
+    for (const wf of stuck) {
+      const detail = wf.consecutiveFailures ? "\u8fde\u7eed\u5931\u8d25 " + wf.consecutiveFailures + " \u6b21" : "\u8fd0\u884c\u8d85\u65f6";
+      body += '<div class="ds-detail-item">\u2022 ' + escapeHtml(wf.workflowName || wf.workflowCode) + ' <span class="muted">(' + detail + ')</span></div>';
+    }
+    body += "</div>";
+  }
+  if (stale.length) {
+    body += '<div class="ds-detail-group"><div class="ds-detail-title" style="color:#92400e;">\u26a0\ufe0f \u79bb\u7ebf\uff08' + stale.length + '\uff09</div><div class="ds-detail-scroll">';
+    for (const wf of stale) {
+      const reason = wf.staleReason || wf.staleMessage || "\u5f02\u5e38\u4e0b\u7ebf";
+      body += '<div class="ds-detail-item">\u2022 ' + escapeHtml(wf.workflowName || wf.workflowCode) + ' <span class="muted">(' + escapeHtml(reason) + ')</span></div>';
+    }
+    body += "</div></div>";
+  }
+  return '<details class="ds-detail-toggle"><summary>\u67e5\u770b ' + issueCount + ' \u4e2a\u5f02\u5e38\u5de5\u4f5c\u6d41\u660e\u7ec6</summary><div class="ds-detail-body">' + body + "</div></details>";
+}
+
 function renderResult() {
   const result = model.result;
   if (!result) {
-    return `<section class="panel ds-config-section"><h2 class="panel-title">测试结果</h2><p class="muted">尚未执行 DS 测试。测试只读取 DS 状态，不发送通知。</p></section>`;
+    return `<section class="panel ds-config-section"><h2 class="panel-title">\u6d4b\u8bd5\u7ed3\u679c</h2><p class="muted">\u5c1a\u672a\u6267\u884c DS \u6d4b\u8bd5\u3002\u6d4b\u8bd5\u53ea\u8bfb\u53d6 DS \u72b6\u6001\uff0c\u4e0d\u53d1\u9001\u901a\u77e5\u3002</p></section>`;
   }
   return `
     <section class="panel ds-config-section">
-      <div class="detail-header compact-header"><div><h2 class="panel-title">测试结果</h2><p class="muted">${formatTime(result.checkedAt)} · 本次未发送通知</p></div></div>
+      <div class="detail-header compact-header"><div><h2 class="panel-title">\u6d4b\u8bd5\u7ed3\u679c</h2><p class="muted">${formatTime(result.checkedAt)} \u00b7 \u672c\u6b21\u672a\u53d1\u9001\u901a\u77e5</p></div></div>
       <div class="card-list">
         ${(result.countries || []).map((country) => `
-          <article class="card-row">
-            <div><h3>${escapeHtml(country.countryName || COUNTRY_LABELS[country.country] || country.country)}</h3>
-              <p>检查 ${country.checkedWorkflows || 0} 个工作流 · 卡死 ${country.stuckCount || 0} · 离线 ${country.staleCount || 0}</p>
+          <article class="card-row ds-result-card">
+            <div>
+              <h3>${escapeHtml(country.countryName || COUNTRY_LABELS[country.country] || country.country)}</h3>
+              <p>\u68c0\u67e5 ${country.checkedWorkflows || 0} \u4e2a\u5de5\u4f5c\u6d41 \u00b7 \u5361\u6b7b ${country.stuckCount || 0} \u00b7 \u79bb\u7ebf ${country.staleCount || 0}</p>
               ${country.error ? `<p class="field-error">${escapeHtml(country.error)}</p>` : ""}
+              ${renderDsWorkflowDetails(country)}
             </div>
-            <span class="badge ${country.success ? ((country.stuckCount || country.staleCount) ? "warn" : "ok") : "danger"}">${country.success ? ((country.stuckCount || country.staleCount) ? "有异常" : "正常") : "失败"}</span>
+            <span class="badge ${country.success ? ((country.stuckCount || country.staleCount) ? "warn" : "ok") : "danger"}">${country.success ? ((country.stuckCount || country.staleCount) ? "\u6709\u5f02\u5e38" : "\u6b63\u5e38") : "\u5931\u8d25"}</span>
           </article>`).join("")}
       </div>
     </section>`;
