@@ -377,7 +377,7 @@ th {
 
 .schedule-overview {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -404,16 +404,25 @@ th {
 }
 
 .schedule-config-card {
-  align-items: start;
   background: #f8fafc;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(240px, 0.8fr) minmax(320px, 1.2fr) repeat(2, minmax(180px, 0.7fr));
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "auto-trigger ds-scheduler"
+    "run-times run-times"
+    "next-run last-run";
   margin-bottom: 12px;
-  padding: 14px;
+  padding: 16px;
 }
+
+.schedule-config-card > :nth-child(1) { grid-area: auto-trigger; }
+.schedule-config-card > :nth-child(2) { grid-area: ds-scheduler; }
+.schedule-config-card > :nth-child(3) { grid-area: run-times; }
+.schedule-config-card > :nth-child(4) { grid-area: next-run; }
+.schedule-config-card > :nth-child(5) { grid-area: last-run; }
 
 .schedule-progress-panel {
   background: #fbfdff;
@@ -479,14 +488,19 @@ th {
 }
 
 .switch-field {
-  align-items: center;
+  align-items: flex-start;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 8px;
   display: flex;
   gap: 10px;
   min-height: 68px;
-  padding: 10px 12px;
+  padding: 12px 14px;
+}
+
+.switch-field .switch-track {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .switch-field input,
@@ -578,7 +592,12 @@ th {
   display: block;
   color: #475467;
   font-size: 12px;
+  font-weight: 600;
   margin-bottom: 5px;
+}
+
+.schedule-config-card .field input {
+  background: #fff;
 }
 
 .wide-form-field {
@@ -1732,11 +1751,18 @@ a.dashboard-row {
   .info-grid,
   .workspace-tabs,
   .manual-check-grid,
-  .schedule-overview,
   .schedule-config-card,
   .schedule-progress-list,
   .schedule-country-grid {
     grid-template-columns: 1fr;
+  }
+  .schedule-config-card {
+    grid-template-areas:
+      "auto-trigger"
+      "ds-scheduler"
+      "run-times"
+      "next-run"
+      "last-run";
   }
   .schedule-title-row,
   .schedule-country-card-header {
