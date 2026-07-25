@@ -48,6 +48,7 @@ const FILES = {
   dsScheduler: "config/ds-scheduler.config.json",
   dsSchedule: "config/ds-scheduler-schedule.json",
   dsHistory: "config/ds-scheduler-history.json",
+  dsNotification: "config/ds-scheduler-notification.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
@@ -872,14 +873,17 @@ export function createPlatformApi({
     },
 
     async getDsSchedulerConfig() {
-      const [config, batchSchedule, rules] = await Promise.all([
+      const [config, batchSchedule, rules, dsOverride] = await Promise.all([
         loadDsSchedulerConfig(rootDir),
         readJsonFile(resolve("batchSchedule"), DEFAULT_BATCH_SCHEDULE),
         readJsonFile(resolve("rules"), { alerts: {} }),
+        readOptionalJson(resolve("dsNotification")),
       ]);
+      const notification = effectiveDsNotification(dsOverride, metabaseAlertConfig(batchSchedule, rules.alerts || {}));
       return {
         ...config,
-        alerts: metabaseAlertConfig(batchSchedule, rules.alerts || {}),
+        alerts: notification,
+        projectStatus: buildDsProjectStatus(config),
       };
     },
 
@@ -894,6 +898,56 @@ export function createPlatformApi({
     async checkAllDsCountries() {
       const config = await this.getDsSchedulerConfig();
       return checkAllCountries(rootDir, config);
+    },
+
+    async getDsNotificationConfig() {
+      const [stored, batchSchedule, rules] = await Promise.all([
+        readOptionalJson(resolve("dsNotification")),
+        readJsonFile(resolve("batchSchedule"), DEFAULT_BATCH_SCHEDULE),
+        readJsonFile(resolve("rules"), { alerts: {} }),
+      ]);
+      return effectiveDsNotification(stored, metabaseAlertConfig(batchSchedule, rules.alerts || {}));
+    },
+
+    async saveDsNotificationConfig(input = {}) {
+      const normalized = normalizeDsNotification(input);
+      await writeJsonAtomic(resolve("dsNotification"), normalized);
+      const effective = await this.getDsNotificationConfig();
+      return { ...effective, inherited: false };
+    },
+
+    async previewDsNotification(input = {}) {
+      const config = Object.keys(input || {}).length
+        ? { ...(await this.getDsNotificationConfig()), ...normalizeDsNotification(input) }
+        : await this.getDsNotificationConfig();
+      const message = String(input.message || [
+        "## DS 调度监控测试",
+        "",
+        `检查时间：${new Date().toLocaleString("zh-CN")}`,
+        "本消息用于验证 DS 调度监控的通知渠道和接收人配置。",
+      ].join("\n"));
+      return {
+        message,
+        channel: config.channel,
+        targetSummary: dsNotificationTargetSummary(config),
+      };
+    },
+
+    async sendDsNotificationTest(input = {}) {
+      const config = await this.getDsNotificationConfig();
+      const preview = await this.previewDsNotification(input);
+      validateDsNotificationTarget(config);
+      const result = await notifyTextFn({ alerts: config }, preview.message, {
+        title: "DS 调度监控通知测试",
+        severity: "info",
+        timestamp: new Date().toISOString(),
+      });
+      return {
+        ...result,
+        channel: config.channel,
+        targetSummary: preview.targetSummary,
+        sentAt: new Date().toISOString(),
+      };
     },
 
     async getDsSchedule() {
@@ -1007,6 +1061,65 @@ async function appendDsHistory(filePath, entry) {
     updatedAt: new Date().toISOString(),
     runs: [entry, ...(history.runs || [])].slice(0, MAX_BATCH_HISTORY_RUNS),
   });
+}
+
+async function readOptionalJson(filePath) {
+  try {
+    return await readJsonFile(filePath, null);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function normalizeDsNotification(input = {}) {
+  return {
+    channel: normalizeNotifyChannel(input.channel || input.notifyChannel || "knBot"),
+    webhookUrl: String(input.webhookUrl || "").trim(),
+    botId: String(input.botId || "").trim(),
+    botToken: String(input.botToken || "").trim(),
+    chatId: String(input.chatId || "").trim(),
+    recipientEmails: String(input.recipientEmails || "").trim(),
+    mentions: normalizeMentions(input.mentions),
+    sendWhenHealthy: input.sendWhenHealthy !== false,
+  };
+}
+
+function effectiveDsNotification(stored, inherited) {
+  const source = stored && typeof stored === "object" ? stored : inherited;
+  return {
+    ...normalizeDsNotification(source || {}),
+    inherited: !stored,
+    targetSummary: dsNotificationTargetSummary(source || {}),
+  };
+}
+
+function dsNotificationTargetSummary(config = {}) {
+  const channel = normalizeNotifyChannel(config.channel || config.notifyChannel);
+  const targets = channel === "knBot"
+    ? [config.recipientEmails, config.chatId].filter(Boolean)
+    : [config.botId, normalizeMentions(config.mentions).join("、")].filter(Boolean);
+  return `${channel === "knBot" ? "KN Chat" : "TV webhook"} · ${targets.join(" · ") || "未配置接收目标"}`;
+}
+
+function validateDsNotificationTarget(config = {}) {
+  if (config.channel === "knBot" && !config.botToken) {
+    throw badRequest("KN Chat Bot Token is required", ["请填写 KN Chat Bot Token。"]);
+  }
+  if (config.channel === "tv" && !config.botId) {
+    throw badRequest("TV bot_id is required", ["请填写 TV bot_id。"]);
+  }
+}
+
+function buildDsProjectStatus(config = {}) {
+  return Object.fromEntries(Object.keys(config.countries || {}).map((code) => [
+    code,
+    {
+      status: config.projectCodes?.[code] ? "resolved" : "unresolved",
+      projectName: config.projectNames?.[code] || "",
+      error: config.projectNames?.[code] && !config.projectCodes?.[code] ? "项目名称尚未匹配" : "",
+    },
+  ]));
 }
 
 function normalizeMentions(value) {

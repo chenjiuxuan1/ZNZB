@@ -115,6 +115,18 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/ds-scheduler/check") {
     return sendJson(response, 200, await api.checkAllDsCountries());
   }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/notification") {
+    return sendJson(response, 200, await api.getDsNotificationConfig());
+  }
+  if (method === "PUT" && url.pathname === "/api/ds-scheduler/notification") {
+    return sendJson(response, 200, await api.saveDsNotificationConfig(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/notification/preview") {
+    return sendJson(response, 200, await api.previewDsNotification(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/notification/test") {
+    return sendJson(response, 200, await api.sendDsNotificationTest(await readBody(request, {})));
+  }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/schedule") {
     return sendJson(response, 200, await api.getDsSchedule());
   }

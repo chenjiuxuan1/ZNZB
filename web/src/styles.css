@@ -3067,6 +3067,34 @@ body {
   margin-top: 12px;
 }
 
+.ds-project-name-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ds-notification-form {
+  margin-top: 14px;
+}
+
+.ds-notification-preview {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--surface-soft);
+}
+
+.dashboard-kind {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fff3d6;
+  color: #a75a00;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .ds-token-details {
   margin-top: 14px;
 }

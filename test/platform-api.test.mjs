@@ -511,6 +511,67 @@ test("DS scheduler schedule rejects an enabled country without project code", as
   );
 });
 
+test("DS notification inherits Metabase defaults until an override is saved", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-schedule.json"),
+    JSON.stringify({
+      notifyChannel: "knBot",
+      botToken: "metabase-token",
+      chatId: "metabase-chat",
+      recipientEmails: "owner@example.com",
+      sendWhenHealthy: true,
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const inherited = await api.getDsNotificationConfig();
+  assert.equal(inherited.inherited, true);
+  assert.equal(inherited.channel, "knBot");
+  assert.equal(inherited.recipientEmails, "owner@example.com");
+
+  await api.saveDsNotificationConfig({
+    channel: "tv",
+    webhookUrl: "https://tv.example/alert",
+    botId: "ds-bot",
+    mentions: "alice",
+    sendWhenHealthy: false,
+  });
+  const overridden = await api.getDsNotificationConfig();
+  assert.equal(overridden.inherited, false);
+  assert.equal(overridden.channel, "tv");
+  assert.equal(overridden.botId, "ds-bot");
+  assert.equal(overridden.recipientEmails, "");
+});
+
+test("DS notification preview and send test use the effective DS target", async () => {
+  const rootDir = await makeFixture();
+  const sent = [];
+  const api = createPlatformApi({
+    rootDir,
+    notifyTextFn: async (config, message, meta) => {
+      sent.push({ config, message, meta });
+      return { sent: true };
+    },
+  });
+  await api.saveDsNotificationConfig({
+    channel: "knBot",
+    botToken: "ds-token",
+    chatId: "ds-chat",
+    recipientEmails: "ds-owner@example.com",
+    sendWhenHealthy: true,
+  });
+
+  const preview = await api.previewDsNotification();
+  assert.match(preview.message, /DS 调度监控测试/);
+  assert.match(preview.targetSummary, /ds-owner@example.com/);
+
+  const result = await api.sendDsNotificationTest({ message: preview.message });
+  assert.equal(result.sent, true);
+  assert.equal(sent[0].config.alerts.chatId, "ds-chat");
+  assert.equal(sent[0].meta.title, "DS 调度监控通知测试");
+});
+
 test("requested hourly dashboards are stored in all six country sources", async () => {
   const expected = new Map([
     ["config/discovered-panels.json", "/dashboard/1052"],
