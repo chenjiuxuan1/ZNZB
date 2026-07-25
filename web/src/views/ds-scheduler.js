@@ -1,483 +1,270 @@
-import { apiGet, apiPut, apiPost } from "../api.js";
+import { apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
-const COUNTRY_LABELS = {
-  cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥",
-};
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
-
-const COUNTRY_FLAGS = {
-  cn: "🇨🇳", ine: "🇮🇩", ph: "🇵🇭", th: "🇹🇭", pk: "🇵🇰", mx: "🇲🇽",
-};
+const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
+const COUNTRY_FLAGS = { cn: "🇨🇳", ine: "🇮🇩", ph: "🇵🇭", th: "🇹🇭", pk: "🇵🇰", mx: "🇲🇽" };
+let model = { config: {}, schedule: {}, history: { runs: [] }, status: null };
 
 export function renderDsScheduler(root) {
+  root.innerHTML = `<section class="panel"><p class="muted">正在加载 DS 调度监控配置…</p></section>`;
+  load(root);
+}
+
+async function load(root) {
+  const [config, schedule, history] = await Promise.allSettled([
+    apiGet("/api/ds-scheduler/config"),
+    apiGet("/api/ds-scheduler/schedule"),
+    apiGet("/api/ds-scheduler/history?limit=20"),
+  ]);
+  model = {
+    config: config.status === "fulfilled" ? config.value : {},
+    schedule: schedule.status === "fulfilled" ? schedule.value : {},
+    history: history.status === "fulfilled" ? history.value : { runs: [] },
+    status: [config, schedule, history].some((item) => item.status === "rejected")
+      ? { type: "error", text: "部分 DS 配置加载失败，已保留可用内容。" }
+      : null,
+  };
+  paint(root);
+}
+
+function paint(root) {
+  const result = model.schedule.lastResult || model.history.runs?.[0]?.result || null;
   root.innerHTML = `
-    <div class="page-header">
+    <div class="page-header batch-hero">
       <div>
         <h1 class="page-title">DS 调度监控</h1>
-        <p class="page-note">监控 DolphinScheduler 定时任务连续性，识别卡死和离线任务</p>
+        <p class="page-note">按国家配置 DolphinScheduler 项目范围，定时识别连续失败、长时间运行和异常离线任务。</p>
       </div>
-      <div class="page-header-actions">
-        <button id="ds-run-check" class="btn btn-primary" style="white-space:nowrap;">
-          <span class="btn-icon">🔍</span> 执行全面检查
-        </button>
-      </div>
-    </div>
-
-    <!-- 概览指标卡片 -->
-    <div class="ds-metrics-grid" id="ds-overview">
-      <div class="ds-metric-card ds-metric-info">
-        <div class="ds-metric-icon">🌐</div>
-        <div class="ds-metric-body">
-          <div class="ds-metric-label">监控国家</div>
-          <div class="ds-metric-value" id="ds-metric-countries">—</div>
-        </div>
-      </div>
-      <div class="ds-metric-card ds-metric-info">
-        <div class="ds-metric-icon">📋</div>
-        <div class="ds-metric-body">
-          <div class="ds-metric-label">在检查工作流</div>
-          <div class="ds-metric-value" id="ds-metric-workflows">—</div>
-        </div>
-      </div>
-      <div class="ds-metric-card ds-metric-danger">
-        <div class="ds-metric-icon">⛔</div>
-        <div class="ds-metric-body">
-          <div class="ds-metric-label">卡死工作流</div>
-          <div class="ds-metric-value" id="ds-metric-stuck">—</div>
-        </div>
-      </div>
-      <div class="ds-metric-card ds-metric-warning">
-        <div class="ds-metric-icon">⚠️</div>
-        <div class="ds-metric-body">
-          <div class="ds-metric-label">离线/旷工任务</div>
-          <div class="ds-metric-value" id="ds-metric-stale">—</div>
-        </div>
-      </div>
-      <div class="ds-metric-card ds-metric-error">
-        <div class="ds-metric-icon">❌</div>
-        <div class="ds-metric-body">
-          <div class="ds-metric-label">检查失败国家</div>
-          <div class="ds-metric-value" id="ds-metric-failed">—</div>
-        </div>
+      <div class="hero-stats">
+        ${stat("监控项目", enabledCountries().length)}
+        ${stat("检查工作流", result?.totalChecked ?? "—")}
+        ${stat("卡死 / 离线", result ? `${result.totalStuck || 0} / ${result.totalStale || 0}` : "—")}
+        ${stat("检查失败", result?.failedCountries ?? "—")}
       </div>
     </div>
-
-    <!-- 监控说明 -->
-    <div class="ds-info-panel">
-      <div class="ds-info-header">
-        <span class="ds-info-icon">📖</span>
-        <strong>监控说明</strong>
-      </div>
-      <div class="ds-info-body">
-        <p>DS 调度监控会定期检查 <strong>6 个国家</strong>（中国、印尼、菲律宾、泰国、巴基斯坦、墨西哥）的 DolphinScheduler 定时任务。</p>
-        <div class="ds-info-features">
-          <div class="ds-info-feature">
-            <span class="ds-feature-icon">⛔</span>
-            <div>
-              <strong>卡死检测</strong>
-              <p><em>1. 连续失败</em>：检查是否连续 N 次运行失败（默认 3 次）；<em>2. 长时间运行</em>：检查是否任务执行超过合理时间未结束。</p>
-            </div>
-          </div>
-          <div class="ds-info-feature">
-            <span class="ds-feature-icon">⚠️</span>
-            <div>
-              <strong>旷工/离线检测</strong>
-              <p>识别异常下线的工作流：<em>一周内曾保持上线</em> 且 <em>存在下游依赖</em> 但当前突然下线，将告警给负责人。</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 监控范围配置 -->
-    <div class="ds-section">
-      <div class="ds-section-header">
-        <div class="ds-section-title">
-          <span class="ds-section-icon">⚙️</span>
-          <span>监控范围配置</span>
-        </div>
-        <div class="ds-section-actions">
-          <button id="ds-save-config" class="btn btn-primary" style="display: inline-flex;">
-            <span class="btn-icon">💾</span> 保存配置
-          </button>
-          <span id="ds-save-status" class="ds-save-status"></span>
-        </div>
-      </div>
-      <div class="ds-config-layout">
-        <!-- 左侧：项目配置（主要展示） -->
-        <div class="ds-project-config-area">
-          <h3 class="ds-area-title">📁 国家项目映射</h3>
-          <div class="ds-project-grid" id="ds-project-grid"></div>
-        </div>
-        <!-- 右侧：Token 配置（次要，折叠或紧凑展示） -->
-        <div class="ds-token-config-area">
-          <div class="ds-token-toggle" id="ds-token-toggle">
-            <span>🔑 DS Token 配置</span>
-            <span class="ds-toggle-arrow">▶</span>
-          </div>
-          <div class="ds-token-grid" id="ds-token-grid" style="display: none;"></div>
-        </div>
-      </div>
-      <div class="ds-config-hint">
-        <span class="hint-icon">💡</span>
-        <span>首先在左侧配置项目名称，系统自动匹配项目码。Token 仅在首次配置时需要填写。</span>
-      </div>
-    </div>
-
-    <!-- 检查结果区域 -->
-    <div class="ds-section" id="ds-result-panel" style="display:none;">
-      <div class="ds-section-header">
-        <div class="ds-section-title">
-          <span class="ds-section-icon">📊</span>
-          <span>检查结果</span>
-        </div>
-      </div>
-      <div id="ds-check-result" class="ds-check-result"></div>
-    </div>
+    ${renderStatus()}
+    ${renderProjectSection()}
+    ${renderScheduleSection()}
+    ${renderResultSection(result)}
   `;
-  loadConfig(root);
-  setupEventListeners(root);
+  bind(root);
 }
 
-async function loadConfig(root) {
-  try {
-    const config = await apiGet("/api/ds-scheduler/config");
-    renderProjectGrid(root, config);
-    renderTokenGrid(root, config);
-  } catch (error) {
-    console.error("load config error:", error);
+function stat(label, value) {
+  return `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`;
+}
+
+function renderStatus() {
+  if (!model.status) return "";
+  return `<div class="sandbox-status ${model.status.type}"><strong>${model.status.type === "success" ? "操作成功" : "提示"}</strong><span>${escapeHtml(model.status.text)}</span></div>`;
+}
+
+function renderProjectSection() {
+  const config = model.config || {};
+  return `
+    <section class="panel ds-config-section">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">项目配置</h2>
+          <p class="muted">每个国家配置一个需要巡检的 DS 项目。项目码可直接填写；只填名称时系统会尝试自动匹配。</p>
+        </div>
+        <button class="primary" id="ds-save-projects">保存项目配置</button>
+      </div>
+      <div class="schedule-country-grid ds-project-grid">
+        ${COUNTRY_ORDER.map((code) => {
+          const country = config.countries?.[code] || {};
+          const projectCode = config.projectCodes?.[code] || "";
+          return `
+            <article class="schedule-country-card ds-project-card" data-country="${code}">
+              <div class="schedule-country-card-header">
+                <div><strong>${COUNTRY_FLAGS[code]} ${COUNTRY_LABELS[code]}</strong>
+                  <span class="badge ${projectCode && country.token ? "ok" : "warn"}">${projectCode && country.token ? "已接入" : "待配置"}</span>
+                </div>
+              </div>
+              <div class="ds-project-fields">
+                <label>项目名称<input class="ds-project-name" value="${escapeHtml(config.projectNames?.[code] || "")}" placeholder="如：数据平台"></label>
+                <label>项目码<input class="ds-project-code" value="${escapeHtml(projectCode)}" placeholder="建议直接填写 project code"></label>
+              </div>
+            </article>`;
+        }).join("")}
+      </div>
+      <details class="advanced compact ds-token-details">
+        <summary>高级：DS Token 与 n8n 网关</summary>
+        <div class="ds-project-fields ds-gateway-field">
+          <label>n8n webhook<input id="ds-webhook-url" value="${escapeHtml(config.n8nWebhookUrl || "https://sql-cn.kuainiujinke.com/webhook/ds-scheduler")}"></label>
+        </div>
+        <div class="schedule-country-grid ds-token-grid">
+          ${COUNTRY_ORDER.map((code) => `<label>${COUNTRY_LABELS[code]} Token<input class="ds-country-token" data-country="${code}" type="password" value="${escapeHtml(config.countries?.[code]?.token || "")}" placeholder="首次配置时填写"></label>`).join("")}
+        </div>
+      </details>
+    </section>`;
+}
+
+function renderScheduleSection() {
+  const schedule = model.schedule || {};
+  const configs = new Map((schedule.countryConfigs || []).map((item) => [item.countryCode, item]));
+  const alerts = schedule.alerts || model.config.alerts || {};
+  const target = alerts.recipientEmails || alerts.chatId || alerts.botId || "未配置接收目标";
+  return `
+    <section class="panel ds-config-section">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">定时巡检</h2>
+          <p class="muted">只巡检下方启用的国家项目，通知人和消息渠道直接继承 Metabase 定时巡检。</p>
+        </div>
+        <div class="button-group">
+          <button id="ds-save-schedule">保存配置</button>
+          <button class="primary" id="ds-run-now">立即运行测试</button>
+        </div>
+      </div>
+      <div class="schedule-config-card">
+        <label class="switch-field">
+          <input id="ds-schedule-enabled" type="checkbox" ${schedule.enabled ? "checked" : ""}>
+          <span class="switch-track"></span><strong>启用定时巡检</strong>
+          <small>服务端每分钟判断是否到期</small>
+        </label>
+        <label>巡检间隔（分钟）<input id="ds-interval" type="number" min="5" value="${escapeHtml(schedule.intervalMinutes || 60)}"></label>
+        <div><small>下次运行</small><strong>${formatTime(schedule.nextRunAt)}</strong></div>
+        <div><small>上次运行</small><strong>${formatTime(schedule.lastRunAt)}</strong></div>
+      </div>
+      <div class="notice compact-notice">
+        <strong>通知继承</strong>
+        <span>${escapeHtml(channelLabel(alerts.channel))} · ${escapeHtml(target)}。如需修改，请前往 <a href="#/batch-check">Metabase 定时巡检</a>。</span>
+      </div>
+      <div class="schedule-country-grid ds-scope-grid">
+        ${COUNTRY_ORDER.map((code) => {
+          const projectCode = model.config.projectCodes?.[code] || "";
+          const item = configs.get(code) || {};
+          return `
+            <article class="schedule-country-card ds-scope-card" data-country="${code}">
+              <div class="schedule-country-card-header">
+                <div><strong>${COUNTRY_FLAGS[code]} ${COUNTRY_LABELS[code]}</strong><span class="badge ${projectCode ? "ok" : "warn"}">${projectCode ? "项目已配置" : "缺少项目码"}</span></div>
+                <label class="mini-switch">
+                  <input class="ds-country-enabled" type="checkbox" ${item.enabled ? "checked" : ""} ${projectCode ? "" : "disabled"}>
+                  <span></span><em>巡检</em>
+                </label>
+              </div>
+              <p class="muted">项目码：${escapeHtml(projectCode || "请先在上方配置")}</p>
+            </article>`;
+        }).join("")}
+      </div>
+    </section>`;
+}
+
+function renderResultSection(result) {
+  const latest = model.history.runs?.[0];
+  if (!result && !latest) {
+    return `<section class="panel"><h2 class="panel-title">最近一次结果</h2><p class="muted">尚未运行 DS 巡检。</p></section>`;
   }
-}
-
-function renderProjectGrid(root, config) {
-  const container = root.querySelector("#ds-project-grid");
-  const projectNames = config.projectNames || {};
-  const projectCodes = config.projectCodes || {};
-  const countries = config.countries || {};
-
-  container.innerHTML = COUNTRY_ORDER.map((code) => {
-    const projectName = projectNames[code] || "";
-    const projectCode = projectCodes[code] || "";
-    const hasToken = Boolean(countries[code]?.token);
-    return `
-      <div class="ds-project-card ${hasToken ? 'ds-card-active' : 'ds-card-inactive'}">
-        <div class="ds-project-head">
-          <span class="ds-country-flag">${COUNTRY_FLAGS[code] || "🌍"}</span>
-          <div class="ds-project-country">
-            <strong>${escapeHtml(COUNTRY_LABELS[code] || code)}</strong>
-            <span class="ds-project-status ${hasToken ? 'ds-status-ok' : 'ds-status-off'}">
-              ${hasToken ? '✓ 已接入' : '○ 待接入'}
-            </span>
-          </div>
-        </div>
-        <div class="ds-project-body">
-          <div class="ds-field">
-            <label class="ds-field-label">项目名称</label>
-            <input class="ds-input ds-project-name" data-country="${escapeHtml(code)}"
-                   type="text" value="${escapeHtml(projectName)}" placeholder="如：数据平台" />
-          </div>
-          <div class="ds-field">
-            <label class="ds-field-label">项目码（可选）</label>
-            <input class="ds-input ds-project-code-input" data-country="${escapeHtml(code)}"
-                   type="text" value="${escapeHtml(projectCode)}" placeholder="名称无法匹配时可直接填写" />
-          </div>
-        </div>
+  if (!result) {
+    return `<section class="panel"><h2 class="panel-title">最近一次结果</h2><div class="sandbox-status error"><strong>运行失败</strong><span>${escapeHtml(latest.error || "未知错误")}</span></div></section>`;
+  }
+  return `
+    <section class="panel">
+      <div class="detail-header compact-header"><div><h2 class="panel-title">最近一次结果</h2><p class="muted">${formatTime(result.checkedAt)}</p></div></div>
+      <div class="card-list">
+        ${(result.countries || []).map((country) => `
+          <article class="card-row">
+            <div><h3>${escapeHtml(country.countryName || COUNTRY_LABELS[country.country] || country.country)}</h3>
+              <p>检查 ${country.checkedWorkflows || 0} 个工作流 · 卡死 ${country.stuckCount || 0} · 离线 ${country.staleCount || 0}</p>
+              ${country.error ? `<p class="danger-text">${escapeHtml(country.error)}</p>` : ""}
+            </div>
+            <span class="badge ${country.success ? ((country.stuckCount || country.staleCount) ? "warn" : "ok") : "danger"}">${country.success ? ((country.stuckCount || country.staleCount) ? "有异常" : "正常") : "失败"}</span>
+          </article>`).join("")}
       </div>
-    `;
-  }).join("");
+    </section>`;
 }
 
-function renderTokenGrid(root, config) {
-  const container = root.querySelector("#ds-token-grid");
-  const countries = config.countries || {};
-
-  container.innerHTML = COUNTRY_ORDER.map((code) => {
-    const c = countries[code] || {};
-    return `
-      <div class="ds-token-card">
-        <div class="ds-token-head">
-          <span class="ds-country-flag">${COUNTRY_FLAGS[code] || "🌍"}</span>
-          <strong>${escapeHtml(COUNTRY_LABELS[code] || code)}</strong>
-        </div>
-        <div class="ds-token-body">
-          <input class="ds-input ds-country-token" data-country="${escapeHtml(code)}"
-                 type="password" value="${escapeHtml(c.token || "")}" placeholder="输入 DS Token" />
-        </div>
-      </div>
-    `;
-  }).join("");
+function bind(root) {
+  root.querySelector("#ds-save-projects")?.addEventListener("click", () => saveProjects(root));
+  root.querySelector("#ds-save-schedule")?.addEventListener("click", () => saveSchedule(root));
+  root.querySelector("#ds-run-now")?.addEventListener("click", () => runNow(root));
 }
 
-function setupEventListeners(root) {
-  root.querySelector("#ds-save-config")?.addEventListener("click", () => saveConfig(root));
-  root.querySelector("#ds-run-check")?.addEventListener("click", () => runCheck(root));
-
-  root.querySelector("#ds-token-toggle")?.addEventListener("click", () => {
-    const grid = root.querySelector("#ds-token-grid");
-    const arrow = root.querySelector("#ds-token-toggle .ds-toggle-arrow");
-    if (grid.style.display === "none") {
-      grid.style.display = "grid";
-      arrow.textContent = "▼";
-    } else {
-      grid.style.display = "none";
-      arrow.textContent = "▶";
-    }
-  });
-}
-
-async function saveConfig(root) {
-  const status = root.querySelector("#ds-save-status");
-  status.textContent = "保存中...";
-  status.className = "ds-save-status ds-saving";
+async function saveProjects(root) {
+  setBusy(root, "#ds-save-projects", true, "保存中…");
   try {
-    const currentConfig = await apiGet("/api/ds-scheduler/config");
-    const projectCards = root.querySelectorAll(".ds-project-card");
-    const tokenCards = root.querySelectorAll(".ds-token-card");
     const countries = {};
     const projectNames = {};
     const projectCodes = {};
-
-    projectCards.forEach((card) => {
-      const nameInput = card.querySelector(".ds-project-name");
-      const code = nameInput?.dataset?.country;
-      if (!code) return;
-      projectNames[code] = nameInput?.value?.trim() || "";
-      projectCodes[code] = card.querySelector(".ds-project-code-input")?.value?.trim() || "";
-    });
-
-    tokenCards.forEach((card) => {
-      const tokenInput = card.querySelector(".ds-country-token");
-      const code = tokenInput?.dataset?.country;
-      if (!code) return;
-      const existingToken = currentConfig.countries?.[code]?.token || "";
-      const newToken = tokenInput?.value?.trim() || existingToken;
+    for (const code of COUNTRY_ORDER) {
+      const card = root.querySelector(`.ds-project-card[data-country="${code}"]`);
+      projectNames[code] = card?.querySelector(".ds-project-name")?.value.trim() || "";
+      projectCodes[code] = card?.querySelector(".ds-project-code")?.value.trim() || "";
       countries[code] = {
-        name: COUNTRY_LABELS[code] || code,
-        token: newToken,
+        name: COUNTRY_LABELS[code],
+        token: root.querySelector(`.ds-country-token[data-country="${code}"]`)?.value.trim() || model.config.countries?.[code]?.token || "",
       };
-    });
-
-    const config = {
-      n8nWebhookUrl: "https://sql-cn.kuainiujinke.com/webhook/ds-scheduler",
-      projectNames,
-      projectCodes,
-      countries,
-    };
-    const result = await apiPut("/api/ds-scheduler/config", config);
-    const resolveErrors = result.resolveErrors || [];
-    status.textContent = resolveErrors.length
-      ? "⚠ 配置已保存，但部分项目名称未匹配；请检查项目名称或直接填写项目码：" + resolveErrors.map((item) => `${item.country} ${item.error}`).join("；")
-      : "✓ 配置已保存" + (result.resolved ? "，已匹配项目代码" : "");
-    status.className = resolveErrors.length ? "ds-save-status ds-save-error" : "ds-save-status ds-saved";
-    const updatedConfig = { ...config, projectCodes: result.projectCodes || {} };
-    renderProjectGrid(root, updatedConfig);
-    renderTokenGrid(root, updatedConfig);
-    setTimeout(() => { status.textContent = ""; }, 3000);
-  } catch (error) {
-    status.textContent = "✗ 保存失败: " + (error.message || "未知错误");
-    status.className = "ds-save-status ds-save-error";
-    setTimeout(() => { status.textContent = ""; }, 5000);
-  }
-}
-
-async function runCheck(root) {
-  const status = root.querySelector("#ds-run-check");
-  const resultPanel = root.querySelector("#ds-result-panel");
-  const resultDiv = root.querySelector("#ds-check-result");
-  const origText = status.innerHTML;
-  status.disabled = true;
-  status.innerHTML = '<span class="btn-spinner"></span> 检查中...';
-  resultPanel.style.display = "block";
-  resultDiv.innerHTML = `
-    <div class="ds-loading-state">
-      <div class="ds-loading-spinner"></div>
-      <div class="ds-loading-text">正在依次检查 6 个国家，请稍候...</div>
-    </div>
-  `;
-  try {
-    const result = await apiPost("/api/ds-scheduler/check");
-    status.innerHTML = '<span class="btn-icon">🔄</span> 重新检查';
-    updateMetrics(root, result);
-    renderCheckResult(resultDiv, result);
-  } catch (error) {
-    status.innerHTML = origText;
-    resultDiv.innerHTML = `
-      <div class="ds-error-banner">
-        <span class="ds-error-icon">✗</span>
-        <div class="ds-error-body">
-          <strong>检查失败</strong>
-          <p>${escapeHtml(error.message || "网络错误，请确认 n8n 网关地址可访问")}</p>
-        </div>
-      </div>
-    `;
-  } finally {
-    status.disabled = false;
-  }
-}
-
-function updateMetrics(root, result) {
-  root.querySelector("#ds-metric-countries").textContent = result.totalCountries || 0;
-  root.querySelector("#ds-metric-workflows").textContent = result.totalChecked || 0;
-  root.querySelector("#ds-metric-stuck").textContent = result.totalStuck || 0;
-  root.querySelector("#ds-metric-stale").textContent = result.totalStale || 0;
-  root.querySelector("#ds-metric-failed").textContent = result.failedCountries || 0;
-}
-
-function renderCheckResult(container, result) {
-  const countries = result.countries || [];
-  const hasAlerts = countries.some((c) => (c.stuckWorkflows?.length || 0) > 0 || (c.staleWorkflows?.length || 0) > 0);
-
-  let html = `
-    <div class="ds-check-meta">
-      <span class="ds-check-time">🕐 检查时间: ${new Date(result.checkedAt).toLocaleString()}</span>
-    </div>
-  `;
-
-  for (const country of countries) {
-    const stuckWorkflows = country.stuckWorkflows || [];
-    const staleWorkflows = country.staleWorkflows || [];
-    const hasIssues = stuckWorkflows.length > 0 || staleWorkflows.length > 0;
-
-    let errorDetail = "";
-    if (!country.success && country.error) {
-      errorDetail = `
-        <div class="ds-error-banner" style="margin: 8px 16px 12px;">
-          <span class="ds-error-icon">✗</span>
-          <div class="ds-error-body">
-            <strong>检查失败</strong>
-            <p>${escapeHtml(country.error)}</p>
-          </div>
-        </div>
-      `;
     }
-
-    html += `
-      <div class="ds-country-result ${hasIssues ? 'ds-has-issues' : 'ds-all-ok'}">
-        <div class="ds-country-result-head">
-          <div class="ds-cr-left">
-            <span class="ds-country-flag">${COUNTRY_FLAGS[country.country] || "🌍"}</span>
-            <strong>${escapeHtml(country.countryName || country.country)}</strong>
-            ${country.success ? `<span class="ds-badge ds-badge-ok">✓ 正常</span>` : `<span class="ds-badge ds-badge-error">✗ 失败</span>`}
-          </div>
-          <div class="ds-cr-stats">
-            <span class="ds-chip">📋 ${country.checkedWorkflows || 0} 个工作流</span>
-            ${stuckWorkflows.length > 0 ? `<span class="ds-chip ds-chip-danger">⛔ ${stuckWorkflows.length} 卡死</span>` : ""}
-            ${staleWorkflows.length > 0 ? `<span class="ds-chip ds-chip-warn">⚠️ ${staleWorkflows.length} 离线</span>` : ""}
-            ${!hasIssues && country.success ? `<span class="ds-chip ds-chip-ok">✅ 全部正常</span>` : ""}
-          </div>
-        </div>
-        ${errorDetail}
-        ${stuckWorkflows.length > 0 ? renderStuckTable(stuckWorkflows) : ""}
-        ${staleWorkflows.length > 0 ? renderStaleTable(staleWorkflows) : ""}
-      </div>
-    `;
-  }
-
-  if (!hasAlerts) {
-    html += `
-      <div class="ds-all-clear">
-        <div class="ds-all-clear-icon">✅</div>
-        <div class="ds-all-clear-text">
-          <strong>所有国家定时任务均正常</strong>
-          <p>未发现卡死工作流或长时间离线任务，所有定时任务运行状态良好。</p>
-        </div>
-      </div>
-    `;
-  }
-
-  container.innerHTML = html;
-  requestAnimationFrame(() => {
-    container.querySelectorAll(".ds-country-result").forEach((el, i) => {
-      el.style.setProperty("--ds-delay", `${i * 0.08}s`);
-      el.classList.add("ds-visible");
+    model.config = await apiPut("/api/ds-scheduler/config", {
+      n8nWebhookUrl: root.querySelector("#ds-webhook-url")?.value.trim() || "",
+      countries, projectNames, projectCodes,
     });
-  });
+    model.status = model.config.resolveErrors?.length
+      ? { type: "error", text: `配置已保存，但部分项目名称匹配失败：${model.config.resolveErrors.map((item) => `${item.country} ${item.error}`).join("；")}` }
+      : { type: "success", text: "DS 项目配置已保存。" };
+    model.schedule = await apiGet("/api/ds-scheduler/schedule");
+  } catch (error) {
+    model.status = { type: "error", text: `项目配置保存失败：${error.message}` };
+  }
+  paint(root);
 }
 
-function renderStuckTable(workflows) {
-  let html = `
-    <div class="ds-issue-section">
-      <div class="ds-issue-section-title">
-        <span class="ds-issue-icon">⛔</span> 卡死工作流
-        <span class="ds-issue-count">${workflows.length} 个</span>
-      </div>
-      <div class="ds-table-wrap">
-        <table class="ds-table">
-          <thead>
-            <tr>
-              <th>工作流名称</th>
-              <th>Code</th>
-              <th>状态</th>
-              <th>异常类型</th>
-              <th>详情</th>
-              <th>最近失败时间</th>
-              <th>负责人</th>
-            </tr>
-          </thead>
-          <tbody>
-  `;
-  for (const wf of workflows) {
-    const recentTimes = (wf.recentFailures || []).slice(0, 2).map((f) => f.schedule_time || f.end_time || "").filter(Boolean);
-    const isLongRunning = (wf.stuckType || "").toLowerCase().includes("long_running");
-    const issueType = isLongRunning ? "⏱️ 长时间运行" : "❌ 连续失败";
-    const issueDetail = isLongRunning ? `已运行 ${wf.runningDuration || "未知"}` : `连续失败 ${wf.consecutiveFailures || 0} 次`;
-    const owner = wf.owner || wf.responsible || "-";
-    html += `
-      <tr>
-        <td><strong>${escapeHtml(wf.workflowName || "-")}</strong></td>
-        <td><code>${escapeHtml(wf.workflowCode || "")}</code></td>
-        <td>${wf.scheduleStatus === "ONLINE" ? `<span class="ds-badge-sm ds-badge-ok">ONLINE</span>` : escapeHtml(wf.scheduleStatus || "-")}</td>
-        <td><span class="ds-badge-sm ${isLongRunning ? 'ds-badge-warn' : 'ds-badge-error'}">${issueType}</span></td>
-        <td>${escapeHtml(issueDetail)}</td>
-        <td class="ds-time-cell">${recentTimes.length ? recentTimes.join("<br>") : "-"}</td>
-        <td>${escapeHtml(owner)}</td>
-      </tr>
-    `;
+async function saveSchedule(root) {
+  setBusy(root, "#ds-save-schedule", true, "保存中…");
+  try {
+    model.schedule = await apiPut("/api/ds-scheduler/schedule", collectSchedule(root));
+    model.status = { type: "success", text: "DS 定时巡检配置已保存。" };
+  } catch (error) {
+    model.status = { type: "error", text: `定时配置保存失败：${error.message}` };
   }
-  html += `</tbody></table></div></div>`;
-  return html;
+  paint(root);
 }
 
-function renderStaleTable(workflows) {
-  let html = `
-    <div class="ds-issue-section">
-      <div class="ds-issue-section-title">
-        <span class="ds-issue-icon">⚠️</span> 离线/旷工任务
-        <span class="ds-issue-count">${workflows.length} 个</span>
-      </div>
-      <div class="ds-table-wrap">
-        <table class="ds-table">
-          <thead>
-            <tr>
-              <th>工作流名称</th>
-              <th>Code</th>
-              <th>状态</th>
-              <th>异常类型</th>
-              <th>离线时长</th>
-              <th>下游依赖</th>
-              <th>负责人</th>
-            </tr>
-          </thead>
-          <tbody>
-  `;
-  for (const wf of workflows) {
-    const hasDownstream = wf.downstreamCount && wf.downstreamCount > 0;
-    const downstreamInfo = hasDownstream ? `🔗 ${wf.downstreamCount} 个依赖` : "-";
-    const owner = wf.owner || wf.responsible || "-";
-    const offlineDuration = wf.offlineDuration || wf.staleDuration || "-";
-    html += `
-      <tr>
-        <td><strong>${escapeHtml(wf.workflowName || "-")}</strong></td>
-        <td><code>${escapeHtml(wf.workflowCode || "")}</code></td>
-        <td>${wf.scheduleStatus === "OFFLINE" ? `<span class="ds-badge-sm ds-badge-warn">OFFLINE</span>` : escapeHtml(wf.scheduleStatus || "-")}</td>
-        <td><span class="ds-badge-sm ds-badge-warn">💤 异常下线</span></td>
-        <td>${escapeHtml(offlineDuration)}</td>
-        <td>${hasDownstream ? `<span class="ds-warn-text">${downstreamInfo}</span>` : "-"}</td>
-        <td>${escapeHtml(owner)}</td>
-      </tr>
-    `;
+async function runNow(root) {
+  setBusy(root, "#ds-run-now", true, "巡检中…");
+  try {
+    await apiPut("/api/ds-scheduler/schedule", collectSchedule(root));
+    const response = await apiPost("/api/ds-scheduler/schedule/run-now", {});
+    model.schedule = response.schedule;
+    model.history = await apiGet("/api/ds-scheduler/history?limit=20");
+    model.status = { type: "success", text: `巡检完成：检查 ${response.result.totalChecked || 0} 个工作流，发现 ${Number(response.result.totalStuck || 0) + Number(response.result.totalStale || 0)} 个异常。` };
+  } catch (error) {
+    model.status = { type: "error", text: `DS 巡检失败：${error.message}` };
   }
-  html += `</tbody></table></div></div>`;
-  return html;
+  paint(root);
+}
+
+function collectSchedule(root) {
+  return {
+    enabled: root.querySelector("#ds-schedule-enabled")?.checked || false,
+    intervalMinutes: Number(root.querySelector("#ds-interval")?.value || 60),
+    countryConfigs: COUNTRY_ORDER.map((code) => ({
+      countryCode: code,
+      enabled: root.querySelector(`.ds-scope-card[data-country="${code}"] .ds-country-enabled`)?.checked || false,
+      projectCode: model.config.projectCodes?.[code] || "",
+    })),
+  };
+}
+
+function enabledCountries() {
+  return (model.schedule.countryConfigs || []).filter((item) => item.enabled);
+}
+
+function setBusy(root, selector, disabled, text) {
+  const button = root.querySelector(selector);
+  if (!button) return;
+  button.disabled = disabled;
+  button.textContent = text;
+}
+
+function channelLabel(channel) {
+  return channel === "knBot" ? "KN Chat" : channel === "tv" ? "TV webhook" : channel || "通知渠道";
+}
+
+function formatTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? escapeHtml(value) : date.toLocaleString("zh-CN", { hour12: false });
 }

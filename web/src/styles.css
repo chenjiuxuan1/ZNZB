@@ -3051,6 +3051,44 @@ body {
   width: 1px !important;
 }
 
+.ds-config-section {
+  margin-top: 16px;
+}
+
+.ds-project-grid,
+.ds-scope-grid {
+  margin-top: 14px;
+}
+
+.ds-project-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ds-token-details {
+  margin-top: 14px;
+}
+
+.ds-token-grid {
+  margin-top: 12px;
+}
+
+.ds-gateway-field {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ds-scope-card p {
+  margin: 10px 0 0;
+}
+
+@media (max-width: 760px) {
+  .ds-project-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .wide-toolbar select,
 .manual-range-form select,
 .manual-range-form input,

@@ -12,7 +12,7 @@ export function renderDashboard(root) {
     </div>
     <div class="grid cols-4">
       ${metric("国家", data.countryCount || 0)}
-      ${metric("Dashboard", data.dashboardCount || 0)}
+      ${metric("看板", `${data.dashboardCount || 0}（可执行 ${data.executableDashboardCount || 0} / 待发现 ${data.pendingDashboardCount || 0}）`)}
       ${metric("Card", data.cardCount || 0)}
       ${metric("规则", data.ruleCount || 0)}
     </div>

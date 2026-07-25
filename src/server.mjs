@@ -35,6 +35,7 @@ server.listen(port, host, () => {
   console.log(`Duty platform running at http://${host}:${port}`);
 });
 startBatchScheduler();
+startDsScheduler();
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";
@@ -114,6 +115,18 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/ds-scheduler/check") {
     return sendJson(response, 200, await api.checkAllDsCountries());
   }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/schedule") {
+    return sendJson(response, 200, await api.getDsSchedule());
+  }
+  if (method === "PUT" && url.pathname === "/api/ds-scheduler/schedule") {
+    return sendJson(response, 200, await api.saveDsSchedule(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/schedule/run-now") {
+    return sendJson(response, 200, await api.runDsScheduleNow());
+  }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/history") {
+    return sendJson(response, 200, await api.getDsHistory(Object.fromEntries(url.searchParams.entries())));
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 
@@ -140,6 +153,25 @@ function startBatchScheduler() {
     timer.unref();
   }
   setTimeout(tick, 5_000).unref?.();
+}
+
+function startDsScheduler() {
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const result = await api.runDueDsSchedule();
+      if (result.ran) console.log(`DS scheduler check ran at ${new Date().toISOString()}`);
+    } catch (error) {
+      console.error("DS scheduler check failed:", error);
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(tick, 60_000);
+  timer.unref?.();
+  setTimeout(tick, 8_000).unref?.();
 }
 
 async function readBody(request, fallback = null) {

@@ -1,5 +1,5 @@
 import { apiPost } from "../api.js";
-import { findSelectedRule, setRoute, state } from "../state.js";
+import { findSelectedRule, getDashboards, isDashboardExecutable, setRoute, state } from "../state.js";
 import {
   describeRule,
   escapeHtml,
@@ -11,7 +11,7 @@ import {
 } from "../view-utils.js";
 
 export function renderSandbox(root) {
-  const dashboards = state.inventory?.dashboards || [];
+  const dashboards = getDashboards();
   const rules = state.rulesConfig?.rules || [];
   const countries = state.countries?.countries || [];
   const countryOptions = buildSandboxCountryOptions(dashboards, countries);
@@ -27,6 +27,7 @@ export function renderSandbox(root) {
   const card = (dashboard?.cards || []).find((item) => String(item.cardId) === String(state.selected.cardId)) || dashboard?.cards?.[0] || null;
   const rule = findSelectedRule();
   const rows = state.sandboxRows || card?.sampleRows || [];
+  const canRun = isDashboardExecutable(dashboard) && Boolean(card && rule);
 
   root.innerHTML = `
     <div class="page-header">
@@ -35,8 +36,8 @@ export function renderSandbox(root) {
         <p class="page-note">在本机用已缓存的 Metabase sampleRows 试跑当前规则，判断这条规则是否会产生告警；不访问线上 API，不发送通知。</p>
       </div>
       <div class="button-group">
-        <button id="run-sandbox">离线试跑（不联网）</button>
-        <button class="primary" id="run-live-sandbox">真实只读试跑（访问 Metabase）</button>
+        <button id="run-sandbox" ${canRun ? "" : "disabled"}>离线试跑（不联网）</button>
+        <button class="primary" id="run-live-sandbox" ${canRun ? "" : "disabled"}>真实只读试跑（访问 Metabase）</button>
       </div>
     </div>
     <div class="notice">
@@ -64,7 +65,7 @@ export function renderSandbox(root) {
       <label>
         看板
         <select id="dashboard-select">
-          ${filteredDashboards.map((item) => `<option value="${escapeHtml(item.uuid || "")}" ${item === dashboard ? "selected" : ""}>${escapeHtml(item.title || item.sourcePanelTitle || "")}</option>`).join("")}
+          ${filteredDashboards.map((item) => `<option value="${escapeHtml(item.uuid || "")}" ${item === dashboard ? "selected" : ""}>${escapeHtml(item.title || item.sourcePanelTitle || "")}${isDashboardExecutable(item) ? "" : "（待发现）"}</option>`).join("")}
         </select>
       </label>
       <label>
@@ -80,6 +81,7 @@ export function renderSandbox(root) {
         </select>
       </label>
     </div>
+    ${dashboard && !isDashboardExecutable(dashboard) ? `<div class="sandbox-status idle"><strong>该看板已纳入巡检范围，正在等待卡片发现</strong><span>${escapeHtml(dashboard.pendingReason || "尚未取得 Metabase 卡片清单")}，因此暂时不能执行规则试跑。</span></div>` : ""}
     <div class="sandbox-layout">
       <section class="panel">
         <h2 class="panel-title">本次试跑对象</h2>

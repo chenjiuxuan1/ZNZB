@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut } from "../api.js";
-import { state } from "../state.js";
+import { getDashboards, isDashboardExecutable, state } from "../state.js";
 import { countryLabel, escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
 
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
@@ -7,7 +7,7 @@ const ALL_COUNTRIES = "__all__";
 
 export function renderBatchCheck(root) {
   const countries = state.countries?.countries || [];
-  const dashboards = state.inventory?.dashboards || [];
+  const dashboards = getDashboards();
   const selectedCountry = state.selected.countryCode || countries[0]?.code || "";
   const isAllCountries = selectedCountry === ALL_COUNTRIES;
   const countryDashboards = dashboards.filter((dashboard) => {
@@ -318,7 +318,7 @@ function renderManualBatchCheckPanel({
               看板范围
               <select id="batch-dashboard">
                 <option value="">该国家告警巡检看板</option>
-                ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboard === dashboard ? "selected" : ""}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}</option>`).join("")}
+                ${countryDashboards.map((dashboard) => `<option value="${escapeHtml(dashboard.uuid || "")}" ${selectedDashboard === dashboard ? "selected" : ""} ${isDashboardExecutable(dashboard) ? "" : "disabled"}>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "")}${isDashboardExecutable(dashboard) ? "" : "（待发现）"}</option>`).join("")}
               </select>
             </label>
             <label>
@@ -1001,7 +1001,7 @@ function renderScheduleLastResult(result) {
 
 function renderCountryScheduleConfig(schedule) {
   const countries = state.countries?.countries || [];
-  const dashboards = state.inventory?.dashboards || [];
+  const dashboards = getDashboards({ executableOnly: true });
   const configs = new Map((schedule.countryConfigs || []).map((item) => [item.countryCode, item]));
   return `
     <div class="schedule-country-section">

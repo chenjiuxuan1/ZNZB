@@ -10,12 +10,14 @@ import {
   mergeParameters,
 } from "./metabase-public-monitor.mjs";
 import { discoverPublicDashboards } from "./metabase-discovery.mjs";
+import { parseInternalMetabaseUrl } from "./metabase-internal-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
   checkAllCountries,
+  notifyDsSchedulerCheck,
 } from "./ds-scheduler-monitor.mjs";
 import {
   mapWattrelRowsToAnomalies,
@@ -44,6 +46,8 @@ const FILES = {
   wattrel: "config/wattrel.config.json",
   qualityRuleGeneration: "config/quality-rule-generation.config.json",
   dsScheduler: "config/ds-scheduler.config.json",
+  dsSchedule: "config/ds-scheduler-schedule.json",
+  dsHistory: "config/ds-scheduler-history.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
@@ -76,6 +80,16 @@ const DEFAULT_BATCH_SCHEDULE = {
 };
 const DEFAULT_BATCH_HISTORY = { runs: [] };
 const MAX_BATCH_HISTORY_RUNS = 200;
+const DEFAULT_DS_SCHEDULE = {
+  enabled: false,
+  intervalMinutes: 60,
+  countryConfigs: [],
+  nextRunAt: null,
+  lastRunAt: null,
+  lastError: null,
+  lastResult: null,
+};
+const DEFAULT_DS_HISTORY = { runs: [] };
 
 export function createPlatformApi({
   rootDir = process.cwd(),
@@ -90,16 +104,20 @@ export function createPlatformApi({
 
   return {
     async getSummary() {
-      const [countries, rules, inventory, result] = await Promise.all([
+      const [countries, rules, readyInventory, result] = await Promise.all([
         readJsonFile(resolve("countries"), { countries: [] }),
         readJsonFile(resolve("rules"), { rules: [] }),
         readPlatformInventory(rootDir, resolve("inventory")),
         readJsonFile(resolve("result"), null),
       ]);
+      const panelSources = await loadPanelSources(rootDir, countries.countries || []);
+      const inventory = mergeDashboardSources(readyInventory, panelSources);
       const flat = flattenInventory(inventory);
       return {
         countryCount: countries.countries?.length || 0,
         dashboardCount: flat.dashboardCount,
+        executableDashboardCount: flat.executableDashboardCount,
+        pendingDashboardCount: flat.pendingDashboardCount,
         cardCount: flat.cardCount,
         ruleCount: rules.rules?.length || 0,
         lastResult: result
@@ -463,14 +481,15 @@ export function createPlatformApi({
     },
 
     async getInventory(filters = {}) {
-      const [countries, inventory] = await Promise.all([
+      const [countries, readyInventory] = await Promise.all([
         readJsonFile(resolve("countries"), { countries: [] }),
         readPlatformInventory(rootDir, resolve("inventory")),
       ]);
-      const filtered = filterInventory(inventory, filters);
+      const panelSources = await loadPanelSources(rootDir, countries.countries || [], filters);
+      const filtered = filterInventory(mergeDashboardSources(readyInventory, panelSources), filters);
       return {
         ...filtered,
-        panelSources: await loadPanelSources(rootDir, countries.countries || [], filters),
+        panelSources,
       };
     },
 
@@ -876,7 +895,118 @@ export function createPlatformApi({
       const config = await this.getDsSchedulerConfig();
       return checkAllCountries(rootDir, config);
     },
+
+    async getDsSchedule() {
+      const [stored, config] = await Promise.all([
+        readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE),
+        this.getDsSchedulerConfig(),
+      ]);
+      return {
+        ...normalizeDsSchedule(stored, config, { preserveNextRunAt: true }),
+        alerts: config.alerts || {},
+      };
+    },
+
+    async saveDsSchedule(input = {}) {
+      const config = await this.getDsSchedulerConfig();
+      const schedule = normalizeDsSchedule(input, config);
+      await writeJsonAtomic(resolve("dsSchedule"), schedule);
+      return { ...schedule, alerts: config.alerts || {} };
+    },
+
+    async getDsHistory(filters = {}) {
+      const history = await readJsonFile(resolve("dsHistory"), DEFAULT_DS_HISTORY);
+      const countryCode = String(filters.countryCode || "").trim();
+      const limit = Math.max(1, Math.min(200, Number(filters.limit || 50)));
+      const runs = (history.runs || [])
+        .filter((run) => !countryCode || (run.result?.countries || []).some((item) => item.country === countryCode))
+        .slice(0, limit);
+      return { ...history, runs };
+    },
+
+    async runDsScheduleNow() {
+      const schedule = await this.getDsSchedule();
+      return runDsSchedule({ api: this, schedule, trigger: "manual", rootDir, scheduleFile: resolve("dsSchedule"), historyFile: resolve("dsHistory") });
+    },
+
+    async runDueDsSchedule(now = new Date()) {
+      const schedule = await this.getDsSchedule();
+      if (!schedule.enabled || !schedule.nextRunAt || new Date(schedule.nextRunAt) > now) {
+        return { ran: false, schedule };
+      }
+      return runDsSchedule({ api: this, schedule, trigger: "schedule", rootDir, scheduleFile: resolve("dsSchedule"), historyFile: resolve("dsHistory"), now });
+    },
   };
+}
+
+function normalizeDsSchedule(input = {}, config = {}, { preserveNextRunAt = false } = {}) {
+  const enabled = Boolean(input.enabled);
+  const intervalMinutes = Math.max(5, Number(input.intervalMinutes || DEFAULT_DS_SCHEDULE.intervalMinutes));
+  const countryConfigs = (Array.isArray(input.countryConfigs) ? input.countryConfigs : [])
+    .map((item) => ({
+      countryCode: String(item.countryCode || "").trim().toLowerCase(),
+      enabled: Boolean(item.enabled),
+      projectCode: String(item.projectCode || config.projectCodes?.[String(item.countryCode || "").toLowerCase()] || "").trim(),
+    }))
+    .filter((item) => item.countryCode);
+  const missing = countryConfigs.find((item) => item.enabled && !item.projectCode);
+  if (missing) {
+    throw badRequest("DS project code is required", [`${missing.countryCode}: project code is required`]);
+  }
+  const nextRunAt = enabled
+    ? (preserveNextRunAt && input.nextRunAt ? input.nextRunAt : new Date(Date.now() + intervalMinutes * 60_000).toISOString())
+    : null;
+  return {
+    ...DEFAULT_DS_SCHEDULE,
+    ...input,
+    enabled,
+    intervalMinutes,
+    countryConfigs,
+    nextRunAt,
+  };
+}
+
+async function runDsSchedule({ api, schedule, trigger, rootDir, scheduleFile, historyFile, now = new Date() }) {
+  const config = await api.getDsSchedulerConfig();
+  const enabled = schedule.countryConfigs.filter((item) => item.enabled);
+  if (enabled.length === 0) {
+    throw badRequest("No DS countries enabled", ["请至少启用一个已配置项目的国家。"]);
+  }
+  const scopedConfig = {
+    ...config,
+    countries: Object.fromEntries(enabled.map((item) => [item.countryCode, config.countries?.[item.countryCode] || {}])),
+    projectCodes: Object.fromEntries(enabled.map((item) => [item.countryCode, item.projectCode])),
+  };
+  const startedAt = now.toISOString();
+  try {
+    const result = await checkAllCountries(rootDir, scopedConfig);
+    result.notification = await notifyDsSchedulerCheck(scopedConfig, result);
+    const finishedAt = new Date().toISOString();
+    const next = {
+      ...schedule,
+      nextRunAt: schedule.enabled ? new Date(Date.now() + schedule.intervalMinutes * 60_000).toISOString() : null,
+      lastRunAt: finishedAt,
+      lastError: null,
+      lastResult: result,
+    };
+    await writeJsonAtomic(scheduleFile, next);
+    await appendDsHistory(historyFile, { id: randomUUID(), trigger, startedAt, finishedAt, ok: true, result });
+    return { ran: true, schedule: { ...next, alerts: config.alerts || {} }, result };
+  } catch (error) {
+    const finishedAt = new Date().toISOString();
+    const next = { ...schedule, lastRunAt: finishedAt, lastError: error.message };
+    await writeJsonAtomic(scheduleFile, next);
+    await appendDsHistory(historyFile, { id: randomUUID(), trigger, startedAt, finishedAt, ok: false, error: error.message });
+    throw error;
+  }
+}
+
+async function appendDsHistory(filePath, entry) {
+  const history = await readJsonFile(filePath, DEFAULT_DS_HISTORY);
+  await writeJsonAtomic(filePath, {
+    updatedAt: new Date().toISOString(),
+    runs: [entry, ...(history.runs || [])].slice(0, MAX_BATCH_HISTORY_RUNS),
+  });
 }
 
 function normalizeMentions(value) {
@@ -2388,8 +2518,127 @@ export function flattenInventory(inventory) {
   const dashboards = inventory?.dashboards || [];
   return {
     dashboardCount: dashboards.length,
+    executableDashboardCount: dashboards.filter((dashboard) => dashboard.executable !== false).length,
+    pendingDashboardCount: dashboards.filter((dashboard) => dashboard.executable === false).length,
     cardCount: dashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0),
   };
+}
+
+function mergeDashboardSources(inventory, panelSources = []) {
+  const dashboards = (inventory?.dashboards || []).map((dashboard) => ({
+    ...dashboard,
+    availability: "ready",
+    executable: Array.isArray(dashboard.cards) && dashboard.cards.length > 0,
+    pendingReason: "",
+  }));
+  const identities = new Map();
+  dashboards.forEach((dashboard, index) => {
+    dashboardIdentities(dashboard).forEach((identity) => identities.set(identity, index));
+  });
+
+  for (const source of panelSources) {
+    for (const panel of source.panels || []) {
+      const pending = panelSourceToDashboard(source, panel);
+      let match = dashboardIdentities(pending)
+        .map((identity) => identities.get(identity))
+        .find((index) => index !== undefined);
+      if (match === undefined) {
+        match = dashboards.findIndex((dashboard) => {
+          if (getDashboardCountryCode(dashboard) !== pending.countryCode) return false;
+          if (String(dashboard.sourcePanelId ?? "") !== String(pending.sourcePanelId ?? "")) return false;
+          const readyTitle = normalizeSourceTitle(dashboard.sourcePanelTitle || dashboard.title);
+          const pendingTitle = normalizeSourceTitle(pending.sourcePanelTitle || pending.title);
+          return readyTitle && pendingTitle && (readyTitle.includes(pendingTitle) || pendingTitle.includes(readyTitle));
+        });
+        if (match < 0) match = undefined;
+      }
+      if (match === undefined) {
+        const pendingTitle = canonicalDashboardTitle(pending.sourcePanelTitle || pending.title);
+        match = dashboards.findIndex((dashboard) => (
+          getDashboardCountryCode(dashboard) === pending.countryCode
+          && canonicalDashboardTitle(dashboard.sourcePanelTitle || dashboard.title) === pendingTitle
+        ));
+        if (match < 0) match = undefined;
+      }
+      if (match !== undefined) {
+        dashboards[match] = {
+          ...pending,
+          ...dashboards[match],
+          sourcePanelId: dashboards[match].sourcePanelId ?? panel.id,
+          sourcePanelTitle: dashboards[match].sourcePanelTitle || panel.title,
+        };
+        dashboardIdentities(dashboards[match]).forEach((identity) => identities.set(identity, match));
+        continue;
+      }
+      const index = dashboards.push(pending) - 1;
+      dashboardIdentities(pending).forEach((identity) => identities.set(identity, index));
+    }
+  }
+
+  return { ...inventory, dashboards };
+}
+
+function panelSourceToDashboard(source, panel) {
+  const link = (panel.links || [])[0] || {};
+  let internal = null;
+  try {
+    internal = parseInternalMetabaseUrl(link.url || "");
+  } catch {
+    internal = null;
+  }
+  const dashboardId = internal?.type === "dashboard" ? Number(internal.id) : null;
+  return {
+    countryCode: source.countryCode,
+    countryName: source.countryName,
+    timezone: source.timezone,
+    sourcePanelId: panel.id,
+    sourcePanelTitle: panel.title,
+    title: panel.title,
+    url: link.url || "",
+    sourceUrl: link.url || "",
+    access: internal ? "internal" : "source",
+    dashboardId,
+    uuid: dashboardId ? `internal:${dashboardId}` : `source:${source.countryCode}:${panel.id}`,
+    cards: [],
+    availability: "pending_discovery",
+    executable: false,
+    pendingReason: "尚未取得 Metabase 卡片清单",
+  };
+}
+
+function dashboardIdentities(dashboard) {
+  const countryCode = getDashboardCountryCode(dashboard);
+  const values = [];
+  if (dashboard.dashboardId != null && dashboard.dashboardId !== "") {
+    values.push(`id:${countryCode}:${dashboard.dashboardId}`);
+  }
+  if (dashboard.uuid) {
+    values.push(`uuid:${countryCode}:${dashboard.uuid}`);
+  }
+  for (const rawUrl of [dashboard.url, dashboard.sourceUrl]) {
+    if (!rawUrl) continue;
+    try {
+      const url = new URL(rawUrl);
+      values.push(`url:${countryCode}:${url.origin}${url.pathname.replace(/\/$/, "")}`);
+    } catch {
+      values.push(`url:${countryCode}:${String(rawUrl).split("?")[0]}`);
+    }
+  }
+  return [...new Set(values)];
+}
+
+function normalizeSourceTitle(value) {
+  return String(value || "")
+    .replace(/^(业务概览|投放获客|营销活动|资产管理|贷后催收)-/, "")
+    .replace(/^NEW_/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function canonicalDashboardTitle(value) {
+  return normalizeSourceTitle(value)
+    .replace(/by日期$/i, "")
+    .replace(/[^a-z0-9\u4e00-\u9fff]/gi, "");
 }
 
 export async function writeJsonAtomic(filePath, value) {
@@ -2416,12 +2665,18 @@ function filterInventory(inventory, filters = {}) {
           .some((value) => String(value).toLowerCase().includes(q));
       }),
     }))
-    .filter((dashboard) => !q || dashboard.cards.length > 0);
+    .filter((dashboard) => !q || dashboard.cards.length > 0 || [
+      dashboard.title,
+      dashboard.sourcePanelTitle,
+      dashboard.url,
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(q)));
 
   return {
     ...inventory,
     dashboards,
     dashboardCount: dashboards.length,
+    executableDashboardCount: dashboards.filter((dashboard) => dashboard.executable !== false).length,
+    pendingDashboardCount: dashboards.filter((dashboard) => dashboard.executable === false).length,
     totalCardCount: dashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0),
   };
 }
@@ -2491,6 +2746,8 @@ function summarizeCountries(countries, inventory, result) {
       timezone: country.timezone,
       status: country.status || "unknown",
       dashboardCount: dashboards.length,
+      executableDashboardCount: dashboards.filter((dashboard) => dashboard.executable !== false).length,
+      pendingDashboardCount: dashboards.filter((dashboard) => dashboard.executable === false).length,
       cardCount: dashboards.reduce((sum, dashboard) => sum + (dashboard.cards?.length || 0), 0),
       anomalyCount: anomalies.length,
     };

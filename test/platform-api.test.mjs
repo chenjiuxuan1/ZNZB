@@ -96,6 +96,73 @@ test("platform api returns summary and inventory", async () => {
   assert.equal(inventory.dashboards[0].cards.length, 1);
 });
 
+test("platform api merges pending panel sources into the dashboard inventory", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({
+      panels: [
+        {
+          id: 10,
+          title: "OKR",
+          links: [{ url: "https://data.example/public/dashboard/dash-1" }],
+        },
+        {
+          id: 11,
+          title: "每小时监控",
+          links: [{ url: "https://data.kuainiu.io/dashboard/1206" }],
+        },
+      ],
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.equal(inventory.dashboards.length, 2);
+  assert.equal(inventory.dashboards.find((item) => item.uuid === "dash-1").availability, "ready");
+  const pending = inventory.dashboards.find((item) => Number(item.dashboardId) === 1206);
+  assert.equal(pending.availability, "pending_discovery");
+  assert.equal(pending.executable, false);
+  assert.equal(pending.sourcePanelId, 11);
+});
+
+test("platform api does not duplicate a ready internal dashboard from panel sources", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [{
+        countryCode: "INE",
+        countryName: "印尼",
+        title: "每小时监控",
+        dashboardId: 1206,
+        uuid: "internal:1206",
+        url: "https://data.kuainiu.io/dashboard/1206",
+        cards: [{ title: "小时指标", cardId: 1, dashcardId: 2 }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({
+      panels: [{
+        id: 11,
+        title: "每小时监控",
+        links: [{ url: "https://data.kuainiu.io/dashboard/1206?日期=past15days~" }],
+      }],
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.equal(inventory.dashboards.length, 1);
+  assert.equal(inventory.dashboards[0].availability, "ready");
+  assert.equal(inventory.dashboards[0].executable, true);
+  assert.equal(inventory.dashboards[0].sourcePanelId, 11);
+});
+
 test("platform api lets country inventory override stale ready inventory", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
@@ -398,6 +465,50 @@ test("DS scheduler config inherits Metabase recipients", async () => {
   assert.equal(config.alerts.recipientEmails, "metabase-owner@example.com");
   assert.equal(config.alerts.botToken, "${KN_BOT_TOKEN}");
   assert.equal(config.alerts.sendWhenHealthy, true);
+});
+
+test("DS scheduler schedule persists project-scoped countries and inherits alerts", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "https://n8n.example/ds",
+      countries: { ine: { name: "印尼", token: "token-ine" } },
+      projectNames: { ine: "数据平台" },
+      projectCodes: { ine: "12739141488160" },
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-schedule.json"),
+    JSON.stringify({ notifyChannel: "knBot", recipientEmails: "owner@example.com" }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const saved = await api.saveDsSchedule({
+    enabled: true,
+    intervalMinutes: 60,
+    countryConfigs: [{ countryCode: "ine", enabled: true, projectCode: "12739141488160" }],
+  });
+  const schedule = await api.getDsSchedule();
+
+  assert.equal(saved.enabled, true);
+  assert.equal(schedule.countryConfigs[0].projectCode, "12739141488160");
+  assert.equal(schedule.alerts.recipientEmails, "owner@example.com");
+  assert.ok(schedule.nextRunAt);
+});
+
+test("DS scheduler schedule rejects an enabled country without project code", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(
+    () => api.saveDsSchedule({
+      enabled: true,
+      intervalMinutes: 60,
+      countryConfigs: [{ countryCode: "ine", enabled: true, projectCode: "" }],
+    }),
+    /project code/i,
+  );
 });
 
 test("requested hourly dashboards are stored in all six country sources", async () => {

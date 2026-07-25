@@ -81,8 +81,15 @@ export function parseHashRoute(hash = window.location.hash) {
   };
 }
 
-export function getDashboards() {
-  return state.inventory?.dashboards || [];
+export function getDashboards(options = {}) {
+  const dashboards = state.inventory?.dashboards || [];
+  return options.executableOnly
+    ? dashboards.filter((dashboard) => isDashboardExecutable(dashboard))
+    : dashboards;
+}
+
+export function isDashboardExecutable(dashboard) {
+  return Boolean(dashboard && dashboard.executable !== false && (dashboard.cards || []).length);
 }
 
 export function getCards(dashboard) {
