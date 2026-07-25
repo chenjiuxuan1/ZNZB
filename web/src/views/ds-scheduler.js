@@ -4,7 +4,7 @@ import { escapeHtml } from "../view-utils.js";
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const COUNTRY_FLAGS = { cn: "🇨🇳", ine: "🇮🇩", ph: "🇵🇭", th: "🇹🇭", pk: "🇵🇰", mx: "🇲🇽" };
-let model = { config: {}, result: null, status: null };
+let model = { config: {}, result: null, status: null, history: null };
 
 export function renderDsScheduler(root) {
   root.innerHTML = `<section class="panel"><p class="muted">正在加载 DS 调度配置…</p></section>`;
@@ -16,6 +16,11 @@ async function load(root) {
     model.config = await apiGet("/api/ds-scheduler/config");
   } catch (error) {
     model.status = { type: "error", text: `DS 配置加载失败：${error.message}` };
+  }
+  try {
+    model.history = await apiGet("/api/ds-scheduler/history?limit=20");
+  } catch {
+    model.history = null;
   }
   paint(root);
 }
@@ -31,7 +36,7 @@ function paint(root) {
       <div class="hero-stats">
         ${stat("已匹配项目", resolvedCount())}
         ${stat("测试工作流", result?.totalChecked ?? "—")}
-        ${stat("卡死 / 突发离线 / 长期离线", result ? `${result.totalStuck || 0} / ${result.totalStale || 0} / ${result.totalInactive ?? 0}` : "—")}
+        ${stat("卡死 / 无运行记录", result ? `${result.totalStuck || 0} / ${result.totalStale || 0}` : "—")}
         ${stat("检查失败", result?.failedCountries ?? "—")}
       </div>
     </div>
@@ -65,6 +70,7 @@ function paint(root) {
       </details>
     </section>
     ${renderResult()}
+    ${renderHistory()}
   `;
   root.querySelector("#ds-save-projects")?.addEventListener("click", () => saveProjects(root));
   root.querySelector("#ds-run-test")?.addEventListener("click", () => runTest(root));
@@ -92,9 +98,8 @@ function renderProjectCard(code) {
 function renderDsWorkflowDetails(country) {
   const stuck = country.stuckWorkflows || [];
   const stale = country.staleWorkflows || [];
-  const inactive = country.inactiveWorkflows || [];
   const issueCount = stuck.length + stale.length;
-  if (issueCount === 0 && inactive.length === 0) return "";
+  if (issueCount === 0) return "";
   let body = "";
   if (stuck.length) {
     body += '<div class="ds-detail-group"><div class="ds-detail-title" style="color:#991b1b;">⤵️ 卡死（' + stuck.length + '）</div>';
@@ -105,24 +110,14 @@ function renderDsWorkflowDetails(country) {
     body += "</div>";
   }
   if (stale.length) {
-    body += '<div class="ds-detail-group"><div class="ds-detail-title" style="color:#92400e;">⚠️ 突发离线（' + stale.length + '）</div><div class="ds-detail-scroll">';
+    body += '<div class="ds-detail-group"><div class="ds-detail-title" style="color:#92400e;">⚠️ 无运行记录（在线未运行，' + stale.length + ' 个）</div><div class="ds-detail-scroll">';
     for (const wf of stale) {
       const reason = wf.staleReason || wf.staleMessage || "定时任务已下线";
       body += '<div class="ds-detail-item">• ' + escapeHtml(wf.workflowName || wf.workflowCode) + ' <span class="muted">(' + escapeHtml(reason) + ')</span></div>';
     }
     body += "</div></div>";
   }
-  if (inactive.length) {
-    body += '<div class="ds-detail-group"><div class="ds-detail-title" style="color:#6b7280;">ℹ️ 长期离线不计入异常（' + inactive.length + '）</div><div class="ds-detail-scroll">';
-    for (const wf of inactive) {
-      body += '<div class="ds-detail-item">• ' + escapeHtml(wf.workflowName || wf.workflowCode) + ' <span class="muted">(' + escapeHtml(wf.staleMessage || wf.staleReason || "长期未运行") + ')</span></div>';
-    }
-    body += "</div></div>";
-  }
-  const summaryLabel = issueCount > 0
-    ? '查看 ' + issueCount + ' 个异常' + (inactive.length > 0 ? '、' + inactive.length + ' 个长期离线' : '')
-    : '查看 ' + inactive.length + ' 个长期离线工作流';
-  return '<details class="ds-detail-toggle"><summary>' + summaryLabel + '</summary><div class="ds-detail-body">' + body + "</div></details>";
+  return '<details class="ds-detail-toggle"><summary>查看 ' + issueCount + ' 个异常工作流明细</summary><div class="ds-detail-body">' + body + "</div></details>";
 }
 
 function renderResult() {
@@ -137,11 +132,10 @@ function renderResult() {
         ${(result.countries || []).map((country) => {
           const stuck = country.stuckCount || 0;
           const stale = country.staleCount || 0;
-          const inactive = country.inactiveCount || 0;
           const hasIssue = country.success && (stuck > 0 || stale > 0);
           const badgeClass = country.success ? (hasIssue ? "warn" : "ok") : "danger";
           const badgeText = country.success ? (hasIssue ? "有异常" : "正常") : "失败";
-          const summary = `检查 ${country.checkedWorkflows || 0} 个工作流 · 卡死 ${stuck} · 突发离线 ${stale}` + (inactive > 0 ? ` · 长期离线 ${inactive}` : "");
+          const summary = `检查 ${country.checkedWorkflows || 0} 个工作流 · 卡死 ${stuck} · 无运行记录 ${stale}`;
           return `
           <article class="card-row ds-result-card">
             <div>
@@ -197,6 +191,38 @@ async function runTest(root) {
     model.status = { type: "error", text: `DS 测试失败：${error.message}` };
   }
   paint(root);
+}
+
+function renderHistory() {
+  const runs = model.history?.runs || [];
+  if (!runs.length) return "";
+  const rows = runs.map((run) => {
+    const time = formatTime(run.startedAt);
+    const trigger = run.trigger === "schedule" ? "定时" : "手动";
+    const ok = run.ok !== false;
+    if (!ok) {
+      return `<article class="card-row ds-history-row"><div><h3>${time}</h3><p class="field-error">${escapeHtml(run.error || "运行失败")}</p></div><span class="badge danger">失败</span></article>`;
+    }
+    const r = run.result || {};
+    const stuck = r.totalStuck || 0;
+    const stale = r.totalStale || 0;
+    const checked = r.totalChecked || 0;
+    const failed = r.failedCountries || 0;
+    const hasIssue = stuck > 0 || stale > 0 || failed > 0;
+    const badgeClass = hasIssue ? "warn" : "ok";
+    const badgeText = hasIssue ? "有异常" : "正常";
+    const countryBadges = (r.countries || []).map((c) => {
+      const cs = c.stuckCount || 0;
+      const cs2 = c.staleCount || 0;
+      const label = COUNTRY_LABELS[c.country] || c.country;
+      const flag = COUNTRY_FLAGS[c.country] || "";
+      const cls = !c.success ? "danger" : (cs + cs2 > 0 ? "warn" : "ok");
+      const txt = !c.success ? "失败" : (cs + cs2 > 0 ? `${cs}卡/${cs2}无` : "正常");
+      return `<span class="badge ${cls}">${flag} ${label} ${txt}</span>`;
+    }).join(" ");
+    return `<article class="card-row ds-history-row"><div><h3>${time} · ${trigger}</h3><p>检查 ${checked} 个工作流 · 卡死 ${stuck} · 无运行记录 ${stale} · 失败 ${failed}</p><div class="ds-history-countries">${countryBadges}</div></div><span class="badge ${badgeClass}">${badgeText}</span></article>`;
+  }).join("");
+  return `<section class="panel ds-config-section"><details class="ds-history-toggle"><summary>巡检记录（最近 ${runs.length} 次）</summary><div class="card-list">${rows}</div></details></section>`;
 }
 
 function renderStatus() {

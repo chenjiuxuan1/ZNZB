@@ -3245,6 +3245,59 @@ body {
   color: var(--muted);
 }
 
+.ds-history-toggle {
+  margin-top: 16px;
+}
+
+.ds-history-toggle > summary {
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  list-style: none;
+  user-select: none;
+  margin-bottom: 4px;
+}
+
+.ds-history-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ds-history-toggle > summary::before {
+  content: "\25B6 ";
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ds-history-toggle[open] > summary::before {
+  content: "\25BC ";
+}
+
+.ds-history-row {
+  align-items: flex-start;
+}
+
+.ds-history-row h3 {
+  font-size: 14px;
+}
+
+.ds-history-row p {
+  font-size: 13px;
+  margin: 4px 0;
+}
+
+.ds-history-countries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ds-history-countries .badge {
+  font-size: 11px;
+  font-weight: 500;
+}
+
 @media (max-width: 760px) {
   .ds-project-fields {
     grid-template-columns: minmax(0, 1fr);

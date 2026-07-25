@@ -274,21 +274,22 @@ export async function checkAllCountries(rootDir, config) {
       }
 
       const data = parsed.data || {};
-      const allStaleWorkflows = (data.stale_workflows || []).map((wf) => ({
-        projectName: project.name,
-        projectCode: project.code,
-        workflowCode: wf.workflow_code,
-        workflowName: wf.workflow_name,
-        scheduleId: wf.schedule_id,
-        scheduleStatus: wf.schedule_status,
-        staleReason: wf.stale_reason,
-        staleMessage: wf.stale_message,
-        totalInstancesChecked: wf.total_instances_checked,
-      }));
-      // Split: "recently offline" (ran recently but now OFFLINE -> anomaly)
-      // vs "long-term inactive" (no recent instances -> historical, not an anomaly)
-      const staleWorkflows = allStaleWorkflows.filter((wf) => (wf.totalInstancesChecked || 0) > 0);
-      const inactiveWorkflows = allStaleWorkflows.filter((wf) => (wf.totalInstancesChecked || 0) === 0);
+      // Only monitor ONLINE schedules; OFFLINE schedules are completely ignored.
+      // stale_workflows from n8n includes both OFFLINE ("schedule_offline")
+      // and ONLINE-but-no-recent-run schedules. Filter to keep only ONLINE ones.
+      const staleWorkflows = (data.stale_workflows || [])
+        .filter((wf) => wf.schedule_status !== "OFFLINE" && wf.stale_reason !== "schedule_offline")
+        .map((wf) => ({
+          projectName: project.name,
+          projectCode: project.code,
+          workflowCode: wf.workflow_code,
+          workflowName: wf.workflow_name,
+          scheduleId: wf.schedule_id,
+          scheduleStatus: wf.schedule_status,
+          staleReason: wf.stale_reason,
+          staleMessage: wf.stale_message,
+          totalInstancesChecked: wf.total_instances_checked,
+        }));
       projectResults.push({
         projectName: project.name,
         projectCode: project.code,
@@ -296,7 +297,6 @@ export async function checkAllCountries(rootDir, config) {
         error: null,
         stuckCount: data.stuck_count || 0,
         staleCount: staleWorkflows.length,
-        inactiveCount: inactiveWorkflows.length,
         checkedWorkflows: data.total_checked || 0,
         stuckWorkflows: (data.stuck_workflows || []).map((wf) => ({
           projectName: project.name,
@@ -310,7 +310,6 @@ export async function checkAllCountries(rootDir, config) {
           recentFailures: (wf.recent_failures || []).slice(0, 5),
         })),
         staleWorkflows,
-        inactiveWorkflows,
       });
     } catch (error) {
       console.error(`[ds-scheduler] check_failed_instances ${countryCode} project=${project.code || project.name || "-"} -> ${webhookUrl} request failed: ${error.message}`);
@@ -332,18 +331,15 @@ export async function checkAllCountries(rootDir, config) {
       error: projectResults.filter((item) => !item.success).map((item) => `${item.projectName || item.projectCode}: ${item.error}`).join("；") || null,
       stuckCount: projectResults.reduce((sum, item) => sum + (item.stuckCount || 0), 0),
       staleCount: projectResults.reduce((sum, item) => sum + (item.staleWorkflows?.length || 0), 0),
-      inactiveCount: projectResults.reduce((sum, item) => sum + (item.inactiveWorkflows?.length || 0), 0),
       checkedWorkflows: projectResults.reduce((sum, item) => sum + (item.checkedWorkflows || 0), 0),
       stuckWorkflows: projectResults.flatMap((item) => item.stuckWorkflows || []),
       staleWorkflows: projectResults.flatMap((item) => item.staleWorkflows || []),
-      inactiveWorkflows: projectResults.flatMap((item) => item.inactiveWorkflows || []),
       projects: projectResults,
     });
   }
 
   const totalStuck = results.reduce((sum, r) => sum + r.stuckCount, 0);
   const totalStale = results.reduce((sum, r) => sum + (r.staleCount || 0), 0);
-  const totalInactive = results.reduce((sum, r) => sum + (r.inactiveCount || 0), 0);
   const totalChecked = results.reduce((sum, r) => sum + r.checkedWorkflows, 0);
   const failedCountries = results.filter((r) => !r.success).length;
 
@@ -351,7 +347,6 @@ export async function checkAllCountries(rootDir, config) {
     checkedAt: new Date().toISOString(),
     totalStuck,
     totalStale,
-    totalInactive,
     totalChecked,
     totalCountries: countries.length,
     failedCountries,
