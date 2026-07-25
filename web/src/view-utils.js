@@ -85,3 +85,14 @@ export function compactList(items = [], limit = 4) {
   }
   return `${values.slice(0, limit).join("、")} 等 ${values.length} 项`;
 }
+
+export function compactDashboardUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "无 URL";
+  try {
+    const url = new URL(raw);
+    return `${url.host}${url.pathname.replace(/\/$/, "")}`;
+  } catch {
+    return raw.split("?")[0];
+  }
+}

@@ -1273,7 +1273,9 @@ th {
 }
 
 .dashboard-row > span small {
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dashboard-row > b {

@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from "../api.js";
 import { getDashboards, isDashboardExecutable, state } from "../state.js";
-import { compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
+import { compactDashboardUrl, compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
 
 let discoveryStatus = null;
 
@@ -49,7 +49,7 @@ export function renderInventory(root) {
               <span>
                 <strong>${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "-")}</strong>
                 ${isHourlyDashboard(dashboard) ? `<em class="dashboard-kind">每小时监控</em>` : ""}
-                <small>${escapeHtml(dashboard.url || "无 URL")}</small>
+                <small title="${escapeHtml(dashboard.url || "")}">${escapeHtml(compactDashboardUrl(dashboard.url))}</small>
               </span>
               ${isDashboardExecutable(dashboard)
                 ? `<b class="badge ok">可执行 · ${dashboard.cards?.length || 0} 张卡片</b>`
