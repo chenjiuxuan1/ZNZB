@@ -1207,16 +1207,20 @@ th {
 }
 
 .country-tabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
   margin-bottom: 14px;
 }
 
 .country-tabs button {
-  display: inline-flex;
-  gap: 8px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
   align-items: center;
+  min-width: 0;
+  padding-inline: 8px;
+  white-space: nowrap;
 }
 
 .country-tabs button.active,
@@ -1236,6 +1240,18 @@ th {
   color: var(--warning);
   font-size: 12px;
   font-weight: 650;
+}
+
+@media (max-width: 1280px) {
+  .country-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .country-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .inventory-layout,
