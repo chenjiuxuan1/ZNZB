@@ -7,6 +7,7 @@ import {
   createPlatformApi,
   flattenInventory,
 } from "../src/platform-api.mjs";
+import { resolveDsWebhookUrl } from "../src/ds-scheduler-monitor.mjs";
 
 async function makeFixture() {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "duty-platform-"));
@@ -1681,4 +1682,76 @@ test("platform api sends TV notify test with explicit bot id", async () => {
   assert.equal(captured.config.alerts.botId, "tv-bot-001");
   assert.deepEqual(captured.config.alerts.mentions, ["strongliu@kn.group", "jerrycai@kn.group"]);
   assert.equal(captured.message, "测试消息");
+});
+
+test("DS webhook URL defaults to the local n8n gateway", () => {
+  assert.equal(resolveDsWebhookUrl(""), "http://127.0.0.1:5678/webhook/ds-scheduler");
+  assert.equal(resolveDsWebhookUrl(undefined), "http://127.0.0.1:5678/webhook/ds-scheduler");
+  assert.equal(resolveDsWebhookUrl("https://remote.example/ds"), "https://remote.example/ds");
+});
+
+test("DS manual test records history with manual_test trigger", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { cn: { name: "中国", token: "real-token" } },
+      projectCodes: { cn: "" },
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    async text() {
+      return JSON.stringify({ success: true, data: { total_checked: 5, stuck_count: 1, stale_count: 2, stuck_workflows: [], stale_workflows: [] } });
+    },
+  });
+  try {
+    const api = createPlatformApi({ rootDir });
+    const result = await api.checkAllDsCountries();
+    assert.equal(result.totalChecked, 5);
+    assert.equal(result.totalStuck, 1);
+    assert.equal(result.totalStale, 2);
+    const history = await api.getDsHistory();
+    assert.equal(history.runs.length, 1);
+    assert.equal(history.runs[0].trigger, "manual_test");
+    assert.equal(history.runs[0].totalChecked, 5);
+    assert.equal(history.runs[0].totalStuck, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DS check surfaces a readable error for object error messages", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { cn: { name: "中国", token: "real-token" } },
+      projectCodes: { cn: "123" },
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    async text() {
+      return JSON.stringify({
+        success: false,
+        error: { code: "DS_API_ERROR", message: { status: 401, body: { raw: "" }, url: "http://10.20.47.14:12345/dolphinscheduler/projects/123/schedules?pageNo=1&pageSize=200" } },
+      });
+    },
+  });
+  try {
+    const api = createPlatformApi({ rootDir });
+    const result = await api.checkAllDsCountries();
+    assert.equal(result.countries[0].success, false);
+    assert.equal(result.countries[0].error, "DS Token 无效或未授权 (HTTP 401)：http://10.20.47.14:12345/dolphinscheduler/projects/123/schedules");
+    assert.ok(!result.countries[0].error.includes("[object Object]"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

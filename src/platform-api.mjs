@@ -884,7 +884,29 @@ export function createPlatformApi({
 
     async checkAllDsCountries() {
       const config = await loadDsSchedulerConfig(rootDir);
-      return checkAllCountries(rootDir, config);
+      const startedAt = new Date().toISOString();
+      const result = await checkAllCountries(rootDir, config);
+      const finishedAt = new Date().toISOString();
+      try {
+        const countryRuns = (result.countries || []).map((c) => ({
+          countryCode: c.country,
+          ok: c.success || false,
+          error: c.error || null,
+          result: c,
+        }));
+        const entry = buildDsHistoryEntry({
+          id: randomUUID(),
+          trigger: "manual_test",
+          startedAt,
+          finishedAt,
+          countryRuns,
+          notificationSentCount: null,
+        });
+        await appendDsHistoryRun(resolve("dsHistory"), entry);
+      } catch (historyError) {
+        console.error("[ds-scheduler] failed to record manual test history:", historyError.message);
+      }
+      return result;
     },
 
     async getDsSchedule() {

@@ -4,14 +4,48 @@ import { readJsonFile } from "./utils.mjs";
 
 const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
 
+const DEFAULT_DS_SCHEDULER_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/ds-scheduler";
+
+function resolveEnvString(value) {
+  return String(value ?? "").replace(/\$\{([^}]+)\}/g, (_match, key) => process.env[key] || "").trim();
+}
+
+export function resolveDsWebhookUrl(value) {
+  return resolveEnvString(value)
+    || resolveEnvString(process.env.DS_SCHEDULER_WEBHOOK_URL)
+    || DEFAULT_DS_SCHEDULER_WEBHOOK_URL;
+}
+
+function gatewayErrorMessage(status, body) {
+  if (status === 403 || body.includes("403") || body.includes("Forbidden")) {
+    return "n8n 网关拒绝访问，请确认服务器 IP 已加入公司网络白名单";
+  }
+  return `n8n 网关返回异常: ${body.slice(0, 200)}`;
+}
+
+function describeGatewayError(parsed) {
+  const err = parsed?.error;
+  if (!err) return "unknown error";
+  const msg = err.message;
+  if (typeof msg === "string" && msg.trim()) return msg;
+  if (msg && typeof msg === "object") {
+    const status = msg.status;
+    const url = String(msg.url || "").split("?")[0];
+    if (status === 401) return `DS Token 无效或未授权 (HTTP 401)${url ? `：${url}` : ""}`;
+    if (status) return `DS API 返回 HTTP ${status}${url ? `：${url}` : ""}`;
+    return JSON.stringify(msg).slice(0, 200);
+  }
+  return err.code || "unknown error";
+}
+
 export async function loadDsSchedulerConfig(rootDir) {
   const configPath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
   const config = await readJsonFile(configPath, { countries: {} });
   if (!config) {
-    return { n8nWebhookUrl: "", countries: {} };
+    return { n8nWebhookUrl: resolveDsWebhookUrl(), countries: {} };
   }
   return {
-    n8nWebhookUrl: config.n8nWebhookUrl || "",
+    n8nWebhookUrl: resolveDsWebhookUrl(config.n8nWebhookUrl),
     countries: config.countries || {},
     projectCodes: config.projectCodes || {},
     projectNames: config.projectNames || {},
@@ -56,10 +90,11 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
     try {
       parsed = JSON.parse(body);
     } catch {
-      return { success: false, error: `resolve_project returned invalid JSON: ${body.slice(0, 200)}` };
+      console.error(`[ds-scheduler] resolve_project ${countryCode} -> ${webhookUrl} HTTP ${response.status}: ${body.slice(0, 200)}`);
+      return { success: false, error: gatewayErrorMessage(response.status, body) };
     }
     if (!parsed.success) {
-      return { success: false, error: parsed.error?.message || parsed.error?.code || "resolve_project failed" };
+      return { success: false, error: describeGatewayError(parsed) };
     }
     const projectCode = parsed.data?.project_code || parsed.data?.projectCode || "";
     if (!projectCode) {
@@ -67,6 +102,7 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
     }
     return { success: true, projectCode };
   } catch (error) {
+    console.error(`[ds-scheduler] resolve_project ${countryCode} -> ${webhookUrl} request failed: ${error.message}`);
     return { success: false, error: error.message };
   }
 }
@@ -76,7 +112,7 @@ export async function saveDsSchedulerConfig(rootDir, config) {
   const filePath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
 
   // Resolve project names to codes
-  const webhookUrl = config.n8nWebhookUrl || "";
+  const webhookUrl = resolveDsWebhookUrl(config.n8nWebhookUrl);
   const countries = config.countries || {};
   const projectNames = config.projectNames || {};
   const projectCodes = {};
@@ -99,7 +135,7 @@ export async function saveDsSchedulerConfig(rootDir, config) {
   }
 
   const fullConfig = {
-    n8nWebhookUrl: webhookUrl,
+    n8nWebhookUrl: String(config.n8nWebhookUrl || "").trim(),
     projectNames,
     projectCodes,
     countries,
@@ -110,7 +146,7 @@ export async function saveDsSchedulerConfig(rootDir, config) {
 }
 
 export async function checkAllCountries(rootDir, config) {
-  const webhookUrl = config.n8nWebhookUrl || "";
+  const webhookUrl = resolveDsWebhookUrl(config.n8nWebhookUrl);
   if (!webhookUrl) {
     throw new Error("n8n webhook URL not configured");
   }
@@ -156,9 +192,8 @@ export async function checkAllCountries(rootDir, config) {
       try {
         parsed = JSON.parse(body);
       } catch {
-        const errorMsg = body.includes("403")
-          ? "n8n 网关拒绝访问，请确认服务器 IP 已加入公司网络白名单"
-          : `n8n 网关返回异常: ${body.slice(0, 200)}`;
+        console.error(`[ds-scheduler] check_failed_instances ${countryCode} -> ${webhookUrl} HTTP ${response.status}: ${body.slice(0, 200)}`);
+        const errorMsg = gatewayErrorMessage(response.status, body);
         results.push({
           country: countryCode,
           countryName: countryConfig.name || countryCode,
@@ -176,7 +211,7 @@ export async function checkAllCountries(rootDir, config) {
           country: countryCode,
           countryName: countryConfig.name || countryCode,
           success: false,
-          error: parsed.error?.message || parsed.error?.code || "unknown error",
+          error: describeGatewayError(parsed),
           stuckCount: 0,
           checkedWorkflows: 0,
           stuckWorkflows: [],
@@ -213,6 +248,7 @@ export async function checkAllCountries(rootDir, config) {
         })),
       });
     } catch (error) {
+      console.error(`[ds-scheduler] check_failed_instances ${countryCode} -> ${webhookUrl} request failed: ${error.message}`);
       results.push({
         country: countryCode,
         countryName: countryConfig.name || countryCode,
