@@ -75,6 +75,21 @@ function gatewayErrorMessage(status, body) {
   return `n8n 网关返回异常: ${body.slice(0, 200)}`;
 }
 
+function describeGatewayError(parsed) {
+  const err = parsed?.error;
+  if (!err) return "unknown error";
+  const msg = err.message;
+  if (typeof msg === "string" && msg.trim()) return msg;
+  if (msg && typeof msg === "object") {
+    const status = msg.status;
+    const url = String(msg.url || "").split("?")[0];
+    if (status === 401) return `DS Token 无效或未授权 (HTTP 401)${url ? `：${url}` : ""}`;
+    if (status) return `DS API 返回 HTTP ${status}${url ? `：${url}` : ""}`;
+    return JSON.stringify(msg).slice(0, 200);
+  }
+  return err.code || "unknown error";
+}
+
 /**
  * Resolve a project name to a project code by calling the n8n gateway.
  */
@@ -104,7 +119,7 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
       return { success: false, error: gatewayErrorMessage(response.status, body) };
     }
     if (!parsed.success) {
-      return { success: false, error: parsed.error?.message || parsed.error?.code || "resolve_project failed" };
+      return { success: false, error: describeGatewayError(parsed) };
     }
     const projectCode = parsed.data?.project_code || parsed.data?.projectCode || "";
     if (!projectCode) {
@@ -250,7 +265,7 @@ export async function checkAllCountries(rootDir, config) {
           projectName: project.name,
           projectCode: project.code,
           success: false,
-          error: parsed.error?.message || parsed.error?.code || "unknown error",
+          error: describeGatewayError(parsed),
           stuckCount: 0,
           checkedWorkflows: 0,
           stuckWorkflows: [],

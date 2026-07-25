@@ -171,3 +171,29 @@ test("DS config save records a friendly error when the gateway returns 403", asy
     globalThis.fetch = originalFetch;
   }
 });
+
+test("DS check surfaces a readable error when the gateway returns an object error message", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    async text() {
+      return JSON.stringify({
+        success: false,
+        error: { code: "DS_API_ERROR", message: { status: 401, body: { raw: "" }, url: "http://10.20.47.14:12345/dolphinscheduler/projects/123/schedules?pageNo=1&pageSize=200" } },
+      });
+    },
+  });
+  try {
+    const result = await checkAllCountries(process.cwd(), {
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { cn: { name: "中国", token: "real-token" } },
+      projects: { cn: [{ name: "数据平台", code: "123" }] },
+    });
+    assert.equal(result.countries[0].success, false);
+    assert.equal(result.countries[0].projects[0].error, "DS Token 无效或未授权 (HTTP 401)：http://10.20.47.14:12345/dolphinscheduler/projects/123/schedules");
+    assert.ok(!result.countries[0].projects[0].error.includes("[object Object]"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
