@@ -100,6 +100,7 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
     try {
       parsed = JSON.parse(body);
     } catch {
+      console.error(`[ds-scheduler] resolve_project ${countryCode} -> ${webhookUrl} HTTP ${response.status}: ${body.slice(0, 200)}`);
       return { success: false, error: gatewayErrorMessage(response.status, body) };
     }
     if (!parsed.success) {
@@ -111,6 +112,7 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
     }
     return { success: true, projectCode };
   } catch (error) {
+    console.error(`[ds-scheduler] resolve_project ${countryCode} -> ${webhookUrl} request failed: ${error.message}`);
     return { success: false, error: error.message };
   }
 }
@@ -229,6 +231,7 @@ export async function checkAllCountries(rootDir, config) {
       try {
         parsed = JSON.parse(body);
       } catch {
+        console.error(`[ds-scheduler] check_failed_instances ${countryCode} project=${project.code || project.name || "-"} -> ${webhookUrl} HTTP ${response.status}: ${body.slice(0, 200)}`);
         const errorMsg = gatewayErrorMessage(response.status, body);
         projectResults.push({
           projectName: project.name,
@@ -288,6 +291,7 @@ export async function checkAllCountries(rootDir, config) {
         })),
       });
     } catch (error) {
+      console.error(`[ds-scheduler] check_failed_instances ${countryCode} project=${project.code || project.name || "-"} -> ${webhookUrl} request failed: ${error.message}`);
       projectResults.push({
         projectName: project.name,
         projectCode: project.code,
