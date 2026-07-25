@@ -248,6 +248,85 @@ test("platform api skips INE when its default inventory already contains every s
   assert.deepEqual(result.results[0], { ok: true, skipped: true, countryCode: "INE" });
 });
 
+test("platform api adds a manual Metabase dashboard as pending without discovery", async () => {
+  const rootDir = await makeFixture();
+  let discoveries = 0;
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => {
+      discoveries += 1;
+      return { dashboards: [] };
+    },
+  });
+
+  const added = await api.addManualDashboard({
+    countryCode: "INE",
+    title: "手动核心看板",
+    url: "https://data.example/public/dashboard/manual-uuid",
+  });
+  const inventory = await api.getInventory({ countryCode: "INE" });
+  const dashboard = inventory.dashboards.find((item) => item.title === "手动核心看板");
+
+  assert.equal(discoveries, 0);
+  assert.equal(added.availability, "pending_discovery");
+  assert.equal(dashboard.executable, false);
+  assert.equal(dashboard.url, "https://data.example/public/dashboard/manual-uuid");
+});
+
+test("platform api rejects manual links that are not Metabase dashboards", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(
+    () => api.addManualDashboard({
+      countryCode: "INE",
+      title: "不是看板",
+      url: "https://example.com/collection/12",
+    }),
+    (error) => error.statusCode === 400 && error.errors.some((message) => message.includes("/public/dashboard")),
+  );
+});
+
+test("platform api discovers only the selected manual dashboard and preserves other dashboards", async () => {
+  const rootDir = await makeFixture();
+  const requestedPanels = [];
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async ({ inputFile }) => {
+      const source = JSON.parse(await fs.readFile(inputFile, "utf8"));
+      requestedPanels.push(source.panels);
+      const panel = source.panels[0];
+      return {
+        dashboards: [{
+          countryCode: "INE",
+          countryName: "印尼",
+          sourcePanelId: panel.id,
+          sourcePanelTitle: panel.title,
+          title: panel.title,
+          uuid: "manual-uuid",
+          url: panel.links[0].url,
+          cards: [{ title: "新增卡片", cardId: 12, dashcardId: 13 }],
+        }],
+      };
+    },
+  });
+  const added = await api.addManualDashboard({
+    countryCode: "INE",
+    title: "手动核心看板",
+    url: "https://data.example/public/dashboard/manual-uuid",
+  });
+
+  const result = await api.discoverManualDashboard({ countryCode: "INE", sourcePanelId: added.sourcePanelId });
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.equal(requestedPanels.length, 1);
+  assert.equal(requestedPanels[0].length, 1);
+  assert.equal(requestedPanels[0][0].id, added.sourcePanelId);
+  assert.equal(result.executableDashboardCount, 1);
+  assert.equal(inventory.dashboards.find((item) => item.title === "手动核心看板").executable, true);
+  assert.ok(inventory.dashboards.find((item) => item.title === "OKR"));
+});
+
 test("platform api does not duplicate a ready internal dashboard from panel sources", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

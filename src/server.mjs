@@ -51,6 +51,12 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/inventory") {
     return sendJson(response, 200, await api.getInventory(Object.fromEntries(url.searchParams.entries())));
   }
+  if (method === "POST" && url.pathname === "/api/inventory/manual") {
+    return sendJson(response, 200, await api.addManualDashboard(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/inventory/discover-one") {
+    return sendJson(response, 200, await api.discoverManualDashboard(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/inventory/discover") {
     const body = await readBody(request, {});
     return sendJson(response, 200, await api.discoverCountryDashboards(body.countryCode));

@@ -11,6 +11,7 @@ import {
 } from "./metabase-public-monitor.mjs";
 import { discoverPublicDashboards } from "./metabase-discovery.mjs";
 import { parseInternalMetabaseUrl } from "./metabase-internal-client.mjs";
+import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import {
@@ -554,6 +555,125 @@ export function createPlatformApi({
       return {
         ...filtered,
         panelSources,
+      };
+    },
+
+    async addManualDashboard({ countryCode: countryCodeInput, title: titleInput, url: urlInput } = {}) {
+      const countryCode = String(countryCodeInput || "").trim().toUpperCase();
+      const title = String(titleInput || "").trim();
+      const url = String(urlInput || "").trim();
+      const countries = await readJsonFile(resolve("countries"), { countries: [] });
+      const country = (countries.countries || []).find((item) => String(item.code || "").toUpperCase() === countryCode);
+      if (!country) {
+        throw badRequest("Invalid dashboard", ["请选择已配置的国家。"]);
+      }
+      if (!title) {
+        throw badRequest("Invalid dashboard", ["请填写看板名称。"]);
+      }
+
+      let publicDashboard = null;
+      let internalDashboard = null;
+      try {
+        publicDashboard = parsePublicDashboardUrl(url);
+        internalDashboard = publicDashboard ? null : parseInternalMetabaseUrl(url);
+      } catch {
+        // The validation error below gives the user the supported formats.
+      }
+      if (!publicDashboard && internalDashboard?.type !== "dashboard") {
+        throw badRequest("Invalid dashboard", ["仅支持 Metabase 的 /public/dashboard/... 或 /dashboard/... 看板链接。"]);
+      }
+
+      const sourcePath = panelSourceFilePath(rootDir, countryCode);
+      const source = await readJsonFile(sourcePath, {});
+      const panels = Array.isArray(source.panels) ? source.panels : [];
+      const normalizedUrl = dashboardUrlIdentity(url);
+      const existing = panels.find((panel) => (panel.links || []).some((link) => dashboardUrlIdentity(link.url) === normalizedUrl));
+      const panel = existing || {
+        id: `manual:${randomUUID()}`,
+        title,
+        type: "manual_metabase",
+        manual: true,
+        links: [{ url }],
+      };
+      if (!existing) {
+        await writeJsonAtomic(sourcePath, {
+          ...source,
+          country: source.country || { code: country.code, name: country.name, timezone: country.timezone },
+          panels: [...panels, panel],
+        });
+      }
+      return panelSourceToDashboard({
+        countryCode: country.code,
+        countryName: country.name,
+        timezone: country.timezone,
+      }, panel);
+    },
+
+    async discoverManualDashboard({ countryCode: countryCodeInput, sourcePanelId } = {}) {
+      const countryCode = String(countryCodeInput || "").trim().toUpperCase();
+      const panelId = String(sourcePanelId || "").trim();
+      const countries = await readJsonFile(resolve("countries"), { countries: [] });
+      const country = (countries.countries || []).find((item) => String(item.code || "").toUpperCase() === countryCode);
+      if (!country || !panelId) {
+        throw badRequest("Invalid dashboard", ["请选择需要发现卡片的看板。"]);
+      }
+      const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), { panels: [] });
+      const panel = (source.panels || []).find((item) => String(item.id) === panelId);
+      if (!panel) {
+        throw badRequest("Dashboard not found", ["未找到该看板的来源记录，请刷新页面后重试。"]);
+      }
+
+      const temporaryInputFile = path.join(rootDir, `config/.manual-discovery-${randomUUID()}.json`);
+      let rawDiscovered;
+      try {
+        await writeJsonAtomic(temporaryInputFile, {
+          country: { code: country.code, name: country.name, timezone: country.timezone },
+          panels: [panel],
+        });
+        rawDiscovered = await discoverDashboardsFn({
+          inputFile: temporaryInputFile,
+          outputFile: null,
+          sampleRows: 0,
+        });
+      } catch (error) {
+        throw badRequest("Dashboard discovery failed", [error.message || "Metabase 看板发现失败"]);
+      } finally {
+        await fs.rm(temporaryInputFile, { force: true });
+      }
+      if ((rawDiscovered.sourceErrors || []).length > 0) {
+        throw badRequest("Dashboard discovery failed", rawDiscovered.sourceErrors.map((item) => item.error).filter(Boolean));
+      }
+
+      const discovered = (rawDiscovered.dashboards || []).map((dashboard) => ({
+        ...dashboard,
+        country: dashboard.country || { code: country.code, name: country.name, timezone: country.timezone },
+        countryCode: dashboard.countryCode || country.code,
+        countryName: dashboard.countryName || country.name,
+        timezone: dashboard.timezone || country.timezone,
+        sourcePanelId: dashboard.sourcePanelId ?? panel.id,
+        sourcePanelTitle: dashboard.sourcePanelTitle || panel.title,
+        sourceUrl: dashboard.sourceUrl || panel.links?.[0]?.url || dashboard.url || "",
+      }));
+      const current = await readPlatformInventory(rootDir, resolve("inventory"));
+      const existingCountryDashboards = (current.dashboards || [])
+        .filter((dashboard) => getDashboardCountryCode(dashboard) === countryCode);
+      const merged = mergeInventories([{
+        country: { code: country.code, name: country.name, timezone: country.timezone },
+        dashboards: existingCountryDashboards,
+      }, {
+        country: { code: country.code, name: country.name, timezone: country.timezone },
+        dashboards: discovered,
+      }]);
+      const outputFile = path.join(rootDir, `config/discovered-public-dashboards.${countryCode.toLowerCase()}.json`);
+      const discoveredAt = new Date().toISOString();
+      await writeJsonAtomic(outputFile, { ...merged, discoveredAt });
+      return {
+        ok: true,
+        countryCode,
+        sourcePanelId: panel.id,
+        discoveredAt,
+        discoveredDashboardCount: discovered.length,
+        executableDashboardCount: discovered.filter((dashboard) => (dashboard.cards || []).length > 0).length,
       };
     },
 
@@ -2952,6 +3072,15 @@ function dashboardIdentities(dashboard) {
     }
   }
   return [...new Set(values)];
+}
+
+function dashboardUrlIdentity(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
+  } catch {
+    return String(rawUrl || "").split("?")[0].replace(/\/$/, "");
+  }
 }
 
 function normalizeSourceTitle(value) {

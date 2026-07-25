@@ -26,6 +26,18 @@ export function renderInventory(root) {
         <button class="primary" id="discover-all-dashboards">一键发现六国看板</button>
       </div>
     </div>
+    <form class="panel compact" id="manual-dashboard-form">
+      <h2 class="panel-title">手动添加 Metabase 看板</h2>
+      <p class="muted">添加后仅显示为“待发现”，不会访问 Metabase；请选择该看板后再单独发现卡片。</p>
+      <div class="form-grid">
+        <label>国家<select name="countryCode" required>
+          ${countries.map((country) => `<option value="${escapeHtml(country.code)}" ${country.code === selectedCountry ? "selected" : ""}>${escapeHtml(countryLabel(country.code, countries))}</option>`).join("")}
+        </select></label>
+        <label>看板名称<input name="title" required placeholder="例如：核心经营看板"></label>
+        <label>看板链接<input name="url" required placeholder="https://.../public/dashboard/... 或 /dashboard/..."></label>
+        <div class="form-actions"><button class="primary" type="submit">添加为待发现</button></div>
+      </div>
+    </form>
     ${discoveryStatus ? `<div class="sandbox-status ${discoveryStatus.type}"><strong>${escapeHtml(discoveryStatus.title)}</strong><span>${escapeHtml(discoveryStatus.detail)}</span></div>` : ""}
     <div class="notice">
       <strong>怎么读</strong>
@@ -75,6 +87,42 @@ export function renderInventory(root) {
       state.selected.dashboardUuid = button.dataset.dashboardUuid;
       renderInventory(root);
     });
+  });
+  root.querySelector("#manual-dashboard-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    discoveryStatus = { type: "loading", title: "正在添加看板", detail: "仅保存来源记录，不会执行 Metabase 发现。" };
+    renderInventory(root);
+    try {
+      const added = await apiPost("/api/inventory/manual", Object.fromEntries(form.entries()));
+      state.inventory = await apiGet("/api/inventory");
+      state.selected.countryCode = added.countryCode;
+      state.selected.dashboardUuid = added.uuid;
+      discoveryStatus = { type: "success", title: "已添加为待发现", detail: "请选择该看板并点击“发现卡片”，完成后才会纳入巡检。" };
+    } catch (error) {
+      discoveryStatus = { type: "error", title: "添加看板失败", detail: error.payload?.errors?.join("；") || error.message };
+    }
+    renderInventory(root);
+  });
+  root.querySelector("#discover-one-dashboard")?.addEventListener("click", async () => {
+    if (!selectedDashboard?.sourcePanelId) return;
+    discoveryStatus = { type: "loading", title: "正在发现卡片", detail: `仅发现“${selectedDashboard.title || selectedDashboard.sourcePanelTitle}”，不会扫描其他看板。` };
+    renderInventory(root);
+    try {
+      const result = await apiPost("/api/inventory/discover-one", {
+        countryCode: selectedDashboard.countryCode,
+        sourcePanelId: selectedDashboard.sourcePanelId,
+      });
+      state.inventory = await apiGet("/api/inventory");
+      discoveryStatus = {
+        type: "success",
+        title: "卡片发现完成",
+        detail: `已发现 ${result.discoveredDashboardCount || 0} 个看板，其中 ${result.executableDashboardCount || 0} 个可执行。`,
+      };
+    } catch (error) {
+      discoveryStatus = { type: "error", title: "卡片发现失败", detail: error.payload?.errors?.join("；") || error.message };
+    }
+    renderInventory(root);
   });
   root.querySelector("#discover-country-dashboards")?.addEventListener("click", async () => {
     discoveryStatus = { type: "loading", title: "正在重新发现", detail: `正在读取 ${countryLabel(selectedCountry, countries)} 的内部 Metabase 看板和卡片。` };
@@ -129,6 +177,7 @@ function renderDashboardDetail(dashboard, cards) {
       <div class="source-notice">
         <span class="badge warn">已纳入巡检范围 · 待发现</span>
         <p>${escapeHtml(dashboard.pendingReason || "尚未取得 Metabase 卡片清单")}。完成内部 Metabase 发现后会自动变为可执行，无需再次录入看板。</p>
+        ${dashboard.sourcePanelId != null ? `<button class="primary" id="discover-one-dashboard">发现卡片</button>` : ""}
       </div>
     `}
     ${executable ? `<details class="advanced compact">
