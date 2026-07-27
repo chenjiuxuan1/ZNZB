@@ -10,6 +10,9 @@ export function renderInventory(root) {
   const sourceCountryCodes = panelSources.map((source) => source.countryCode).filter(Boolean);
   const countryCodes = [...new Set([...configuredCountryCodes, ...inventoryCountryCodes, ...sourceCountryCodes])];
   const selectedCountry = state.selected.countryCode || countryCodes[0] || "";
+  if (selectedCountry && state.selected.countryCode !== selectedCountry) {
+    state.selected.countryCode = selectedCountry;
+  }
   const countryDashboards = dashboards.filter((dashboard) => (dashboard.countryCode || dashboard.country?.code) === selectedCountry);
   const countryPanelSource = panelSources.find((source) => source.countryCode === selectedCountry);
   const sourcePanels = countryPanelSource?.panels || [];
@@ -27,6 +30,7 @@ export function renderInventory(root) {
       <strong>怎么读</strong>
       <span>先选国家，再选看板；右侧会展示该看板下的卡片、字段、样例行和查询状态。用于确认“规则会检查哪些卡片”。</span>
     </div>
+    ${state.inventory?.loadError ? `<div class="sandbox-status error"><strong>看板清单加载失败</strong><span>${escapeHtml(state.inventory.loadError)}</span></div>` : ""}
     <div class="country-tabs">
       ${countryCodes.map((code) => `
         <button class="${code === selectedCountry ? "active" : ""}" data-country-code="${escapeHtml(code)}">

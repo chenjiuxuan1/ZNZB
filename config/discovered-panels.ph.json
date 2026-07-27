@@ -103,6 +103,20 @@
         }
       ],
       "textPreview": "Metabase 内部 dashboard/collection 链接，通过内网 API 与认证信息发现并巡检。"
+    },
+    {
+      "id": 8,
+      "title": "资产管理-提前还款监控",
+      "type": "text",
+      "datasource": "unknown",
+      "targetCount": 0,
+      "links": [
+        {
+          "title": "https://data.kuainiu.io/dashboard/1056",
+          "url": "https://data.kuainiu.io/dashboard/1056"
+        }
+      ],
+      "textPreview": "Metabase 内部 dashboard 链接，通过认证后的内部 API 发现并参与每小时巡检。"
     }
   ],
   "country": {

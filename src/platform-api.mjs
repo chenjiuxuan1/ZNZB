@@ -982,13 +982,40 @@ export function createPlatformApi({
 
     async checkAllDsCountries() {
       const config = await loadDsSchedulerConfig(rootDir);
-      return checkAllCountries(rootDir, config);
+      const startedAt = new Date().toISOString();
+      const result = await checkAllCountries(rootDir, config);
+      const finishedAt = new Date().toISOString();
+      try {
+        const countryRuns = (result.countries || []).map((c) => ({
+          countryCode: c.country,
+          ok: c.success || false,
+          error: c.error || null,
+          result: c,
+        }));
+        const entry = buildDsHistoryEntry({
+          id: randomUUID(),
+          trigger: "manual_test",
+          startedAt,
+          finishedAt,
+          countryRuns,
+          notificationSentCount: null,
+        });
+        await appendDsHistoryRun(resolve("dsHistory"), entry);
+      } catch (historyError) {
+        console.error("[ds-scheduler] failed to record manual test history:", historyError.message);
+      }
+      return result;
     },
 
     async getDsSchedule() {
       const schedule = await readJsonFile(resolve("dsSchedule"), DEFAULT_DS_SCHEDULE);
+      const metabaseSchedule = await readJsonFile(resolve("batchSchedule"), DEFAULT_BATCH_SCHEDULE);
       const dsConfig = await loadDsSchedulerConfig(rootDir);
-      return normalizeDsSchedule(schedule, dsConfig, { preserveNextRunAt: true });
+      const normalized = normalizeDsSchedule(schedule, schedule, {
+        preserveNextRunAt: true,
+        countries: Object.keys(dsConfig.countries || {}),
+      });
+      return inheritMetabaseNotifyConfig(normalized, metabaseSchedule);
     },
 
     async getDsScheduleRunProgress() {
@@ -2897,7 +2924,7 @@ function normalizeDsSchedule(input = {}, previous = {}, options = {}) {
     next.nextRunAt = previousSchedule.nextRunAt;
     return next;
   }
-  next.nextRunAt = computeNextRunAt(next);
+  next.nextRunAt = nextDailyRunAt(next.dailyRunTimes || [next.dailyRunTime]);
   return next;
 }
 
@@ -2931,6 +2958,47 @@ function normalizeDsCountryScheduleConfigs(inputConfigs, previousSchedule, allCo
       mentions: normalizeMentions(incoming.mentions ?? prev.mentions).join(","),
     };
   });
+}
+
+function inheritMetabaseNotifyConfig(dsSchedule, metabaseSchedule = {}) {
+  const shared = {
+    notifyChannel: metabaseSchedule.notifyChannel || "tv",
+    webhookUrl: metabaseSchedule.webhookUrl || "",
+    botId: metabaseSchedule.botId || "",
+    botToken: metabaseSchedule.botToken || "",
+    chatId: metabaseSchedule.chatId || "",
+    recipientEmails: metabaseSchedule.recipientEmails || "",
+    mentions: metabaseSchedule.mentions || "",
+  };
+  const metabaseCountries = new Map(
+    (metabaseSchedule.countryConfigs || []).map((item) => [
+      String(item.countryCode || "").toUpperCase(),
+      item,
+    ]),
+  );
+  return {
+    ...dsSchedule,
+    notifyChannel: metabaseSchedule.notifyChannel || dsSchedule.notifyChannel || shared.notifyChannel,
+    webhookUrl: metabaseSchedule.webhookUrl || dsSchedule.webhookUrl || shared.webhookUrl,
+    botId: metabaseSchedule.botId || dsSchedule.botId || shared.botId,
+    botToken: metabaseSchedule.botToken || dsSchedule.botToken || shared.botToken,
+    chatId: metabaseSchedule.chatId || dsSchedule.chatId || shared.chatId,
+    recipientEmails: metabaseSchedule.recipientEmails || dsSchedule.recipientEmails || shared.recipientEmails,
+    mentions: metabaseSchedule.mentions || dsSchedule.mentions || shared.mentions,
+    countryConfigs: (dsSchedule.countryConfigs || []).map((item) => {
+      const source = metabaseCountries.get(String(item.countryCode || "").toUpperCase()) || {};
+      return {
+        ...item,
+        notifyChannel: source.notifyChannel || shared.notifyChannel || item.notifyChannel,
+        webhookUrl: source.webhookUrl || shared.webhookUrl || item.webhookUrl,
+        botId: source.botId || shared.botId || item.botId,
+        botToken: source.botToken || shared.botToken || item.botToken,
+        chatId: source.chatId || shared.chatId || item.chatId,
+        recipientEmails: source.recipientEmails || shared.recipientEmails || item.recipientEmails,
+        mentions: source.mentions || shared.mentions || item.mentions,
+      };
+    }),
+  };
 }
 
 function validateDsSchedule(schedule) {
@@ -3121,7 +3189,7 @@ async function runDsScheduleCheck(schedule, options = {}) {
     savedSchedule.lastError = null;
   }
   if (trigger === "schedule") {
-    savedSchedule.nextRunAt = computeNextRunAt(savedSchedule);
+    savedSchedule.nextRunAt = nextDailyRunAt(savedSchedule.dailyRunTimes || [savedSchedule.dailyRunTime]);
   }
   await writeJsonAtomic(scheduleFile, savedSchedule);
 
@@ -3225,6 +3293,8 @@ function buildDsHistoryEntry({ id, trigger, startedAt, finishedAt, countryRuns, 
       stuckCount: r.result?.stuckCount || 0,
       staleCount: r.result?.staleCount || 0,
       checkedWorkflows: r.result?.checkedWorkflows || 0,
+      stuckWorkflows: r.result?.stuckWorkflows || [],
+      staleWorkflows: r.result?.staleWorkflows || [],
     })),
   };
 }

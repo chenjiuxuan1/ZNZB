@@ -9,7 +9,7 @@ import { renderSandbox } from "./views/sandbox.js?v=20260707-sandbox-country";
 import { renderBatchCheck } from "./views/batch-check.js?v=20260708-metabase-schedule";
 import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
-import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260724-ds-v3";
+import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v5";
 import { renderAnomalyVerifier } from "./views/anomaly-verifier.js?v=20260724-agent-v1";
 
 const routes = [
@@ -33,22 +33,26 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
-let lazyDataLoaded = false;
-
 await loadData();
 render();
 
 export async function loadData() {
-  const [summary, countries, rulesConfig, batchSchedule] = await Promise.all([
+  const results = await Promise.allSettled([
     apiGet("/api/summary"),
     apiGet("/api/countries"),
+    apiGet("/api/inventory"),
     apiGet("/api/rules"),
-    apiGet("/api/batch-schedule").catch(() => null),
+    apiGet("/api/batch-schedule"),
+    apiGet("/api/batch-history?limit=200"),
   ]);
-  state.summary = summary;
-  state.countries = countries;
-  state.rulesConfig = rulesConfig;
-  state.batchSchedule = batchSchedule;
+  const value = (index, fallback) => results[index].status === "fulfilled" ? results[index].value : fallback;
+  state.summary = value(0, state.summary || {});
+  state.countries = value(1, state.countries || { countries: [] });
+  state.inventory = value(2, state.inventory || { dashboards: [], panelSources: [], loadError: results[2].reason?.message || "" });
+  state.rulesConfig = value(3, state.rulesConfig || { rules: [] });
+  state.batchSchedule = value(4, state.batchSchedule);
+  state.batchHistory = value(5, state.batchHistory || { runs: [] });
+  const batchSchedule = state.batchSchedule;
   if (batchSchedule) {
     state.batchNotifyConfig = {
       webhookUrl: batchSchedule.webhookUrl || state.batchNotifyConfig.webhookUrl,
@@ -62,31 +66,13 @@ export async function loadData() {
       state.selected.dashboardUuid = batchSchedule.dashboardUuid;
     }
   }
-  loadLazyData();
-}
-
-async function loadLazyData() {
-  if (lazyDataLoaded) {
-    return;
-  }
-  lazyDataLoaded = true;
-  try {
-    const [inventory, batchHistory] = await Promise.all([
-      apiGet("/api/inventory"),
-      apiGet("/api/batch-history?limit=200").catch(() => ({ runs: [] })),
-    ]);
-    state.inventory = inventory;
-    state.batchHistory = batchHistory;
-  } catch (error) {
-    console.warn("Lazy data load failed:", error);
-  }
 }
 
 export async function ensureInventoryLoaded() {
   if (state.inventory) {
     return state.inventory;
   }
-  await loadLazyData();
+  state.inventory = await apiGet("/api/inventory");
   return state.inventory;
 }
 

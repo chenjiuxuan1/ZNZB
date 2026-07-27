@@ -7,6 +7,7 @@ import {
   createPlatformApi,
   flattenInventory,
 } from "../src/platform-api.mjs";
+import { resolveDsWebhookUrl } from "../src/ds-scheduler-monitor.mjs";
 
 async function makeFixture() {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "duty-platform-"));
@@ -79,6 +80,57 @@ test("flattenInventory returns dashboard and card counts", () => {
 
   assert.equal(flat.dashboardCount, 2);
   assert.equal(flat.cardCount, 2);
+});
+
+test("DS schedule inherits Metabase notification recipients", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({ countries: { ine: { name: "印尼", token: "token" } } }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler-schedule.json"),
+    JSON.stringify({
+      enabled: false,
+      countryConfigs: [{ countryCode: "INE", enabled: false }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-schedule.json"),
+    JSON.stringify({
+      notifyChannel: "tv",
+      webhookUrl: "https://alerts.example/webhook",
+      botId: "metabase-bot",
+      mentions: "owner@example.com",
+      countryConfigs: [{
+        countryCode: "INE",
+        notifyChannel: "knBot",
+        recipientEmails: "ine-owner@example.com",
+      }],
+    }),
+  );
+
+  const schedule = await createPlatformApi({ rootDir }).getDsSchedule();
+
+  assert.equal(schedule.botId, "metabase-bot");
+  assert.equal(schedule.mentions, "owner@example.com");
+  assert.equal(schedule.countryConfigs[0].notifyChannel, "knBot");
+  assert.equal(schedule.countryConfigs[0].recipientEmails, "ine-owner@example.com");
+});
+
+test("configured hourly dashboards are versioned in every requested country source", async () => {
+  const expected = new Map([
+    ["config/discovered-panels.json", "/dashboard/1052"],
+    ["config/discovered-panels.pk.json", "/dashboard/1053"],
+    ["config/discovered-panels.th.json", "/dashboard/1054"],
+    ["config/discovered-panels.ph.json", "/dashboard/1056"],
+  ]);
+
+  for (const [relativePath, dashboardPath] of expected) {
+    const source = JSON.parse(await fs.readFile(path.resolve(relativePath), "utf8"));
+    const urls = (source.panels || []).flatMap((panel) => (panel.links || []).map((link) => link.url));
+    assert.ok(urls.some((url) => url.includes(dashboardPath)), `${relativePath} should contain ${dashboardPath}`);
+  }
 });
 
 test("platform api returns summary and inventory", async () => {
@@ -1712,4 +1764,120 @@ test("platform api sends TV notify test with explicit bot id", async () => {
   assert.equal(captured.config.alerts.botId, "tv-bot-001");
   assert.deepEqual(captured.config.alerts.mentions, ["strongliu@kn.group", "jerrycai@kn.group"]);
   assert.equal(captured.message, "测试消息");
+});
+
+test("DS webhook URL defaults to the local n8n gateway", () => {
+  assert.equal(resolveDsWebhookUrl(""), "http://127.0.0.1:5678/webhook/ds-scheduler");
+  assert.equal(resolveDsWebhookUrl(undefined), "http://127.0.0.1:5678/webhook/ds-scheduler");
+  assert.equal(resolveDsWebhookUrl("https://remote.example/ds"), "https://remote.example/ds");
+});
+
+test("DS manual test records history with manual_test trigger", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { cn: { name: "中国", token: "real-token" } },
+      projectNames: { cn: "国内数仓" },
+      projectCodes: { cn: "123" },
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    async text() {
+      return JSON.stringify({ success: true, data: { total_checked: 5, stuck_count: 1, stale_count: 2, stuck_workflows: [], stale_workflows: [] } });
+    },
+  });
+  try {
+    const api = createPlatformApi({ rootDir });
+    const result = await api.checkAllDsCountries();
+    assert.equal(result.totalChecked, 5);
+    assert.equal(result.totalStuck, 1);
+    assert.equal(result.totalStale, 2);
+    const history = await api.getDsHistory();
+    assert.equal(history.runs.length, 1);
+    assert.equal(history.runs[0].trigger, "manual_test");
+    assert.equal(history.runs[0].totalChecked, 5);
+    assert.equal(history.runs[0].totalStuck, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DS check surfaces a readable error for object error messages", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { cn: { name: "中国", token: "real-token" } },
+      projectNames: { cn: "国内数仓" },
+      projectCodes: { cn: "123" },
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    async text() {
+      return JSON.stringify({
+        success: false,
+        error: { code: "DS_API_ERROR", message: { status: 401, body: { raw: "" }, url: "http://10.20.47.14:12345/dolphinscheduler/projects/123/schedules?pageNo=1&pageSize=200" } },
+      });
+    },
+  });
+  try {
+    const api = createPlatformApi({ rootDir });
+    const result = await api.checkAllDsCountries();
+    assert.equal(result.countries[0].success, false);
+    assert.equal(result.countries[0].error, "DS Token 无效或未授权 (HTTP 401)：http://10.20.47.14:12345/dolphinscheduler/projects/123/schedules");
+    assert.ok(!result.countries[0].error.includes("[object Object]"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DS check skips countries without a configured project", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: {
+        cn: { name: "中国", token: "real-token" },
+        ine: { name: "印尼", token: "real-token" },
+      },
+      projectNames: { cn: "国内数仓", ine: "" },
+      projectCodes: { cn: "123", ine: "" },
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return {
+      status: 200,
+      ok: true,
+      async text() {
+        return JSON.stringify({ success: true, data: { total_checked: 5, stuck_count: 0, stale_count: 0, stuck_workflows: [], stale_workflows: [] } });
+      },
+    };
+  };
+  try {
+    const api = createPlatformApi({ rootDir });
+    const result = await api.checkAllDsCountries();
+    const byCode = Object.fromEntries(result.countries.map((c) => [c.country, c]));
+    assert.equal(byCode.cn.success, true);
+    assert.equal(byCode.cn.checkedWorkflows, 5);
+    assert.equal(byCode.ine.success, false);
+    assert.equal(byCode.ine.skipped, true);
+    assert.equal(byCode.ine.error, "未配置监控项目");
+    assert.equal(calls, 1);
+    assert.equal(result.failedCountries, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

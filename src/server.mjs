@@ -81,6 +81,13 @@ async function handleApi(request, response, url) {
   const isGet = method === "GET";
   const cacheKey = isGet ? `${url.pathname}${url.search || ""}` : "";
 
+  if (!isGet) {
+    // Every mutation can affect summary, inventory, schedules, or history.
+    // Clearing the small in-memory GET cache prevents the UI from showing
+    // stale data for up to JSON_CACHE_TTL_MS immediately after a save/run.
+    jsonResponseCache.clear();
+  }
+
   if (isGet && cacheKey) {
     const cached = getCachedJsonResponse(cacheKey);
     if (cached) {
@@ -156,10 +163,10 @@ async function handleApi(request, response, url) {
     return sendJsonCached(200, await api.runBatchCheckAndNotify(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/anomaly-verifier/verify") {
-    return sendJson(response, 200, await api.verifyAnomalies(await readBody(request, {})));
+    return sendJsonCached(200, await api.verifyAnomalies(await readBody(request, {})));
   }
   if (method === "GET" && url.pathname === "/api/anomaly-verifier/status") {
-    return sendJson(response, 200, await api.getAnomalyVerifierStatus());
+    return sendJsonCached(200, await api.getAnomalyVerifierStatus());
   }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});

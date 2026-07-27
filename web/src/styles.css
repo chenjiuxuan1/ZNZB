@@ -4333,3 +4333,15 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* DS 调度监控历史明细 */
+.ds-history-list { display: flex; flex-direction: column; gap: 8px; }
+.ds-history-run { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.ds-history-summary {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; cursor: pointer; font-size: 13px; background: #f9fafb; list-style: none;
+}
+.ds-history-summary::-webkit-details-marker { display: none; }
+.ds-history-summary::before { content: "▶"; font-size: 10px; color: var(--muted); transition: transform 0.15s; }
+.ds-history-run[open] .ds-history-summary::before { transform: rotate(90deg); }
+.ds-history-detail { padding: 8px 12px 12px; border-top: 1px solid var(--border); background: #fff; }
+.ds-history-detail .ds-history-country { margin-bottom: 6px; }

@@ -121,6 +121,7 @@ test("checkPublicDashboards applies frequency defaults and the history window en
   }}));
   const queriedParameters = [];
   const result = await checkPublicDashboards({
+    checkedAt: "2026-07-20T04:00:00Z",
     observationCacheFile,
     inventory: {
       dashboardCount: 1,
