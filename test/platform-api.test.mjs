@@ -1396,8 +1396,8 @@ test("platform api aggregates scheduled countries by same notification target", 
   assert.doesNotMatch(captured[0].message, /Flink/);
   assert.match(captured[0].message, /1\.数据质量告警“未处理”统计/);
   assert.match(captured[0].message, /发现 2 条异常，涉及 2 个看板。/);
-  assert.match(captured[0].message, /🇵🇭 菲律宾\(PH\)：\n• OKR \/ 规模：/);
-  assert.match(captured[0].message, /🇮🇩 印尼\(INE\)：3/);
+  assert.match(captured[0].message, /异常看板：🇮🇩 印尼\(INE\) 1 个；🇵🇭 菲律宾\(PH\) 1 个。详见历史明细。/);
+  assert.match(captured[0].message, /🇮🇩 印尼\(INE\)：2/);
   assert.match(captured[0].message, /🇵🇭 菲律宾\(PH\)：0/);
   assert.match(captured[0].message, /3\. BI报表\(Metabase\):/);
   assert.doesNotMatch(captured[0].message, /异常概览/);
@@ -1982,7 +1982,7 @@ test("platform api can manually test saved country schedule before it is due", a
   assert.equal(history.runs[0].countryCount, 1);
 });
 
-test("scheduled Wattrel history counts every unrepaired alert row instead of deduplicating by rule", async () => {
+test("scheduled Wattrel history keeps only the latest result for each quality rule", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
     path.join(rootDir, "config/countries.config.json"),
@@ -2029,9 +2029,9 @@ test("scheduled Wattrel history counts every unrepaired alert row instead of ded
 
   const result = await api.runBatchScheduleNow(new Date("2026-07-27T04:00:00.000Z"));
 
-  assert.equal(result.result.wattrelSummary.countries[0].count, 2);
-  assert.equal(result.result.wattrelSummary.total, 2);
-  assert.equal(result.result.wattrelSummary.countries[0].anomalies.length, 2);
+  assert.equal(result.result.wattrelSummary.countries[0].count, 1);
+  assert.equal(result.result.wattrelSummary.total, 1);
+  assert.equal(result.result.wattrelSummary.countries[0].anomalies.length, 1);
   assert.equal(result.result.wattrelSummary.countries[0].anomalies[0].destTbl, "dwd_mkt_ivr_job_sharding");
 });
 

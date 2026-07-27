@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
 
-const DEFAULT_WATTREL_SQL = "SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.is_repaired = 0 AND r.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) ORDER BY r.created_at DESC LIMIT ?";
+// A quality rule can execute repeatedly. Its latest result is its current status.
+const DEFAULT_WATTREL_SQL = "SELECT r.id, r.quality_id, r.name, r.type, r.`desc`, r.src_db, r.src_tbl, r.dest_db, r.dest_tbl, r.src_value, r.dest_value, r.diff, r.`begin`, r.`end`, r.result, r.status, r.src_error, r.dest_error, r.is_repaired, r.created_at, r.updated_at, s.src_sql AS src_sql, s.dest_sql AS dest_sql, s.msg_template AS msg_template FROM wattrel_quality_result r INNER JOIN (SELECT COALESCE(CAST(quality_id AS CHAR), CONCAT('name:', name)) AS rule_key, MAX(id) AS latest_id FROM wattrel_quality_result GROUP BY COALESCE(CAST(quality_id AS CHAR), CONCAT('name:', name))) latest ON latest.latest_id = r.id LEFT JOIN wattrel_quality_setting s ON r.quality_id = s.id WHERE r.result = 1 AND r.is_repaired = 0 ORDER BY r.created_at DESC LIMIT ?";
 const DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/wattrel-query";
 const WATTREL_GATEWAY_TIMEOUT_MS = 45_000;
 
@@ -32,7 +33,7 @@ export async function queryWattrelAlerts({ config = {}, limit = 100, queryFn = n
 }
 
 export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
-  return rows.map((inputRow) => {
+  const anomalies = rows.map((inputRow) => {
     const row = normalizeWattrelRow(inputRow);
     const value = (...keys) => getWattrelRowValue(row, ...keys);
     const countryCode = firstPresent(value("country_code", "countryCode", "country"), defaults.countryCode);
@@ -78,6 +79,15 @@ export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
       row,
       message: message ? String(message) : undefined,
     };
+  });
+  const seenRules = new Set();
+  return anomalies.filter((anomaly) => {
+    const key = String(anomaly.qualityId || `${anomaly.name}\u0000${anomaly.destTbl}` || "").trim();
+    if (!key || seenRules.has(key)) {
+      return !key;
+    }
+    seenRules.add(key);
+    return true;
   });
 }
 

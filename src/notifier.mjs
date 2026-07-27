@@ -283,41 +283,23 @@ function formatDutyDsScheduleSummary(summary) {
   const lines = [];
   for (const country of countries) {
     const label = formatDutyCountryLabel(country, country.countryName || country.country || "未知国家");
-    const projectNames = formatDutyDsProjectNames(country.projects || []);
-    const checkedWorkflows = Number(country.checkedWorkflows || 0);
     const stuckCount = Number(country.stuckCount || 0);
     const staleCount = Number(country.staleCount || 0);
     const failedCount = Number(country.failedCount || 0);
     const failedProjects = formatDutyDsFailedProjects(country.projects || []);
     if (country.success && failedProjects.length === 0 && stuckCount === 0 && staleCount === 0 && failedCount === 0) {
-      lines.push(`${label}：正常${projectNames ? `（项目：${projectNames}）` : ""}`);
+      lines.push(`${label}：正常`);
       continue;
     }
     if (!country.success) {
-      lines.push(`${label}：检查失败${failedProjects.length ? `（异常项目：${failedProjects.join("、")}）` : projectNames ? `（项目：${projectNames}）` : ""}`);
+      lines.push(`${label}：检查失败`);
       continue;
     }
     if (failedProjects.length && stuckCount === 0 && staleCount === 0 && failedCount === 0) {
-      lines.push(`${label}：部分失败（异常项目：${failedProjects.join("、")}）`);
+      lines.push(`${label}：部分失败`);
       continue;
     }
-    const staleNames = (country.staleWorkflows || [])
-      .map((workflow) => workflow.workflowName)
-      .filter(Boolean)
-      .join("、");
-    const failedNames = (country.failedWorkflows || [])
-      .map((workflow) => workflow.workflowName)
-      .filter(Boolean)
-      .join("、");
-    const base = `${label}：${checkedWorkflows} 个任务，卡死 ${stuckCount}、旷工 ${staleCount}、失败 ${failedCount}`;
-    const issueDetails = [
-      staleNames ? `旷工：${staleNames}` : "",
-      failedNames ? `失败：${failedNames}` : "",
-    ].filter(Boolean).join("；");
-    const projectPart = failedProjects.length
-      ? `；异常项目：${failedProjects.join("、")}`
-      : projectNames ? `；项目：${projectNames}` : "";
-    lines.push(`${base}${issueDetails ? `（${issueDetails}）` : ""}${projectPart}`);
+    lines.push(`${label}：异常（卡死 ${stuckCount}、离线 ${staleCount}、失败 ${failedCount}）`);
   }
   return lines.join("\n");
 }
@@ -327,10 +309,6 @@ function formatDutyDsFailedProjects(projects) {
     const name = project.projectName || project.projectCode || "未命名项目";
     return name;
   });
-}
-
-function formatDutyDsProjectNames(projects) {
-  return (projects || []).map((project) => project.projectName || project.projectCode || "未命名项目").join("、");
 }
 
 function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {
@@ -774,63 +752,20 @@ function filterDutyMetabaseAnomalies(anomalies = []) {
   return anomalies;
 }
 
-function appendDutyMetabaseSummary(lines, anomalies = [], options = {}) {
+function appendDutyMetabaseSummary(lines, anomalies = []) {
   lines.push("3. BI报表(Metabase):");
   if (anomalies.length === 0) {
     lines.push("正常");
     return;
   }
-  const dashboardGroups = groupAnomaliesByDashboard(anomalies)
-    .map((group) => {
-      const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(group.items);
-      return {
-        ...group,
-        missingCount: missingAnomalies.length,
-        highFluctuationCount: fluctuationAnomalies.length,
-        zeroDropCount: group.items.filter((item) => item.type === "latestNonZeroToZero").length,
-        dashboardUrl: firstDashboardUrl(group.items),
-        severity: Math.max(...group.items.map((item) => extractAnomalySeverity(item.message || "")), 0),
-      };
-    })
-    .sort((left, right) => {
-      return dutyCountrySortKey(left).localeCompare(dutyCountrySortKey(right), "zh-CN")
-        || right.missingCount - left.missingCount
-        || right.zeroDropCount - left.zeroDropCount
-        || right.highFluctuationCount - left.highFluctuationCount
-        || right.severity - left.severity
-        || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN")
-        || String(left.dashboardTitle || "").localeCompare(String(right.dashboardTitle || ""), "zh-CN");
-    });
+  const dashboardGroups = groupAnomaliesByDashboard(anomalies);
   lines.push(`发现 ${anomalies.length} 条异常，涉及 ${dashboardGroups.length} 个看板。`);
-  lines.push("异常看板（每个国家均展示；每个看板仅列 1 条最高优先级异常）：");
-  let countryLabel = "";
-  for (const example of dashboardGroups) {
-    const topAnomaly = [...example.items].sort((left, right) => (
-      Number(isMissingPublicAnomaly(right)) - Number(isMissingPublicAnomaly(left))
-      || Number(right.type === "latestNonZeroToZero") - Number(left.type === "latestNonZeroToZero")
-      || extractAnomalySeverity(right.message || "") - extractAnomalySeverity(left.message || "")
-    ))[0] || {};
-    const nextCountryLabel = formatDutyCountryLabel(example);
-    if (nextCountryLabel && nextCountryLabel !== countryLabel) {
-      lines.push(`${nextCountryLabel}：`);
-      countryLabel = nextCountryLabel;
-    }
-    const location = [
-      example.dashboardTitle || "未知看板",
-      topAnomaly.cardTitle || topAnomaly.cardName || "未知卡片",
-    ].filter(Boolean).join(" / ");
-    lines.push(`• ${location}：${compactDutyAnomalyReason(topAnomaly.message)}`);
-    if (example.dashboardUrl) {
-      lines.push(compactDashboardUrl(example.dashboardUrl));
-    }
+  const countryCounts = new Map();
+  for (const group of dashboardGroups) {
+    const label = formatDutyCountryLabel(group) || "未标国家";
+    countryCounts.set(label, (countryCounts.get(label) || 0) + 1);
   }
-}
-
-function dutyCountrySortKey(group = {}) {
-  const code = String(group.countryCode || "").toUpperCase();
-  const order = ["CN", "MX", "TH", "INE", "PH", "PK"];
-  const rank = order.indexOf(code);
-  return `${String(rank < 0 ? order.length : rank).padStart(2, "0")}:${formatDutyCountryLabel(group)}`;
+  lines.push(`异常看板：${[...countryCounts.entries()].map(([label, count]) => `${label} ${count} 个`).join("；")}。详见历史明细。`);
 }
 
 function formatDutyWattrelAnomaly(anomaly = {}) {
