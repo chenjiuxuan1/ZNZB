@@ -2535,9 +2535,10 @@ async function buildScheduledWattrelSummary({ countryConfigs = [], wattrelConfig
       return {
         countryCode: code,
         countryName: country.name || status.countryName || countryDisplayName(code),
-        count: Number(status.uniqueRuleCount ?? status.anomalyCount ?? 0),
+        count: Number(status.anomalyCount ?? 0),
         status: status.status || "unconfigured",
         error: status.error || null,
+        anomalies: status.anomalies || [],
       };
     });
     return {

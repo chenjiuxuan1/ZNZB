@@ -263,7 +263,7 @@ test("duty summary excludes Metabase 403 query failures from BI report", () => {
   assert.match(messages[0].body, /中国：0/);
   assert.match(messages[0].body, /墨西哥：2/);
   assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
-  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 业务概览-核心链路准实时监控：波动异常1条\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
+  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 业务概览-核心链路准实时监控：波动异常1条\n  · 放款金额：.*\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.match(messages[0].body, /业务概览-核心链路准实时监控/);
   assert.doesNotMatch(messages[0].body, /403 Forbidden/);
   assert.doesNotMatch(messages[0].body, /转化漏斗/);
@@ -330,8 +330,28 @@ test("duty summary includes previous-day baseline intraday anomalies below 100 p
   );
 
   assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
-  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 核心链路准实时监控：波动异常1条\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
+  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 核心链路准实时监控：波动异常1条\n  · 新客-启动次数：.*\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.doesNotMatch(messages[0].body, /3\. BI报表\(Metabase\):\n正常/);
+});
+
+test("duty summary includes the affected Metabase card and its exact anomaly reason", () => {
+  const messages = buildPublicCheckMessages(
+    {
+      checkedAt: "2026-07-27T04:00:00.000Z",
+      anomalies: [{
+        type: "completeDayChange",
+        countryCode: "TH",
+        countryName: "泰国",
+        dashboardTitle: "OKR",
+        cardTitle: "分APP对比- 入催率",
+        message: "完整日指标「入催率」从 12.0% 到 35.0%，绝对变化 +23.0个百分点（统计日期 2026-07-11 对比 2026-07-10）",
+        dashboardUrl: "https://data.kuainiu.io/public/dashboard/th-okr",
+      }],
+    },
+    { messageStyle: "dutySummary" },
+  );
+
+  assert.match(messages[0].body, /分APP对比- 入催率：.*指标「入催率」.*12\.0%.*35\.0%.*\+23\.0个百分点/);
 });
 
 test("duty summary lists every anomalous Metabase dashboard", () => {

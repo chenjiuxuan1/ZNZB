@@ -1357,7 +1357,7 @@ test("platform api aggregates scheduled countries by same notification target", 
   assert.match(captured[0].message, /1\.数据质量告警“未处理”统计/);
   assert.match(captured[0].message, /印尼\(INE\)/);
   assert.match(captured[0].message, /菲律宾\(PH\)/);
-  assert.match(captured[0].message, /印尼：2/);
+  assert.match(captured[0].message, /印尼：3/);
   assert.match(captured[0].message, /菲律宾：0/);
   assert.match(captured[0].message, /3\. BI报表\(Metabase\):/);
   assert.doesNotMatch(captured[0].message, /异常概览/);
@@ -1940,6 +1940,59 @@ test("platform api can manually test saved country schedule before it is due", a
   const history = await api.getBatchHistory();
   assert.equal(history.runs[0].trigger, "manual_test");
   assert.equal(history.runs[0].countryCount, 1);
+});
+
+test("scheduled Wattrel history counts every unrepaired alert row instead of deduplicating by rule", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({ countries: [{ code: "TH", name: "泰国", timezone: "Asia/Bangkok", status: "ready" }] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboardCount: 1,
+      dashboards: [{
+        countryCode: "TH",
+        countryName: "泰国",
+        title: "OKR",
+        uuid: "dash-th",
+        url: "https://data.example/public/dashboard/dash-th",
+        cards: [{ title: "规模", cardId: 1, dashcardId: 2, columns: ["统计日期", "注册数"] }],
+      }],
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [{ "统计日期": "2026-07-05", "注册数": 10 }];
+      },
+    }),
+    wattrelQueryFn: async () => [
+      { id: 573719, quality_id: 7, name: "dwd_mkt_ivr_job_sharding_cnt", dest_tbl: "dwd_mkt_ivr_job_sharding" },
+      { id: 573380, quality_id: 7, name: "ods_cash_apply_grant_plan_cnt", dest_tbl: "ods_cash_apply_grant_plan" },
+    ],
+    notifyTextFn: async () => ({ sent: true, status: 200 }),
+  });
+
+  await api.saveBatchSchedule({
+    enabled: false,
+    countryConfigs: [{
+      countryCode: "TH",
+      enabled: true,
+      dashboardUuids: ["dash-th"],
+      notifyChannel: "knBot",
+      recipientEmails: "owner@kn.group",
+    }],
+  });
+
+  const result = await api.runBatchScheduleNow(new Date("2026-07-27T04:00:00.000Z"));
+
+  assert.equal(result.result.wattrelSummary.countries[0].count, 2);
+  assert.equal(result.result.wattrelSummary.total, 2);
+  assert.equal(result.result.wattrelSummary.countries[0].anomalies.length, 2);
+  assert.equal(result.result.wattrelSummary.countries[0].anomalies[0].destTbl, "dwd_mkt_ivr_job_sharding");
 });
 
 test("platform api supports scheduled KN Chat Bot notifications", async () => {

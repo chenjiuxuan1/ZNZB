@@ -751,7 +751,7 @@ function renderHistoryExternalDetails(run) {
   return sections.length ? sections.join("") : "";
 }
 
-function renderHistoryWattrelDetails(summary) {
+export function renderHistoryWattrelDetails(summary) {
   if (!summary) return "";
   const countries = summary.countries || [];
   return `
@@ -762,13 +762,30 @@ function renderHistoryWattrelDetails(summary) {
       </div>
       <p class="muted">巡检时间：${escapeHtml(formatDisplayTime(summary.checkedAt))}；只统计 result=1 且未修复的告警。</p>
       ${countries.length ? `<ul class="history-dashboard-list">${countries.map((country) => `
-        <li>${escapeHtml([country.countryName, country.countryCode].filter(Boolean).join(" / ") || "-")}：${escapeHtml(country.count || 0)} 条${country.status === "failed" ? `，查询失败：${escapeHtml(country.error || "未知错误")}` : ""}</li>
+        <li>
+          ${escapeHtml([country.countryName, country.countryCode].filter(Boolean).join(" / ") || "-")}：${escapeHtml(country.count || 0)} 条${country.status === "failed" ? `，查询失败：${escapeHtml(country.error || "未知错误")}` : ""}
+          ${renderHistoryWattrelAnomalies(country.anomalies || [])}
+        </li>
       `).join("")}</ul>` : `<p class="muted">本次未配置 Wattrel 国家范围。</p>`}
     </div>
   `;
 }
 
-function renderHistoryDsDetails(summary, error) {
+function renderHistoryWattrelAnomalies(anomalies) {
+  if (!anomalies.length) return "";
+  return `
+    <ul class="history-dashboard-list">
+      ${anomalies.map((item) => `
+        <li>
+          <strong>${escapeHtml(item.name || item.cardTitle || "未命名校验")}</strong>：目标表 ${escapeHtml(item.destTbl || item.cardTitle || "-")}；
+          源表 ${escapeHtml(item.srcTbl || "-")}；期望值 ${escapeHtml(formatHistoryValue(item.expectedValue))}，实际值 ${escapeHtml(formatHistoryValue(item.actualValue))}，差值 ${escapeHtml(formatHistoryValue(item.diff))}
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
+export function renderHistoryDsDetails(summary, error) {
   if (!summary && !error) return "";
   if (!summary) {
     return `<div class="sub-panel history-country-detail"><h2 class="panel-title">DS 调度监控</h2><p class="error">${escapeHtml(error)}</p></div>`;
@@ -785,11 +802,39 @@ function renderHistoryDsDetails(summary, error) {
       </div>
       <p class="muted">检查 ${escapeHtml(summary.totalChecked || 0)} 个工作流，覆盖 ${escapeHtml(summary.totalCountries || 0)} 个国家。</p>
       ${countries.length ? `<ul class="history-dashboard-list">${countries.map((country) => `
-        <li>${escapeHtml([country.countryName, country.country].filter(Boolean).join(" / ") || "-")}：卡死 ${escapeHtml(country.stuckCount || 0)}，离线 ${escapeHtml(country.staleCount || 0)}，检查 ${escapeHtml(country.checkedWorkflows || 0)}${country.error ? `，失败：${escapeHtml(country.error)}` : ""}</li>
+        <li>
+          ${escapeHtml([country.countryName, country.country].filter(Boolean).join(" / ") || "-")}：卡死 ${escapeHtml(country.stuckCount || 0)}，离线 ${escapeHtml(country.staleCount || 0)}，检查 ${escapeHtml(country.checkedWorkflows || 0)}${country.error ? `，失败：${escapeHtml(country.error)}` : ""}
+          ${renderHistoryDsProjects(country.projects || [])}
+          ${renderHistoryDsWorkflows(country.stuckWorkflows || [], country.staleWorkflows || [])}
+        </li>
       `).join("")}</ul>` : ""}
       ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
     </div>
   `;
+}
+
+function renderHistoryDsProjects(projects) {
+  if (!projects.length) return "";
+  return `<ul class="history-dashboard-list">${projects.map((project) => `
+    <li>项目 ${escapeHtml(project.projectName || project.projectCode || "未命名")} (${escapeHtml(project.projectCode || "- ")})：检查 ${escapeHtml(project.checkedWorkflows || 0)} 个工作流${project.success === false ? `，失败：${escapeHtml(project.error || "未知错误")}` : ""}</li>
+  `).join("")}</ul>`;
+}
+
+function renderHistoryDsWorkflows(stuckWorkflows, staleWorkflows) {
+  const items = [
+    ...stuckWorkflows.map((workflow) => `卡死：${workflow.workflowName || workflow.workflowCode || "未命名工作流"} (${workflow.workflowCode || "-"})，连续失败 ${workflow.consecutiveFailures || 0} 次`),
+    ...staleWorkflows.map((workflow) => `离线：${workflow.workflowName || workflow.workflowCode || "未命名工作流"} (${workflow.workflowCode || "-"})，${workflow.staleMessage || workflow.staleReason || "未运行"}`),
+  ];
+  if (!items.length) return "";
+  return `<ul class="history-dashboard-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+function formatHistoryValue(value) {
+  if (value === undefined || value === null || value === "") return "-";
+  const numeric = Number(value);
+  return Number.isFinite(numeric)
+    ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(numeric)
+    : String(value);
 }
 
 function renderHistoryCountryTabs(run, selectedCountryCode) {

@@ -726,9 +726,7 @@ function filterDutyMetabaseAnomalies(anomalies = []) {
   const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(anomalies);
   return [
     ...missingAnomalies.filter((anomaly) => !isMetabaseQueryFailureAnomaly(anomaly)),
-    ...fluctuationAnomalies.filter((anomaly) =>
-      extractAnomalySeverity(anomaly.message || "") > 100 || isPreviousTimePointBaselineAnomaly(anomaly),
-    ),
+    ...fluctuationAnomalies,
   ];
 }
 
@@ -775,6 +773,12 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
         issueParts.push(`波动异常${group.highFluctuationCount}条`);
       }
       lines.push(`- ${group.dashboardTitle || "未知看板"}：${issueParts.join("、")}`);
+      for (const anomaly of group.items.slice(0, 10)) {
+        lines.push(`  · ${anomaly.cardTitle || anomaly.cardName || "未知卡片"}：${anomaly.message || "未提供判定原因"}`);
+      }
+      if (group.items.length > 10) {
+        lines.push(`  · 另有 ${group.items.length - 10} 条异常未展示，请查看历史明细。`);
+      }
       if (group.dashboardUrl) {
         lines.push(`  ${group.dashboardUrl}`);
       }
