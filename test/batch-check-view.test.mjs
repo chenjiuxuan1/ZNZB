@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 globalThis.window = { location: { hash: "" } };
 const {
   buildBatchScheduleCountryConfig,
+  parseAnomalyMessage,
   renderHistoryDsDetails,
   renderHistoryWattrelDetails,
 } = await import("../web/src/views/batch-check.js");
@@ -73,4 +74,16 @@ test("history details show Wattrel table values and DS project workflow scan det
   assert.match(dsHtml, /每日放款/);
   assert.match(dsHtml, /每日注册/);
   assert.match(dsHtml, /连续失败 3 次/);
+});
+
+test("history anomaly details parse latest non-zero to zero values", () => {
+  const detail = parseAnomalyMessage(
+    "指标「通过~放款」从 0.1038206 降为 0（统计日期 2026-07-27 对比 2026-07-26）",
+    "latestNonZeroToZero",
+  );
+
+  assert.equal(detail.reason, "指标波动超阈值");
+  assert.equal(detail.baselineValue, "0.1038206");
+  assert.equal(detail.currentValue, "0");
+  assert.equal(detail.timeText, "2026-07-27 / 对比 2026-07-26");
 });

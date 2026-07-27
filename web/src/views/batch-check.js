@@ -1007,7 +1007,7 @@ function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySumm
   return `<p class="success">该范围没有规则异常。</p>`;
 }
 
-function parseAnomalyMessage(message, anomalyType = "") {
+export function parseAnomalyMessage(message, anomalyType = "") {
   const text = String(message || "");
   const detail = {
     reason: "",
@@ -1020,11 +1020,11 @@ function parseAnomalyMessage(message, anomalyType = "") {
     detail.reason = "查询异常";
   } else if (/缺少|没有|最新日期|必须存在|返回为空|无数据/.test(text)) {
     detail.reason = "数据缺失";
-  } else if (/波动|变化|从 .* 到 /.test(text)) {
+  } else if (anomalyType === "latestNonZeroToZero" || /波动|变化|从 .* (?:到|降为) /.test(text)) {
     detail.reason = "指标波动超阈值";
   }
 
-  const fromTo = text.match(/从\s*([^，,\s]+)\s*到\s*([^，,\s]+)/);
+  const fromTo = text.match(/从\s*([^，,\s（(]+)\s*(?:到|降为)\s*([^，,\s（(]+)/);
   if (fromTo) {
     detail.baselineValue = fromTo[1];
     detail.currentValue = fromTo[2];
