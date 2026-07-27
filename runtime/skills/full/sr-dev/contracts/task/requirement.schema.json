@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warehouse-agent.local/contracts/task/requirement.schema.json",
+  "title": "Warehouse Agent Requirement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ticket_id",
+    "source",
+    "source_url",
+    "title",
+    "request_type",
+    "business_domain",
+    "country",
+    "countries",
+    "time_range",
+    "metrics",
+    "assets",
+    "expected_outputs",
+    "requires_sr_execution",
+    "requires_ds_release",
+    "requires_report_release",
+    "requires_pdf",
+    "risk_level",
+    "source_tier",
+    "confidence",
+    "missing_questions",
+    "approval_required",
+    "status"
+  ],
+  "properties": {
+    "ticket_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["manual", "jira"]
+    },
+    "source_url": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "title": {
+      "type": "string"
+    },
+    "request_type": {
+      "type": "string",
+      "enum": ["unknown", "query", "analysis", "quality", "development", "review"]
+    },
+    "business_domain": {
+      "type": "string"
+    },
+    "country": {
+      "type": "string"
+    },
+    "countries": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "time_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "start_date", "end_date"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["unknown", "absolute", "relative"]
+        },
+        "start_date": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "end_date": {
+          "type": ["string", "null"],
+          "format": "date"
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "analysis_md",
+          "sql",
+          "jira_comment",
+          "pdf",
+          "report",
+          "release_plan",
+          "rollback_plan"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "requires_sr_execution": {
+      "type": "boolean"
+    },
+    "requires_ds_release": {
+      "type": "boolean"
+    },
+    "requires_report_release": {
+      "type": "boolean"
+    },
+    "requires_pdf": {
+      "type": "boolean"
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["unknown", "low", "medium", "high", "critical"]
+    },
+    "source_tier": {
+      "type": "string",
+      "enum": ["unknown", "semantic", "governed_ref", "raw_exploration"]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["uncertain", "low", "medium", "high"]
+    },
+    "missing_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "approval_required": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "jira_comment",
+          "pdf",
+          "report",
+          "group_message",
+          "email",
+          "ds_change",
+          "production_ddl_dml"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "needs_clarification",
+        "planning",
+        "ready_for_execution",
+        "blocked",
+        "closed"
+      ]
+    }
+  }
+}

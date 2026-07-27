@@ -126,6 +126,12 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/batch-check-and-notify") {
     return sendJson(response, 200, await api.runBatchCheckAndNotify(await readBody(request, {})));
   }
+  if (method === "GET" && url.pathname === "/api/skills/runtime/status") {
+    return sendJson(response, 200, await api.getSkillRuntimeStatus());
+  }
+  if (method === "POST" && url.pathname === "/api/skills/sr-box/run") {
+    return sendJson(response, 200, await api.runSrBoxSkill(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});
     return sendJson(response, 200, await api.getNotifyPreview(body?.result || null, body?.options || {}));

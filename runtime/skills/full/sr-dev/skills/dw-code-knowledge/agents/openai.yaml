@@ -1,0 +1,4 @@
+interface:
+  display_name: "数仓代码库"
+  short_description: "授权后读取生产 SR Box 数仓 Git 代码搜索和文件内容"
+  default_prompt: "使用 $dw-code-knowledge / 数仓代码库：仅在已授权查看代码时，通过 data-map-dev 生产 SR Box 代码 API 查询 ETL SQL、workflow 脚本、表构建逻辑和代码出处；不执行 SQL，不管理数据源。"

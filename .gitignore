@@ -1,6 +1,8 @@
 .env
 .state/
 node_modules/
+__pycache__/
+*.py[cod]
 *.log
 tmp-*.png
 *.png

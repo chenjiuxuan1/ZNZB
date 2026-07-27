@@ -1,0 +1,23 @@
+id: ds-scheduling
+display_name: DS 调度
+description: DS 元数据查询、上线核查、运行诊断和受控 DS API 操作交接。
+category: scheduling
+standalone_entry: "$ds-schedule-manager"
+agent_entry: "$dw-dev -> ds-scheduler"
+main_agent_impact: artifact-contract-only
+required_skills:
+  - ds-schedule-manager
+  - ds-scheduler
+optional_skills:
+  - sr_box
+external_required: []
+provides:
+  - ds-metadata-lookup
+  - workflow-task-resolution
+  - schedule-status-check
+  - ds-api-handoff
+  - ds-operation-guardrail
+boundaries:
+  - DS 元数据读取优先使用 sr_box 的只读 SQL。
+  - DS 变更必须由 ds-scheduler 执行，并要求用户确认和 token readiness。
+  - 不替代数仓建模、SQL 编写或生产审批。

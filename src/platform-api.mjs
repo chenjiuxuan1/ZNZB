@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { createDutySkillRuntime } from "./duty-skill-runtime.mjs";
 import { createDefaultMetabaseClient } from "./metabase-public-monitor.mjs";
 import {
   buildDefaultCardParameters,
@@ -105,12 +106,14 @@ export function createPlatformApi({
   wattrelQueryFn = null,
   qualityRuleGenerationSubmitFn = null,
   metabaseAnomalyAgentFn = analyzeMetabaseAnomaly,
+  skillRuntimeFactory = createDutySkillRuntime,
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
   let batchScheduleRunning = false;
   let dashboardDiscoveryRunning = false;
   let dashboardDiscoveryProgress = { status: "idle", result: null, error: null, startedAt: null, finishedAt: null };
+  const skillRuntime = skillRuntimeFactory({ rootDir });
   const runIntegratedDsCheck = async (schedule) => {
     if (!schedule.includeDsScheduler) {
       return null;
@@ -250,6 +253,14 @@ export function createPlatformApi({
       const analyses = keepRecentMetabaseAnalyses([entry, ...(cache.analyses || [])]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
       return { ...entry, cached: false };
+    },
+
+    async getSkillRuntimeStatus() {
+      return skillRuntime.getStatus();
+    },
+
+    async runSrBoxSkill(body = {}) {
+      return skillRuntime.runSrBoxAction(body);
     },
 
     async ingestExternalAlertRun(body = {}) {

@@ -10,6 +10,7 @@ import { renderBatchCheck } from "./views/batch-check.js?v=20260725-async-v2";
 import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
 import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
+import { renderSkillRuntime } from "./views/skill-runtime.js?v=20260727-skills-v1";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
@@ -18,6 +19,7 @@ const routes = [
   { path: "/rules", label: "规则配置", short: "规", render: renderRules },
   { path: "/sandbox", label: "规则试跑", short: "试", render: renderSandbox },
   { path: "/batch-check", label: "定时巡检", short: "巡", render: renderBatchCheck },
+  { path: "/skill-runtime", label: "Skill 运行中心", short: "技", render: renderSkillRuntime },
   { path: "/wattrel-alerts", label: "Wattrel告警", short: "告", render: renderWattrelAlerts },
   { path: "/quality-rule-generation", label: "智能告警生成", short: "生", render: renderQualityRuleGeneration },
   { path: "/notify-preview", label: "通知预览", short: "通", render: renderNotifyPreview },

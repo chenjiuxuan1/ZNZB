@@ -1,0 +1,782 @@
+{
+  "name": "ds-scheduler-router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ds-scheduler",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ad957012-58f9-4926-8d2e-39bb93ced3a8",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        224
+      ],
+      "webhookId": "replace-with-your-webhook-id"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "5c6cc055-2a16-4027-b849-f14d6d53a593",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body ?? $json;\n\nconst FORBIDDEN_ACTION_ALIASES = new Set([\n  'delete_project',\n  'remove_project',\n  'drop_project',\n  'delete_workflow',\n  'remove_workflow',\n  'drop_workflow',\n]);\n\nconst COUNTRIES = new Set(['cn', 'ine', 'mx', 'ph', 'pk', 'th']);\nconst ACTIONS = new Set([\n  'list_projects',\n  'list_workflows',\n  'create_workflow',\n  'list_schedules',\n  'get_schedule',\n  'create_schedule',\n  'update_schedule',\n  'online_schedule',\n  'offline_schedule',\n  'schedule_blast_radius',\n  'get_workflow',\n  'online_workflow',\n  'offline_workflow',\n  'trigger_workflow',\n  'list_instances',\n  'get_instance',\n  'list_task_instances',\n  'get_task_log',\n  'retry_instance',\n  'list_datasources',\n  'get_datasource',\n  'extract_task_runtime_config',\n  'append_task',\n  'append_sql_task',\n  'append_shell_task',\n  'update_task',\n  'update_sql_task',\n  'update_shell_task',\n  'disable_tasks_except',\n  'disable_task',\n  'delete_task',\n  'dump_workflow_graph',\n]);\n\nconst source = raw.source || 'codex-skill';\nconst country = String(raw.country || '').trim().toLowerCase();\nconst action = String(raw.action || '').trim();\nconst ds_token = String(raw.ds_token || '').trim();\nconst request_id = String(raw.request_id || '').trim();\nconst inputPayload = raw.payload && typeof raw.payload === 'object' ? raw.payload : {};\n\nconst payload = {\n  project_code: inputPayload.project_code || '',\n  workflow_code: inputPayload.workflow_code || '',\n  workflow_name: inputPayload.workflow_name || '',\n  description: inputPayload.description || '',\n  instance_id: inputPayload.instance_id || '',\n  process_instance_id: inputPayload.process_instance_id || '',\n  task_instance_id: inputPayload.task_instance_id || '',\n  schedule_id: inputPayload.schedule_id || '',\n  start_node_list: inputPayload.start_node_list || '',\n  schedule_time: inputPayload.schedule_time || '',\n  state_type: inputPayload.state_type || '',\n  search_val: inputPayload.search_val || '',\n  page_no: inputPayload.page_no ?? 1,\n  page_size: inputPayload.page_size ?? 20,\n  schedule_json: inputPayload.schedule_json && typeof inputPayload.schedule_json === 'object'\n    ? inputPayload.schedule_json\n    : (inputPayload.schedule_json || ''),\n  crontab: inputPayload.crontab || '',\n  start_time: inputPayload.start_time || '',\n  end_time: inputPayload.end_time || '',\n  timezone_id: inputPayload.timezone_id || '',\n  warning_type: inputPayload.warning_type || '',\n  warning_group_id: inputPayload.warning_group_id || '',\n  failure_strategy: inputPayload.failure_strategy || '',\n  process_instance_priority: inputPayload.process_instance_priority || '',\n  worker_group: inputPayload.worker_group || '',\n  global_params: Array.isArray(inputPayload.global_params)\n    ? inputPayload.global_params\n    : (inputPayload.global_params && typeof inputPayload.global_params === 'object' ? inputPayload.global_params : []),\n  execution_type: inputPayload.execution_type || '',\n  timeout: inputPayload.timeout ?? '',\n  custom_params: inputPayload.custom_params && typeof inputPayload.custom_params === 'object'\n    ? inputPayload.custom_params\n    : {},\n  task_type: inputPayload.task_type || '',\n  task_name: inputPayload.task_name || '',\n  task_description: inputPayload.task_description || '',\n  template_task_name: inputPayload.template_task_name || '',\n  sql: inputPayload.sql || '',\n  script: inputPayload.script || '',\n  sql_type: inputPayload.sql_type ?? '',\n  datasource: inputPayload.datasource || '',\n  datasource_id: inputPayload.datasource_id || '',\n  environment_code: inputPayload.environment_code ?? '',\n  tenant_code: inputPayload.tenant_code || '',\n  upstream_task_name: inputPayload.upstream_task_name || '',\n  upstream_task_code: inputPayload.upstream_task_code || '',\n  task_code: inputPayload.task_code || '',\n  local_params: Array.isArray(inputPayload.local_params)\n    ? inputPayload.local_params\n    : (inputPayload.local_params && typeof inputPayload.local_params === 'object' ? inputPayload.local_params : []),\n  task_local_params: Array.isArray(inputPayload.task_local_params)\n    ? inputPayload.task_local_params\n    : (inputPayload.task_local_params && typeof inputPayload.task_local_params === 'object' ? inputPayload.task_local_params : []),\n  replace_local_params: Boolean(inputPayload.replace_local_params),\n  pre_statements: Array.isArray(inputPayload.pre_statements) ? inputPayload.pre_statements : [],\n  post_statements: Array.isArray(inputPayload.post_statements) ? inputPayload.post_statements : [],\n  task_params_patch: inputPayload.task_params_patch && typeof inputPayload.task_params_patch === 'object'\n    ? inputPayload.task_params_patch\n    : {},\n  title: inputPayload.title || '',\n  receivers: inputPayload.receivers || '',\n  receivers_cc: inputPayload.receivers_cc || '',\n  show_type: inputPayload.show_type || '',\n  conn_params: inputPayload.conn_params && typeof inputPayload.conn_params === 'object'\n    ? inputPayload.conn_params\n    : {},\n  keep_task_names: Array.isArray(inputPayload.keep_task_names) ? inputPayload.keep_task_names : [],\n  keep_task_codes: Array.isArray(inputPayload.keep_task_codes) ? inputPayload.keep_task_codes : [],\n  target_task_name_prefixes: Array.isArray(inputPayload.target_task_name_prefixes)\n    ? inputPayload.target_task_name_prefixes\n    : [],\n};\n\nif (typeof inputPayload.restore_original_state === 'boolean') {\n  payload.restore_original_state = inputPayload.restore_original_state;\n}\nif (typeof inputPayload.auto_offline === 'boolean') {\n  payload.auto_offline = inputPayload.auto_offline;\n}\n\nif (Object.prototype.hasOwnProperty.call(inputPayload, 'resource_list')) {\n  payload.resource_list = Array.isArray(inputPayload.resource_list)\n    ? inputPayload.resource_list\n    : (inputPayload.resource_list && typeof inputPayload.resource_list === 'object'\n      ? [inputPayload.resource_list]\n      : (inputPayload.resource_list === '' || inputPayload.resource_list == null ? [] : [inputPayload.resource_list]));\n}\n\nif (Object.prototype.hasOwnProperty.call(inputPayload, 'resources')) {\n  payload.resource_list = Array.isArray(inputPayload.resources)\n    ? inputPayload.resources\n    : (inputPayload.resources && typeof inputPayload.resources === 'object'\n      ? [inputPayload.resources]\n      : (inputPayload.resources === '' || inputPayload.resources == null ? [] : [inputPayload.resources]));\n}\n\nif (Object.prototype.hasOwnProperty.call(inputPayload, 'replace_resource_list')) {\n  payload.replace_resource_list = Boolean(inputPayload.replace_resource_list);\n}\n\nconst errors = [];\n\nif (FORBIDDEN_ACTION_ALIASES.has(action)) {\n  errors.push(`forbidden action: ${action}. deleting projects or workflows is not allowed; only delete_task is allowed`);\n}\n\nif (!COUNTRIES.has(country)) errors.push(`unsupported country: ${country}`);\nif (!ACTIONS.has(action)) errors.push(`unsupported action: ${action}`);\nif (!ds_token) errors.push('ds_token is required');\n\nif (['online_workflow', 'offline_workflow', 'trigger_workflow', 'dump_workflow_graph'].includes(action) && !payload.workflow_code) {\n  errors.push(`${action} requires workflow_code`);\n}\nif (action === 'create_workflow') {\n  if (!payload.project_code) errors.push('create_workflow requires project_code');\n  if (!payload.workflow_name) errors.push('create_workflow requires workflow_name');\n}\nif (['online_schedule', 'offline_schedule', 'schedule_blast_radius'].includes(action)) {\n  if (!payload.project_code) errors.push(`${action} requires project_code`);\n  if (!payload.workflow_code && !payload.schedule_id) {\n    errors.push(`${action} requires workflow_code or schedule_id`);\n  }\n}\nif (action === 'get_schedule') {\n  if (!payload.project_code) errors.push('get_schedule requires project_code');\n  if (!payload.workflow_code && !payload.workflow_name && !payload.schedule_id) {\n    errors.push('get_schedule requires schedule_id or workflow_code or workflow_name');\n  }\n}\nif (['create_schedule', 'update_schedule'].includes(action)) {\n  if (!payload.project_code) errors.push(`${action} requires project_code`);\n  if (action === 'create_schedule' && !payload.workflow_code) {\n    errors.push('create_schedule requires workflow_code');\n  }\n  if (action === 'update_schedule' && !payload.workflow_code && !payload.schedule_id) {\n    errors.push('update_schedule requires workflow_code or schedule_id');\n  }\n  if (!payload.schedule_json && !payload.crontab) {\n    errors.push(`${action} requires schedule_json or crontab`);\n  }\n}\nif (action === 'get_instance' && !payload.instance_id) {\n  errors.push('get_instance requires instance_id');\n}\nif (action === 'list_task_instances') {\n  if (!payload.project_code) errors.push('list_task_instances requires project_code');\n  if (!payload.process_instance_id && !payload.instance_id) {\n    errors.push('list_task_instances requires process_instance_id or instance_id');\n  }\n}\nif (action === 'get_task_log') {\n  if (!payload.project_code) errors.push('get_task_log requires project_code');\n  if (!payload.task_instance_id) {\n    const hasInstance = Boolean(payload.process_instance_id || payload.instance_id);\n    const hasTaskLocator = Boolean(payload.task_name || payload.task_code);\n    if (!hasInstance || !hasTaskLocator) {\n      errors.push('get_task_log requires task_instance_id or (process_instance_id|instance_id) plus (task_name|task_code)');\n    }\n  }\n}\nif (action === 'retry_instance') {\n  if (!payload.project_code) errors.push('retry_instance requires project_code');\n  if (!payload.instance_id) errors.push('retry_instance requires instance_id');\n}\nif (action === 'get_workflow' && !payload.workflow_code && !payload.workflow_name) {\n  errors.push('get_workflow requires workflow_code or workflow_name');\n}\nif (action === 'extract_task_runtime_config') {\n  if (!payload.project_code) errors.push('extract_task_runtime_config requires project_code');\n  if (!payload.workflow_code) errors.push('extract_task_runtime_config requires workflow_code');\n  if (!payload.task_name && !payload.task_code) {\n    errors.push('extract_task_runtime_config requires task_name or task_code');\n  }\n}\nif (action === 'get_datasource' && !payload.datasource && !payload.datasource_id) {\n  errors.push('get_datasource requires datasource or datasource_id');\n}\n\nif (['append_task', 'append_sql_task', 'append_shell_task'].includes(action)) {\n  if (!payload.project_code) errors.push(`${action} requires project_code`);\n  if (!payload.workflow_code) errors.push(`${action} requires workflow_code`);\n  if (!payload.task_name) errors.push(`${action} requires task_name`);\n\n  let taskType = payload.task_type;\n  if (action === 'append_sql_task') taskType = 'SQL';\n  if (action === 'append_shell_task') taskType = 'SHELL';\n  taskType = String(taskType || '').trim().toUpperCase();\n  payload.task_type = taskType;\n\n  if (!taskType && action === 'append_task') {\n    errors.push('append_task requires task_type');\n  }\n  if (taskType && !['SQL', 'SHELL'].includes(taskType)) {\n    errors.push(`unsupported task_type: ${taskType}`);\n  }\n  if (taskType === 'SQL' && !payload.sql) {\n    errors.push(`${action} requires sql for SQL task`);\n  }\n  if (taskType === 'SHELL' && !payload.script) {\n    errors.push(`${action} requires script for SHELL task`);\n  }\n}\n\nif (['update_task', 'update_sql_task', 'update_shell_task'].includes(action)) {\n  if (!payload.project_code) errors.push(`${action} requires project_code`);\n  if (!payload.workflow_code) errors.push(`${action} requires workflow_code`);\n  if (!payload.task_name && !payload.task_code) {\n    errors.push(`${action} requires task_name or task_code`);\n  }\n  if (action === 'update_sql_task' && !payload.sql && !payload.task_params_patch.sql && !payload.task_params_patch.rawScript) {\n    errors.push('update_sql_task requires sql or task_params_patch with sql/rawScript');\n  }\n  if (action === 'update_shell_task' && !payload.script && !payload.task_params_patch.rawScript) {\n    errors.push('update_shell_task requires script or task_params_patch.rawScript');\n  }\n}\n\nif (action === 'delete_task') {\n  if (!payload.project_code) errors.push('delete_task requires project_code');\n  if (!payload.workflow_code) errors.push('delete_task requires workflow_code');\n  if (!payload.task_name && !payload.task_code) {\n    errors.push('delete_task requires task_name or task_code');\n  }\n}\n\nif (action === 'disable_tasks_except') {\n  if (!payload.project_code) errors.push('disable_tasks_except requires project_code');\n  if (!payload.workflow_code) errors.push('disable_tasks_except requires workflow_code');\n  if (!payload.keep_task_names.length && !payload.keep_task_codes.length) {\n    errors.push('disable_tasks_except requires keep_task_names or keep_task_codes');\n  }\n}\n\nif (action === 'disable_task') {\n  if (!payload.project_code) errors.push('disable_task requires project_code');\n  if (!payload.workflow_code) errors.push('disable_task requires workflow_code');\n  if (!payload.task_name && !payload.task_code) {\n    errors.push('disable_task requires task_name or task_code');\n  }\n}\n\nconst payload_json = JSON.stringify(payload);\nconst payload_b64 = Buffer.from(payload_json, 'utf8').toString('base64');\n\nreturn [\n  {\n    json: {\n      source,\n      country,\n      action,\n      ds_token,\n      request_id,\n      payload,\n      payload_json,\n      payload_b64,\n      valid: errors.length === 0,\n      errors,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        224
+      ],
+      "id": "8496b06a-52f5-44bf-9b67-9b32d6dd5d84",
+      "name": "解析并标准化请求"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c333c032-0161-48e4-8955-deaba211b4c0",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": "=true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        48,
+        224
+      ],
+      "id": "32934da3-de3e-4d70-ac86-4debcf3e5e26",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.country}}",
+                    "rightValue": "cn",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "877f65e1-0b82-462d-9cb8-25d32c16b610"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "60eede2e-d861-4362-a946-6146bca6f114",
+                    "leftValue": "={{$json.country}}",
+                    "rightValue": "ph",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ea18baea-0b77-4f0a-97fe-e6469b6b0e19",
+                    "leftValue": "={{$json.country}}",
+                    "rightValue": "ine",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c6c80c81-7b0d-4cf0-89cb-34d16efb25dc",
+                    "leftValue": "={{$json.country}}",
+                    "rightValue": "mx",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "658533ad-876e-4047-8a27-a7db245744bd",
+                    "leftValue": "={{$json.country}}",
+                    "rightValue": "th",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b7cf36bd-eced-41db-809f-1e40505edd75",
+                    "leftValue": "={{$json.country}}",
+                    "rightValue": "pk",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        160
+      ],
+      "id": "190f1635-ce35-4eaf-88d2-2dc53e9d7692",
+      "name": "按国家分流"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      success: false,\n      country: $json.country || '',\n      action: $json.action || '',\n      request_id: $json.request_id || '',\n      data: null,\n      error: {\n        code: 'INVALID_REQUEST',\n        message: (($json.errors || []).join('; ') || 'invalid request'),\n      },\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        432
+      ],
+      "id": "3ca7cc1f-e80f-4b02-949f-e1b673022140",
+      "name": "构造请求错误响应"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh -p 36000 root@10.20.47.14 \"cd /root/ds-scheduler-gateway && python3 scripts/ds_scheduler_entry.py --country cn --action '{{$json.action}}' --ds-token '{{$json.ds_token}}' --request-id '{{$json.request_id}}' --payload-b64 '{{$json.payload_b64}}'\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        608,
+        -96
+      ],
+      "id": "01e3fc6d-13c0-42d7-9e37-acb0fc7b20f8",
+      "name": "中国",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "wGL20YUQ7ZpN1xRA",
+          "name": "中国跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "ssh -p 36000 root@10.20.47.14 \"cd /root/ds-scheduler-gateway || exit 1; git remote remove internal >/dev/null 2>&1 || true; git remote add internal git@git.kuainiujinke.com:jiangchuanchen/ds-scheduler-gateway.git; GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' git fetch --prune internal main || exit 1; git checkout main >/dev/null 2>&1 || git checkout -b main || exit 1; git reset --hard FETCH_HEAD || exit 1; git branch --set-upstream-to=internal/main main >/dev/null 2>&1 || true; git clean -fd\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -288
+      ],
+      "id": "e527c7de-885c-4990-8041-4ecdbaae6fbe",
+      "name": "中国代码拉取",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "wGL20YUQ7ZpN1xRA",
+          "name": "中国跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\nconst stdout = typeof raw.stdout === 'string' ? raw.stdout.trim() : '';\nconst stderr = typeof raw.stderr === 'string' ? raw.stderr.trim() : '';\nconst exitCode = raw.code;\nconst signal = raw.signal ?? null;\n\nif (!stdout) {\n  return [\n    {\n      json: {\n        success: false,\n        country: '',\n        action: '',\n        request_id: '',\n        data: null,\n        error: {\n          code: 'EMPTY_STDOUT',\n          message: stderr || 'command returned empty stdout',\n          exit_code: exitCode,\n          signal,\n        },\n      },\n    },\n  ];\n}\n\ntry {\n  const parsed = JSON.parse(stdout);\n  return [{ json: parsed }];\n} catch (error) {\n  return [\n    {\n      json: {\n        success: false,\n        country: '',\n        action: '',\n        request_id: '',\n        data: null,\n        error: {\n          code: 'INVALID_COMMAND_OUTPUT',\n          message: String(error),\n          exit_code: exitCode,\n          signal,\n          stderr,\n          stdout,\n        },\n      },\n    },\n  ];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        240
+      ],
+      "id": "5450dbd5-dc96-41a3-8ed1-0c6e5cb0c334",
+      "name": "内容解析"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh  root@10.20.10.12 \"cd /root/ds-scheduler-gateway && python3 scripts/ds_scheduler_entry.py --country ph --action '{{$json.action}}' --ds-token '{{$json.ds_token}}' --request-id '{{$json.request_id}}' --payload-b64 '{{$json.payload_b64}}'\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        608,
+        48
+      ],
+      "id": "a7e1888d-31f1-42a9-bbe8-43d9ac1790d2",
+      "name": "菲律宾",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "MQWXoKIQxg8ae2Nt",
+          "name": "菲律宾跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh -p 36000 root@192.168.21.236  \"cd /root/ds-scheduler-gateway && python3 scripts/ds_scheduler_entry.py --country ine --action '{{$json.action}}' --ds-token '{{$json.ds_token}}' --request-id '{{$json.request_id}}' --payload-b64 '{{$json.payload_b64}}'\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        608,
+        176
+      ],
+      "id": "93a691af-1e58-4c4b-9243-27c75de4b6c7",
+      "name": "印尼",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "SyHW5nXUCnuULr2c",
+          "name": "印尼跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh -p 36000 root@172.20.220.165 \"cd /root/ds-scheduler-gateway && python3 scripts/ds_scheduler_entry.py --country mx --action '{{$json.action}}' --ds-token '{{$json.ds_token}}' --request-id '{{$json.request_id}}' --payload-b64 '{{$json.payload_b64}}'\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        608,
+        304
+      ],
+      "id": "48c4084d-2eec-4734-ae6a-688fad6f343a",
+      "name": "墨西哥",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "7oQDoS8H2buTjr7H",
+          "name": "墨西哥跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh -p 36000 root@192.168.20.236 \"cd /root/ds-scheduler-gateway && python3 scripts/ds_scheduler_entry.py --country th --action '{{$json.action}}' --ds-token '{{$json.ds_token}}' --request-id '{{$json.request_id}}' --payload-b64 '{{$json.payload_b64}}'\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        608,
+        448
+      ],
+      "id": "ee6ebddc-1bb4-4f19-9d0d-184c78328e89",
+      "name": "泰国",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "SliSXhrkW6tiEFFo",
+          "name": "泰国跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh root@10.20.84.176  \"cd /root/ds-scheduler-gateway && python3 scripts/ds_scheduler_entry.py --country pk --action '{{$json.action}}' --ds-token '{{$json.ds_token}}' --request-id '{{$json.request_id}}' --payload-b64 '{{$json.payload_b64}}'\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        608,
+        592
+      ],
+      "id": "441801ca-402f-4dcc-9152-85b2153c9ef2",
+      "name": "巴基斯坦",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "W8NbqcmBWoI5MZ3s",
+          "name": "巴基斯坦跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "ssh root@10.20.10.12 \"cd /root/ds-scheduler-gateway || exit 1; git remote remove gateway-github >/dev/null 2>&1 || true; git remote add gateway-github https://github.com/chenjiuxuan1/ds-scheduler-gateway.git; git fetch --prune gateway-github main || exit 1; git checkout main >/dev/null 2>&1 || git checkout -b main || exit 1; git reset --hard FETCH_HEAD || exit 1; git branch --set-upstream-to=gateway-github/main main >/dev/null 2>&1 || true; git clean -fd\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -288
+      ],
+      "id": "12202dea-1f26-4431-a5ab-60fb78700573",
+      "name": "菲律宾拉取代码",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "MQWXoKIQxg8ae2Nt",
+          "name": "菲律宾跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh -p 36000 root@192.168.21.236 \"cd /root/ds-scheduler-gateway || exit 1; git remote remove gateway-github >/dev/null 2>&1 || true; git remote add gateway-github https://github.com/chenjiuxuan1/ds-scheduler-gateway.git; git fetch --prune gateway-github main || exit 1; git checkout main >/dev/null 2>&1 || git checkout -b main || exit 1; git reset --hard FETCH_HEAD || exit 1; git branch --set-upstream-to=gateway-github/main main >/dev/null 2>&1 || true; git clean -fd\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        128,
+        -288
+      ],
+      "id": "32394faa-bc1a-4d2b-95eb-6eb73ec8cb77",
+      "name": "印尼代码拉取",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "SyHW5nXUCnuULr2c",
+          "name": "印尼跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh -p 36000 root@172.20.220.165 \"cd /root/ds-scheduler-gateway || exit 1; git remote remove gateway-github >/dev/null 2>&1 || true; git remote add gateway-github https://github.com/chenjiuxuan1/ds-scheduler-gateway.git; git fetch --prune gateway-github main || exit 1; git checkout main >/dev/null 2>&1 || git checkout -b main || exit 1; git reset --hard FETCH_HEAD || exit 1; git branch --set-upstream-to=gateway-github/main main >/dev/null 2>&1 || true; git clean -fd\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        288,
+        -288
+      ],
+      "id": "ab8e400c-ca89-42be-9b55-30858991830c",
+      "name": "墨西哥代码拉取",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "7oQDoS8H2buTjr7H",
+          "name": "墨西哥跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh -p 36000 root@192.168.20.236 \"cd /root/ds-scheduler-gateway || exit 1; git remote remove gateway-github >/dev/null 2>&1 || true; git remote add gateway-github https://github.com/chenjiuxuan1/ds-scheduler-gateway.git; git fetch --prune gateway-github main || exit 1; git checkout main >/dev/null 2>&1 || git checkout -b main || exit 1; git reset --hard FETCH_HEAD || exit 1; git branch --set-upstream-to=gateway-github/main main >/dev/null 2>&1 || true; git clean -fd\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        464,
+        -288
+      ],
+      "id": "ba703f0b-7d79-43ec-99b2-f2fb6841cfdf",
+      "name": "泰国代码拉取",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "SliSXhrkW6tiEFFo",
+          "name": "泰国跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh root@10.20.84.176 \"cd /root/ds-scheduler-gateway || exit 1; git remote remove gateway-github >/dev/null 2>&1 || true; git remote add gateway-github https://github.com/chenjiuxuan1/ds-scheduler-gateway.git; git fetch --prune gateway-github main || exit 1; git checkout main >/dev/null 2>&1 || git checkout -b main || exit 1; git reset --hard FETCH_HEAD || exit 1; git branch --set-upstream-to=gateway-github/main main >/dev/null 2>&1 || true; git clean -fd\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        624,
+        -288
+      ],
+      "id": "07680e11-e18b-41c7-bf9d-4a02ea7a769b",
+      "name": "巴基斯坦代码拉取",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "W8NbqcmBWoI5MZ3s",
+          "name": "巴基斯坦跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cd /root/ds-skill-n8n && git pull origin main"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -464
+      ],
+      "id": "94709da6-c4d9-43e0-8252-ef89408112f8",
+      "name": "本地ds-skill-n8n代码更新",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "1SZA5cQDmeusdFOc",
+          "name": "n8n本机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=ssh -p 36000 root@172.20.220.165 \"cd /root/ds-scheduler-gateway && git rev-parse HEAD\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        288,
+        -464
+      ],
+      "id": "96801c27-bfe5-44ad-bd47-d5d6e6ccb6fc",
+      "name": "其他代码运行",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "7oQDoS8H2buTjr7H",
+          "name": "墨西哥跳板机"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "解析并标准化请求",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        []
+      ]
+    },
+    "解析并标准化请求": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "按国家分流",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "构造请求错误响应",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "按国家分流": {
+      "main": [
+        [
+          {
+            "node": "中国",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "菲律宾",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "印尼",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "墨西哥",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "泰国",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "巴基斯坦",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "中国": {
+      "main": [
+        [
+          {
+            "node": "内容解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "内容解析": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "菲律宾": {
+      "main": [
+        [
+          {
+            "node": "内容解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "印尼": {
+      "main": [
+        [
+          {
+            "node": "内容解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "墨西哥": {
+      "main": [
+        [
+          {
+            "node": "内容解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "泰国": {
+      "main": [
+        [
+          {
+            "node": "内容解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "巴基斯坦": {
+      "main": [
+        [
+          {
+            "node": "内容解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "中国代码拉取": {
+      "main": [
+        [
+          {
+            "node": "菲律宾拉取代码",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "菲律宾拉取代码": {
+      "main": [
+        [
+          {
+            "node": "印尼代码拉取",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "印尼代码拉取": {
+      "main": [
+        [
+          {
+            "node": "墨西哥代码拉取",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "墨西哥代码拉取": {
+      "main": [
+        [
+          {
+            "node": "泰国代码拉取",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "泰国代码拉取": {
+      "main": [
+        [
+          {
+            "node": "巴基斯坦代码拉取",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "3178ce2e-f0ef-47e3-9c1a-b2937c3feed9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9b8dca2625dfded9c94218816984fe8bf5bd91d03aaffc5e971fd46b2e9dc2e8"
+  },
+  "id": "uNGw8uwzWHeCRgB8",
+  "tags": []
+}
