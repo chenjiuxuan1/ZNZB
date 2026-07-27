@@ -57,6 +57,29 @@ export function renderBatchCheck(root) {
     });
   });
 
+  root.querySelectorAll("[data-metabase-anomaly-analysis]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const result = root.querySelector(`#${button.dataset.analysisResultId}`);
+      button.disabled = true;
+      button.textContent = "AI 分析中...";
+      if (result) result.innerHTML = `<p class="muted">正在基于本次巡检证据分析，通常需要数秒。</p>`;
+      try {
+        const analysis = await apiPost("/api/metabase-anomaly-analysis", {
+          runId: button.dataset.runId,
+          countryCode: button.dataset.countryCode,
+          anomalyIndex: Number(button.dataset.anomalyIndex),
+        });
+        if (result) result.innerHTML = renderMetabaseAnomalyAnalysis(analysis);
+        button.textContent = analysis.cached ? "查看缓存分析" : "查看 AI 分析";
+      } catch (error) {
+        if (result) result.innerHTML = `<p class="error">${escapeHtml(error.message || "AI 分析失败")}</p>`;
+        button.textContent = "AI 分析原因";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
   root.querySelector("#batch-country")?.addEventListener("change", (event) => {
     state.selected.countryCode = event.target.value;
     state.selected.dashboardUuid = "";
@@ -733,7 +756,7 @@ function renderSelectedHistoryRunDetail() {
         ${summaryItem("异常数量", (run.anomalyCount || 0) + (run.dataQualityAnomalyCount || 0))}
       </div>
       ${renderHistoryCountryTabs(run, selectedCountryCode)}
-      ${countryRuns.length ? countryRuns.map(renderHistoryCountryDetail).join("") : `<p class="muted">当前筛选国家没有这次巡检记录。</p>`}
+      ${countryRuns.length ? countryRuns.map((countryRun) => renderHistoryCountryDetail(countryRun, run.id)).join("") : `<p class="muted">当前筛选国家没有这次巡检记录。</p>`}
       ${renderHistoryExternalDetails(run)}
       <details class="advanced compact">
         <summary>查看这次巡检完整 JSON</summary>
@@ -870,7 +893,7 @@ function renderHistoryCountryTabs(run, selectedCountryCode) {
   `;
 }
 
-function renderHistoryCountryDetail(countryRun) {
+function renderHistoryCountryDetail(countryRun, runId = "") {
   const label = [countryRun.countryName, countryRun.countryCode].filter(Boolean).join(" / ") || "-";
   if (!countryRun.ok) {
     return `
@@ -899,7 +922,7 @@ function renderHistoryCountryDetail(countryRun) {
         ${summaryItem("数据质量异常", result.dataQualityAnomalyCount || 0)}
       </div>
       ${renderDashboardScanDetails(result) || renderHistoryDashboardSummary(result)}
-      ${renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary)}
+      ${renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary, { runId, countryCode: countryRun.countryCode || "" })}
     </div>
   `;
 }
@@ -943,7 +966,7 @@ function renderHistoryDashboardSummary(result) {
   `;
 }
 
-function renderHistoryAnomalyTable(anomalies) {
+function renderHistoryAnomalyTable(anomalies, context = {}) {
   if (!anomalies.length) {
     return `<p class="success">该范围没有规则异常。</p>`;
   }
@@ -961,6 +984,7 @@ function renderHistoryAnomalyTable(anomalies) {
           const detail = parseAnomalyMessage(anomaly.message || "", anomaly.type);
           const reason = detail.reason || ruleTypeLabel(anomaly.type);
           const changeLabel = detail.changeValue || ruleTypeLabel(anomaly.type);
+          const resultId = `metabase-ai-analysis-${encodeURIComponent(`${context.runId}-${context.countryCode}-${index}`).replace(/%/g, "")}`;
           return `
             <article class="anomaly-detail-card">
               <div class="anomaly-detail-card-head">
@@ -981,6 +1005,10 @@ function renderHistoryAnomalyTable(anomalies) {
                 <span>原始消息</span>
                 <p>${escapeHtml(anomaly.message || "-")}</p>
               </div>
+              <div class="button-group">
+                <button class="secondary" type="button" data-metabase-anomaly-analysis data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode)}" data-anomaly-index="${index}" data-analysis-result-id="${resultId}">AI 分析原因</button>
+              </div>
+              <div id="${resultId}" class="metabase-anomaly-analysis-result"></div>
             </article>
           `;
         }).join("")}
@@ -998,9 +1026,9 @@ function renderAnomalyDetailMetric(label, value) {
   `;
 }
 
-function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary) {
+function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary, context = {}) {
   if (anomalies.length) {
-    return renderHistoryAnomalyTable(anomalies);
+    return renderHistoryAnomalyTable(anomalies, context);
   }
   if (hasDashboardAnomalySummary) {
     return `
@@ -1011,6 +1039,26 @@ function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySumm
     `;
   }
   return `<p class="success">该范围没有规则异常。</p>`;
+}
+
+function renderMetabaseAnomalyAnalysis(response) {
+  const analysis = response?.analysis || {};
+  return `
+    <div class="sandbox-status info">
+      <strong>AI 原因分析${response.cached ? "（缓存）" : ""}</strong>
+      <span>${escapeHtml(analysis.summary || "-")}</span>
+    </div>
+    ${renderMetabaseAnalysisList("可能原因", analysis.possibleCauses)}
+    ${renderMetabaseAnalysisList("核查步骤", analysis.verificationSteps)}
+    ${renderMetabaseAnalysisList("建议处理", analysis.recommendedActions)}
+    <p class="muted">置信度：${escapeHtml(analysis.confidence || "low")}；限制：${escapeHtml(analysis.limitations || "仅基于本次巡检记录分析。")}</p>
+  `;
+}
+
+function renderMetabaseAnalysisList(label, items) {
+  const values = Array.isArray(items) ? items : [];
+  if (!values.length) return "";
+  return `<div class="anomaly-detail-reason"><span>${escapeHtml(label)}</span><ul>${values.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>`;
 }
 
 export function parseAnomalyMessage(message, anomalyType = "") {

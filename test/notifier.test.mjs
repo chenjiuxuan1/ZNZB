@@ -310,8 +310,37 @@ test("duty summary renders concise DS status by country", () => {
     },
   );
 
-  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：40 个任务正常\n  项目：印尼数仓 40 个工作流\n🇨🇳 中国：48 个任务，卡死 0、旷工 1、失败 1（旷工：每日放款；失败：每日还款）\n  项目：国内数仓 28 个工作流\n  项目：国内风控 20 个工作流/);
+  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：正常（项目：印尼数仓）\n🇨🇳 中国：48 个任务，卡死 0、旷工 1、失败 1（旷工：每日放款；失败：每日还款）；项目：国内数仓、国内风控/);
+  assert.doesNotMatch(messages[0].body, /40 个工作流|28 个工作流|20 个工作流/);
   assert.doesNotMatch(messages[0].body, /1001|1002|2001/);
+});
+
+test("duty summary shows failed projects even when another project in the country is healthy", () => {
+  const messages = buildPublicCheckMessages(
+    { checkedAt: "2026-07-25T13:34:55.000Z", anomalies: [] },
+    {
+      messageStyle: "dutySummary",
+      dsScheduleSummary: {
+        countries: [{
+          country: "th",
+          countryName: "泰国",
+          success: true,
+          partialFailure: true,
+          checkedWorkflows: 20,
+          stuckCount: 0,
+          staleCount: 0,
+          failedCount: 0,
+          projects: [
+            { projectName: "泰国数仓-工作流", success: true },
+            { projectName: "泰国数仓-数据质量", success: false, error: "gateway timeout" },
+          ],
+        }],
+      },
+    },
+  );
+
+  assert.match(messages[0].body, /🇹🇭 泰国：部分失败（异常项目：泰国数仓-数据质量）/);
+  assert.doesNotMatch(messages[0].body, /🇹🇭 泰国：正常/);
 });
 
 test("duty summary includes previous-day baseline intraday anomalies below 100 percent", () => {
@@ -369,7 +398,7 @@ test("duty summary includes the affected Metabase card and its exact anomaly rea
   assert.match(messages[0].body, /分APP对比- 入催率：.*指标「入催率」.*12\.0%.*35\.0%.*\+23\.0个百分点/);
 });
 
-test("duty summary emits one Metabase instance for every country-dashboard", () => {
+test("duty summary limits Metabase examples and directs remaining dashboards to history", () => {
   const messages = buildPublicCheckMessages(
     {
       checkedAt: "2026-07-27T04:00:00.000Z",
@@ -384,15 +413,16 @@ test("duty summary emits one Metabase instance for every country-dashboard", () 
   );
 
   assert.match(messages[0].body, /发现 4 条异常，涉及 4 个看板。/);
-  assert.match(messages[0].body, /异常实例（每个国家每个看板1条，优先缺失数据、其次数据变为0）：/);
-  assert.match(messages[0].body, /🇨🇳 中国\(CN\)/);
+  assert.match(messages[0].body, /异常示例（最多 3 条，优先缺失数据、其次数据变为0）：/);
+  assert.doesNotMatch(messages[0].body, /🇨🇳 中国\(CN\)/);
   assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)/);
   assert.match(messages[0].body, /🇵🇭 菲律宾\(PH\)/);
   assert.match(messages[0].body, /🇹🇭 泰国\(TH\)/);
-  assert.equal((messages[0].body.match(/https:\/\/data\.example\//g) || []).length, 4);
+  assert.equal((messages[0].body.match(/https:\/\/data\.example\//g) || []).length, 3);
+  assert.match(messages[0].body, /另有 1 个异常看板，详见历史明细。/);
 });
 
-test("duty summary summarizes every affected Metabase dashboard", () => {
+test("duty summary compacts long Metabase links and limits examples", () => {
   const anomalies = Array.from({ length: 10 }, (_, index) => ({
     type: "intradayTimePointCompleteness",
     countryCode: "TH",
@@ -400,7 +430,7 @@ test("duty summary summarizes every affected Metabase dashboard", () => {
     dashboardTitle: `异常看板${index + 1}`,
     cardTitle: `指标${index + 1}`,
     message: `半小时点数据缺失：日期 2026-07-21 缺少 08:00`,
-    dashboardUrl: `https://data.kuainiu.io/public/dashboard/th-${index + 1}`,
+    dashboardUrl: `https://data.kuainiu.io/public/dashboard/th-${index + 1}?date_filter=past30days~&tab=overview`,
   }));
   const messages = buildPublicCheckMessages(
     {
@@ -416,7 +446,9 @@ test("duty summary summarizes every affected Metabase dashboard", () => {
   assert.match(messages[0].body, /发现 10 条异常，涉及 10 个看板。/);
   assert.match(messages[0].body, /• 🇹🇭 泰国\(TH\) \/ 异常看板1 \/ 指标1：/);
   assert.match(messages[0].body, /public\/dashboard\/th-1/);
-  assert.match(messages[0].body, /异常看板10/);
+  assert.doesNotMatch(messages[0].body, /date_filter|tab=overview/);
+  assert.equal((messages[0].body.match(/https:\/\/data\.kuainiu\.io\/public\/dashboard\//g) || []).length, 3);
+  assert.match(messages[0].body, /另有 7 个异常看板，详见历史明细。/);
 });
 
 test("duty summary prioritizes missing data before non-zero to zero anomalies", () => {

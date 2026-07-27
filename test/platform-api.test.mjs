@@ -105,6 +105,46 @@ test("platform api returns summary and inventory", async () => {
   assert.equal(inventory.dashboards[0].cards.length, 1);
 });
 
+test("platform api analyzes and caches a saved Metabase anomaly", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-run-history.json"),
+    JSON.stringify({
+      runs: [{
+        id: "run-agent-1",
+        startedAt: "2026-07-27T00:00:00.000Z",
+        runs: [{
+          countryCode: "INE",
+          countryName: "印尼",
+          ok: true,
+          result: {
+            anomalies: [{ dashboardTitle: "OKR", dashboardUuid: "dash-1", cardTitle: "规模", type: "latestNonZeroToZero", message: "指标从 10 降为 0" }],
+          },
+        }],
+      }],
+    }),
+  );
+  let calls = 0;
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyAgentFn: async ({ anomaly, context }) => {
+      calls += 1;
+      assert.equal(anomaly.cardTitle, "规模");
+      assert.equal(context.countryCode, "INE");
+      return { model: "test-model", analysis: { summary: "数据归零", possibleCauses: [], verificationSteps: [], recommendedActions: [], confidence: "low", limitations: "测试" } };
+    },
+  });
+
+  const first = await api.analyzeMetabaseAnomaly({ runId: "run-agent-1", countryCode: "INE", anomalyIndex: 0 });
+  const second = await api.analyzeMetabaseAnomaly({ runId: "run-agent-1", countryCode: "INE", anomalyIndex: 0 });
+
+  assert.equal(first.cached, false);
+  assert.equal(second.cached, true);
+  assert.equal(calls, 1);
+  const saved = JSON.parse(await fs.readFile(path.join(rootDir, "config/metabase-anomaly-analyses.json"), "utf8"));
+  assert.equal(saved.analyses.length, 1);
+});
+
 test("platform api merges pending panel sources into the dashboard inventory", async () => {
   const rootDir = await makeFixture();
   await fs.copyFile(

@@ -1,0 +1,312 @@
+import { randomUUID } from "node:crypto";
+import { fetchCompatible } from "./fetch-compatible.mjs";
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+const AGENT_NAME = "Metabase 异常原因分析助手";
+
+export function getMetabaseAnomalyAgentSettings(env = process.env) {
+  const enabledValue = String(env.METABASE_ANOMALY_AGENT_ENABLED || "").trim().toLowerCase();
+  const n8nWebhookUrl = String(env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL || "").trim();
+  const n8nToken = String(env.METABASE_ANOMALY_AGENT_N8N_TOKEN || "").trim();
+  const baseUrl = String(env.METABASE_ANOMALY_AGENT_BASE_URL || "").trim().replace(/\/+$/, "");
+  const apiKey = String(env.METABASE_ANOMALY_AGENT_API_KEY || "").trim();
+  const model = String(env.METABASE_ANOMALY_AGENT_MODEL || "").trim();
+  const explicitlyDisabled = ["0", "false", "off", "no"].includes(enabledValue);
+  const transport = n8nWebhookUrl ? "n8n" : "direct";
+  const configured = transport === "n8n" ? true : Boolean(baseUrl && apiKey && model);
+  return {
+    enabled: !explicitlyDisabled && configured,
+    configured,
+    baseUrl,
+    apiKey,
+    model,
+    transport,
+    n8nWebhookUrl,
+    n8nToken,
+    langfuse: getLangfuseSettings(env),
+  };
+}
+
+export async function analyzeMetabaseAnomaly({ anomaly, context = {}, env = process.env, fetchFn = fetchCompatible } = {}) {
+  const settings = getMetabaseAnomalyAgentSettings(env);
+  if (!settings.enabled) {
+    const error = new Error("Metabase 异常分析 Agent 未配置。请设置 METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL，或设置直连模型配置。");
+    error.statusCode = 503;
+    throw error;
+  }
+  if (!anomaly || typeof anomaly !== "object") {
+    throw new Error("Metabase 异常分析缺少异常证据。");
+  }
+
+  if (settings.transport === "n8n") {
+    return callN8nAgent({ settings, anomaly, context, fetchFn });
+  }
+
+  const promptMessages = [
+    { role: "system", content: systemPrompt() },
+    { role: "user", content: buildEvidencePrompt(anomaly, context) },
+  ];
+  const startedAt = new Date();
+  const modelResponse = await callModel({ settings, promptMessages, fetchFn });
+  const parsed = parseAnalysisOrFallback(modelResponse.rawOutput);
+  const analysis = normalizeAnalysis(parsed.value);
+  const trace = await writeLangfuseTrace({
+    settings: settings.langfuse,
+    fetchFn,
+    promptMessages,
+    rawOutput: modelResponse.rawOutput,
+    analysis,
+    model: modelResponse.model || settings.model,
+    tokenUsage: modelResponse.tokenUsage,
+    anomaly,
+    context,
+    startedAt,
+    fallbackUsed: parsed.fallbackUsed,
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    provider: "openai-compatible",
+    model: modelResponse.model || settings.model,
+    analysis,
+    fallbackUsed: parsed.fallbackUsed,
+    observability: trace,
+  };
+}
+
+async function callN8nAgent({ settings, anomaly, context, fetchFn }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await fetchFn(settings.n8nWebhookUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(settings.n8nToken ? { Authorization: `Bearer ${settings.n8nToken}` } : {}),
+      },
+      body: JSON.stringify({ anomaly: pickAnomalyEvidence(anomaly), context: { ...pickContextEvidence(context), sameDashboardAnomalies: (context.sameDashboardAnomalies || []).slice(0, 5).map(pickAnomalyEvidence) } }),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.success === false) {
+      const error = new Error(payload?.error?.message || payload?.error || `n8n Agent 请求失败（HTTP ${response.status}）`);
+      error.statusCode = 502;
+      throw error;
+    }
+    return {
+      generatedAt: payload?.generatedAt || new Date().toISOString(),
+      provider: "n8n",
+      model: String(payload?.model || "n8n-configured-model"),
+      analysis: normalizeAnalysis(payload?.analysis),
+      fallbackUsed: Boolean(payload?.fallbackUsed),
+      observability: payload?.observability || { enabled: false, written: false, reason: "n8n 未返回 Langfuse 状态" },
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callModel({ settings, promptMessages, fetchFn }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetchFn(resolveChatCompletionsUrl(settings.baseUrl), {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify({ model: settings.model, messages: promptMessages, stream: false, temperature: 0.2 }),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = payload?.error?.message || payload?.message || `模型请求失败（HTTP ${response.status}）`;
+      const error = new Error(message);
+      error.statusCode = 502;
+      throw error;
+    }
+    return {
+      rawOutput: extractModelContent(payload),
+      model: String(payload?.model || settings.model),
+      tokenUsage: normalizeTokenUsage(payload?.usage),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function writeLangfuseTrace({ settings, fetchFn, promptMessages, rawOutput, analysis, model, tokenUsage, anomaly, context, startedAt, fallbackUsed }) {
+  if (!settings.enabled) {
+    return { enabled: false, written: false, reason: settings.reason };
+  }
+  const traceId = langfuseId();
+  const generationId = langfuseId();
+  const batch = buildLangfuseBatch({
+    traceId,
+    generationId,
+    promptMessages,
+    rawOutput,
+    analysis,
+    model,
+    tokenUsage,
+    anomaly,
+    context,
+    startedAt,
+    fallbackUsed,
+  });
+  try {
+    const response = await fetchFn(`${settings.baseUrl}/api/public/ingestion`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from(`${settings.publicKey}:${settings.secretKey}`).toString("base64")}`,
+        "User-Agent": "metabase-anomaly-agent/1.0",
+      },
+      body: JSON.stringify(batch),
+    });
+    if (!response.ok) {
+      return { enabled: true, written: false, traceId, generationId, error: `HTTP ${response.status}` };
+    }
+    return { enabled: true, written: true, traceId, generationId };
+  } catch (error) {
+    return { enabled: true, written: false, traceId, generationId, error: String(error?.message || error).slice(0, 240) };
+  }
+}
+
+export function buildLangfuseBatch({ traceId, generationId, promptMessages, rawOutput, analysis, model, tokenUsage, anomaly, context, startedAt, fallbackUsed }) {
+  const timestamp = new Date().toISOString();
+  const evidence = { anomaly: pickAnomalyEvidence(anomaly), context: pickContextEvidence(context) };
+  const generation = {
+    id: generationId,
+    traceId,
+    name: AGENT_NAME,
+    model,
+    input: promptMessages,
+    output: rawOutput,
+    metadata: {
+      source: "duty-platform-metabase-anomaly-agent",
+      parsed_output: analysis,
+      evidence,
+      fallback_used: fallbackUsed,
+      started_at: startedAt.toISOString(),
+    },
+  };
+  if (tokenUsage) {
+    generation.promptTokens = tokenUsage.promptTokens;
+    generation.completionTokens = tokenUsage.completionTokens;
+    generation.totalTokens = tokenUsage.totalTokens;
+    generation.usageDetails = { input: tokenUsage.promptTokens, output: tokenUsage.completionTokens, total: tokenUsage.totalTokens, unit: "TOKENS" };
+  }
+  return {
+    batch: [
+      {
+        id: langfuseId(), timestamp, type: "trace-create",
+        body: { id: traceId, name: AGENT_NAME, sessionId: String(context.runId || ""), input: promptMessages, output: analysis, metadata: { source: "duty-platform-metabase-anomaly-agent", evidence, fallback_used: fallbackUsed } },
+      },
+      { id: langfuseId(), timestamp, type: "generation-create", body: generation },
+    ],
+  };
+}
+
+function getLangfuseSettings(env) {
+  const enabledValue = String(env.METABASE_ANOMALY_LANGFUSE_ENABLED || env.LANGFUSE_ENABLED || "").trim().toLowerCase();
+  const baseUrl = String(env.METABASE_ANOMALY_LANGFUSE_BASE_URL || env.LANGFUSE_BASE_URL || "").trim().replace(/\/+$/, "");
+  const publicKey = String(env.METABASE_ANOMALY_LANGFUSE_PUBLIC_KEY || env.LANGFUSE_PUBLIC_KEY || "").trim();
+  const secretKey = String(env.METABASE_ANOMALY_LANGFUSE_SECRET_KEY || env.LANGFUSE_SECRET_KEY || "").trim();
+  const explicitlyDisabled = ["0", "false", "off", "no"].includes(enabledValue);
+  const configured = Boolean(baseUrl && publicKey && secretKey);
+  return { enabled: !explicitlyDisabled && configured, baseUrl, publicKey, secretKey, reason: configured ? "disabled" : "Langfuse 未配置" };
+}
+
+function resolveChatCompletionsUrl(baseUrl) {
+  if (/\/chat\/completions$/i.test(baseUrl)) return baseUrl;
+  return `${baseUrl}/chat/completions`;
+}
+
+function systemPrompt() {
+  return [
+    "你是 Metabase 数据巡检异常分析助手。",
+    "只能根据提供的巡检证据推断，不得编造 SQL、表名、数据值、运行状态或已执行的修复。",
+    "输出必须是 JSON 对象，字段为 summary、possibleCauses、verificationSteps、recommendedActions、confidence、limitations。",
+    "possibleCauses、verificationSteps、recommendedActions 都是字符串数组，最多 3 条；confidence 为 low、medium 或 high。",
+    "若证据仅表明查询失败或无数据，要明确说明无法判断业务数据是否异常，并优先给出连接、权限、筛选条件或刷新状态的核查步骤。",
+  ].join("\n");
+}
+
+function buildEvidencePrompt(anomaly, context) {
+  return `请分析以下 Metabase 巡检异常。\n证据：\n${JSON.stringify({ anomaly: pickAnomalyEvidence(anomaly), run: pickContextEvidence(context), sameDashboardAnomalies: (context.sameDashboardAnomalies || []).slice(0, 5).map(pickAnomalyEvidence) }, null, 2)}`;
+}
+
+function pickAnomalyEvidence(anomaly = {}) {
+  return { dashboardTitle: anomaly.dashboardTitle || "", dashboardUrl: anomaly.dashboardUrl || "", cardTitle: anomaly.cardTitle || "", type: anomaly.type || "", message: anomaly.message || "", rule: anomaly.rule || null };
+}
+
+function pickContextEvidence(context = {}) {
+  return { runId: context.runId || "", startedAt: context.startedAt || "", countryCode: context.countryCode || "", countryName: context.countryName || "" };
+}
+
+function extractModelContent(payload) {
+  const content = payload?.choices?.[0]?.message?.content ?? payload?.output?.[0]?.content?.[0]?.text ?? payload?.output_text ?? "";
+  return Array.isArray(content) ? content.map((item) => item?.text || item?.content || "").join("\n") : String(content || "");
+}
+
+function parseAnalysisOrFallback(rawOutput) {
+  const normalized = String(rawOutput || "").trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "");
+  try {
+    return { value: JSON.parse(normalized), fallbackUsed: false };
+  } catch {
+    return {
+      fallbackUsed: true,
+      value: {
+        summary: "模型未返回可解析的结构化分析，请结合原始异常信息人工核查。",
+        possibleCauses: [], verificationSteps: ["查看巡检历史中的原始异常消息、当前值和基准值。"], recommendedActions: ["修正模型输出格式后重新分析。"], confidence: "low",
+        limitations: "模型输出格式异常，未使用其文本内容推断原因。",
+      },
+    };
+  }
+}
+
+function normalizeTokenUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const promptTokens = numberOrZero(usage.prompt_tokens ?? usage.promptTokens ?? usage.input_tokens ?? usage.inputTokens);
+  const completionTokens = numberOrZero(usage.completion_tokens ?? usage.completionTokens ?? usage.output_tokens ?? usage.outputTokens);
+  const totalCandidate = usage.total_tokens ?? usage.totalTokens;
+  if (promptTokens === null && completionTokens === null && totalCandidate == null) return null;
+  return { promptTokens: promptTokens ?? 0, completionTokens: completionTokens ?? 0, totalTokens: numberOrZero(totalCandidate) ?? ((promptTokens ?? 0) + (completionTokens ?? 0)) };
+}
+
+function numberOrZero(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.trunc(number) : null;
+}
+
+function normalizeAnalysis(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    summary: text(source.summary, "模型未给出摘要。"),
+    possibleCauses: textList(source.possibleCauses),
+    verificationSteps: textList(source.verificationSteps),
+    recommendedActions: textList(source.recommendedActions),
+    confidence: ["low", "medium", "high"].includes(source.confidence) ? source.confidence : "low",
+    limitations: text(source.limitations, "仅基于巡检记录分析，未直接查询 Metabase、数据仓库或调度系统。"),
+  };
+}
+
+function text(value, fallback) {
+  const result = String(value || "").trim();
+  return result.slice(0, 1200) || fallback;
+}
+
+function textList(value) {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  return items.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3).map((item) => item.slice(0, 600));
+}
+
+function langfuseId() {
+  return randomUUID().replace(/-/g, "");
+}

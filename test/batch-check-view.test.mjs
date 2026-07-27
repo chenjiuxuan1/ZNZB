@@ -5,9 +5,11 @@ globalThis.window = { location: { hash: "" } };
 const {
   buildBatchScheduleCountryConfig,
   parseAnomalyMessage,
+  renderBatchCheck,
   renderHistoryDsDetails,
   renderHistoryWattrelDetails,
 } = await import("../web/src/views/batch-check.js");
+const { state } = await import("../web/src/state.js");
 
 test("buildBatchScheduleCountryConfig keeps KN Chat personal recipients and group chat together", () => {
   const fields = {
@@ -91,4 +93,17 @@ test("history anomaly details parse latest non-zero to zero values", () => {
   assert.equal(detail.baselineValue, "0.1038206");
   assert.equal(detail.currentValue, "0");
   assert.equal(detail.timeText, "2026-07-27 / 对比 2026-07-26");
+});
+
+test("history anomaly detail exposes an AI analysis action", () => {
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  state.routeQuery = { historyRunId: "run-ai" };
+  state.batchHistory = { runs: [{
+    id: "run-ai", startedAt: "2026-07-27T00:00:00.000Z", successCount: 1, countryCount: 1,
+    checkedCardCount: 1, anomalyCount: 1, dataQualityAnomalyCount: 0,
+    runs: [{ countryCode: "PH", countryName: "菲律宾", ok: true, result: { checkedCardCount: 1, dashboardCount: 1, anomalyCount: 1, anomalies: [{ dashboardTitle: "OKR", cardTitle: "转化", type: "latestNonZeroToZero", message: "指标从 10 降为 0" }] } }],
+  }] };
+  renderBatchCheck(root);
+  assert.match(root.innerHTML, /AI 分析原因/);
+  assert.match(root.innerHTML, /data-run-id="run-ai"/);
 });

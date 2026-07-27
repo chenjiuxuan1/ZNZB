@@ -265,7 +265,9 @@ function buildDutySummaryMessage(result, countryGroups, options = {}) {
   lines.push("2.DS调度：");
   lines.push(formatDutyDsScheduleSummary(options.dsScheduleSummary));
   lines.push("");
-  appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies);
+  appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies, {
+    maxExamples: Number(options.maxDutyMetabaseExamples || 3),
+  });
   if (detailUrl) {
     lines.push(`详情：${detailUrl}`);
   }
@@ -278,16 +280,26 @@ function formatDutyDsScheduleSummary(summary) {
   if (summary.skipped) return summary.reason || "未配置";
   const countries = Array.isArray(summary.countries) ? summary.countries : [];
   if (!countries.length) return "暂无可检查任务";
-  return countries.flatMap((country) => {
+  const lines = [];
+  for (const country of countries) {
     const label = formatDutyCountryLabel(country, country.countryName || country.country || "未知国家");
-    const projectSummary = formatDutyDsProjectSummary(country.projects || []);
-    if (!country.success) return [`${label}：检查失败`, ...projectSummary];
+    const projectNames = formatDutyDsProjectNames(country.projects || []);
     const checkedWorkflows = Number(country.checkedWorkflows || 0);
     const stuckCount = Number(country.stuckCount || 0);
     const staleCount = Number(country.staleCount || 0);
     const failedCount = Number(country.failedCount || 0);
-    if (stuckCount === 0 && staleCount === 0 && failedCount === 0) {
-      return [`${label}：${checkedWorkflows} 个任务正常`, ...projectSummary];
+    const failedProjects = formatDutyDsFailedProjects(country.projects || []);
+    if (country.success && failedProjects.length === 0 && stuckCount === 0 && staleCount === 0 && failedCount === 0) {
+      lines.push(`${label}：正常${projectNames ? `（项目：${projectNames}）` : ""}`);
+      continue;
+    }
+    if (!country.success) {
+      lines.push(`${label}：检查失败${failedProjects.length ? `（异常项目：${failedProjects.join("、")}）` : projectNames ? `（项目：${projectNames}）` : ""}`);
+      continue;
+    }
+    if (failedProjects.length && stuckCount === 0 && staleCount === 0 && failedCount === 0) {
+      lines.push(`${label}：部分失败（异常项目：${failedProjects.join("、")}）`);
+      continue;
     }
     const staleNames = (country.staleWorkflows || [])
       .map((workflow) => workflow.workflowName)
@@ -302,18 +314,23 @@ function formatDutyDsScheduleSummary(summary) {
       staleNames ? `旷工：${staleNames}` : "",
       failedNames ? `失败：${failedNames}` : "",
     ].filter(Boolean).join("；");
-    return [issueDetails ? `${base}（${issueDetails}）` : base, ...projectSummary];
-  }).join("\n");
+    const projectPart = failedProjects.length
+      ? `；异常项目：${failedProjects.join("、")}`
+      : projectNames ? `；项目：${projectNames}` : "";
+    lines.push(`${base}${issueDetails ? `（${issueDetails}）` : ""}${projectPart}`);
+  }
+  return lines.join("\n");
 }
 
-function formatDutyDsProjectSummary(projects) {
-  return (projects || []).map((project) => {
+function formatDutyDsFailedProjects(projects) {
+  return (projects || []).filter((project) => project.success === false).map((project) => {
     const name = project.projectName || project.projectCode || "未命名项目";
-    if (project.success === false) {
-      return `  项目：${name} 检查失败`;
-    }
-    return `  项目：${name} ${Number(project.checkedWorkflows || 0)} 个工作流`;
+    return name;
   });
+}
+
+function formatDutyDsProjectNames(projects) {
+  return (projects || []).map((project) => project.projectName || project.projectCode || "未命名项目").join("、");
 }
 
 function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {
@@ -749,7 +766,7 @@ function filterDutyMetabaseAnomalies(anomalies = []) {
   return anomalies;
 }
 
-function appendDutyMetabaseSummary(lines, anomalies = []) {
+function appendDutyMetabaseSummary(lines, anomalies = [], options = {}) {
   lines.push("3. BI报表(Metabase):");
   if (anomalies.length === 0) {
     lines.push("正常");
@@ -774,10 +791,12 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
         || right.severity - left.severity
         || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN")
         || String(left.dashboardTitle || "").localeCompare(String(right.dashboardTitle || ""), "zh-CN");
-    });
+  });
   lines.push(`发现 ${anomalies.length} 条异常，涉及 ${dashboardGroups.length} 个看板。`);
-  lines.push("异常实例（每个国家每个看板1条，优先缺失数据、其次数据变为0）：");
-  for (const example of dashboardGroups) {
+  const maxExamples = Math.max(1, Number(options.maxExamples || 3));
+  const examples = dashboardGroups.slice(0, maxExamples);
+  lines.push(`异常示例（最多 ${examples.length} 条，优先缺失数据、其次数据变为0）：`);
+  for (const example of examples) {
     const topAnomaly = [...example.items].sort((left, right) => (
       Number(isMissingPublicAnomaly(right)) - Number(isMissingPublicAnomaly(left))
       || Number(right.type === "latestNonZeroToZero") - Number(left.type === "latestNonZeroToZero")
@@ -790,8 +809,24 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
     ].filter(Boolean).join(" / ");
     lines.push(`• ${location}：${compactDutyAnomalyReason(topAnomaly.message)}`);
     if (example.dashboardUrl) {
-      lines.push(example.dashboardUrl);
+      lines.push(compactDashboardUrl(example.dashboardUrl));
     }
+  }
+  if (dashboardGroups.length > examples.length) {
+    lines.push(`另有 ${dashboardGroups.length - examples.length} 个异常看板，详见历史明细。`);
+  }
+}
+
+function compactDashboardUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return raw.split(/[?#]/, 1)[0] || raw;
   }
 }
 

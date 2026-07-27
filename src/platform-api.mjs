@@ -14,6 +14,7 @@ import { parseInternalMetabaseUrl } from "./metabase-internal-client.mjs";
 import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
+import { analyzeMetabaseAnomaly } from "./metabase-anomaly-agent.mjs";
 import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
@@ -43,6 +44,7 @@ const FILES = {
   observationCache: "config/public-check-cadence-observations.json",
   batchSchedule: "config/batch-check-schedule.json",
   batchHistory: "config/batch-check-run-history.json",
+  metabaseAnomalyAnalyses: "config/metabase-anomaly-analyses.json",
   wattrel: "config/wattrel.config.json",
   qualityRuleGeneration: "config/quality-rule-generation.config.json",
   dsScheduler: "config/ds-scheduler.config.json",
@@ -81,6 +83,7 @@ const DEFAULT_BATCH_SCHEDULE = {
   lastResult: null,
 };
 const DEFAULT_BATCH_HISTORY = { runs: [] };
+const DEFAULT_METABASE_ANOMALY_ANALYSES = { analyses: [] };
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BATCH_HISTORY_RUNS = 200;
 const DEFAULT_DS_SCHEDULE = {
@@ -101,6 +104,7 @@ export function createPlatformApi({
   notifyTextFn = notifyText,
   wattrelQueryFn = null,
   qualityRuleGenerationSubmitFn = null,
+  metabaseAnomalyAgentFn = analyzeMetabaseAnomaly,
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
@@ -197,6 +201,55 @@ export function createPlatformApi({
     async getBatchHistory(filters = {}) {
       const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
       return filterBatchHistory(history, filters);
+    },
+
+    async analyzeMetabaseAnomaly(body = {}) {
+      const runId = String(body.runId || body.historyRunId || "").trim();
+      const countryCode = String(body.countryCode || "").trim();
+      const anomalyIndex = Number(body.anomalyIndex);
+      if (!runId || !countryCode || !Number.isInteger(anomalyIndex) || anomalyIndex < 0) {
+        throw badRequest("Invalid Metabase anomaly analysis request", ["请提供巡检记录、国家和异常序号。"]);
+      }
+      const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
+      const run = (history.runs || []).find((item) => String(item.id || "") === runId);
+      const countryRun = (run?.runs || []).find((item) => String(item.countryCode || "") === countryCode);
+      const anomalies = countryRun?.result?.anomalies || [];
+      const anomaly = anomalies[anomalyIndex];
+      if (!anomaly) {
+        throw badRequest("Metabase anomaly not found", ["未找到对应的 Metabase 异常，历史记录可能已经清理或变更。"]);
+      }
+      const cacheKey = `${runId}:${countryCode}:${anomalyIndex}`;
+      const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const existing = (cache.analyses || []).find((item) => item.key === cacheKey);
+      if (existing && !body.force) {
+        return { ...existing, cached: true };
+      }
+      const sameDashboardAnomalies = anomalies.filter((item) => (
+        item.dashboardUuid && anomaly.dashboardUuid
+          ? item.dashboardUuid === anomaly.dashboardUuid
+          : item.dashboardTitle === anomaly.dashboardTitle
+      ));
+      const generated = await metabaseAnomalyAgentFn({
+        anomaly,
+        context: {
+          runId,
+          startedAt: run.startedAt,
+          countryCode: countryRun.countryCode,
+          countryName: countryRun.countryName,
+          sameDashboardAnomalies,
+        },
+      });
+      const entry = {
+        key: cacheKey,
+        runId,
+        countryCode,
+        anomalyIndex,
+        createdAt: new Date().toISOString(),
+        ...generated,
+      };
+      const analyses = keepRecentMetabaseAnalyses([entry, ...(cache.analyses || [])]);
+      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
+      return { ...entry, cached: false };
     },
 
     async ingestExternalAlertRun(body = {}) {
@@ -2699,6 +2752,17 @@ async function appendBatchHistoryRun(historyFile, entry) {
   const history = await readJsonFile(historyFile, DEFAULT_BATCH_HISTORY);
   const runs = keepRecentHistoryRuns([entry, ...(history.runs || [])]);
   await writeJsonAtomic(historyFile, { updatedAt: new Date().toISOString(), runs });
+}
+
+function keepRecentMetabaseAnalyses(analyses, nowMs = Date.now()) {
+  const cutoff = nowMs - HISTORY_RETENTION_MS;
+  const seen = new Set();
+  return (analyses || []).filter((item) => {
+    const createdAt = Date.parse(item?.createdAt || "");
+    if (!Number.isFinite(createdAt) || createdAt < cutoff || seen.has(item?.key)) return false;
+    seen.add(item.key);
+    return true;
+  });
 }
 
 async function readPlatformInventory(rootDir, primaryInventoryFile) {
