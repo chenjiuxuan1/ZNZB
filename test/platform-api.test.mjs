@@ -1118,6 +1118,14 @@ test("platform api saves batch schedule and runs it when due", async () => {
       captured.push({ config, message, metadata });
       return { sent: true, status: 200 };
     },
+    wattrelQueryFn: async () => [{
+      name: "放款数据校验",
+      src_tbl: "ods_loan",
+      dest_tbl: "dwd_loan",
+      src_value: 10,
+      dest_value: 9,
+      diff: 1,
+    }],
   });
 
   const schedule = await api.saveBatchSchedule({
@@ -1164,6 +1172,8 @@ test("platform api saves batch schedule and runs it when due", async () => {
   assert.equal(history.runs[0].runs[0].result.checkedDashboards.length, 1);
   assert.equal(history.runs[0].runs[0].result.checkedCards.length, 1);
   assert.equal(history.runs[0].runs[0].result.anomalies.length, 1);
+  assert.equal(history.runs[0].wattrelSummary.total, 1);
+  assert.equal(history.runs[0].wattrelSummary.countries[0].count, 1);
   assert.match(captured[0].message, new RegExp(`historyRunId=${history.runs[0].id}`));
 
   const filteredHistory = await api.getBatchHistory({ countryCode: "INE", status: "anomaly" });

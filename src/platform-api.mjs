@@ -81,6 +81,7 @@ const DEFAULT_BATCH_SCHEDULE = {
   lastResult: null,
 };
 const DEFAULT_BATCH_HISTORY = { runs: [] };
+const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BATCH_HISTORY_RUNS = 200;
 const DEFAULT_DS_SCHEDULE = {
   enabled: false,
@@ -494,6 +495,7 @@ export function createPlatformApi({
           schedule,
           countryRuns,
           notificationSentCount,
+          wattrelSummary,
           dsSchedulerSummary,
           dsSchedulerError,
         }));
@@ -1109,6 +1111,7 @@ export function createPlatformApi({
           schedule,
           countryRuns,
           notificationSentCount,
+          wattrelSummary,
           dsSchedulerSummary,
           dsSchedulerError,
         }));
@@ -1295,7 +1298,7 @@ export function createPlatformApi({
       const history = await readJsonFile(resolve("dsHistory"), DEFAULT_DS_HISTORY);
       const countryCode = String(filters.countryCode || "").trim();
       const limit = Math.max(1, Math.min(200, Number(filters.limit || 50)));
-      const runs = (history.runs || [])
+      const runs = keepRecentHistoryRuns(history.runs || [])
         .filter((run) => !countryCode || (run.result?.countries || []).some((item) => item.country === countryCode))
         .slice(0, limit);
       return { ...history, runs };
@@ -1385,8 +1388,18 @@ async function appendDsHistory(filePath, entry) {
   const history = await readJsonFile(filePath, DEFAULT_DS_HISTORY);
   await writeJsonAtomic(filePath, {
     updatedAt: new Date().toISOString(),
-    runs: [entry, ...(history.runs || [])].slice(0, MAX_BATCH_HISTORY_RUNS),
+    runs: keepRecentHistoryRuns([entry, ...(history.runs || [])]),
   });
+}
+
+function keepRecentHistoryRuns(runs, nowMs = Date.now()) {
+  const cutoffMs = nowMs - HISTORY_RETENTION_MS;
+  return runs
+    .filter((run) => {
+      const timestampMs = Date.parse(run.finishedAt || run.startedAt || "");
+      return !Number.isFinite(timestampMs) || timestampMs >= cutoffMs;
+    })
+    .slice(0, MAX_BATCH_HISTORY_RUNS);
 }
 
 async function readOptionalJson(filePath) {
@@ -2648,10 +2661,11 @@ function buildBatchHistoryEntry({
   schedule,
   countryRuns,
   notificationSentCount = null,
+  wattrelSummary = null,
   dsSchedulerSummary = null,
   dsSchedulerError = null,
 }) {
-  const summary = summarizeCountryScheduleRuns(countryRuns);
+  const summary = summarizeCountryScheduleRuns(countryRuns, { wattrelSummary });
   const sentCount = notificationSentCount ?? countryRuns.reduce((sum, run) => {
     const notification = run.result?.notification;
     return sum + (notification?.sent ? Number(notification.sentMessages || 0) : 0);
@@ -2672,6 +2686,7 @@ function buildBatchHistoryEntry({
     dashboardCount: summary.dashboardCount,
     anomalyCount: summary.anomalyCount,
     dataQualityAnomalyCount: countryRuns.reduce((sum, run) => sum + Number(run.result?.dataQualityAnomalyCount || 0), 0),
+    wattrelSummary,
     notificationSentCount: sentCount,
     dsSchedulerSummary,
     dsSchedulerError,
@@ -2681,7 +2696,7 @@ function buildBatchHistoryEntry({
 
 async function appendBatchHistoryRun(historyFile, entry) {
   const history = await readJsonFile(historyFile, DEFAULT_BATCH_HISTORY);
-  const runs = [entry, ...(history.runs || [])].slice(0, MAX_BATCH_HISTORY_RUNS);
+  const runs = keepRecentHistoryRuns([entry, ...(history.runs || [])]);
   await writeJsonAtomic(historyFile, { updatedAt: new Date().toISOString(), runs });
 }
 
@@ -2880,7 +2895,7 @@ function filterBatchHistory(history = DEFAULT_BATCH_HISTORY, filters = {}) {
   const countryCode = String(filters.countryCode || "").trim();
   const status = String(filters.status || "").trim();
   const limit = clampNumber(filters.limit ?? 50, 1, MAX_BATCH_HISTORY_RUNS, 50);
-  let runs = history.runs || [];
+  let runs = keepRecentHistoryRuns(history.runs || []);
 
   if (countryCode) {
     runs = runs.filter((run) => (run.runs || []).some((countryRun) => countryRun.countryCode === countryCode));

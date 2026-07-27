@@ -2,7 +2,8 @@
   "builtInChecks": {
     "queryError": false,
     "noData": false,
-    "emptyMetrics": true
+    "emptyMetrics": true,
+    "nonZeroToZero": true
   },
   "ruleDefaults": {
     "requiredDatePresent": {

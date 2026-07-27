@@ -17,7 +17,7 @@ const routes = [
   { path: "/inventory", label: "看板与卡片", short: "板", render: renderInventory },
   { path: "/rules", label: "规则配置", short: "规", render: renderRules },
   { path: "/sandbox", label: "规则试跑", short: "试", render: renderSandbox },
-  { path: "/batch-check", label: "Metabase 定时巡检", short: "巡", render: renderBatchCheck },
+  { path: "/batch-check", label: "定时巡检", short: "巡", render: renderBatchCheck },
   { path: "/wattrel-alerts", label: "Wattrel告警", short: "告", render: renderWattrelAlerts },
   { path: "/quality-rule-generation", label: "智能告警生成", short: "生", render: renderQualityRuleGeneration },
   { path: "/notify-preview", label: "通知预览", short: "通", render: renderNotifyPreview },

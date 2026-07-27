@@ -65,7 +65,8 @@ export async function checkPublicDashboards({
   const shouldRunBuiltIns =
     ruleConfigData.builtInChecks?.queryError !== false ||
     ruleConfigData.builtInChecks?.noData !== false ||
-    ruleConfigData.builtInChecks?.emptyMetrics !== false;
+    ruleConfigData.builtInChecks?.emptyMetrics !== false ||
+    ruleConfigData.builtInChecks?.nonZeroToZero !== false;
 
   for (const dashboard of inventoryData.dashboards || []) {
     if (shouldSkipInternalDashboardWithoutAuth(dashboard, metabaseClientFactory)) {
@@ -597,6 +598,18 @@ function evaluateBuiltIns(config, dashboard, card, result) {
     }
   }
 
+  if (config.builtInChecks?.nonZeroToZero !== false && result.ok && result.rows.length > 0) {
+    const metricColumns = getCardMetricColumns(card, result.rows);
+    const timezone = dashboard.timezone || dashboard.country?.timezone || "Asia/Jakarta";
+    const zeroDrops = checkLatestNonZeroToZero(
+      filterRowsAtExecutionTime(result.rows, { timezone }),
+      metricColumns,
+    );
+    for (const message of zeroDrops) {
+      anomalies.push(buildAnomaly(dashboard, card, "latestNonZeroToZero", message));
+    }
+  }
+
   if (dashboardTitle && card.title) {
     return anomalies;
   }
@@ -911,6 +924,31 @@ function checkLatestZeroRate(rows, rule) {
   }
 
   return limitMessages(messages, rule);
+}
+
+function checkLatestNonZeroToZero(rows, metricColumns) {
+  const dateColumn = inferDateColumn(rows);
+  if (!dateColumn || !metricColumns.length) {
+    return [];
+  }
+
+  const series = buildLatestSeries(rows, dateColumn, metricColumns);
+  const messages = [];
+  for (const item of series) {
+    if (!item.previous) {
+      continue;
+    }
+    for (const column of metricColumns) {
+      const latest = toNumber(item.latest[column]);
+      const previous = toNumber(item.previous[column]);
+      if (latest === 0 && Number.isFinite(previous) && previous !== 0) {
+        messages.push(
+          `指标「${column}」从 ${formatNumber(previous)} 降为 0${formatComparisonSuffix(item, dateColumn)}`,
+        );
+      }
+    }
+  }
+  return messages;
 }
 
 function checkLatestDayOverDayChange(rows, rule) {

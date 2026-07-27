@@ -24,8 +24,8 @@ export function renderBatchCheck(root) {
   root.innerHTML = `
     <div class="page-header batch-hero">
       <div>
-        <h1 class="page-title">Metabase 定时巡检</h1>
-        <p class="page-note">只读访问 Metabase，按当前规则识别公共报表缺失和波动；手动巡检、定时任务和历史明细分区管理。</p>
+        <h1 class="page-title">定时巡检</h1>
+        <p class="page-note">统一查看 Metabase、Wattrel 和 DS 调度巡检；手动巡检、定时任务和历史明细分区管理。</p>
       </div>
       ${renderBatchHeroStats()}
     </div>
@@ -235,7 +235,7 @@ function renderBatchHeroStats() {
   const historyRuns = state.batchHistory?.runs || [];
   const latestRun = historyRuns[0] || null;
   return `
-    <div class="hero-stats" aria-label="Metabase 定时巡检概览">
+    <div class="hero-stats" aria-label="定时巡检概览">
       <article>
         <span>国家</span>
         <strong>${escapeHtml(summary.countryCount || 0)}</strong>
@@ -454,7 +454,7 @@ function renderBatchSchedulePanel() {
           <span class="switch-track"></span>
           <span>
             <strong>同时执行 DS 调度巡检</strong>
-            <small>开启后，每次 Metabase 定时巡检会检查所有已配置 DS 项目的国家，并共用本页通知配置。</small>
+            <small>开启后，每次定时巡检会检查所有已配置 DS 项目的国家，并共用本页通知配置。</small>
           </span>
         </label>
         <div class="field">
@@ -705,7 +705,7 @@ function renderSelectedHistoryRunDetail() {
             <h2 class="panel-title">巡检历史详情</h2>
             <p class="muted">未找到这次巡检记录，可能本地历史已被清理。</p>
           </div>
-          <a class="link-button" href="#/batch-check">返回 Metabase 定时巡检</a>
+          <a class="link-button" href="#/batch-check">返回定时巡检</a>
         </div>
       </section>
     `;
@@ -723,7 +723,7 @@ function renderSelectedHistoryRunDetail() {
           <p class="muted">这里展示通知里没有展开的完整扫描结果：每个国家、每个看板检查了哪些卡片，哪些看板异常，具体异常消息是什么。</p>
         </div>
         <div class="button-group">
-          <a class="link-button" href="#/batch-check">返回 Metabase 定时巡检</a>
+          <a class="link-button" href="#/batch-check">返回定时巡检</a>
         </div>
       </div>
       <div class="auto-summary">
@@ -734,11 +734,61 @@ function renderSelectedHistoryRunDetail() {
       </div>
       ${renderHistoryCountryTabs(run, selectedCountryCode)}
       ${countryRuns.length ? countryRuns.map(renderHistoryCountryDetail).join("") : `<p class="muted">当前筛选国家没有这次巡检记录。</p>`}
+      ${renderHistoryExternalDetails(run)}
       <details class="advanced compact">
         <summary>查看这次巡检完整 JSON</summary>
         <pre class="code">${escapeHtml(json(run))}</pre>
       </details>
     </section>
+  `;
+}
+
+function renderHistoryExternalDetails(run) {
+  const sections = [
+    renderHistoryWattrelDetails(run.wattrelSummary),
+    renderHistoryDsDetails(run.dsSchedulerSummary, run.dsSchedulerError),
+  ].filter(Boolean);
+  return sections.length ? sections.join("") : "";
+}
+
+function renderHistoryWattrelDetails(summary) {
+  if (!summary) return "";
+  const countries = summary.countries || [];
+  return `
+    <div class="sub-panel history-country-detail">
+      <div class="detail-header compact-header">
+        <h2 class="panel-title">Wattrel 数据质量</h2>
+        <span class="badge ${summary.total || summary.failedCount ? "warn" : "ok"}">${summary.total || 0} 条未处理</span>
+      </div>
+      <p class="muted">巡检时间：${escapeHtml(formatDisplayTime(summary.checkedAt))}；只统计 result=1 且未修复的告警。</p>
+      ${countries.length ? `<ul class="history-dashboard-list">${countries.map((country) => `
+        <li>${escapeHtml([country.countryName, country.countryCode].filter(Boolean).join(" / ") || "-")}：${escapeHtml(country.count || 0)} 条${country.status === "failed" ? `，查询失败：${escapeHtml(country.error || "未知错误")}` : ""}</li>
+      `).join("")}</ul>` : `<p class="muted">本次未配置 Wattrel 国家范围。</p>`}
+    </div>
+  `;
+}
+
+function renderHistoryDsDetails(summary, error) {
+  if (!summary && !error) return "";
+  if (!summary) {
+    return `<div class="sub-panel history-country-detail"><h2 class="panel-title">DS 调度监控</h2><p class="error">${escapeHtml(error)}</p></div>`;
+  }
+  if (summary.skipped) {
+    return `<div class="sub-panel history-country-detail"><h2 class="panel-title">DS 调度监控</h2><p class="muted">本次未执行：${escapeHtml(summary.reason || "没有可巡检的国家")}</p></div>`;
+  }
+  const countries = summary.countries || [];
+  return `
+    <div class="sub-panel history-country-detail">
+      <div class="detail-header compact-header">
+        <h2 class="panel-title">DS 调度监控</h2>
+        <span class="badge ${summary.totalStuck || summary.totalStale || summary.failedCountries ? "warn" : "ok"}">卡死 ${summary.totalStuck || 0}，离线 ${summary.totalStale || 0}</span>
+      </div>
+      <p class="muted">检查 ${escapeHtml(summary.totalChecked || 0)} 个工作流，覆盖 ${escapeHtml(summary.totalCountries || 0)} 个国家。</p>
+      ${countries.length ? `<ul class="history-dashboard-list">${countries.map((country) => `
+        <li>${escapeHtml([country.countryName, country.country].filter(Boolean).join(" / ") || "-")}：卡死 ${escapeHtml(country.stuckCount || 0)}，离线 ${escapeHtml(country.staleCount || 0)}，检查 ${escapeHtml(country.checkedWorkflows || 0)}${country.error ? `，失败：${escapeHtml(country.error)}` : ""}</li>
+      `).join("")}</ul>` : ""}
+      ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
+    </div>
   `;
 }
 

@@ -1068,6 +1068,44 @@ test("evaluateRowsAgainstRule does not infer a cadence from irregular sparse dat
   assert.doesNotMatch(result, /推断每/);
 });
 
+test("checkPublicDashboards flags any dated metric that drops from non-zero to zero", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [{
+        title: "任意业务报表",
+        url: "https://data.example/public/dashboard/demo",
+        countryCode: "PH",
+        timezone: "Asia/Manila",
+        cards: [{
+          title: "任意指标图",
+          cardId: 1,
+          dashcardId: 2,
+          metrics: ["关键指标"],
+        }],
+      }],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: false },
+      rules: [],
+    },
+    dataQualityFn: async () => null,
+    checkedAt: "2026-07-27T01:00:00.000Z",
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [
+        { "统计日期": "2026-07-24", "关键指标": 0.05 },
+        { "统计日期": "2026-07-25", "关键指标": 0 },
+      ],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.anomalyCount, 1);
+  assert.equal(result.anomalies[0].type, "latestNonZeroToZero");
+  assert.match(result.anomalies[0].message, /关键指标.*从 0\.05 降为 0/);
+});
+
 test("evaluateRowsAgainstRule suppresses correlated same-direction changes", () => {
   const result = evaluateRowsAgainstRule(
     [

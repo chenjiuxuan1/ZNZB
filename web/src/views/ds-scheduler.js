@@ -31,7 +31,7 @@ function paint(root) {
     <div class="page-header batch-hero">
       <div>
         <h1 class="page-title">DS 调度监控</h1>
-        <p class="page-note">配置各国 DolphinScheduler 项目并执行只读测试；正式巡检由 Metabase 定时巡检统一调度和通知。</p>
+        <p class="page-note">配置各国 DolphinScheduler 项目并执行只读测试；正式巡检由定时巡检统一调度和通知。</p>
       </div>
       <div class="hero-stats">
         ${stat("已匹配项目", resolvedCount())}
@@ -54,7 +54,7 @@ function paint(root) {
       </div>
       <div class="notice compact-notice">
         <strong>正式巡检入口</strong>
-        <span>请在 <a href="#/batch-check">Metabase 定时巡检</a> 中开启“同时执行 DS 调度巡检”。通知渠道、KN Chat Bot Token 和接收人完全使用 Metabase 配置。</span>
+        <span>请在 <a href="#/batch-check">定时巡检</a> 中开启“同时执行 DS 调度巡检”。通知渠道、KN Chat Bot Token 和接收人完全使用巡检配置。</span>
       </div>
       <div class="schedule-country-grid ds-project-grid">
         ${COUNTRY_ORDER.map((code) => renderProjectCard(code)).join("")}
