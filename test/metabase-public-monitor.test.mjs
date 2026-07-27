@@ -1185,6 +1185,15 @@ test("checkPublicDashboards ignores future hourly metric columns within the allo
   assert.doesNotMatch(result.anomalies[0].message, /指标「10」|指标「20」/);
 });
 
+test("evaluateRowsAgainstRule reports no data when an intraday card has no parseable date column", () => {
+  const result = evaluateRowsAgainstRule(
+    [{ "放款金额": 100 }],
+    { type: "intradayTimePointChange", timeColumn: "小时" },
+  );
+
+  assert.equal(result, "没有数据");
+});
+
 test("evaluateRowsAgainstRule suppresses correlated same-direction changes", () => {
   const result = evaluateRowsAgainstRule(
     [

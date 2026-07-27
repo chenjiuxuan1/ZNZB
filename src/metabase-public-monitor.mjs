@@ -664,7 +664,7 @@ function evaluateRules(rules, dashboard, card, result, options = {}) {
         buildAnomaly(
           dashboard,
           card,
-          effectiveRule.type,
+          message === "没有数据" ? "noData" : effectiveRule.type,
           formatRuleMessage(message, dashboard, card, effectiveRule),
           effectiveRule.context,
         ),
@@ -1061,7 +1061,7 @@ function checkLatestDayOverDayChange(rows, rule) {
 function checkCompleteDayChange(rows, rule) {
   const dateColumn = rule.dateColumn || inferDateColumn(rows);
   if (!dateColumn) {
-    return "no parseable date column found";
+    return "没有数据";
   }
 
   const numericColumns = selectNumericColumns(rows, rule);
@@ -1151,7 +1151,7 @@ function checkCompleteDayChange(rows, rule) {
 function checkIntradayProgress(rows, rule) {
   const dateColumn = rule.dateColumn || inferDateColumn(rows);
   if (!dateColumn) {
-    return "no parseable date column found";
+    return "没有数据";
   }
 
   const numericColumns = selectNumericColumns(rows, rule);
@@ -1232,7 +1232,7 @@ function resolveIntradayTimeColumn(rows, preferredColumn) {
 function checkIntradaySameTimeChange(rows, rule) {
   const dateColumn = rule.dateColumn || inferDateColumn(rows);
   if (!dateColumn) {
-    return "no parseable date column found";
+    return "没有数据";
   }
 
   const timeColumn = resolveIntradayTimeColumn(rows, rule.timeColumn);
@@ -1309,7 +1309,7 @@ function checkIntradaySameTimeChange(rows, rule) {
 function checkIntradayTimePointCompleteness(rows, rule) {
   const dateColumn = rule.dateColumn || inferDateColumn(rows);
   if (!dateColumn) {
-    return "no parseable date column found";
+    return "没有数据";
   }
 
   const timeColumn = resolveIntradayTimeColumn(rows, rule.timeColumn);
@@ -1363,7 +1363,7 @@ function checkIntradayTimePointCompleteness(rows, rule) {
 function checkIntradayTimePointChange(rows, rule) {
   const dateColumn = rule.dateColumn || inferDateColumn(rows);
   if (!dateColumn) {
-    return "no parseable date column found";
+    return "没有数据";
   }
 
   const timeColumn = resolveIntradayTimeColumn(rows, rule.timeColumn);

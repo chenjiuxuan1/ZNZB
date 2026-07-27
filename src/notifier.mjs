@@ -726,11 +726,7 @@ function appendDutyWattrelSummary(lines, wattrelSummary) {
 }
 
 function filterDutyMetabaseAnomalies(anomalies = []) {
-  const { missingAnomalies, fluctuationAnomalies } = classifyPublicAnomalies(anomalies);
-  return [
-    ...missingAnomalies.filter((anomaly) => !isMetabaseQueryFailureAnomaly(anomaly)),
-    ...fluctuationAnomalies,
-  ];
+  return anomalies;
 }
 
 function appendDutyMetabaseSummary(lines, anomalies = []) {
@@ -746,12 +742,14 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
         ...group,
         missingCount: missingAnomalies.length,
         highFluctuationCount: fluctuationAnomalies.length,
+        zeroDropCount: group.items.filter((item) => item.type === "latestNonZeroToZero").length,
         dashboardUrl: firstDashboardUrl(group.items),
         severity: Math.max(...group.items.map((item) => extractAnomalySeverity(item.message || "")), 0),
       };
     })
     .sort((left, right) => {
-      return right.missingCount - left.missingCount
+      return right.zeroDropCount - left.zeroDropCount
+        || right.missingCount - left.missingCount
         || right.highFluctuationCount - left.highFluctuationCount
         || right.severity - left.severity
         || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN");
@@ -760,7 +758,8 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
   lines.push("异常示例（最多3条）：");
   for (const example of dashboardGroups.slice(0, 3)) {
     const topAnomaly = [...example.items].sort((left, right) => (
-      extractAnomalySeverity(right.message || "") - extractAnomalySeverity(left.message || "")
+      Number(right.type === "latestNonZeroToZero") - Number(left.type === "latestNonZeroToZero")
+      || extractAnomalySeverity(right.message || "") - extractAnomalySeverity(left.message || "")
     ))[0] || {};
     const location = [
       formatDutyCountryLabel(example),
@@ -777,14 +776,6 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
 function compactDutyAnomalyReason(message) {
   const text = String(message || "未提供判定原因").replace(/\s+/g, " ").trim();
   return text.length > 180 ? `${text.slice(0, 177)}...` : text;
-}
-
-function isMetabaseQueryFailureAnomaly(anomaly = {}) {
-  if (anomaly.type !== "queryError") {
-    return false;
-  }
-  const text = String(anomaly.message || "");
-  return /Metabase .*request failed|403 Forbidden|Forbidden|DOCTYPE|nginx|company network|查询失败/i.test(text);
 }
 
 function isPreviousTimePointBaselineAnomaly(anomaly = {}) {

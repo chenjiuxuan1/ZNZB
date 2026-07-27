@@ -221,7 +221,7 @@ test("buildPublicCheckMessage separates missing data and fluctuations", () => {
   assert.match(message, /每期逾期率by日期（1条）：https:\/\/data\.kuainiu\.io\/public\/dashboard\/example-id/);
 });
 
-test("duty summary excludes Metabase 403 query failures from BI report", () => {
+test("duty summary includes Metabase 403 query failures from BI report", () => {
   const messages = buildPublicCheckMessages(
     {
       checkedAt: "2026-07-14T10:42:00.000Z",
@@ -263,12 +263,13 @@ test("duty summary excludes Metabase 403 query failures from BI report", () => {
   assert.match(messages[0].body, /🇨🇳 中国\(CN\)：0/);
   assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)：2/);
   assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
-  assert.match(messages[0].body, /发现 1 条异常，涉及 1 个看板。/);
+  assert.match(messages[0].body, /发现 2 条异常，涉及 2 个看板。/);
+  assert.match(messages[0].body, /印尼\(INE\) \/ OKR \/ 转化漏斗：/);
   assert.match(messages[0].body, /• 🇲🇽 墨西哥\(MX\) \/ 业务概览-核心链路准实时监控 \/ 放款金额：/);
   assert.match(messages[0].body, /https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.match(messages[0].body, /业务概览-核心链路准实时监控/);
-  assert.doesNotMatch(messages[0].body, /403 Forbidden/);
-  assert.doesNotMatch(messages[0].body, /转化漏斗/);
+  assert.match(messages[0].body, /403 Forbidden/);
+  assert.match(messages[0].body, /转化漏斗/);
 });
 
 test("duty summary renders concise DS status by country", () => {
@@ -407,6 +408,39 @@ test("duty summary summarizes many Metabase dashboards with three examples", () 
   assert.match(messages[0].body, /public\/dashboard\/th-1/);
   assert.match(messages[0].body, /异常看板3/);
   assert.doesNotMatch(messages[0].body, /异常看板4/);
+});
+
+test("duty summary prioritizes non-zero to zero anomalies in its three examples", () => {
+  const messages = buildPublicCheckMessages(
+    {
+      checkedAt: "2026-07-27T04:00:00.000Z",
+      anomalies: [
+        { type: "requiredDatePresent", countryCode: "CN", countryName: "中国", dashboardTitle: "缺失看板1", cardTitle: "卡片", message: "数据缺失" },
+        { type: "requiredDatePresent", countryCode: "PH", countryName: "菲律宾", dashboardTitle: "缺失看板2", cardTitle: "卡片", message: "数据缺失" },
+        { type: "completeDayChange", countryCode: "TH", countryName: "泰国", dashboardTitle: "波动看板", cardTitle: "卡片", message: "完整日指标「金额」从 100 到 300，波动 +200%" },
+        { type: "latestNonZeroToZero", countryCode: "MX", countryName: "墨西哥", dashboardTitle: "归零看板", cardTitle: "到期数", message: "指标「到期数」从 7,918,103.6 降为 0" },
+      ],
+    },
+    { messageStyle: "dutySummary" },
+  );
+
+  assert.match(messages[0].body, /归零看板/);
+});
+
+test("duty summary shows the zero-drop card when its dashboard has other high-severity anomalies", () => {
+  const messages = buildPublicCheckMessages(
+    {
+      checkedAt: "2026-07-27T04:00:00.000Z",
+      anomalies: [
+        { type: "completeDayChange", countryCode: "MX", countryName: "墨西哥", dashboardTitle: "混合异常看板", cardTitle: "金额", message: "完整日指标「金额」从 100 到 10,000，波动 +9900%" },
+        { type: "latestNonZeroToZero", countryCode: "MX", countryName: "墨西哥", dashboardTitle: "混合异常看板", cardTitle: "到期数", message: "指标「到期数」从 7,918,103.6 降为 0" },
+      ],
+    },
+    { messageStyle: "dutySummary" },
+  );
+
+  assert.match(messages[0].body, /到期数：指标「到期数」从 7,918,103\.6 降为 0/);
+  assert.doesNotMatch(messages[0].body, /金额：完整日指标/);
 });
 
 test("buildPublicCheckMessage shows zero missing data explicitly", () => {
