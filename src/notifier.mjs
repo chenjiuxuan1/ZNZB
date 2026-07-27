@@ -218,11 +218,13 @@ export function buildPublicCheckMessages(result, options = {}) {
   const messages = [];
   const alertCount = getPublicAlertCount(result);
   if (options.messageStyle === "dutySummary") {
-    messages.push({
-      title: alertCount > 0 ? `今日值班摘要 ${alertCount} 条` : "今日值班摘要",
-      body: buildDutySummaryMessage(result, countryGroups, options),
-      anomalyCount: alertCount,
-    });
+    for (const body of buildDutySummaryMessages(result, countryGroups, options)) {
+      messages.push({
+        title: alertCount > 0 ? `今日值班摘要 ${alertCount} 条` : "今日值班摘要",
+        body,
+        anomalyCount: alertCount,
+      });
+    }
     return messages;
   }
 
@@ -253,7 +255,7 @@ export function buildPublicCheckMessages(result, options = {}) {
   return messages;
 }
 
-function buildDutySummaryMessage(result, countryGroups, options = {}) {
+function buildDutySummaryMessages(result, countryGroups, options = {}) {
   const lines = [];
   const detailUrl = normalizeDetailUrl(options.detailUrl);
   const actionableMetabaseAnomalies = filterDutyMetabaseAnomalies(result.anomalies || []);
@@ -265,13 +267,11 @@ function buildDutySummaryMessage(result, countryGroups, options = {}) {
   lines.push("2.DS调度：");
   lines.push(formatDutyDsScheduleSummary(options.dsScheduleSummary));
   lines.push("");
-  appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies, {
-    maxExamples: Number(options.maxDutyMetabaseExamples || 3),
-  });
+  appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies);
   if (detailUrl) {
     lines.push(`详情：${detailUrl}`);
   }
-  return lines.join("\n");
+  return splitDutySummaryLines(lines, Number(options.maxDutyMessageLength || 3500));
 }
 
 function formatDutyDsScheduleSummary(summary) {
@@ -758,6 +758,14 @@ function appendDutyWattrelSummary(lines, wattrelSummary) {
       lines.push(`${label}：未配置`);
     } else {
       lines.push(`${label}：${formatCompactNumber(country.count || 0)}`);
+      const samples = (country.anomalies || []).slice(0, 3);
+      for (const anomaly of samples) {
+        lines.push(`  - ${formatDutyWattrelAnomaly(anomaly)}`);
+      }
+      const hiddenCount = Math.max(0, Number(country.count || 0) - samples.length);
+      if (samples.length && hiddenCount) {
+        lines.push(`  - 另有 ${hiddenCount} 条，详见历史明细`);
+      }
     }
   }
 }
@@ -785,25 +793,29 @@ function appendDutyMetabaseSummary(lines, anomalies = [], options = {}) {
       };
     })
     .sort((left, right) => {
-      return right.missingCount - left.missingCount
+      return dutyCountrySortKey(left).localeCompare(dutyCountrySortKey(right), "zh-CN")
+        || right.missingCount - left.missingCount
         || right.zeroDropCount - left.zeroDropCount
         || right.highFluctuationCount - left.highFluctuationCount
         || right.severity - left.severity
         || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN")
         || String(left.dashboardTitle || "").localeCompare(String(right.dashboardTitle || ""), "zh-CN");
-  });
+    });
   lines.push(`发现 ${anomalies.length} 条异常，涉及 ${dashboardGroups.length} 个看板。`);
-  const maxExamples = Math.max(1, Number(options.maxExamples || 3));
-  const examples = dashboardGroups.slice(0, maxExamples);
-  lines.push(`异常示例（最多 ${examples.length} 条，优先缺失数据、其次数据变为0）：`);
-  for (const example of examples) {
+  lines.push("异常看板（每个国家均展示；每个看板仅列 1 条最高优先级异常）：");
+  let countryLabel = "";
+  for (const example of dashboardGroups) {
     const topAnomaly = [...example.items].sort((left, right) => (
       Number(isMissingPublicAnomaly(right)) - Number(isMissingPublicAnomaly(left))
       || Number(right.type === "latestNonZeroToZero") - Number(left.type === "latestNonZeroToZero")
       || extractAnomalySeverity(right.message || "") - extractAnomalySeverity(left.message || "")
     ))[0] || {};
+    const nextCountryLabel = formatDutyCountryLabel(example);
+    if (nextCountryLabel && nextCountryLabel !== countryLabel) {
+      lines.push(`${nextCountryLabel}：`);
+      countryLabel = nextCountryLabel;
+    }
     const location = [
-      formatDutyCountryLabel(example),
       example.dashboardTitle || "未知看板",
       topAnomaly.cardTitle || topAnomaly.cardName || "未知卡片",
     ].filter(Boolean).join(" / ");
@@ -812,9 +824,42 @@ function appendDutyMetabaseSummary(lines, anomalies = [], options = {}) {
       lines.push(compactDashboardUrl(example.dashboardUrl));
     }
   }
-  if (dashboardGroups.length > examples.length) {
-    lines.push(`另有 ${dashboardGroups.length - examples.length} 个异常看板，详见历史明细。`);
+}
+
+function dutyCountrySortKey(group = {}) {
+  const code = String(group.countryCode || "").toUpperCase();
+  const order = ["CN", "MX", "TH", "INE", "PH", "PK"];
+  const rank = order.indexOf(code);
+  return `${String(rank < 0 ? order.length : rank).padStart(2, "0")}:${formatDutyCountryLabel(group)}`;
+}
+
+function formatDutyWattrelAnomaly(anomaly = {}) {
+  const name = anomaly.name || anomaly.checkName || anomaly.cardTitle || "未命名校验";
+  const target = anomaly.destTbl || anomaly.destTable || "-";
+  const source = anomaly.srcTbl || anomaly.srcTable || "-";
+  const expected = anomaly.expectedValue ?? anomaly.srcValue ?? "-";
+  const actual = anomaly.actualValue ?? anomaly.destValue ?? "-";
+  const diff = anomaly.diff ?? anomaly.diffValue ?? "-";
+  return `${name}：目标表 ${target}；源表 ${source}；期望 ${expected}，实际 ${actual}，差值 ${diff}`;
+}
+
+function splitDutySummaryLines(lines, maxLength) {
+  const limit = Math.max(1000, Number(maxLength) || 3500);
+  const bodies = [];
+  let current = [];
+  let length = 0;
+  for (const line of lines) {
+    const nextLength = length + (current.length ? 1 : 0) + line.length;
+    if (current.length && nextLength > limit) {
+      bodies.push(current.join("\n"));
+      current = ["【今日值班】续报"];
+      length = current[0].length;
+    }
+    current.push(line);
+    length += (current.length > 1 ? 1 : 0) + line.length;
   }
+  if (current.length) bodies.push(current.join("\n"));
+  return bodies;
 }
 
 function compactDashboardUrl(value) {
@@ -832,7 +877,7 @@ function compactDashboardUrl(value) {
 
 function compactDutyAnomalyReason(message) {
   const text = String(message || "未提供判定原因").replace(/\s+/g, " ").trim();
-  return text.length > 180 ? `${text.slice(0, 177)}...` : text;
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
 function isPreviousTimePointBaselineAnomaly(anomaly = {}) {

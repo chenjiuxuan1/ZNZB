@@ -264,8 +264,8 @@ test("duty summary includes Metabase 403 query failures from BI report", () => {
   assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)：2/);
   assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
   assert.match(messages[0].body, /发现 2 条异常，涉及 2 个看板。/);
-  assert.match(messages[0].body, /印尼\(INE\) \/ OKR \/ 转化漏斗：/);
-  assert.match(messages[0].body, /• 🇲🇽 墨西哥\(MX\) \/ 业务概览-核心链路准实时监控 \/ 放款金额：/);
+  assert.match(messages[0].body, /🇮🇩 印尼\(INE\)：\n• OKR \/ 转化漏斗：/);
+  assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)：\n• 业务概览-核心链路准实时监控 \/ 放款金额：/);
   assert.match(messages[0].body, /https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.match(messages[0].body, /业务概览-核心链路准实时监控/);
   assert.match(messages[0].body, /403 Forbidden/);
@@ -373,7 +373,7 @@ test("duty summary includes previous-day baseline intraday anomalies below 100 p
 
   assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
   assert.match(messages[0].body, /发现 1 条异常，涉及 1 个看板。/);
-  assert.match(messages[0].body, /• 🇲🇽 墨西哥\(MX\) \/ 核心链路准实时监控 \/ 新客-启动次数：/);
+  assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)：\n• 核心链路准实时监控 \/ 新客-启动次数：/);
   assert.match(messages[0].body, /https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.doesNotMatch(messages[0].body, /3\. BI报表\(Metabase\):\n正常/);
 });
@@ -398,7 +398,7 @@ test("duty summary includes the affected Metabase card and its exact anomaly rea
   assert.match(messages[0].body, /分APP对比- 入催率：.*指标「入催率」.*12\.0%.*35\.0%.*\+23\.0个百分点/);
 });
 
-test("duty summary limits Metabase examples and directs remaining dashboards to history", () => {
+test("duty summary lists every affected Metabase dashboard", () => {
   const messages = buildPublicCheckMessages(
     {
       checkedAt: "2026-07-27T04:00:00.000Z",
@@ -413,16 +413,15 @@ test("duty summary limits Metabase examples and directs remaining dashboards to 
   );
 
   assert.match(messages[0].body, /发现 4 条异常，涉及 4 个看板。/);
-  assert.match(messages[0].body, /异常示例（最多 3 条，优先缺失数据、其次数据变为0）：/);
-  assert.doesNotMatch(messages[0].body, /🇨🇳 中国\(CN\)/);
+  assert.match(messages[0].body, /异常看板（每个国家均展示；每个看板仅列 1 条最高优先级异常）：/);
+  assert.match(messages[0].body, /🇨🇳 中国\(CN\)/);
   assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)/);
   assert.match(messages[0].body, /🇵🇭 菲律宾\(PH\)/);
   assert.match(messages[0].body, /🇹🇭 泰国\(TH\)/);
-  assert.equal((messages[0].body.match(/https:\/\/data\.example\//g) || []).length, 3);
-  assert.match(messages[0].body, /另有 1 个异常看板，详见历史明细。/);
+  assert.equal((messages[0].body.match(/https:\/\/data\.example\//g) || []).length, 4);
 });
 
-test("duty summary compacts long Metabase links and limits examples", () => {
+test("duty summary compacts long Metabase links while listing every dashboard", () => {
   const anomalies = Array.from({ length: 10 }, (_, index) => ({
     type: "intradayTimePointCompleteness",
     countryCode: "TH",
@@ -444,11 +443,10 @@ test("duty summary compacts long Metabase links and limits examples", () => {
 
   assert.equal(messages.length, 1);
   assert.match(messages[0].body, /发现 10 条异常，涉及 10 个看板。/);
-  assert.match(messages[0].body, /• 🇹🇭 泰国\(TH\) \/ 异常看板1 \/ 指标1：/);
+  assert.match(messages[0].body, /🇹🇭 泰国\(TH\)：\n• 异常看板1 \/ 指标1：/);
   assert.match(messages[0].body, /public\/dashboard\/th-1/);
   assert.doesNotMatch(messages[0].body, /date_filter|tab=overview/);
-  assert.equal((messages[0].body.match(/https:\/\/data\.kuainiu\.io\/public\/dashboard\//g) || []).length, 3);
-  assert.match(messages[0].body, /另有 7 个异常看板，详见历史明细。/);
+  assert.equal((messages[0].body.match(/https:\/\/data\.kuainiu\.io\/public\/dashboard\//g) || []).length, 10);
 });
 
 test("duty summary prioritizes missing data before non-zero to zero anomalies", () => {

@@ -32,51 +32,73 @@ export async function queryWattrelAlerts({ config = {}, limit = 100, queryFn = n
 }
 
 export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
-  return rows.map((row) => {
-    const countryCode = firstPresent(row.country_code, row.countryCode, row.country, defaults.countryCode);
-    const countryName = firstPresent(row.country_name, row.countryName, defaults.countryName);
-    const destTbl = firstPresent(row.dest_tbl, row.destTable, row.table_name, row.tableName, row.dest_table);
-    const srcTbl = firstPresent(row.src_tbl, row.srcTable, row.src_table);
-    const checkName = firstPresent(row.check_name, row.checkName, row.setting_name, row.name, row.rule_name, row.metric_name, row.metric);
-    const expectedValue = firstPresent(row.src_value, row.src_cnt, row.expected_value, row.expected, row.expect_value);
-    const actualValue = firstPresent(row.dest_value, row.dest_cnt, row.actual_value, row.actual, row.real_value);
-    const diff = firstPresent(row.diff_value, row.diff, row.diff_cnt);
-    const message = firstPresent(row.message, row.msg, row.setting_desc, row.desc, row.msg_template, row.description);
-    const begin = firstPresent(row.begin, row.start_time, row.startTime);
-    const end = firstPresent(row.end, row.end_time, row.endTime);
-    const srcSql = firstPresent(row.src_sql, row.srcSql, row.source_sql, row.sourceSql);
-    const destSql = firstPresent(row.dest_sql, row.destSql, row.target_sql, row.targetSql);
-    const checkSql = firstPresent(row.check_sql, row.checkSql, row.sql);
+  return rows.map((inputRow) => {
+    const row = normalizeWattrelRow(inputRow);
+    const value = (...keys) => getWattrelRowValue(row, ...keys);
+    const countryCode = firstPresent(value("country_code", "countryCode", "country"), defaults.countryCode);
+    const countryName = firstPresent(value("country_name", "countryName"), defaults.countryName);
+    const destTbl = value("dest_tbl", "destTable", "table_name", "tableName", "dest_table", "target_table", "targetTable");
+    const srcTbl = value("src_tbl", "srcTable", "src_table", "source_table", "sourceTable");
+    const checkName = value("check_name", "checkName", "setting_name", "name", "rule_name", "ruleName", "metric_name", "metric");
+    const expectedValue = value("src_value", "src_cnt", "expected_value", "expected", "expect_value", "source_value", "sourceValue");
+    const actualValue = value("dest_value", "dest_cnt", "actual_value", "actual", "real_value", "target_value", "targetValue");
+    const diff = value("diff_value", "diff", "diff_cnt", "difference", "delta");
+    const message = value("message", "msg", "setting_desc", "desc", "msg_template", "description");
+    const begin = value("begin", "start_time", "startTime");
+    const end = value("end", "end_time", "endTime");
+    const srcSql = value("src_sql", "srcSql", "source_sql", "sourceSql");
+    const destSql = value("dest_sql", "destSql", "target_sql", "targetSql");
+    const checkSql = value("check_sql", "checkSql", "sql");
 
     return {
       source: "wattrel",
       type: "wattrelQualityAlert",
-      qualityId: firstPresent(row.quality_id, row.qualityId),
+      qualityId: value("quality_id", "qualityId"),
       countryCode: countryCode ? String(countryCode) : "",
       countryName: countryName ? String(countryName) : "",
-      dashboardTitle: firstPresent(row.dashboard_title, row.dashboardTitle, "Wattrel 数据质量"),
-      cardTitle: String(destTbl || checkName || row.id || "Wattrel 告警"),
+      dashboardTitle: firstPresent(value("dashboard_title", "dashboardTitle"), "Wattrel 数据质量"),
+      cardTitle: String(destTbl || checkName || value("id") || "Wattrel 告警"),
       name: checkName ? String(checkName) : "",
       srcTbl: srcTbl ? String(srcTbl) : "",
       destTbl: destTbl ? String(destTbl) : "",
       expectedValue,
       actualValue,
       diff,
-      window: firstPresent(row.check_window, row.time_range, row.window, begin && end ? `${begin} 至 ${end}` : begin, row.biz_date, row.created_at),
+      window: firstPresent(value("check_window", "time_range", "window"), begin && end ? `${begin} 至 ${end}` : begin, value("biz_date", "created_at")),
       begin,
       end,
-      srcDb: firstPresent(row.src_db, row.srcDb),
-      destDb: firstPresent(row.dest_db, row.destDb),
+      srcDb: value("src_db", "srcDb", "source_db", "sourceDb"),
+      destDb: value("dest_db", "destDb", "target_db", "targetDb"),
       srcSql: srcSql ? String(srcSql) : "",
       destSql: destSql ? String(destSql) : "",
       checkSql: checkSql ? String(checkSql) : "",
-      srcError: firstPresent(row.src_error, row.srcError),
-      destError: firstPresent(row.dest_error, row.destError),
-      severity: firstPresent(row.alert_level, row.level, "warning"),
+      srcError: value("src_error", "srcError", "source_error", "sourceError"),
+      destError: value("dest_error", "destError", "target_error", "targetError"),
+      severity: firstPresent(value("alert_level", "level"), "warning"),
       row,
       message: message ? String(message) : undefined,
     };
   });
+}
+
+function normalizeWattrelRow(input) {
+  const row = input && typeof input === "object" ? input : {};
+  // n8n nodes may wrap their JSON payload in json/data/row depending on the response node.
+  for (const key of ["json", "data", "row"]) {
+    if (row[key] && typeof row[key] === "object" && !Array.isArray(row[key])) {
+      return { ...row, ...row[key] };
+    }
+  }
+  return row;
+}
+
+function getWattrelRowValue(row, ...keys) {
+  const index = new Map(Object.entries(row || {}).map(([key, value]) => [normalizeWattrelKey(key), value]));
+  return firstPresent(...keys.map((key) => index.get(normalizeWattrelKey(key))));
+}
+
+function normalizeWattrelKey(key) {
+  return String(key || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 
 function normalizeWattrelConfig(config = {}, limit = 100) {

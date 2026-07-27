@@ -15,7 +15,7 @@ METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN=optional-shared-token
 
 ```dotenv
 METABASE_ANOMALY_AGENT_ENABLED=true
-METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL=https://sql-cn.kuainiujinke.com/webhook/metabase-anomaly-agent
+METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/metabase-anomaly-agent
 METABASE_ANOMALY_AGENT_N8N_TOKEN=optional-shared-token
 ```
 
