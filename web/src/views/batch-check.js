@@ -474,7 +474,7 @@ function renderBatchSchedulePanel() {
       </div>
       <div class="schedule-help">
         <strong>怎么下线</strong>
-        <span>关闭“自动触发”并保存，会停止所有到点自动巡检；关闭某个国家卡片里的“上线”并保存，只会下线该国家。选择 KN Chat 机器人时只填接收人邮箱；选择 TV webhook 时填写 TV bot_id 和提醒人。</span>
+        <span>关闭“自动触发”并保存，会停止所有到点自动巡检；关闭某个国家卡片里的“上线”并保存，只会下线该国家。选择 KN Chat 机器人时可同时填写接收人邮箱和群聊 chat_id；选择 TV webhook 时填写 TV bot_id 和提醒人。</span>
       </div>
       ${renderCountryScheduleConfig(schedule)}
       ${schedule.lastResult ? renderScheduleLastResult(schedule.lastResult) : ""}
@@ -1125,6 +1125,10 @@ function renderCountryScheduleConfig(schedule) {
                   接收人邮箱
                   <input class="schedule-country-recipient-emails" value="${escapeHtml(config.recipientEmails || "")}" placeholder="多个邮箱用逗号分隔">
                 </label>
+                <label class="kn-target-field">
+                  群聊 chat_id
+                  <input class="schedule-country-chat-id" value="${escapeHtml(config.chatId || "")}" placeholder="例如 -1001234567890">
+                </label>
                 <label class="tv-target-field">
                   TV bot_id
                   <input class="schedule-country-bot-id" value="${escapeHtml(config.botId || "")}" placeholder="TV bot_id">
@@ -1133,7 +1137,7 @@ function renderCountryScheduleConfig(schedule) {
                   TV 提醒人
                   <input class="schedule-country-mentions" value="${escapeHtml(config.mentions || "")}" placeholder="多个邮箱用逗号分隔">
                 </label>
-                <p class="kn-target-field muted-inline">KN Chat 会按邮箱私聊，无需填写提醒人。</p>
+                <p class="kn-target-field muted-inline">可同时填写邮箱和群聊 chat_id：巡检结果会私聊每位接收人，并同步到群聊。</p>
               </article>
             `;
           }).join("")}
@@ -1164,6 +1168,7 @@ function renderBatchScheduleStatus(status) {
 }
 
 function buildBatchSchedulePayload(root, scope) {
+  const notifyConfig = getBatchNotifyConfig();
   return {
     enabled: Boolean(root.querySelector("#batch-schedule-enabled")?.checked),
     includeDsScheduler: Boolean(root.querySelector("#batch-include-ds-scheduler")?.checked),
@@ -1171,24 +1176,26 @@ function buildBatchSchedulePayload(root, scope) {
     intervalMinutes: 1440,
     countryCode: scope.countryCode || "",
     dashboardUuid: scope.dashboardUuid || "",
-    webhookUrl: getBatchNotifyConfig().webhookUrl,
-    botId: getBatchNotifyConfig().botId,
-    mentions: getBatchNotifyConfig().mentions,
-    countryConfigs: [...root.querySelectorAll(".schedule-country-row")].map((row) => {
-      const notifyChannel = row.querySelector(".schedule-country-notify-channel")?.value || "knBot";
-      return {
-        countryCode: row.dataset.countryCode || "",
-        enabled: Boolean(row.querySelector(".schedule-country-enabled")?.checked),
-        dashboardUuids: [row.querySelector(".schedule-country-dashboard-uuid")?.value || ""].filter(Boolean),
-        notifyChannel,
-        webhookUrl: getBatchNotifyConfig().webhookUrl,
-        botId: notifyChannel === "tv" ? row.querySelector(".schedule-country-bot-id")?.value.trim() || "" : "",
-        botToken: notifyChannel === "knBot" ? "${KN_BOT_TOKEN}" : "",
-        chatId: "",
-        recipientEmails: notifyChannel === "knBot" ? row.querySelector(".schedule-country-recipient-emails")?.value.trim() || "" : "",
-        mentions: notifyChannel === "tv" ? row.querySelector(".schedule-country-mentions")?.value.trim() || "" : "",
-      };
-    }),
+    webhookUrl: notifyConfig.webhookUrl,
+    botId: notifyConfig.botId,
+    mentions: notifyConfig.mentions,
+    countryConfigs: [...root.querySelectorAll(".schedule-country-row")].map((row) => buildBatchScheduleCountryConfig(row, notifyConfig)),
+  };
+}
+
+export function buildBatchScheduleCountryConfig(row, notifyConfig = {}) {
+  const notifyChannel = row.querySelector(".schedule-country-notify-channel")?.value || "knBot";
+  return {
+    countryCode: row.dataset.countryCode || "",
+    enabled: Boolean(row.querySelector(".schedule-country-enabled")?.checked),
+    dashboardUuids: [row.querySelector(".schedule-country-dashboard-uuid")?.value || ""].filter(Boolean),
+    notifyChannel,
+    webhookUrl: notifyConfig.webhookUrl || "",
+    botId: notifyChannel === "tv" ? row.querySelector(".schedule-country-bot-id")?.value.trim() || "" : "",
+    botToken: notifyChannel === "knBot" ? "${KN_BOT_TOKEN}" : "",
+    chatId: notifyChannel === "knBot" ? row.querySelector(".schedule-country-chat-id")?.value.trim() || "" : "",
+    recipientEmails: notifyChannel === "knBot" ? row.querySelector(".schedule-country-recipient-emails")?.value.trim() || "" : "",
+    mentions: notifyChannel === "tv" ? row.querySelector(".schedule-country-mentions")?.value.trim() || "" : "",
   };
 }
 
