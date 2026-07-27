@@ -1,0 +1,68 @@
+version: 1.0.0
+status: active
+author: owenzhang
+shared_contract: contracts/semantic/semantic-entity.schema.json
+retrieval:
+  order:
+    - exact_id
+    - normalized_exact_name_or_alias
+    - business_domain_filter
+    - semantic_miss_or_ambiguity
+  normalization:
+    lowercase: true
+    trim_whitespace: true
+    separator_equivalence:
+      - " "
+      - "-"
+      - "_"
+entities:
+  - kind: metric
+    id: risk.d7_overdue_rate
+    path: metrics/risk/d7_overdue_rate.yaml
+    display_name: D7 逾期率
+    aliases:
+      - D7 overdue rate
+      - D7逾期率
+      - 七日逾期率
+    business_domain: risk
+  - kind: metric
+    id: operation.ab_experiment_effect
+    path: metrics/operation/ab_experiment_effect.yaml
+    display_name: AB 实验效果
+    aliases:
+      - AB experiment effect
+      - AB实验效果
+      - 实验组对照组差异
+    business_domain: operation
+  - kind: metric
+    id: marketing.channel_cost
+    path: metrics/marketing/channel_cost.yaml
+    display_name: 渠道花费
+    aliases:
+      - channel cost
+      - 渠道成本
+      - 投放花费
+    business_domain: marketing
+  - kind: dimension
+    id: country
+    path: dimensions/country.yaml
+    display_name: 国家
+    aliases:
+      - country
+      - 国家代码
+  - kind: dimension
+    id: time
+    path: dimensions/time.yaml
+    display_name: 时间
+    aliases:
+      - time
+      - 时间窗口
+      - 时间粒度
+  - kind: segment
+    id: exclude_test_account
+    path: segments/exclude_test_account.yaml
+    display_name: 排除测试账号
+    aliases:
+      - exclude test account
+      - 排除内部账号
+      - 标准账号过滤

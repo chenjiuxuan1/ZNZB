@@ -168,6 +168,12 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/anomaly-verifier/status") {
     return sendJsonCached(200, await api.getAnomalyVerifierStatus());
   }
+  if (method === "GET" && url.pathname === "/api/skills/runtime/status") {
+    return sendJsonCached(200, await api.getSkillRuntimeStatus());
+  }
+  if (method === "POST" && url.pathname === "/api/skills/sr-box/run") {
+    return sendJsonCached(200, await api.runSrBoxSkill(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/notify-preview") {
     const body = await readBody(request, {});
     return sendJsonCached(200, await api.getNotifyPreview(body?.result || null, body?.options || {}));

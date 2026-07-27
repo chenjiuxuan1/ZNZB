@@ -11,6 +11,7 @@ import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattre
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
 import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v5";
 import { renderAnomalyVerifier } from "./views/anomaly-verifier.js?v=20260724-agent-v1";
+import { renderSkillRuntime } from "./views/skill-runtime.js?v=20260727-skills-v1";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
@@ -20,6 +21,7 @@ const routes = [
   { path: "/sandbox", label: "规则试跑", short: "试", render: renderSandbox },
   { path: "/batch-check", label: "Metabase 定时巡检", short: "巡", render: renderBatchCheck },
   { path: "/anomaly-verifier", label: "异常复核 Agent", short: "智", render: renderAnomalyVerifier },
+  { path: "/skill-runtime", label: "Skill 运行中心", short: "技", render: renderSkillRuntime },
   { path: "/wattrel-alerts", label: "Wattrel告警", short: "告", render: renderWattrelAlerts },
   { path: "/quality-rule-generation", label: "智能告警生成", short: "生", render: renderQualityRuleGeneration },
   { path: "/notify-preview", label: "通知预览", short: "通", render: renderNotifyPreview },

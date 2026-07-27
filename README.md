@@ -350,6 +350,23 @@ Agent 使用 DashScope `qwen3.6-plus` 分析候选异常、提出血缘调查方
 
 示例配置见 `./config/anomaly-verifier.config.example.json`，完整接入说明见 `./docs/anomaly-verifier-agent.md`。复核功能默认关闭，启用前必须补充正式表血缘和只读 SQL，并完成 SR Box SSO 授权。
 
+## Skill 运行中心
+
+项目已经内置用户提供的两个 Skill 压缩包：
+
+- `runtime/skills/full/sr-dev`：全量数仓 Skill、Skill Pack、契约和语义层资产。
+- `runtime/skills/standalone/sr_box`：值班系统正式使用的 SR Box 生产客户端。
+
+主界面的「Skill 运行中心」可以检查 Skill 安装状态、SR Box 网关健康、SSO 状态、当前用户、权限、数据目录，并执行受控只读 SQL。所有 SQL 同时经过 Node 只读校验和官方 `sr_gateway_client.py` 保护。
+
+部署后先在运行值班系统的主机完成一次生产 SSO：
+
+```bash
+python3 runtime/skills/standalone/sr_box/scripts/sr_gateway_client.py sso login
+```
+
+异常复核 Agent 默认使用项目内置的 SR Box 客户端，不再依赖开发者电脑上的 `~/.codex/skills` 路径。可以通过 `SR_BOX_SKILL_PATH` 或 `SR_BOX_PYTHON` 做显式覆盖，但不要把 Session、Token 或 API Key 提交到 Git。
+
 TV 使用 `Content-Type: application/json`，请求体固定为 `{ "botId": "...", "message": "..." }`；通过 `alerts.botId` 或环境变量 `TV_ALERT_BOT_ID` 指定机器人。巡检消息会先发一条总览，再按国家各发一条聚合明细；国家明细采用运营卡片格式，包含巡检时间、异常概览、数据缺失、数据波动和看板链接。同一报表卡片的多条异常会合并为一组，只展示最大波动、核心数值变化和可点击的报表链接。当前 TV 文本消息不会渲染 HTML 折叠块，因此不会发送 `<details>/<summary>` 标签。
 
 ## 建议落地方式

@@ -1,0 +1,10 @@
+schema_version: "1.0.0"
+description: SR Dev 精简 skill pack 安装索引。物理 skill 位于 sr-dev/skills；本索引用于按当前整理后的 skill 目录选择安装组合。
+packs:
+  - path: packs/jira-intake.yaml
+  - path: packs/knowledge.yaml
+  - path: packs/sr-box.yaml
+  - path: packs/ds-scheduling.yaml
+  - path: packs/dw-modeling.yaml
+  - path: packs/dw-sql-builder.yaml
+  - path: packs/dw-dev.yaml

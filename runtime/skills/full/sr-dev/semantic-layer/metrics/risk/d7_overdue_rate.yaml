@@ -1,0 +1,69 @@
+id: risk.d7_overdue_rate
+kind: metric
+name: D7 逾期率
+aliases:
+  - D7 overdue rate
+  - D7逾期率
+  - 七日逾期率
+description: 放款后 7 天内逾期金额占放款金额的比例。
+business_domain: risk
+owner:
+  name: owenzhang
+  team: data-warehouse
+status: draft
+freshness:
+  expected_schedule: daily T+1
+  max_age_hours: 48
+  verified_at: null
+source:
+  tier: semantic
+  uri: semantic-layer/metrics/risk/d7_overdue_rate.yaml
+canonical_assets:
+  - risk_dw.dws_repay_detail_di
+filters:
+  - name: exclude_test_account
+    expression: is_test_account = 0
+  - name: exclude_cancelled_loan
+    expression: loan_status != 'cancelled'
+validation:
+  status: draft
+  notes:
+    - 架构样例种子；真实执行前必须核验国家、datasource、物理字段和最新分区。
+    - 金额字段单位和部分还款口径必须由业务 owner 确认。
+query_spec:
+  default_country: pk
+  datasource_hint: sr_pk_local
+  canonical_table: risk_dw.dws_repay_detail_di
+  metric_expression: |-
+    SUM(
+      CASE
+        WHEN overdue_days <= 7 AND overdue_amount > 0
+        THEN overdue_amount
+        ELSE 0
+      END
+    ) / NULLIF(SUM(loan_amount), 0)
+  default_time_field: loan_date
+  default_granularity: daily
+  default_filters:
+    - is_test_account = 0
+    - loan_status != 'cancelled'
+  freshness:
+    partition_field: dt
+    expected_lag: T+1
+    verification_required: true
+  unit: percentage
+  required_parameters:
+    - country
+    - time_range
+    - amount_unit
+dimensions:
+  - country
+  - time
+segments:
+  - exclude_test_account
+limitations:
+  - 当天数据可能不完整，默认仅使用已完成的 T+1 分区。
+  - 部分还款场景需要检查还款状态、结清时间和分母口径。
+known_pitfalls:
+  - 金额字段可能以分存储，交付前必须确认是否需要除以 100。
+  - 不得在未验证血缘时用旧版明细表替代 canonical table。

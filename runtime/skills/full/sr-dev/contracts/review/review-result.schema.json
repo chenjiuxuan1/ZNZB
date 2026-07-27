@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warehouse-agent.local/contracts/review/review-result.schema.json",
+  "title": "Warehouse Agent Review Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ticket_id",
+    "review_type",
+    "status",
+    "risk_level",
+    "approval_required",
+    "findings",
+    "reviewer",
+    "evidence_references",
+    "reviewed_at"
+  ],
+  "properties": {
+    "ticket_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "review_type": {
+      "type": "string",
+      "enum": ["sql", "answer", "safety"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "blocked"]
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["unknown", "low", "medium", "high", "critical"]
+    },
+    "approval_required": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "code", "message", "recommendation"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warning", "error", "critical"]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "reviewer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

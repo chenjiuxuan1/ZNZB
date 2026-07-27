@@ -1,0 +1,37 @@
+id: time
+kind: dimension
+name: 时间
+aliases:
+  - time
+  - 时间窗口
+  - 时间粒度
+description: 区分业务事件时间、分区时间和标准聚合粒度。
+owner:
+  name: owenzhang
+  team: data-warehouse
+status: draft
+freshness:
+  expected_schedule: on change
+  max_age_hours: 8760
+  verified_at: null
+source:
+  tier: semantic
+  uri: semantic-layer/dimensions/time.yaml
+canonical_assets:
+  - unresolved:dimension.time
+filters: []
+validation:
+  status: draft
+  notes:
+    - 具体指标必须声明默认业务时间字段、分区字段和 freshness。
+values:
+  daily: 自然日
+  weekly: 自然周
+  monthly: 自然月
+mappings:
+  - table_pattern: "*"
+    field: dt
+    description: 常见分区日期字段，不等同于业务事件时间。
+  - table_pattern: "*"
+    field: event_time
+    description: 常见业务事件时间候选，使用前必须核验时区。

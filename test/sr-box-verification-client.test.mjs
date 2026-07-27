@@ -59,3 +59,14 @@ test("SR Box verifier calls the official Python client without a shell", async (
   assert.ok(calls[0].args.includes("id"));
   assert.equal(Object.prototype.hasOwnProperty.call(calls[0].options, "shell"), false);
 });
+
+test("SR Box verifier defaults to the runtime bundled with the duty platform", () => {
+  const client = new SrBoxVerificationClient({
+    skillPath: "${UNSET_SR_BOX_SKILL_PATH}",
+  });
+
+  assert.match(
+    client.scriptPath,
+    /runtime\/skills\/standalone\/sr_box\/scripts\/sr_gateway_client\.py$/,
+  );
+});

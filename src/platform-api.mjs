@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createAnomalyVerifierAgent } from "./anomaly-verifier-agent.mjs";
+import { createDutySkillRuntime } from "./duty-skill-runtime.mjs";
 import { createDefaultMetabaseClient } from "./metabase-public-monitor.mjs";
 import {
   buildDefaultCardParameters,
@@ -117,9 +118,11 @@ export function createPlatformApi({
   qualityRuleGenerationSubmitFn = null,
   anomalyVerifierFactory = createAnomalyVerifierAgent,
   anomalyVerificationExecuteFn = null,
+  skillRuntimeFactory = createDutySkillRuntime,
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
+  const skillRuntime = skillRuntimeFactory({ rootDir });
   const verifyBatchResult = async (result, options = {}) => {
     const storedConfig = await readJsonFile(resolve("anomalyVerifier"), { enabled: false, plans: [] });
     const config = options.force === true ? { ...storedConfig, enabled: true } : storedConfig;
@@ -215,6 +218,14 @@ export function createPlatformApi({
             }
           : null,
       };
+    },
+
+    async getSkillRuntimeStatus() {
+      return skillRuntime.getStatus();
+    },
+
+    async runSrBoxSkill(body = {}) {
+      return skillRuntime.runSrBoxAction(body);
     },
 
     async verifyAnomalies(body = {}) {

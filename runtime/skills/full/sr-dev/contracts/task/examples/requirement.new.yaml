@@ -1,0 +1,26 @@
+ticket_id: DATA-2048
+source: manual
+source_url: null
+title: ""
+request_type: unknown
+business_domain: unknown
+country: unknown
+countries: []
+time_range:
+  type: unknown
+  start_date: null
+  end_date: null
+metrics: []
+assets: []
+expected_outputs: []
+requires_sr_execution: false
+requires_ds_release: false
+requires_report_release: false
+requires_pdf: false
+risk_level: unknown
+source_tier: unknown
+confidence: uncertain
+missing_questions: []
+approval_required:
+  - jira_comment
+status: new

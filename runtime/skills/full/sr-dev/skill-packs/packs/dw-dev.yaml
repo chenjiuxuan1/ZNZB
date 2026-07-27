@@ -1,0 +1,32 @@
+id: dw-dev
+display_name: 数仓开发编排
+description: 精简数仓开发编排：接收直接提问、文档、Jira 或组合材料，组织上下文、参考资料和下游协作请求。
+category: development
+standalone_entry: "$dw-dev"
+agent_entry: "$dw-dev -> dw-modeling -> dw-sql-builder -> sr-box"
+main_agent_impact: orchestrator
+required_skills:
+  - dw-dev
+  - dw-modeling
+  - dw-sql-builder
+  - dw-knowledge
+  - sr_box
+optional_skills:
+  - jira-intake
+  - dw-code-knowledge
+  - ds-scheduler
+  - ds-schedule-manager
+external_required: []
+provides:
+  - demand-routing
+  - context-priority-index
+  - reference-appendix
+  - modeling-handoff
+  - sql-builder-handoff
+  - testdb-execution-request
+  - ds-scheduler-handoff
+boundaries:
+  - 只做编排和交接，不修改被调用组件。
+  - 遇到 route、口径、源表、权限或执行前置条件阻断时先停止询问。
+  - 不默认调用审查、交付、Jira 写回或发布汇报。
+  - 不直接执行生产 DDL/DML；testdb 执行必须交给 sr_box。

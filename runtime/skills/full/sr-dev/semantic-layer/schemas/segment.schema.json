@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warehouse-agent.local/semantic-layer/segment.schema.json",
+  "title": "Warehouse Semantic Segment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "name",
+    "aliases",
+    "description",
+    "owner",
+    "status",
+    "freshness",
+    "source",
+    "canonical_assets",
+    "filters",
+    "validation",
+    "applies_to"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "kind": {"const": "segment"},
+    "name": {"type": "string", "minLength": 1},
+    "aliases": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "description": {"type": "string", "minLength": 1},
+    "owner": {"$ref": "#/$defs/owner"},
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "deprecated"]
+    },
+    "freshness": {"$ref": "#/$defs/freshness"},
+    "source": {"$ref": "#/$defs/source"},
+    "canonical_assets": {"$ref": "#/$defs/canonicalAssets"},
+    "filters": {
+      "allOf": [
+        {"$ref": "#/$defs/filters"},
+        {"minItems": 1}
+      ]
+    },
+    "validation": {"$ref": "#/$defs/validation"},
+    "applies_to": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "team"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "team": {"type": "string", "minLength": 1}
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_schedule", "max_age_hours", "verified_at"],
+      "properties": {
+        "expected_schedule": {"type": "string", "minLength": 1},
+        "max_age_hours": {"type": "integer", "minimum": 1},
+        "verified_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "uri"],
+      "properties": {
+        "tier": {"const": "semantic"},
+        "uri": {"type": "string", "minLength": 1}
+      }
+    },
+    "canonicalAssets": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "filters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "expression"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "expression": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "notes"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["draft", "verified", "deprecated"]
+        },
+        "notes": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

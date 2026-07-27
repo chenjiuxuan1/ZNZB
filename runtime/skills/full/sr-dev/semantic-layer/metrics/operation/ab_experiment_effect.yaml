@@ -1,0 +1,68 @@
+id: operation.ab_experiment_effect
+kind: metric
+name: AB 实验效果
+aliases:
+  - AB experiment effect
+  - AB实验效果
+  - 实验组对照组差异
+description: 实验组转化率与对照组转化率的差值。
+business_domain: operation
+owner:
+  name: owenzhang
+  team: data-warehouse
+status: draft
+freshness:
+  expected_schedule: daily
+  max_age_hours: 48
+  verified_at: null
+source:
+  tier: semantic
+  uri: semantic-layer/metrics/operation/ab_experiment_effect.yaml
+canonical_assets:
+  - unresolved:operation.ab_experiment_effect
+filters:
+  - name: exclude_test_account
+    expression: is_test_account = 0
+validation:
+  status: draft
+  notes:
+    - 物理 canonical table 尚未由 governed evidence 确认，禁止直接执行。
+    - 实验分组、转化事件、样本去重和统计显著性口径需要需求方确认。
+query_spec:
+  default_country: unknown
+  datasource_hint: unresolved
+  canonical_table: unknown
+  metric_expression: |-
+    (
+      SUM(CASE WHEN experiment_group = 'treatment' AND converted = 1 THEN 1 ELSE 0 END)
+      / NULLIF(SUM(CASE WHEN experiment_group = 'treatment' THEN 1 ELSE 0 END), 0)
+    ) - (
+      SUM(CASE WHEN experiment_group = 'control' AND converted = 1 THEN 1 ELSE 0 END)
+      / NULLIF(SUM(CASE WHEN experiment_group = 'control' THEN 1 ELSE 0 END), 0)
+    )
+  default_time_field: event_time
+  default_granularity: experiment
+  default_filters:
+    - is_test_account = 0
+  freshness:
+    partition_field: dt
+    expected_lag: T+1
+    verification_required: true
+  unit: percentage
+  required_parameters:
+    - experiment_id
+    - country
+    - time_range
+    - experiment_group_field
+    - conversion_event
+dimensions:
+  - country
+  - time
+segments:
+  - exclude_test_account
+limitations:
+  - 当前种子只定义概念公式，不定义真实表、字段或统计显著性方法。
+  - 多次曝光、跨组用户和延迟转化必须在具体需求中单独处理。
+known_pitfalls:
+  - 未确认实验 ID、国家和时间窗口时必须补问，不能直接生成 SQL。
+  - 不能把曝光人数和独立用户数混为同一分母。

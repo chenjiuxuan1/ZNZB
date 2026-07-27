@@ -1,0 +1,36 @@
+id: jira-intake
+display_name: Jira 入口
+description: 优先消费 Atlassian Rovo 的 Jira 结果，生成本地需求入口、统计分类、受控写回计划和操作审计；REST API token 模式仅作兜底。
+category: intake
+standalone_level: full-with-rovo-or-local-file
+standalone_entry: "$jira-intake"
+agent_entry: "$dw-dev -> jira-intake"
+main_agent_impact: artifact-contract-only
+required_skills: []
+optional_skills:
+  - dw-dev
+  - dw-knowledge
+external_required: []
+provides:
+  - jira-issue-fetch
+  - jira-rovo-normalization
+  - jira-search-stats
+  - jira-issue-classification
+  - jira-category-inference
+  - jira-status-read
+  - jira-transition-read
+  - jira-transition-audit
+  - jira-rovo-operation-audit
+  - jira-operation-plan
+  - jira-rest-fallback
+does_not_provide:
+  - sql-execution
+  - automatic-jira-writeback
+  - required-rest-token-default
+  - production-warehouse-change
+boundaries:
+  - Jira 真实操作优先通过 Atlassian Rovo。
+  - REST API token 仅用于 Rovo 不可用或无法解决时的兜底。
+  - 真实写回必须显式确认。
+  - 不保存 Jira token。
+  - 不替代 dw-dev 的任务生命周期控制。

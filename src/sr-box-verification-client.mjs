@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_BASE_URL = "https://data-map-dev.kuainiu.io";
@@ -9,13 +10,22 @@ const DEFAULT_TIMEOUT_SECONDS = 60;
 const DEFAULT_PAGE_SIZE = 100;
 const READ_ONLY_START = /^(select|with|show|desc|describe|explain)\b/i;
 const FORBIDDEN_SQL = /\b(insert|update|delete|create|drop|alter|truncate|replace|merge|grant|revoke|load|set|use|call)\b/i;
+const DEFAULT_BUNDLED_SKILL_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../runtime/skills/standalone/sr_box",
+);
 
 export class SrBoxVerificationClient {
   constructor(config = {}) {
-    const skillRoot = expandHome(
-      resolveEnvString(config.skillPath || process.env.SR_BOX_SKILL_PATH || "~/.codex/skills/sr-box"),
+    const configuredSkillRoot = resolveEnvString(
+      config.skillPath || process.env.SR_BOX_SKILL_PATH || "",
     );
-    this.pythonExecutable = resolveEnvString(config.pythonExecutable || process.env.SR_BOX_PYTHON || "python3");
+    const skillRoot = expandHome(
+      configuredSkillRoot || DEFAULT_BUNDLED_SKILL_ROOT,
+    );
+    this.pythonExecutable = resolveEnvString(
+      config.pythonExecutable || process.env.SR_BOX_PYTHON || "python3",
+    ) || "python3";
     this.scriptPath = expandHome(
       resolveEnvString(config.scriptPath || path.join(skillRoot, "scripts/sr_gateway_client.py")),
     );

@@ -1,0 +1,28 @@
+id: dw-sql-builder
+display_name: SQL 构建
+description: 根据已确认建模方案编写和优化数仓 SQL，生成生产草稿、testdb 可执行 SQL、质量检查 SQL 和 SQL package。
+category: development
+standalone_entry: "$dw-sql-builder"
+agent_entry: "$dw-modeling -> dw-sql-builder"
+main_agent_impact: artifact-contract-only
+required_skills:
+  - dw-sql-builder
+optional_skills:
+  - dw-modeling
+  - dw-dev
+  - sr_box
+external_required:
+  - dw-standards
+provides:
+  - ddl-draft
+  - dml-draft
+  - etl-sql-draft
+  - sql-optimization
+  - sql-package-prod-and-testdb
+  - quality-check-sql
+  - testdb-execution-request
+boundaries:
+  - 不执行 SQL。
+  - 不替代 dw-modeling 做业务建模决策。
+  - testdb 验证 SQL 的写入目标必须是 testdb。
+  - 生产 SQL 只是草稿，必须通过规范和人工确认。

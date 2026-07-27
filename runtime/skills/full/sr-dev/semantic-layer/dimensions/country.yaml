@@ -1,0 +1,39 @@
+id: country
+kind: dimension
+name: 国家
+aliases:
+  - country
+  - 国家代码
+description: Warehouse Agent 支持的业务运营国家及常见字段映射。
+owner:
+  name: owenzhang
+  team: data-warehouse
+status: draft
+freshness:
+  expected_schedule: on change
+  max_age_hours: 8760
+  verified_at: null
+source:
+  tier: semantic
+  uri: semantic-layer/dimensions/country.yaml
+canonical_assets:
+  - unresolved:dimension.country
+filters: []
+validation:
+  status: draft
+  notes:
+    - 国家代码列表已冻结，具体表字段映射仍需按 datasource 核验。
+values:
+  cn: 中国
+  th: 泰国
+  mx: 墨西哥
+  ph: 菲律宾
+  pk: 巴基斯坦
+  id: 印尼
+mappings:
+  - table_pattern: "*"
+    field: country
+    description: 通用国家字段候选，使用前必须核验枚举值。
+  - table_pattern: ods_mx.*
+    field: country_code
+    description: 墨西哥 ODS 表的候选字段，使用前必须核验。

@@ -1,0 +1,14 @@
+ticket_id: DATA-2048
+review_type: sql
+status: blocked
+risk_level: medium
+approval_required: []
+findings:
+  - severity: error
+    code: COUNTRY_UNKNOWN
+    message: Country and datasource are not confirmed.
+    recommendation: Clarify country before SR execution.
+reviewer: reviewers
+evidence_references:
+  - tickets/DATA-2048/01-requirement.yaml
+reviewed_at: "2026-06-10T12:00:00+08:00"

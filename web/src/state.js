@@ -52,6 +52,12 @@ export const state = {
   anomalyVerifierResult: null,
   anomalyVerifierRunStatus: null,
   anomalyVerifierLoaded: false,
+  skillRuntimeStatus: null,
+  skillRuntimeResult: null,
+  skillRuntimeRunStatus: null,
+  skillRuntimeLoaded: false,
+  skillRuntimeCountry: "cn",
+  skillRuntimeSql: "SELECT 1 AS ok",
   batchNotifyConfig: {
     webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
     botId: "",

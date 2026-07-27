@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warehouse-agent.local/contracts/eval/eval-case.schema.json",
+  "title": "Warehouse Agent Eval Case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "title",
+    "input",
+    "expected",
+    "scoring",
+    "safety_assertions",
+    "min_pass_score",
+    "tags"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "country", "risk_level"],
+      "properties": {
+        "request": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        },
+        "risk_level": {
+          "type": "string",
+          "enum": ["unknown", "low", "medium", "high", "critical"]
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcomes", "required_artifacts"],
+      "properties": {
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "scoring": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion", "weight"],
+        "properties": {
+          "criterion": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "safety_assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["assertion", "expected"],
+        "properties": {
+          "assertion": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "boolean"
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "min_pass_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    }
+  }
+}

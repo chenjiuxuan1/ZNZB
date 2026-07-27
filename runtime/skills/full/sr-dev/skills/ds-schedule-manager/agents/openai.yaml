@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS 调度管理"
+  short_description: "编排 DS 查询、生产发布、历史补数与安全确定性计划"
+  default_prompt: "使用 $ds-schedule-manager 查询 DS 调度，或为生产发布、历史补数运行无副作用的 ds_release_backfill_plan.py；DS SQL 元数据固定走 $sr-box。真实 mutation 仅在用户明确确认后交给 $ds-scheduler，优先使用显式 token，缺失时再使用 manager 私有默认配置，禁止回显 token。"
