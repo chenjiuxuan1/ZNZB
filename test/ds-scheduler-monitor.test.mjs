@@ -106,7 +106,7 @@ test("DS checks every configured project and aggregates partial failures", async
       async text() {
         return JSON.stringify(failed
           ? { success: false, error: { message: "project unavailable" } }
-          : { success: true, data: { total_checked: 3, stuck_count: 1, stale_count: 0, stuck_workflows: [] } });
+          : { success: true, data: { total_checked: 3, stuck_count: 1, stale_count: 0, stuck_workflows: [], checked_workflows: [{ workflow_code: "daily_loan", workflow_name: "每日放款" }] } });
       },
     };
   };
@@ -122,6 +122,7 @@ test("DS checks every configured project and aggregates partial failures", async
     assert.equal(result.countries[0].partialFailure, true);
     assert.equal(result.countries[0].checkedWorkflows, 3);
     assert.equal(result.countries[0].projects.length, 2);
+    assert.deepEqual(result.countries[0].checkedWorkflowDetails, [{ workflowCode: "daily_loan", workflowName: "每日放款" }]);
   } finally {
     globalThis.fetch = originalFetch;
   }

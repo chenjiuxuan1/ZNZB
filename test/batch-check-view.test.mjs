@@ -61,7 +61,7 @@ test("history details show Wattrel table values and DS project workflow scan det
       checkedWorkflows: 2,
       stuckCount: 1,
       staleCount: 0,
-      projects: [{ projectName: "泰国数仓", projectCode: "1001", checkedWorkflows: 2, success: true }],
+      projects: [{ projectName: "泰国数仓", projectCode: "1001", checkedWorkflows: 2, success: true, checkedWorkflowDetails: [{ workflowName: "每日注册", workflowCode: "register_daily" }] }],
       stuckWorkflows: [{ workflowName: "每日放款", workflowCode: "loan_daily", consecutiveFailures: 3 }],
     }],
   });
@@ -71,5 +71,6 @@ test("history details show Wattrel table values and DS project workflow scan det
   assert.match(wattrelHtml, /2,781/);
   assert.match(dsHtml, /泰国数仓/);
   assert.match(dsHtml, /每日放款/);
+  assert.match(dsHtml, /每日注册/);
   assert.match(dsHtml, /连续失败 3 次/);
 });

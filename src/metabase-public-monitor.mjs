@@ -152,7 +152,10 @@ export async function checkPublicDashboards({
         }
 
         if (shouldRunBuiltIns) {
-          anomalies.push(...evaluateBuiltIns(ruleConfigData, dashboard, card, cardResult));
+          anomalies.push(...evaluateBuiltIns(ruleConfigData, dashboard, card, cardResult, {
+            checkedAt,
+            rules: queryGroup.rules,
+          }));
         }
 
         anomalies.push(...evaluateRules(queryGroup.rules, dashboard, card, cardResult, {
@@ -166,7 +169,7 @@ export async function checkPublicDashboards({
         if (
           observation?.freshness?.historicalDateGap &&
           observation.freshness.refreshCadence &&
-          queryGroup.rules.some((rule) => rule.type === "requiredDatePresent")
+          queryGroup.rules.some((rule) => rule.type === "requiredDatePresent" && rule.autoDetectCadence !== false)
         ) {
           anomalies.push(buildAnomaly(
             dashboard,
@@ -564,7 +567,7 @@ function buildUnavailableFreshness(result) {
   };
 }
 
-function evaluateBuiltIns(config, dashboard, card, result) {
+function evaluateBuiltIns(config, dashboard, card, result, options = {}) {
   const anomalies = [];
   const dashboardTitle = dashboard.sourcePanelTitle || dashboard.title;
 
@@ -601,9 +604,27 @@ function evaluateBuiltIns(config, dashboard, card, result) {
   if (config.builtInChecks?.nonZeroToZero !== false && result.ok && result.rows.length > 0) {
     const metricColumns = getCardMetricColumns(card, result.rows);
     const timezone = dashboard.timezone || dashboard.country?.timezone || "Asia/Jakarta";
+    const nonZeroToZeroOptions = typeof config.builtInChecks?.nonZeroToZero === "object"
+      ? config.builtInChecks.nonZeroToZero
+      : {};
+    const intradayRule = (options.rules || []).find((rule) => (
+      rule.type === "intradayTimePointChange" || rule.type === "intradayTimePointCompleteness"
+    ));
     const zeroDrops = checkLatestNonZeroToZero(
-      filterRowsAtExecutionTime(result.rows, { timezone }),
+      filterRowsAtExecutionTime(result.rows, {
+        timezone,
+        dateColumn: intradayRule?.dateColumn,
+        now: options.checkedAt,
+      }),
       metricColumns,
+      {
+        ...nonZeroToZeroOptions,
+        dateColumn: intradayRule?.dateColumn,
+        timezone,
+        now: options.checkedAt,
+        allowedDelayMinutes: intradayRule?.allowedDelayMinutes ?? intradayRule?.dataDelayMinutes,
+        skipFutureHourlyMetricColumns: Boolean(intradayRule),
+      },
     );
     for (const message of zeroDrops) {
       anomalies.push(buildAnomaly(dashboard, card, "latestNonZeroToZero", message));
@@ -926,8 +947,8 @@ function checkLatestZeroRate(rows, rule) {
   return limitMessages(messages, rule);
 }
 
-function checkLatestNonZeroToZero(rows, metricColumns) {
-  const dateColumn = inferDateColumn(rows);
+function checkLatestNonZeroToZero(rows, metricColumns, options = {}) {
+  const dateColumn = options.dateColumn || inferDateColumn(rows);
   if (!dateColumn || !metricColumns.length) {
     return [];
   }
@@ -939,9 +960,17 @@ function checkLatestNonZeroToZero(rows, metricColumns) {
       continue;
     }
     for (const column of metricColumns) {
+      if (isFutureHourlyMetricColumn(column, item.latest, dateColumn, options)) {
+        continue;
+      }
       const latest = toNumber(item.latest[column]);
       const previous = toNumber(item.previous[column]);
-      if (latest === 0 && Number.isFinite(previous) && previous !== 0) {
+      if (
+        latest === 0
+        && Number.isFinite(previous)
+        && previous !== 0
+        && !hasFrequentHistoricalZeros(item.rows, column, options)
+      ) {
         messages.push(
           `指标「${column}」从 ${formatNumber(previous)} 降为 0${formatComparisonSuffix(item, dateColumn)}`,
         );
@@ -949,6 +978,44 @@ function checkLatestNonZeroToZero(rows, metricColumns) {
     }
   }
   return messages;
+}
+
+function isFutureHourlyMetricColumn(column, latestRow, dateColumn, options = {}) {
+  if (!options.skipFutureHourlyMetricColumns) {
+    return false;
+  }
+
+  const hour = Number(String(column).trim());
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    return false;
+  }
+
+  const latestDate = normalizeDateKey(latestRow?.[dateColumn]);
+  const localNow = getZonedNow(resolveNow({ now: options.now }), options.timezone || "Asia/Jakarta");
+  if (latestDate !== localNow.dateKey) {
+    return false;
+  }
+
+  const allowedDelayMinutes = Number(options.allowedDelayMinutes) || 0;
+  return hour * 60 > localNow.hour * 60 + localNow.minute - allowedDelayMinutes;
+}
+
+function hasFrequentHistoricalZeros(rows, column, options = {}) {
+  const lookback = Math.max(1, Number(options.historyLookback) || 14);
+  const minZeroCount = Math.max(1, Number(options.frequentZeroMinCount) || 2);
+  const zeroRatio = Number.isFinite(Number(options.frequentZeroRatio))
+    ? Number(options.frequentZeroRatio)
+    : 0.4;
+  const historicalValues = rows
+    .slice(0, -1)
+    .map((row) => toNumber(row[column]))
+    .filter(Number.isFinite)
+    .slice(-lookback);
+  const historicalZeroCount = historicalValues.filter((value) => value === 0).length;
+
+  return historicalZeroCount >= minZeroCount
+    && historicalValues.length > 0
+    && historicalZeroCount / historicalValues.length >= zeroRatio;
 }
 
 function checkLatestDayOverDayChange(rows, rule) {
@@ -1354,6 +1421,9 @@ function checkIntradayTimePointChange(rows, rule) {
             rule,
           });
           const hasBaseline = baseline && Number.isFinite(baseline.median) && baseline.sampleCount >= baselineMinSamples;
+          if (rule.requireBaseline === true && !hasBaseline) {
+            continue;
+          }
           const baselineChangeRate = hasBaseline && Math.abs(baseline.median) >= minPrevious
             ? (current - baseline.median) / Math.abs(baseline.median)
             : Number.NaN;
@@ -1650,6 +1720,7 @@ function buildLatestSeries(rows, dateColumn, numericColumns, explicitDimensionCo
       const sortedRows = sortRowsByDate(groupRows, dateColumn);
       return {
         dimensionColumns,
+        rows: sortedRows,
         latest: sortedRows[sortedRows.length - 1],
         previous: sortedRows[sortedRows.length - 2] || null,
       };

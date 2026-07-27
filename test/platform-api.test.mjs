@@ -1355,10 +1355,10 @@ test("platform api aggregates scheduled countries by same notification target", 
   assert.match(captured[0].message, /【今日值班】\d{4} (AM|PM)/);
   assert.doesNotMatch(captured[0].message, /Flink/);
   assert.match(captured[0].message, /1\.数据质量告警“未处理”统计/);
-  assert.match(captured[0].message, /印尼\(INE\)/);
-  assert.match(captured[0].message, /菲律宾\(PH\)/);
-  assert.match(captured[0].message, /印尼：3/);
-  assert.match(captured[0].message, /菲律宾：0/);
+  assert.match(captured[0].message, /发现 2 条异常，涉及 2 个看板。/);
+  assert.match(captured[0].message, /• 🇵🇭 菲律宾\(PH\) \/ OKR \/ 规模：/);
+  assert.match(captured[0].message, /🇮🇩 印尼\(INE\)：3/);
+  assert.match(captured[0].message, /🇵🇭 菲律宾\(PH\)：0/);
   assert.match(captured[0].message, /3\. BI报表\(Metabase\):/);
   assert.doesNotMatch(captured[0].message, /异常概览/);
   assert.doesNotMatch(captured[0].message, /各国异常 Metabase 看板/);

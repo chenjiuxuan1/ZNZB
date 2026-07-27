@@ -816,7 +816,17 @@ export function renderHistoryDsDetails(summary, error) {
 function renderHistoryDsProjects(projects) {
   if (!projects.length) return "";
   return `<ul class="history-dashboard-list">${projects.map((project) => `
-    <li>项目 ${escapeHtml(project.projectName || project.projectCode || "未命名")} (${escapeHtml(project.projectCode || "- ")})：检查 ${escapeHtml(project.checkedWorkflows || 0)} 个工作流${project.success === false ? `，失败：${escapeHtml(project.error || "未知错误")}` : ""}</li>
+    <li>
+      项目 ${escapeHtml(project.projectName || project.projectCode || "未命名")} (${escapeHtml(project.projectCode || "-")})：检查 ${escapeHtml(project.checkedWorkflows || 0)} 个工作流${project.success === false ? `，失败：${escapeHtml(project.error || "未知错误")}` : ""}
+      ${renderHistoryCheckedWorkflows(project.checkedWorkflowDetails || [])}
+    </li>
+  `).join("")}</ul>`;
+}
+
+function renderHistoryCheckedWorkflows(workflows) {
+  if (!workflows.length) return "";
+  return `<ul class="history-dashboard-list">${workflows.map((workflow) => `
+    <li>已扫描：${escapeHtml(workflow.workflowName || workflow.workflowCode || "未命名工作流")} (${escapeHtml(workflow.workflowCode || "-")})</li>
   `).join("")}</ul>`;
 }
 

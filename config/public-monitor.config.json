@@ -509,7 +509,7 @@
       "timezone": "dashboard",
       "startTime": "00:00",
       "intervalMinutes": 60,
-      "allowedDelayMinutes": 120,
+      "allowedDelayMinutes": 60,
       "expectedTimePointSource": "previousDay",
       "ignoreDimensionColumns": [
         "小时",
@@ -527,7 +527,7 @@
       "timezone": "dashboard",
       "startTime": "00:00",
       "intervalMinutes": 60,
-      "allowedDelayMinutes": 120,
+      "allowedDelayMinutes": 60,
       "previousLagDays": 1,
       "maxAbsChangeRate": 0.5,
       "baselineLookbackDays": 30,
@@ -593,6 +593,7 @@
       "baselineLookbackDays": 30,
       "baselineMinSamples": 7,
       "baselineMaxAbsChangeRate": 0.5,
+      "requireBaseline": true,
       "scanPreviousDateAgainstBaseline": true,
       "minPrevious": 100,
       "ignoreDimensionColumns": [
@@ -645,6 +646,7 @@
       "baselineLookbackDays": 30,
       "baselineMinSamples": 7,
       "baselineMaxAbsChangeRate": 0.5,
+      "requireBaseline": true,
       "scanPreviousDateAgainstBaseline": true,
       "minPrevious": 100,
       "ignoreDimensionColumns": [
@@ -699,6 +701,7 @@
       "baselineLookbackDays": 30,
       "baselineMinSamples": 7,
       "baselineMaxAbsChangeRate": 0.5,
+      "requireBaseline": true,
       "minPrevious": 100,
       "ignoreDimensionColumns": [
         "开始时间"
@@ -756,6 +759,7 @@
       "baselineLookbackDays": 30,
       "baselineMinSamples": 7,
       "baselineMaxAbsChangeRate": 0.5,
+      "requireBaseline": true,
       "minPrevious": 100,
       "ignoreDimensionColumns": [
         "开始时间"

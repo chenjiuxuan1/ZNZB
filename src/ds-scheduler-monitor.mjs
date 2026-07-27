@@ -264,6 +264,7 @@ export async function checkAllCountries(rootDir, config) {
             page_size: 20,
             project_code: project.code,
             stale_policy: "one_full_schedule_cycle",
+            include_checked_workflows: true,
           },
         }),
       });
@@ -302,6 +303,8 @@ export async function checkAllCountries(rootDir, config) {
 
       const data = parsed.data || {};
       console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${data.stale_count || 0} checked=${data.total_checked || 0}`);
+      const checkedWorkflowDetails = normalizeCheckedWorkflowDetails(data.checked_workflows || data.workflows);
+      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} workflows=${checkedWorkflowDetails.length ? checkedWorkflowDetails.map((workflow) => workflow.workflowName || workflow.workflowCode).join(",") : "not returned by gateway"}`);
       // The gateway determines schedule lateness from DS's schedule definition.
       // Legacy "no_recent_run" entries have an unspecified fixed lookback and
       // must not create false alerts for infrequent schedules such as monthly jobs.
@@ -329,6 +332,7 @@ export async function checkAllCountries(rootDir, config) {
         stuckCount: data.stuck_count || 0,
         staleCount: staleWorkflows.length,
         checkedWorkflows: data.total_checked || 0,
+        checkedWorkflowDetails,
         stuckWorkflows: (data.stuck_workflows || []).map((wf) => ({
           projectName: project.name,
           projectCode: project.code,
@@ -363,6 +367,7 @@ export async function checkAllCountries(rootDir, config) {
       stuckCount: projectResults.reduce((sum, item) => sum + (item.stuckCount || 0), 0),
       staleCount: projectResults.reduce((sum, item) => sum + (item.staleWorkflows?.length || 0), 0),
       checkedWorkflows: projectResults.reduce((sum, item) => sum + (item.checkedWorkflows || 0), 0),
+      checkedWorkflowDetails: projectResults.flatMap((item) => item.checkedWorkflowDetails || []),
       stuckWorkflows: projectResults.flatMap((item) => item.stuckWorkflows || []),
       staleWorkflows: projectResults.flatMap((item) => item.staleWorkflows || []),
       projects: projectResults,
@@ -384,6 +389,14 @@ export async function checkAllCountries(rootDir, config) {
     failedCountries,
     countries: results,
   };
+}
+
+function normalizeCheckedWorkflowDetails(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((workflow) => ({
+    workflowCode: String(workflow.workflow_code || workflow.workflowCode || workflow.code || "").trim(),
+    workflowName: String(workflow.workflow_name || workflow.workflowName || workflow.name || "").trim(),
+  })).filter((workflow) => workflow.workflowCode || workflow.workflowName);
 }
 
 /**

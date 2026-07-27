@@ -260,10 +260,12 @@ test("duty summary excludes Metabase 403 query failures from BI report", () => {
 
   assert.equal(messages.length, 1);
   assert.match(messages[0].body, /【今日值班】0714 PM/);
-  assert.match(messages[0].body, /中国：0/);
-  assert.match(messages[0].body, /墨西哥：2/);
+  assert.match(messages[0].body, /🇨🇳 中国\(CN\)：0/);
+  assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)：2/);
   assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
-  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 业务概览-核心链路准实时监控：波动异常1条\n  · 放款金额：.*\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
+  assert.match(messages[0].body, /发现 1 条异常，涉及 1 个看板。/);
+  assert.match(messages[0].body, /• 🇲🇽 墨西哥\(MX\) \/ 业务概览-核心链路准实时监控 \/ 放款金额：/);
+  assert.match(messages[0].body, /https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.match(messages[0].body, /业务概览-核心链路准实时监控/);
   assert.doesNotMatch(messages[0].body, /403 Forbidden/);
   assert.doesNotMatch(messages[0].body, /转化漏斗/);
@@ -298,7 +300,7 @@ test("duty summary renders concise DS status by country", () => {
     },
   );
 
-  assert.match(messages[0].body, /2\.DS调度：\n印尼：40 个任务正常\n中国：48 个任务，卡死 0、旷工 1（每日放款）/);
+  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：40 个任务正常\n🇨🇳 中国：48 个任务，卡死 0、旷工 1（每日放款）/);
 });
 
 test("duty summary includes previous-day baseline intraday anomalies below 100 percent", () => {
@@ -330,7 +332,9 @@ test("duty summary includes previous-day baseline intraday anomalies below 100 p
   );
 
   assert.match(messages[0].body, /3\. BI报表\(Metabase\):/);
-  assert.match(messages[0].body, /墨西哥\(MX\)：\n- 核心链路准实时监控：波动异常1条\n  · 新客-启动次数：.*\n  https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
+  assert.match(messages[0].body, /发现 1 条异常，涉及 1 个看板。/);
+  assert.match(messages[0].body, /• 🇲🇽 墨西哥\(MX\) \/ 核心链路准实时监控 \/ 新客-启动次数：/);
+  assert.match(messages[0].body, /https:\/\/data\.kuainiu\.io\/public\/dashboard\/mx-core/);
   assert.doesNotMatch(messages[0].body, /3\. BI报表\(Metabase\):\n正常/);
 });
 
@@ -354,7 +358,30 @@ test("duty summary includes the affected Metabase card and its exact anomaly rea
   assert.match(messages[0].body, /分APP对比- 入催率：.*指标「入催率」.*12\.0%.*35\.0%.*\+23\.0个百分点/);
 });
 
-test("duty summary lists every anomalous Metabase dashboard", () => {
+test("duty summary uses country icons and limits Metabase examples to three", () => {
+  const messages = buildPublicCheckMessages(
+    {
+      checkedAt: "2026-07-27T04:00:00.000Z",
+      anomalies: [
+        { countryCode: "TH", countryName: "泰国", dashboardTitle: "漏斗", cardTitle: "通过率", message: "指标「通过率」从 50% 降为 0", dashboardUrl: "https://data.example/th" },
+        { countryCode: "PH", countryName: "菲律宾", dashboardTitle: "放款", cardTitle: "放款额", message: "指标「放款额」从 100 到 0", dashboardUrl: "https://data.example/ph" },
+        { countryCode: "MX", countryName: "墨西哥", dashboardTitle: "进件", cardTitle: "进件量", message: "指标「进件量」从 90 降为 0", dashboardUrl: "https://data.example/mx" },
+        { countryCode: "CN", countryName: "中国", dashboardTitle: "注册", cardTitle: "注册量", message: "指标「注册量」从 80 降为 0", dashboardUrl: "https://data.example/cn" },
+      ],
+    },
+    { messageStyle: "dutySummary" },
+  );
+
+  assert.match(messages[0].body, /发现 4 条异常，涉及 4 个看板。/);
+  assert.match(messages[0].body, /异常示例（最多3条）：/);
+  assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)/);
+  assert.match(messages[0].body, /🇵🇭 菲律宾\(PH\)/);
+  assert.match(messages[0].body, /🇹🇭 泰国\(TH\)/);
+  assert.equal((messages[0].body.match(/https:\/\/data\.example\//g) || []).length, 3);
+  assert.doesNotMatch(messages[0].body, /🇨🇳 中国\(CN\)/);
+});
+
+test("duty summary summarizes many Metabase dashboards with three examples", () => {
   const anomalies = Array.from({ length: 10 }, (_, index) => ({
     type: "intradayTimePointCompleteness",
     countryCode: "TH",
@@ -375,11 +402,11 @@ test("duty summary lists every anomalous Metabase dashboard", () => {
   );
 
   assert.equal(messages.length, 1);
-  assert.match(messages[0].body, /异常看板1：数据缺失1条/);
-  assert.match(messages[0].body, /异常看板9：数据缺失1条/);
-  assert.match(messages[0].body, /异常看板10：数据缺失1条/);
-  assert.match(messages[0].body, /public\/dashboard\/th-10/);
-  assert.doesNotMatch(messages[0].body, /另有\d+个看板异常/);
+  assert.match(messages[0].body, /发现 10 条异常，涉及 10 个看板。/);
+  assert.match(messages[0].body, /• 🇹🇭 泰国\(TH\) \/ 异常看板1 \/ 指标1：/);
+  assert.match(messages[0].body, /public\/dashboard\/th-1/);
+  assert.match(messages[0].body, /异常看板3/);
+  assert.doesNotMatch(messages[0].body, /异常看板4/);
 });
 
 test("buildPublicCheckMessage shows zero missing data explicitly", () => {

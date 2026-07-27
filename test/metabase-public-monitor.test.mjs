@@ -1068,7 +1068,7 @@ test("evaluateRowsAgainstRule does not infer a cadence from irregular sparse dat
   assert.doesNotMatch(result, /推断每/);
 });
 
-test("checkPublicDashboards flags any dated metric that drops from non-zero to zero", async () => {
+test("checkPublicDashboards flags a dated metric that suddenly drops from historically non-zero values to zero", async () => {
   const result = await checkPublicDashboards({
     inventory: {
       dashboardCount: 1,
@@ -1094,6 +1094,10 @@ test("checkPublicDashboards flags any dated metric that drops from non-zero to z
     queryCardFn: async () => ({
       ok: true,
       rows: [
+        { "统计日期": "2026-07-20", "关键指标": 0.04 },
+        { "统计日期": "2026-07-21", "关键指标": 0.05 },
+        { "统计日期": "2026-07-22", "关键指标": 0.04 },
+        { "统计日期": "2026-07-23", "关键指标": 0.05 },
         { "统计日期": "2026-07-24", "关键指标": 0.05 },
         { "统计日期": "2026-07-25", "关键指标": 0 },
       ],
@@ -1104,6 +1108,81 @@ test("checkPublicDashboards flags any dated metric that drops from non-zero to z
   assert.equal(result.anomalyCount, 1);
   assert.equal(result.anomalies[0].type, "latestNonZeroToZero");
   assert.match(result.anomalies[0].message, /关键指标.*从 0\.05 降为 0/);
+});
+
+test("checkPublicDashboards ignores a latest zero when the metric is frequently zero historically", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [{
+        title: "周期性零值报表",
+        url: "https://data.example/public/dashboard/frequent-zero",
+        countryCode: "PH",
+        timezone: "Asia/Manila",
+        cards: [{ title: "周期性指标", cardId: 1, dashcardId: 2, metrics: ["关键指标"] }],
+      }],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: false },
+      rules: [],
+    },
+    dataQualityFn: async () => null,
+    checkedAt: "2026-07-27T01:00:00.000Z",
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [
+        { "统计日期": "2026-07-19", "关键指标": 0 },
+        { "统计日期": "2026-07-20", "关键指标": 0.05 },
+        { "统计日期": "2026-07-21", "关键指标": 0 },
+        { "统计日期": "2026-07-22", "关键指标": 0.03 },
+        { "统计日期": "2026-07-23", "关键指标": 0 },
+        { "统计日期": "2026-07-24", "关键指标": 0.05 },
+        { "统计日期": "2026-07-25", "关键指标": 0 },
+      ],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.anomalyCount, 0);
+});
+
+test("checkPublicDashboards ignores future hourly metric columns within the allowed delay", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [{
+        title: "每小时监控",
+        url: "https://data.example/public/dashboard/hourly",
+        countryCode: "TH",
+        timezone: "Asia/Bangkok",
+        cards: [{ title: "进件 - 老客", cardId: 1, dashcardId: 2, metrics: ["8", "10", "20"] }],
+      }],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: false },
+      rules: [{
+        type: "intradayTimePointChange",
+        dashboardTitle: "每小时监控",
+        timeColumn: "小时",
+        intervalMinutes: 60,
+        allowedDelayMinutes: 60,
+      }],
+    },
+    dataQualityFn: async () => null,
+    checkedAt: "2026-07-27T03:30:00.000Z",
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [
+        { "日期": "2026-07-26", "8": 120, "10": 110, "20": 150 },
+        { "日期": "2026-07-27", "8": 0, "10": 0, "20": 0 },
+      ],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.anomalyCount, 1);
+  assert.match(result.anomalies[0].message, /指标「8」从 120 降为 0/);
+  assert.doesNotMatch(result.anomalies[0].message, /指标「10」|指标「20」/);
 });
 
 test("evaluateRowsAgainstRule suppresses correlated same-direction changes", () => {
@@ -1473,6 +1552,32 @@ test("evaluateRowsAgainstRule checks intraday time point change", () => {
   assert.deepEqual(result, [
     "同时间点指标「reg_cnt」从 100 到 130，波动 +30.0%；判定：昨日同点波动超过±15.0%；近30天同点样本不足7天时，先按昨日同点阈值触发（Asia/Jakarta 00:30，日期 2026-06-08 对比 2026-06-07）",
   ]);
+});
+
+test("evaluateRowsAgainstRule waits for an intraday baseline when the rule requires it", () => {
+  const result = evaluateRowsAgainstRule(
+    [
+      { "日期": "2026-06-07", "开始时间": "00:30", "reg_cnt": 100 },
+      { "日期": "2026-06-08", "开始时间": "00:30", "reg_cnt": 180 },
+    ],
+    {
+      type: "intradayTimePointChange",
+      dateColumn: "日期",
+      timeColumn: "开始时间",
+      column: "reg_cnt",
+      timezone: "Asia/Jakarta",
+      now: "2026-06-07T17:30:00Z",
+      startTime: "00:00",
+      intervalMinutes: 30,
+      maxAbsChangeRate: 0.15,
+      baselineMinSamples: 7,
+      requireBaseline: true,
+      minPrevious: 100,
+      ignoreDimensionColumns: ["开始时间"],
+    },
+  );
+
+  assert.deepEqual(result, []);
 });
 
 test("evaluateRowsAgainstRule adds monthly time point baseline details", () => {

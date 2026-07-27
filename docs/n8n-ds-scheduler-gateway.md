@@ -3,7 +3,7 @@
 平台请求 `check_failed_instances` 时会携带：
 
 ```json
-{ "payload": { "stale_policy": "one_full_schedule_cycle" } }
+{ "payload": { "stale_policy": "one_full_schedule_cycle", "include_checked_workflows": true } }
 ```
 
 网关必须从 DolphinScheduler 的定时配置读取任务的调度表达式、时区、最近运行实例，并只将满足以下条件的 ONLINE 任务置入 `stale_workflows`：已经经过下一次计划执行时间，且该次执行之后仍没有运行实例。
@@ -22,3 +22,13 @@
 ```
 
 旧的 `no_recent_run` 固定时间窗结果不会再被平台告警，以避免月度及低频任务误报。完成 n8n 工作流修改后，需用一个月度任务和一个每日任务分别验证边界。
+
+当 `include_checked_workflows` 为 `true` 时，网关还应返回本次扫描到的工作流清单，供平台历史详情和服务日志展示：
+
+```json
+{
+  "checked_workflows": [
+    { "workflow_code": "daily_loan", "workflow_name": "每日放款" }
+  ]
+}
+```

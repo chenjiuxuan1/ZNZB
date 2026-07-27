@@ -261,8 +261,10 @@ function buildDutySummaryMessage(result, countryGroups, options = {}) {
   lines.push(`【今日值班】${formatDutyDatePeriod(result.checkedAt)}`);
   lines.push("1.数据质量告警“未处理”统计：");
   appendDutyWattrelSummary(lines, options.wattrelSummary);
+  lines.push("");
   lines.push("2.DS调度：");
   lines.push(formatDutyDsScheduleSummary(options.dsScheduleSummary));
+  lines.push("");
   appendDutyMetabaseSummary(lines, actionableMetabaseAnomalies);
   if (detailUrl) {
     lines.push(`详情：${detailUrl}`);
@@ -277,7 +279,7 @@ function formatDutyDsScheduleSummary(summary) {
   const countries = Array.isArray(summary.countries) ? summary.countries : [];
   if (!countries.length) return "暂无可检查任务";
   return countries.map((country) => {
-    const label = country.countryName || country.country || "未知国家";
+    const label = formatDutyCountryLabel(country, country.countryName || country.country || "未知国家");
     if (!country.success) return `${label}：检查失败`;
     const checkedWorkflows = Number(country.checkedWorkflows || 0);
     const stuckCount = Number(country.stuckCount || 0);
@@ -712,12 +714,13 @@ function appendDutyWattrelSummary(lines, wattrelSummary) {
 
   for (const country of orderedCountries) {
     const name = country.countryName || country.countryCode || "未知国家";
+    const label = formatDutyCountryLabel(country, name);
     if (country.status === "failed") {
-      lines.push(`${name}：查询失败`);
+      lines.push(`${label}：查询失败`);
     } else if (country.status === "unconfigured") {
-      lines.push(`${name}：未配置`);
+      lines.push(`${label}：未配置`);
     } else {
-      lines.push(`${name}：${formatCompactNumber(country.count || 0)}`);
+      lines.push(`${label}：${formatCompactNumber(country.count || 0)}`);
     }
   }
 }
@@ -752,38 +755,28 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
         || right.highFluctuationCount - left.highFluctuationCount
         || right.severity - left.severity
         || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN");
-    });
-  const byCountry = new Map();
-  for (const group of dashboardGroups) {
-    const countryLabel = formatCountryLabel(group) || "未知国家";
-    if (!byCountry.has(countryLabel)) {
-      byCountry.set(countryLabel, []);
+  });
+  lines.push(`发现 ${anomalies.length} 条异常，涉及 ${dashboardGroups.length} 个看板。`);
+  lines.push("异常示例（最多3条）：");
+  for (const example of dashboardGroups.slice(0, 3)) {
+    const topAnomaly = [...example.items].sort((left, right) => (
+      extractAnomalySeverity(right.message || "") - extractAnomalySeverity(left.message || "")
+    ))[0] || {};
+    const location = [
+      formatDutyCountryLabel(example),
+      example.dashboardTitle || "未知看板",
+      topAnomaly.cardTitle || topAnomaly.cardName || "未知卡片",
+    ].filter(Boolean).join(" / ");
+    lines.push(`• ${location}：${compactDutyAnomalyReason(topAnomaly.message)}`);
+    if (example.dashboardUrl) {
+      lines.push(example.dashboardUrl);
     }
-    byCountry.get(countryLabel).push(group);
   }
+}
 
-  for (const [countryLabel, groups] of byCountry.entries()) {
-    lines.push(`${countryLabel}：`);
-    for (const group of groups) {
-      const issueParts = [];
-      if (group.missingCount > 0) {
-        issueParts.push(`数据缺失${group.missingCount}条`);
-      }
-      if (group.highFluctuationCount > 0) {
-        issueParts.push(`波动异常${group.highFluctuationCount}条`);
-      }
-      lines.push(`- ${group.dashboardTitle || "未知看板"}：${issueParts.join("、")}`);
-      for (const anomaly of group.items.slice(0, 10)) {
-        lines.push(`  · ${anomaly.cardTitle || anomaly.cardName || "未知卡片"}：${anomaly.message || "未提供判定原因"}`);
-      }
-      if (group.items.length > 10) {
-        lines.push(`  · 另有 ${group.items.length - 10} 条异常未展示，请查看历史明细。`);
-      }
-      if (group.dashboardUrl) {
-        lines.push(`  ${group.dashboardUrl}`);
-      }
-    }
-  }
+function compactDutyAnomalyReason(message) {
+  const text = String(message || "未提供判定原因").replace(/\s+/g, " ").trim();
+  return text.length > 180 ? `${text.slice(0, 177)}...` : text;
 }
 
 function isMetabaseQueryFailureAnomaly(anomaly = {}) {
@@ -1457,6 +1450,25 @@ function formatCountryLabel(anomaly) {
   }
 
   return anomaly.countryName || anomaly.countryCode || "";
+}
+
+function formatDutyCountryLabel(country, fallback = "") {
+  const label = formatCountryLabel(country) || fallback;
+  return `${getCountryIcon(country)} ${label}`;
+}
+
+function getCountryIcon(country = {}) {
+  const code = String(country.countryCode || country.country || "").trim().toUpperCase();
+  const icons = {
+    CN: "🇨🇳",
+    MX: "🇲🇽",
+    TH: "🇹🇭",
+    INE: "🇮🇩",
+    ID: "🇮🇩",
+    PH: "🇵🇭",
+    PK: "🇵🇰",
+  };
+  return icons[code] || "🌐";
 }
 
 export function buildWebhookPayload(channel, message, metadata = {}, alertConfig = {}) {
