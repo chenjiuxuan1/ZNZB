@@ -286,6 +286,9 @@ test("duty summary renders concise DS status by country", () => {
             checkedWorkflows: 40,
             stuckCount: 0,
             staleCount: 0,
+            projects: [
+              { projectName: "印尼数仓", projectCode: "2001", success: true, checkedWorkflows: 40 },
+            ],
           },
           {
             country: "cn",
@@ -294,14 +297,21 @@ test("duty summary renders concise DS status by country", () => {
             checkedWorkflows: 48,
             stuckCount: 0,
             staleCount: 1,
+            failedCount: 1,
             staleWorkflows: [{ workflowName: "每日放款" }],
+            failedWorkflows: [{ workflowName: "每日还款" }],
+            projects: [
+              { projectName: "国内数仓", projectCode: "1001", success: true, checkedWorkflows: 28 },
+              { projectName: "国内风控", projectCode: "1002", success: true, checkedWorkflows: 20 },
+            ],
           },
         ],
       },
     },
   );
 
-  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：40 个任务正常\n🇨🇳 中国：48 个任务，卡死 0、旷工 1（每日放款）/);
+  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：40 个任务正常\n  项目：印尼数仓 40 个工作流\n🇨🇳 中国：48 个任务，卡死 0、旷工 1、失败 1（旷工：每日放款；失败：每日还款）\n  项目：国内数仓 28 个工作流\n  项目：国内风控 20 个工作流/);
+  assert.doesNotMatch(messages[0].body, /1001|1002|2001/);
 });
 
 test("duty summary includes previous-day baseline intraday anomalies below 100 percent", () => {
@@ -359,7 +369,7 @@ test("duty summary includes the affected Metabase card and its exact anomaly rea
   assert.match(messages[0].body, /分APP对比- 入催率：.*指标「入催率」.*12\.0%.*35\.0%.*\+23\.0个百分点/);
 });
 
-test("duty summary uses country icons and limits Metabase examples to three", () => {
+test("duty summary emits one Metabase instance for every country-dashboard", () => {
   const messages = buildPublicCheckMessages(
     {
       checkedAt: "2026-07-27T04:00:00.000Z",
@@ -374,15 +384,15 @@ test("duty summary uses country icons and limits Metabase examples to three", ()
   );
 
   assert.match(messages[0].body, /发现 4 条异常，涉及 4 个看板。/);
-  assert.match(messages[0].body, /异常示例（最多3条）：/);
+  assert.match(messages[0].body, /异常实例（每个国家每个看板1条，优先缺失数据、其次数据变为0）：/);
+  assert.match(messages[0].body, /🇨🇳 中国\(CN\)/);
   assert.match(messages[0].body, /🇲🇽 墨西哥\(MX\)/);
   assert.match(messages[0].body, /🇵🇭 菲律宾\(PH\)/);
   assert.match(messages[0].body, /🇹🇭 泰国\(TH\)/);
-  assert.equal((messages[0].body.match(/https:\/\/data\.example\//g) || []).length, 3);
-  assert.doesNotMatch(messages[0].body, /🇨🇳 中国\(CN\)/);
+  assert.equal((messages[0].body.match(/https:\/\/data\.example\//g) || []).length, 4);
 });
 
-test("duty summary summarizes many Metabase dashboards with three examples", () => {
+test("duty summary summarizes every affected Metabase dashboard", () => {
   const anomalies = Array.from({ length: 10 }, (_, index) => ({
     type: "intradayTimePointCompleteness",
     countryCode: "TH",
@@ -406,11 +416,10 @@ test("duty summary summarizes many Metabase dashboards with three examples", () 
   assert.match(messages[0].body, /发现 10 条异常，涉及 10 个看板。/);
   assert.match(messages[0].body, /• 🇹🇭 泰国\(TH\) \/ 异常看板1 \/ 指标1：/);
   assert.match(messages[0].body, /public\/dashboard\/th-1/);
-  assert.match(messages[0].body, /异常看板3/);
-  assert.doesNotMatch(messages[0].body, /异常看板4/);
+  assert.match(messages[0].body, /异常看板10/);
 });
 
-test("duty summary prioritizes non-zero to zero anomalies in its three examples", () => {
+test("duty summary prioritizes missing data before non-zero to zero anomalies", () => {
   const messages = buildPublicCheckMessages(
     {
       checkedAt: "2026-07-27T04:00:00.000Z",
@@ -424,7 +433,26 @@ test("duty summary prioritizes non-zero to zero anomalies in its three examples"
     { messageStyle: "dutySummary" },
   );
 
+  assert.match(messages[0].body, /缺失看板1/);
   assert.match(messages[0].body, /归零看板/);
+});
+
+test("duty summary chooses missing data as the representative for a country-dashboard", () => {
+  const messages = buildPublicCheckMessages(
+    {
+      checkedAt: "2026-07-27T04:00:00.000Z",
+      anomalies: [
+        { type: "completeDayChange", countryCode: "TH", countryName: "泰国", dashboardTitle: "混合异常看板", cardTitle: "金额", message: "完整日指标「金额」从 100 到 10,000，波动 +9900%" },
+        { type: "latestNonZeroToZero", countryCode: "TH", countryName: "泰国", dashboardTitle: "混合异常看板", cardTitle: "到期数", message: "指标「到期数」从 20 降为 0" },
+        { type: "intradayTimePointCompleteness", countryCode: "TH", countryName: "泰国", dashboardTitle: "混合异常看板", cardTitle: "放款额", message: "半小时点数据缺失：日期 2026-07-27 缺少 08:00" },
+      ],
+    },
+    { messageStyle: "dutySummary" },
+  );
+
+  assert.match(messages[0].body, /放款额：半小时点数据缺失/);
+  assert.doesNotMatch(messages[0].body, /到期数：指标「到期数」/);
+  assert.doesNotMatch(messages[0].body, /金额：完整日指标/);
 });
 
 test("duty summary shows the zero-drop card when its dashboard has other high-severity anomalies", () => {

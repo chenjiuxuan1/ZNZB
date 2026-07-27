@@ -265,6 +265,8 @@ export async function checkAllCountries(rootDir, config) {
             project_code: project.code,
             stale_policy: "one_full_schedule_cycle",
             include_checked_workflows: true,
+            failure_policy: "scheduled_today_final_failure",
+            include_failed_workflows: true,
           },
         }),
       });
@@ -302,7 +304,7 @@ export async function checkAllCountries(rootDir, config) {
       }
 
       const data = parsed.data || {};
-      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${data.stale_count || 0} checked=${data.total_checked || 0}`);
+      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${data.stale_count || 0} failed=${data.failed_count || 0} checked=${data.total_checked || 0}`);
       const checkedWorkflowDetails = normalizeCheckedWorkflowDetails(data.checked_workflows || data.workflows);
       console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} workflows=${checkedWorkflowDetails.length ? checkedWorkflowDetails.map((workflow) => workflow.workflowName || workflow.workflowCode).join(",") : "not returned by gateway"}`);
       // The gateway determines schedule lateness from DS's schedule definition.
@@ -324,6 +326,23 @@ export async function checkAllCountries(rootDir, config) {
           nextRunAt: wf.next_run_at || null,
           totalInstancesChecked: wf.total_instances_checked,
         }));
+      const failedWorkflows = (data.failed_workflows || [])
+        .filter((wf) => wf.schedule_status === "ONLINE" && wf.failure_reason === "scheduled_instance_failed" && wf.has_later_success !== true)
+        .map((wf) => ({
+          projectName: project.name,
+          projectCode: project.code,
+          workflowCode: wf.workflow_code,
+          workflowName: wf.workflow_name,
+          scheduleId: wf.schedule_id,
+          scheduleStatus: wf.schedule_status,
+          failureReason: wf.failure_reason,
+          failureMessage: wf.failure_message,
+          instanceId: wf.instance_id,
+          instanceState: wf.instance_state,
+          hasLaterSuccess: wf.has_later_success === true,
+          startTime: wf.start_time || null,
+          endTime: wf.end_time || null,
+        }));
       projectResults.push({
         projectName: project.name,
         projectCode: project.code,
@@ -331,6 +350,7 @@ export async function checkAllCountries(rootDir, config) {
         error: null,
         stuckCount: data.stuck_count || 0,
         staleCount: staleWorkflows.length,
+        failedCount: failedWorkflows.length,
         checkedWorkflows: data.total_checked || 0,
         checkedWorkflowDetails,
         stuckWorkflows: (data.stuck_workflows || []).map((wf) => ({
@@ -345,6 +365,7 @@ export async function checkAllCountries(rootDir, config) {
           recentFailures: (wf.recent_failures || []).slice(0, 5),
         })),
         staleWorkflows,
+        failedWorkflows,
       });
     } catch (error) {
       console.error(`[ds-scheduler] check_failed_instances ${countryCode} project=${project.code || project.name || "-"} -> ${webhookUrl} request failed: ${error.message}`);
@@ -366,24 +387,28 @@ export async function checkAllCountries(rootDir, config) {
       error: projectResults.filter((item) => !item.success).map((item) => `${item.projectName || item.projectCode}: ${item.error}`).join("；") || null,
       stuckCount: projectResults.reduce((sum, item) => sum + (item.stuckCount || 0), 0),
       staleCount: projectResults.reduce((sum, item) => sum + (item.staleWorkflows?.length || 0), 0),
+      failedCount: projectResults.reduce((sum, item) => sum + (item.failedWorkflows?.length || 0), 0),
       checkedWorkflows: projectResults.reduce((sum, item) => sum + (item.checkedWorkflows || 0), 0),
       checkedWorkflowDetails: projectResults.flatMap((item) => item.checkedWorkflowDetails || []),
       stuckWorkflows: projectResults.flatMap((item) => item.stuckWorkflows || []),
       staleWorkflows: projectResults.flatMap((item) => item.staleWorkflows || []),
+      failedWorkflows: projectResults.flatMap((item) => item.failedWorkflows || []),
       projects: projectResults,
     });
   }
 
   const totalStuck = results.reduce((sum, r) => sum + r.stuckCount, 0);
   const totalStale = results.reduce((sum, r) => sum + (r.staleCount || 0), 0);
+  const totalFailed = results.reduce((sum, r) => sum + (r.failedCount || 0), 0);
   const totalChecked = results.reduce((sum, r) => sum + r.checkedWorkflows, 0);
   const failedCountries = results.filter((r) => !r.success).length;
 
-  console.log(`[ds-scheduler] checkAllCountries DONE: stuck=${totalStuck} stale=${totalStale} checked=${totalChecked}`);
+  console.log(`[ds-scheduler] checkAllCountries DONE: stuck=${totalStuck} stale=${totalStale} failed=${totalFailed} checked=${totalChecked}`);
   return {
     checkedAt: new Date().toISOString(),
     totalStuck,
     totalStale,
+    totalFailed,
     totalChecked,
     totalCountries: countries.length,
     failedCountries,

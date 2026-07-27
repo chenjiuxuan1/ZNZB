@@ -242,3 +242,50 @@ test("DS check only reports ONLINE workflows that missed one full schedule cycle
     globalThis.fetch = originalFetch;
   }
 });
+
+test("DS check reports only online scheduled workflows whose current-day execution failed", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestPayload;
+  globalThis.fetch = async (_url, options) => {
+    requestPayload = JSON.parse(options.body).payload;
+    return {
+      status: 200,
+      ok: true,
+      async text() {
+        return JSON.stringify({
+          success: true,
+          data: {
+            total_checked: 4,
+            stuck_count: 0,
+            stale_count: 0,
+            stuck_workflows: [],
+            stale_workflows: [],
+            failed_workflows: [
+              { workflow_code: "1001", workflow_name: "daily-loan", schedule_status: "ONLINE", failure_reason: "scheduled_instance_failed", has_later_success: false, failure_message: "今天 09:00 调度实例执行失败", instance_id: "9988", instance_state: "FAILURE", start_time: "2026-07-27T09:00:02.000Z", end_time: "2026-07-27T09:03:10.000Z" },
+              { workflow_code: "1004", workflow_name: "recovered-daily-loan", schedule_status: "ONLINE", failure_reason: "scheduled_instance_failed", has_later_success: true, failure_message: "今天 09:00 曾失败，之后重跑成功", instance_id: "9989", instance_state: "FAILURE" },
+              { workflow_code: "1002", workflow_name: "offline-failed", schedule_status: "OFFLINE", failure_reason: "scheduled_instance_failed" },
+              { workflow_code: "1003", workflow_name: "legacy-failed", schedule_status: "ONLINE", failure_reason: "historical_failure" },
+            ],
+          },
+        });
+      },
+    };
+  };
+  try {
+    const result = await checkAllCountries(process.cwd(), {
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { th: { name: "泰国", token: "real-token" } },
+      projects: { th: [{ name: "泰国数仓", code: "123" }] },
+    });
+    const country = result.countries[0];
+    assert.equal(requestPayload.failure_policy, "scheduled_today_final_failure");
+    assert.equal(requestPayload.include_failed_workflows, true);
+    assert.equal(country.failedCount, 1);
+    assert.equal(country.failedWorkflows[0].workflowName, "daily-loan");
+    assert.equal(country.failedWorkflows[0].instanceState, "FAILURE");
+    assert.doesNotMatch(JSON.stringify(country.failedWorkflows), /recovered-daily-loan/);
+    assert.equal(result.totalFailed, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

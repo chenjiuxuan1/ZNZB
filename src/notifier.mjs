@@ -278,22 +278,42 @@ function formatDutyDsScheduleSummary(summary) {
   if (summary.skipped) return summary.reason || "未配置";
   const countries = Array.isArray(summary.countries) ? summary.countries : [];
   if (!countries.length) return "暂无可检查任务";
-  return countries.map((country) => {
+  return countries.flatMap((country) => {
     const label = formatDutyCountryLabel(country, country.countryName || country.country || "未知国家");
-    if (!country.success) return `${label}：检查失败`;
+    const projectSummary = formatDutyDsProjectSummary(country.projects || []);
+    if (!country.success) return [`${label}：检查失败`, ...projectSummary];
     const checkedWorkflows = Number(country.checkedWorkflows || 0);
     const stuckCount = Number(country.stuckCount || 0);
     const staleCount = Number(country.staleCount || 0);
-    if (stuckCount === 0 && staleCount === 0) {
-      return `${label}：${checkedWorkflows} 个任务正常`;
+    const failedCount = Number(country.failedCount || 0);
+    if (stuckCount === 0 && staleCount === 0 && failedCount === 0) {
+      return [`${label}：${checkedWorkflows} 个任务正常`, ...projectSummary];
     }
     const staleNames = (country.staleWorkflows || [])
       .map((workflow) => workflow.workflowName)
       .filter(Boolean)
       .join("、");
-    const base = `${label}：${checkedWorkflows} 个任务，卡死 ${stuckCount}、旷工 ${staleCount}`;
-    return staleNames ? `${base}（${staleNames}）` : base;
+    const failedNames = (country.failedWorkflows || [])
+      .map((workflow) => workflow.workflowName)
+      .filter(Boolean)
+      .join("、");
+    const base = `${label}：${checkedWorkflows} 个任务，卡死 ${stuckCount}、旷工 ${staleCount}、失败 ${failedCount}`;
+    const issueDetails = [
+      staleNames ? `旷工：${staleNames}` : "",
+      failedNames ? `失败：${failedNames}` : "",
+    ].filter(Boolean).join("；");
+    return [issueDetails ? `${base}（${issueDetails}）` : base, ...projectSummary];
   }).join("\n");
+}
+
+function formatDutyDsProjectSummary(projects) {
+  return (projects || []).map((project) => {
+    const name = project.projectName || project.projectCode || "未命名项目";
+    if (project.success === false) {
+      return `  项目：${name} 检查失败`;
+    }
+    return `  项目：${name} ${Number(project.checkedWorkflows || 0)} 个工作流`;
+  });
 }
 
 function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {
@@ -748,17 +768,19 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
       };
     })
     .sort((left, right) => {
-      return right.zeroDropCount - left.zeroDropCount
-        || right.missingCount - left.missingCount
+      return right.missingCount - left.missingCount
+        || right.zeroDropCount - left.zeroDropCount
         || right.highFluctuationCount - left.highFluctuationCount
         || right.severity - left.severity
-        || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN");
-  });
+        || formatCountryLabel(left).localeCompare(formatCountryLabel(right), "zh-CN")
+        || String(left.dashboardTitle || "").localeCompare(String(right.dashboardTitle || ""), "zh-CN");
+    });
   lines.push(`发现 ${anomalies.length} 条异常，涉及 ${dashboardGroups.length} 个看板。`);
-  lines.push("异常示例（最多3条）：");
-  for (const example of dashboardGroups.slice(0, 3)) {
+  lines.push("异常实例（每个国家每个看板1条，优先缺失数据、其次数据变为0）：");
+  for (const example of dashboardGroups) {
     const topAnomaly = [...example.items].sort((left, right) => (
-      Number(right.type === "latestNonZeroToZero") - Number(left.type === "latestNonZeroToZero")
+      Number(isMissingPublicAnomaly(right)) - Number(isMissingPublicAnomaly(left))
+      || Number(right.type === "latestNonZeroToZero") - Number(left.type === "latestNonZeroToZero")
       || extractAnomalySeverity(right.message || "") - extractAnomalySeverity(left.message || "")
     ))[0] || {};
     const location = [
@@ -890,18 +912,11 @@ function countWattrelIssues(wattrelSummary) {
 }
 
 function classifyPublicAnomalies(anomalies) {
-  const missingTypes = new Set([
-    "requiredDatePresent",
-    "staleLatestDate",
-    "noData",
-    "queryError",
-    "intradayTimePointCompleteness",
-  ]);
   const missingAnomalies = [];
   const fluctuationAnomalies = [];
 
   for (const anomaly of anomalies || []) {
-    if (missingTypes.has(anomaly.type)) {
+    if (isMissingPublicAnomaly(anomaly)) {
       missingAnomalies.push(anomaly);
     } else {
       fluctuationAnomalies.push(anomaly);
@@ -909,6 +924,16 @@ function classifyPublicAnomalies(anomalies) {
   }
 
   return { missingAnomalies, fluctuationAnomalies };
+}
+
+function isMissingPublicAnomaly(anomaly = {}) {
+  return new Set([
+    "requiredDatePresent",
+    "staleLatestDate",
+    "noData",
+    "queryError",
+    "intradayTimePointCompleteness",
+  ]).has(anomaly.type);
 }
 
 function appendAnomalyDetails(lines, anomalies, limit, options = {}) {

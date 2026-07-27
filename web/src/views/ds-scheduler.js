@@ -6,6 +6,23 @@ const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰�
 const COUNTRY_FLAGS = { cn: "🇨🇳", ine: "🇮🇩", ph: "🇵🇭", th: "🇹🇭", pk: "🇵🇰", mx: "🇲🇽" };
 let model = { config: {}, result: null, status: null, history: null };
 
+export function summarizeDsCountryCheck(country = {}) {
+  const stuck = Number(country.stuckCount || 0);
+  const stale = Number(country.staleCount || 0);
+  const failed = Number(country.failedCount || 0);
+  const success = country.success !== false;
+  const hasIssue = !success || stuck > 0 || stale > 0 || failed > 0;
+  return {
+    stuck,
+    stale,
+    failed,
+    hasIssue,
+    badgeClass: !success ? "danger" : (hasIssue ? "warn" : "ok"),
+    badgeText: !success ? "检查失败" : (hasIssue ? "有异常" : "正常"),
+    summary: `检查 ${country.checkedWorkflows || 0} 个工作流 · 卡死 ${stuck} · 无运行记录 ${stale} · 执行失败 ${failed}`,
+  };
+}
+
 export function renderDsScheduler(root) {
   root.innerHTML = `<section class="panel"><p class="muted">正在加载 DS 调度配置…</p></section>`;
   load(root);
@@ -36,7 +53,7 @@ function paint(root) {
       <div class="hero-stats">
         ${stat("已匹配项目", resolvedCount())}
         ${stat("测试工作流", result?.totalChecked ?? "—")}
-        ${stat("卡死 / 无运行记录", result ? `${result.totalStuck || 0} / ${result.totalStale || 0}` : "—")}
+        ${stat("卡死 / 未运行 / 执行失败", result ? `${result.totalStuck || 0} / ${result.totalStale || 0} / ${result.totalFailed || 0}` : "—")}
         ${stat("检查失败", result?.failedCountries ?? "—")}
       </div>
     </div>
@@ -98,7 +115,8 @@ function renderProjectCard(code) {
 function renderDsWorkflowDetails(country) {
   const stuck = country.stuckWorkflows || [];
   const stale = country.staleWorkflows || [];
-  const issueCount = stuck.length + stale.length;
+  const failed = country.failedWorkflows || [];
+  const issueCount = stuck.length + stale.length + failed.length;
   if (issueCount === 0) return "";
   let body = "";
   if (stuck.length) {
@@ -117,6 +135,14 @@ function renderDsWorkflowDetails(country) {
     }
     body += "</div></div>";
   }
+  if (failed.length) {
+    body += '<div class="ds-detail-group"><div class="ds-detail-title" style="color:#b91c1c;">✖ 执行失败（' + failed.length + '）</div><div class="ds-detail-scroll">';
+    for (const wf of failed) {
+      const reason = wf.failureMessage || wf.failureReason || "当天定时实例执行失败";
+      body += '<div class="ds-detail-item">• ' + escapeHtml(wf.workflowName || wf.workflowCode) + ' <span class="muted">(' + escapeHtml(reason) + ')</span></div>';
+    }
+    body += "</div></div>";
+  }
   return '<details class="ds-detail-toggle"><summary>查看 ' + issueCount + ' 个异常工作流明细</summary><div class="ds-detail-body">' + body + "</div></details>";
 }
 
@@ -130,21 +156,16 @@ function renderResult() {
       <div class="detail-header compact-header"><div><h2 class="panel-title">测试结果</h2><p class="muted">${formatTime(result.checkedAt)} · 本次未发送通知</p></div></div>
       <div class="card-list">
         ${(result.countries || []).map((country) => {
-          const stuck = country.stuckCount || 0;
-          const stale = country.staleCount || 0;
-          const hasIssue = country.success && (stuck > 0 || stale > 0);
-          const badgeClass = country.success ? (hasIssue ? "warn" : "ok") : "danger";
-          const badgeText = country.success ? (hasIssue ? "有异常" : "正常") : "失败";
-          const summary = `检查 ${country.checkedWorkflows || 0} 个工作流 · 卡死 ${stuck} · 无运行记录 ${stale}`;
+          const display = summarizeDsCountryCheck(country);
           return `
           <article class="card-row ds-result-card">
             <div>
               <h3>${escapeHtml(country.countryName || COUNTRY_LABELS[country.country] || country.country)}</h3>
-              <p>${summary}</p>
+              <p>${display.summary}</p>
               ${country.error ? `<p class="field-error">${escapeHtml(country.error)}</p>` : ""}
               ${renderDsWorkflowDetails(country)}
             </div>
-            <span class="badge ${badgeClass}">${badgeText}</span>
+            <span class="badge ${display.badgeClass}">${display.badgeText}</span>
           </article>`;
         }).join("")}
       </div>
@@ -206,21 +227,20 @@ function renderHistory() {
     const r = run.result || {};
     const stuck = r.totalStuck || 0;
     const stale = r.totalStale || 0;
+    const executionFailed = r.totalFailed || 0;
     const checked = r.totalChecked || 0;
     const failed = r.failedCountries || 0;
-    const hasIssue = stuck > 0 || stale > 0 || failed > 0;
+    const hasIssue = stuck > 0 || stale > 0 || executionFailed > 0 || failed > 0;
     const badgeClass = hasIssue ? "warn" : "ok";
     const badgeText = hasIssue ? "有异常" : "正常";
     const countryBadges = (r.countries || []).map((c) => {
-      const cs = c.stuckCount || 0;
-      const cs2 = c.staleCount || 0;
+      const display = summarizeDsCountryCheck(c);
       const label = COUNTRY_LABELS[c.country] || c.country;
       const flag = COUNTRY_FLAGS[c.country] || "";
-      const cls = !c.success ? "danger" : (cs + cs2 > 0 ? "warn" : "ok");
-      const txt = !c.success ? "失败" : (cs + cs2 > 0 ? `${cs}卡/${cs2}无` : "正常");
-      return `<span class="badge ${cls}">${flag} ${label} ${txt}</span>`;
+      const txt = c.success === false ? "检查失败" : (display.hasIssue ? `${display.stuck}卡/${display.stale}无/${display.failed}失败` : "正常");
+      return `<span class="badge ${display.badgeClass}">${flag} ${label} ${txt}</span>`;
     }).join(" ");
-    return `<article class="card-row ds-history-row"><div><h3>${time} · ${trigger}</h3><p>检查 ${checked} 个工作流 · 卡死 ${stuck} · 无运行记录 ${stale} · 失败 ${failed}</p><div class="ds-history-countries">${countryBadges}</div></div><span class="badge ${badgeClass}">${badgeText}</span></article>`;
+    return `<article class="card-row ds-history-row"><div><h3>${time} · ${trigger}</h3><p>检查 ${checked} 个工作流 · 卡死 ${stuck} · 无运行记录 ${stale} · 执行失败 ${executionFailed} · 检查失败 ${failed}</p><div class="ds-history-countries">${countryBadges}</div></div><span class="badge ${badgeClass}">${badgeText}</span></article>`;
   }).join("");
   return `<section class="panel ds-config-section"><details class="ds-history-toggle"><summary>巡检记录（最近 ${runs.length} 次）</summary><div class="card-list">${rows}</div></details></section>`;
 }

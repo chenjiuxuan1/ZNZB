@@ -3,7 +3,14 @@
 平台请求 `check_failed_instances` 时会携带：
 
 ```json
-{ "payload": { "stale_policy": "one_full_schedule_cycle", "include_checked_workflows": true } }
+{
+  "payload": {
+    "stale_policy": "one_full_schedule_cycle",
+    "include_checked_workflows": true,
+    "failure_policy": "scheduled_today_final_failure",
+    "include_failed_workflows": true
+  }
+}
 ```
 
 网关必须从 DolphinScheduler 的定时配置读取任务的调度表达式、时区、最近运行实例，并只将满足以下条件的 ONLINE 任务置入 `stale_workflows`：已经经过下一次计划执行时间，且该次执行之后仍没有运行实例。
@@ -29,6 +36,27 @@
 {
   "checked_workflows": [
     { "workflow_code": "daily_loan", "workflow_name": "每日放款" }
+  ]
+}
+```
+
+当 `include_failed_workflows` 为 `true` 时，网关还必须返回 `failed_workflows`。只可包含满足全部条件的工作流：调度状态为 `ONLINE`、当天计划执行时间已到、由定时调度触发、对应实例已结束且最终状态为失败、该失败实例之后没有成功实例。尚未到当天调度时间、手动运行失败、历史失败但当天后续实例已成功、仍在运行的实例均不得返回。
+
+```json
+{
+  "failed_workflows": [
+    {
+      "workflow_code": "daily_loan",
+      "workflow_name": "每日放款",
+      "schedule_status": "ONLINE",
+      "failure_reason": "scheduled_instance_failed",
+      "has_later_success": false,
+      "failure_message": "今天 09:00 调度实例执行失败",
+      "instance_id": "9988",
+      "instance_state": "FAILURE",
+      "start_time": "2026-07-27T09:00:02.000+08:00",
+      "end_time": "2026-07-27T09:03:10.000+08:00"
+    }
   ]
 }
 ```

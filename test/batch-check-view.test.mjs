@@ -62,8 +62,10 @@ test("history details show Wattrel table values and DS project workflow scan det
       checkedWorkflows: 2,
       stuckCount: 1,
       staleCount: 0,
+      failedCount: 1,
       projects: [{ projectName: "泰国数仓", projectCode: "1001", checkedWorkflows: 2, success: true, checkedWorkflowDetails: [{ workflowName: "每日注册", workflowCode: "register_daily" }] }],
       stuckWorkflows: [{ workflowName: "每日放款", workflowCode: "loan_daily", consecutiveFailures: 3 }],
+      failedWorkflows: [{ workflowName: "每日还款", workflowCode: "repay_daily", failureMessage: "今天 09:00 调度实例执行失败" }],
     }],
   });
 
@@ -71,9 +73,12 @@ test("history details show Wattrel table values and DS project workflow scan det
   assert.match(wattrelHtml, /期望值/);
   assert.match(wattrelHtml, /2,781/);
   assert.match(dsHtml, /泰国数仓/);
+  assert.doesNotMatch(dsHtml, /1001/);
   assert.match(dsHtml, /每日放款/);
   assert.match(dsHtml, /每日注册/);
+  assert.match(dsHtml, /<summary>查看 1 个已扫描工作流<\/summary>/);
   assert.match(dsHtml, /连续失败 3 次/);
+  assert.match(dsHtml, /执行失败：每日还款/);
 });
 
 test("history anomaly details parse latest non-zero to zero values", () => {
