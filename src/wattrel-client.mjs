@@ -62,6 +62,8 @@ export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
       name: checkName ? String(checkName) : "",
       srcTbl: srcTbl ? String(srcTbl) : "",
       destTbl: destTbl ? String(destTbl) : "",
+      // A few Wattrel rules do not persist dest_tbl; the rule name is the only table identifier returned.
+      tableName: String(destTbl || checkName || value("table", "target", "target_name") || ""),
       expectedValue,
       actualValue,
       diff,

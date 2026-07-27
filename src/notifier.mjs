@@ -82,7 +82,7 @@ async function notifyKnBot(alertConfig, message) {
   }
 
   const url = `${apiBaseUrl}/bot${botToken}/sendMessage`;
-  const text = appendMentionText(message, alertConfig.mentions);
+  const text = formatKnBotHtmlMessage(appendMentionText(message, alertConfig.mentions));
   const results = [];
 
   for (const chatId of chatIds) {
@@ -92,6 +92,7 @@ async function notifyKnBot(alertConfig, message) {
       body: JSON.stringify({
         chat_id: chatId,
         text,
+        parse_mode: "HTML",
         disable_web_page_preview: true,
       }),
     });
@@ -786,27 +787,28 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
         group.dashboardTitle || "未知看板",
         anomaly.cardTitle || anomaly.cardName || "未知卡片",
       ].filter(Boolean).join(" / ");
-      const text = `${label}：${compactDutyAnomalyReason(anomaly.message)}`;
-      lines.push(`• ${formatDutyMarkdownLink(text, group.dashboardUrl)}`);
+      const text = `${label}：${compactDutyAnomalyReason(anomaly)}`;
+      lines.push(`• ${formatDutyHtmlLink(text, group.dashboardUrl)}`);
     }
   }
   lines.push("完整异常明细请查看历史详情。");
 }
 
-function formatDutyMarkdownLink(text, url) {
-  const label = String(text || "查看异常").replace(/[\\[\]]/g, "\\$&");
-  const target = compactDashboardUrl(url).replace(/[()]/g, (character) => encodeURIComponent(character));
-  return target ? `[${label}](${target})` : label;
+function formatDutyHtmlLink(text, url) {
+  const htmlLabel = escapeKnBotHtml(text || "查看异常");
+  const target = escapeKnBotHtmlAttribute(compactDashboardUrl(url));
+  return target ? `<a href="${target}">${htmlLabel}</a>` : htmlLabel;
 }
 
 function formatDutyWattrelAnomaly(anomaly = {}) {
-  const name = anomaly.name || anomaly.checkName || anomaly.cardTitle || "未命名校验";
-  const target = anomaly.destTbl || anomaly.destTable || "-";
-  const source = anomaly.srcTbl || anomaly.srcTable || "-";
-  const expected = anomaly.expectedValue ?? anomaly.srcValue ?? "-";
-  const actual = anomaly.actualValue ?? anomaly.destValue ?? "-";
-  const diff = anomaly.diff ?? anomaly.diffValue ?? "-";
-  return `${name}：目标表 ${target}；源表 ${source}；期望 ${expected}，实际 ${actual}，差值 ${diff}`;
+  const tableName = anomaly.destTbl
+    || anomaly.destTable
+    || anomaly.tableName
+    || anomaly.name
+    || anomaly.checkName
+    || anomaly.cardTitle
+    || "未返回表名";
+  return `表名 ${tableName}`;
 }
 
 function splitDutySummaryLines(lines, maxLength) {
@@ -815,17 +817,24 @@ function splitDutySummaryLines(lines, maxLength) {
   let current = [];
   let length = 0;
   for (const line of lines) {
-    const nextLength = length + (current.length ? 1 : 0) + line.length;
+    // URLs in HTML links are not visible in chat, so they should not force an unnecessary continuation message.
+    const nextLength = length + (current.length ? 1 : 0) + dutyVisibleTextLength(line);
     if (current.length && nextLength > limit) {
       bodies.push(current.join("\n"));
       current = ["【今日值班】续报"];
       length = current[0].length;
     }
     current.push(line);
-    length += (current.length > 1 ? 1 : 0) + line.length;
+    length += (current.length > 1 ? 1 : 0) + dutyVisibleTextLength(line);
   }
   if (current.length) bodies.push(current.join("\n"));
   return bodies;
+}
+
+function dutyVisibleTextLength(line) {
+  return String(line || "")
+    .replace(/<a href="[^"]*">([\s\S]*?)<\/a>/g, "$1")
+    .length;
 }
 
 function compactDashboardUrl(value) {
@@ -841,9 +850,35 @@ function compactDashboardUrl(value) {
   }
 }
 
-function compactDutyAnomalyReason(message) {
-  const text = String(message || "未提供判定原因").replace(/\s+/g, " ").trim();
-  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+function compactDutyAnomalyReason(anomaly = {}) {
+  const text = String(anomaly.message || "未提供判定原因").replace(/\s+/g, " ").trim();
+  if (/没有数据|no parseable date column/i.test(text)) return "没有数据";
+  if (isMissingPublicAnomaly(anomaly) || /数据缺失|缺少\s*(?:D-|\d{1,2}:\d{2})/i.test(text)) return "数据缺失";
+  if (anomaly.type === "latestNonZeroToZero" || /(?:降为|变为)\s*0(?:\D|$)/.test(text)) return "指标变为 0";
+  if (/数据新鲜度异常|最新日期/.test(text)) return "数据未更新";
+  if (/波动|绝对变化/.test(text)) return "波动异常";
+  return text.length > 40 ? `${text.slice(0, 37)}...` : text;
+}
+
+function formatKnBotHtmlMessage(message) {
+  const links = [];
+  const tokenized = String(message || "").replace(/<a href="[^"]*">[\s\S]*?<\/a>/g, (link) => {
+    const token = `\u0000KN_LINK_${links.length}\u0000`;
+    links.push(link);
+    return token;
+  });
+  return escapeKnBotHtml(tokenized).replace(/\u0000KN_LINK_(\d+)\u0000/g, (_match, index) => links[Number(index)] || "");
+}
+
+function escapeKnBotHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeKnBotHtmlAttribute(value) {
+  return escapeKnBotHtml(value).replace(/"/g, "&quot;");
 }
 
 function isPreviousTimePointBaselineAnomaly(anomaly = {}) {

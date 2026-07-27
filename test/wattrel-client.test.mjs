@@ -32,9 +32,20 @@ test("Wattrel row mapping preserves nested and case-insensitive gateway fields",
   assert.equal(anomaly.name, "放款金额校验");
   assert.equal(anomaly.srcTbl, "ods_grant");
   assert.equal(anomaly.destTbl, "dwd_grant");
+  assert.equal(anomaly.tableName, "dwd_grant");
   assert.equal(anomaly.expectedValue, 100);
   assert.equal(anomaly.actualValue, 80);
   assert.equal(anomaly.diff, 20);
+});
+
+test("Wattrel row mapping uses the rule name when the source omits dest_tbl", () => {
+  const [anomaly] = mapWattrelRowsToAnomalies([{
+    name: "dwb_asset_period_info_repaid_delay_cnt",
+    dest_tbl: "",
+  }]);
+
+  assert.equal(anomaly.destTbl, "");
+  assert.equal(anomaly.tableName, "dwb_asset_period_info_repaid_delay_cnt");
 });
 
 test("Wattrel row mapping keeps only the newest row for a repeated quality rule", () => {
