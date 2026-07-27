@@ -758,14 +758,45 @@ function appendDutyMetabaseSummary(lines, anomalies = []) {
     lines.push("正常");
     return;
   }
-  const dashboardGroups = groupAnomaliesByDashboard(anomalies);
+  const dashboardGroups = groupAnomaliesByDashboard(anomalies).map((group) => {
+    const topAnomaly = [...group.items].sort((left, right) => (
+      Number(isMissingPublicAnomaly(right)) - Number(isMissingPublicAnomaly(left))
+      || Number(right.type === "latestNonZeroToZero") - Number(left.type === "latestNonZeroToZero")
+      || extractAnomalySeverity(right.message || "") - extractAnomalySeverity(left.message || "")
+    ))[0] || {};
+    return {
+      ...group,
+      topAnomaly,
+      dashboardUrl: firstDashboardUrl(group.items),
+    };
+  });
   lines.push(`发现 ${anomalies.length} 条异常，涉及 ${dashboardGroups.length} 个看板。`);
-  const countryCounts = new Map();
+  lines.push("异常看板（每个看板仅展示最高优先级异常）：");
+  const countryGroups = new Map();
   for (const group of dashboardGroups) {
     const label = formatDutyCountryLabel(group) || "未标国家";
-    countryCounts.set(label, (countryCounts.get(label) || 0) + 1);
+    if (!countryGroups.has(label)) countryGroups.set(label, []);
+    countryGroups.get(label).push(group);
   }
-  lines.push(`异常看板：${[...countryCounts.entries()].map(([label, count]) => `${label} ${count} 个`).join("；")}。详见历史明细。`);
+  for (const [countryLabel, groups] of countryGroups) {
+    lines.push(`${countryLabel}：`);
+    for (const group of groups) {
+      const anomaly = group.topAnomaly;
+      const label = [
+        group.dashboardTitle || "未知看板",
+        anomaly.cardTitle || anomaly.cardName || "未知卡片",
+      ].filter(Boolean).join(" / ");
+      const text = `${label}：${compactDutyAnomalyReason(anomaly.message)}`;
+      lines.push(`• ${formatDutyMarkdownLink(text, group.dashboardUrl)}`);
+    }
+  }
+  lines.push("完整异常明细请查看历史详情。");
+}
+
+function formatDutyMarkdownLink(text, url) {
+  const label = String(text || "查看异常").replace(/[\\[\]]/g, "\\$&");
+  const target = compactDashboardUrl(url).replace(/[()]/g, (character) => encodeURIComponent(character));
+  return target ? `[${label}](${target})` : label;
 }
 
 function formatDutyWattrelAnomaly(anomaly = {}) {
