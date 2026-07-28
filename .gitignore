@@ -17,4 +17,5 @@ config/metabase.auth.json
 .DS_Store
 config/ds-scheduler.config.json
 n8n-metabase-anomaly-agent.json
+n8n-metabase-anomaly-evidence-agent.local.json
 n8n-wattrel-query-gateway.local.json
