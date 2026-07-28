@@ -97,6 +97,16 @@ test("Metabase anomaly agent accepts an async n8n evidence job without blocking"
   assert.equal(result.jobId, "job-1");
 });
 
+test("Metabase evidence webhook enables async internal callback by default", () => {
+  const settings = getMetabaseAnomalyAgentSettings({
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "http://127.0.0.1:5678/webhook/metabase-anomaly-evidence-agent",
+  });
+  assert.equal(settings.enabled, true);
+  assert.equal(settings.n8nAsync, true);
+  assert.equal(settings.callbackUrl, "http://127.0.0.1:28787/api/metabase-anomaly-analysis/callback");
+  assert.equal(settings.callbackToken, "");
+});
+
 test("Metabase anomaly agent returns pending when an async n8n job outlives the accept window", async () => {
   let request = null;
   const originalSetTimeout = globalThis.setTimeout;

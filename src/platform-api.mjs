@@ -279,7 +279,7 @@ export function createPlatformApi({
         error.statusCode = 404;
         throw error;
       }
-      if (body.jobId && existing.jobId && String(body.jobId) !== String(existing.jobId)) {
+      if (existing.jobId && String(body.jobId || "") !== String(existing.jobId)) {
         throw badRequest("Invalid Metabase anomaly analysis callback", ["回调任务编号与待处理任务不一致。"]);
       }
       const completed = {

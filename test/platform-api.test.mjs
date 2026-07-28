@@ -172,6 +172,14 @@ test("platform api stores an async Metabase evidence job and accepts its callbac
   assert.equal(completed.status, "completed");
   assert.equal(completed.analysis.dataSideVerdict, "data_issue");
   assert.equal(completed.evidence.dsStatus, "failed");
+
+  await assert.rejects(
+    () => api.completeMetabaseAnomalyAnalysis({
+      runId: "run-agent-callback", countryCode: "INE", anomalyIndex: 0,
+      analysis: { summary: "缺少任务编号" },
+    }),
+    (error) => error.statusCode === 400,
+  );
 });
 
 test("platform api merges pending panel sources into the dashboard inventory", async () => {

@@ -3,14 +3,17 @@ import { fetchCompatible } from "./fetch-compatible.mjs";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const N8N_ASYNC_ACCEPT_WAIT_MS = 2_500;
+const DEFAULT_INTERNAL_CALLBACK_URL = "http://127.0.0.1:28787/api/metabase-anomaly-analysis/callback";
 const AGENT_NAME = "Metabase 异常原因分析助手";
 
 export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const enabledValue = String(env.METABASE_ANOMALY_AGENT_ENABLED || "").trim().toLowerCase();
   const n8nWebhookUrl = String(env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL || "").trim();
   const n8nToken = String(env.METABASE_ANOMALY_AGENT_N8N_TOKEN || "").trim();
-  const n8nAsync = ["1", "true", "on", "yes"].includes(String(env.METABASE_ANOMALY_AGENT_N8N_ASYNC || "").trim().toLowerCase());
-  const callbackUrl = String(env.METABASE_ANOMALY_AGENT_CALLBACK_URL || "").trim();
+  const asyncSetting = String(env.METABASE_ANOMALY_AGENT_N8N_ASYNC || "").trim().toLowerCase();
+  const n8nAsync = ["1", "true", "on", "yes"].includes(asyncSetting)
+    || (!asyncSetting && /metabase-anomaly-evidence-agent/i.test(n8nWebhookUrl));
+  const callbackUrl = String(env.METABASE_ANOMALY_AGENT_CALLBACK_URL || (n8nAsync && n8nWebhookUrl ? DEFAULT_INTERNAL_CALLBACK_URL : "")).trim();
   const callbackToken = String(env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN || "").trim();
   const baseUrl = String(env.METABASE_ANOMALY_AGENT_BASE_URL || "").trim().replace(/\/+$/, "");
   const apiKey = String(env.METABASE_ANOMALY_AGENT_API_KEY || "").trim();
@@ -18,7 +21,7 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const explicitlyDisabled = ["0", "false", "off", "no"].includes(enabledValue);
   const transport = n8nWebhookUrl ? "n8n" : "direct";
   const configured = transport === "n8n"
-    ? Boolean(n8nWebhookUrl && (!n8nAsync || (callbackUrl && callbackToken)))
+    ? Boolean(n8nWebhookUrl && (!n8nAsync || callbackUrl))
     : Boolean(baseUrl && apiKey && model);
   return {
     enabled: !explicitlyDisabled && configured,
@@ -131,7 +134,7 @@ async function requestN8nAgent({ settings, anomaly, context, fetchFn, jobId }) {
         context: { ...pickContextEvidence(context), sameDashboardAnomalies: (context.sameDashboardAnomalies || []).slice(0, 5).map(pickAnomalyEvidence) },
         callback: settings.n8nAsync && settings.callbackUrl ? {
           url: settings.callbackUrl,
-          token: settings.callbackToken,
+          token: settings.callbackToken || null,
         } : null,
       }),
       signal: controller.signal,

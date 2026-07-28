@@ -93,8 +93,9 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await api.getMetabaseAnomalyAnalysis(Object.fromEntries(url.searchParams.entries())));
   }
   if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/callback") {
-    assertMetabaseAgentCallbackAuthorized(request);
-    return sendJson(response, 200, await api.completeMetabaseAnomalyAnalysis(await readBody(request, {})));
+    const body = await readBody(request, {});
+    assertMetabaseAgentCallbackAuthorized(request, body);
+    return sendJson(response, 200, await api.completeMetabaseAnomalyAnalysis(body));
   }
   if (method === "POST" && url.pathname === "/api/external-alert-runs") {
     return sendJson(response, 200, await api.ingestExternalAlertRun(await readBody(request, {})));
@@ -176,11 +177,14 @@ async function handleApi(request, response, url) {
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 
-function assertMetabaseAgentCallbackAuthorized(request) {
+function assertMetabaseAgentCallbackAuthorized(request, body = {}) {
   const expected = String(process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN || "").trim();
   if (!expected) {
-    const error = new Error("Metabase Agent callback is not configured");
-    error.statusCode = 503;
+    // A generated pending job ID is an unguessable one-time capability when a
+    // same-host n8n workflow uses the internal callback URL without a shared secret.
+    if (String(body?.jobId || "").trim()) return;
+    const error = new Error("Metabase Agent callback requires a job ID");
+    error.statusCode = 401;
     throw error;
   }
   const received = String(request.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
