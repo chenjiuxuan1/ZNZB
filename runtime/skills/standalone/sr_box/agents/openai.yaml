@@ -1,4 +1,0 @@
-interface:
-  display_name: "数据查询"
-  short_description: "通过 data-map-dev 生产网关查询 SR 沙盒数据"
-  default_prompt: "使用 $sr-box / 数据查询 通过 data-map-dev 生产网关查询 StarRocks 沙盒数据。"

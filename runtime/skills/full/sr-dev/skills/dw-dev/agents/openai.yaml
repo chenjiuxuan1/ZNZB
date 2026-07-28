@@ -1,4 +1,0 @@
-interface:
-  display_name: "数仓开发"
-  short_description: "轻量编排需求、建模、双层验收 SQL 与 testdb 映射"
-  default_prompt: "使用 $dw-dev 编排一个数仓开发任务：全程使用中文说明和中文目录，按用户输入、索引查询、$dw-knowledge 文档与召回、可选 $dw-code-knowledge 的优先级整理资料，协调 $dw-modeling、$dw-sql-builder、$sr-box 和按需 $ds-scheduler；进入验证阶段时生成生产-testdb表映射、系统验证 SQL 和用户可直接执行的只读验收 SQL。"

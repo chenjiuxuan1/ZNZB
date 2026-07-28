@@ -48,12 +48,6 @@ export const state = {
     row: null,
     status: null,
   },
-  skillRuntimeStatus: null,
-  skillRuntimeResult: null,
-  skillRuntimeRunStatus: null,
-  skillRuntimeLoaded: false,
-  skillRuntimeCountry: "cn",
-  skillRuntimeSql: "SELECT 1 AS ok",
   batchNotifyConfig: {
     webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
     botId: "",

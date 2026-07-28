@@ -1,4 +1,0 @@
-interface:
-  display_name: "数仓建模"
-  short_description: "拆解需求、判断建模方案、识别知识缺口和重复资产"
-  default_prompt: "使用 $dw-modeling 拆解数仓建模需求，判断目标层级、粒度、知识缺口、重复资产和输出路由；SQL 落地交给 $dw-sql-builder。"

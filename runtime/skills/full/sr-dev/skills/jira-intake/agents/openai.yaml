@@ -1,6 +1,0 @@
-interface:
-  display_name: "Jira Intake"
-  short_description: "归一化 Rovo/Jira 需求、分类并生成本地入口文件"
-  default_prompt: "Use @atlassian-rovo for Jira operations when available, then use $jira-intake to normalize evidence, infer Jira categories, and create DW Dev artifacts."
-policy:
-  allow_implicit_invocation: true
