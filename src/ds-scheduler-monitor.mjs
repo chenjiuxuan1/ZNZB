@@ -305,6 +305,9 @@ export async function checkAllCountries(rootDir, config) {
             include_checked_workflows: true,
             failure_policy: "scheduled_today_final_failure",
             include_failed_workflows: true,
+            // Configured projects must surface unrecovered failures even when
+            // their schedule was taken offline after the failure occurred.
+            include_offline_failures: true,
           },
         }),
       }, {
