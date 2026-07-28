@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { fetchCompatible } from "./fetch-compatible.mjs";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const N8N_ASYNC_ACCEPT_WAIT_MS = 2_500;
 const AGENT_NAME = "Metabase 异常原因分析助手";
 
 export function getMetabaseAnomalyAgentSettings(env = process.env) {
@@ -83,6 +84,35 @@ export async function analyzeMetabaseAnomaly({ anomaly, context = {}, env = proc
 }
 
 async function callN8nAgent({ settings, anomaly, context, fetchFn }) {
+  const jobId = settings.n8nAsync ? randomUUID() : "";
+  const request = requestN8nAgent({ settings, anomaly, context, fetchFn, jobId });
+
+  // n8n may continue executing after the reverse proxy's short response window.
+  // Do not turn a live async evidence job into a browser-visible 502 in that case.
+  if (settings.n8nAsync) {
+    const settled = request.then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+    const first = await Promise.race([
+      settled,
+      delay(N8N_ASYNC_ACCEPT_WAIT_MS).then(() => null),
+    ]);
+    if (!first) {
+      void settled.then(({ error }) => {
+        if (error) console.error(`[metabase-anomaly-agent] n8n async dispatch failed for ${jobId}: ${error.message}`);
+      });
+      return pendingN8nEvidenceJob({ jobId });
+    }
+    if (first.error) throw first.error;
+    return normalizeN8nAgentResponse({ settings, payload: first.value.payload, jobId });
+  }
+
+  const { payload } = await request;
+  return normalizeN8nAgentResponse({ settings, payload, jobId });
+}
+
+async function requestN8nAgent({ settings, anomaly, context, fetchFn, jobId }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
   try {
@@ -95,6 +125,7 @@ async function callN8nAgent({ settings, anomaly, context, fetchFn }) {
       },
       body: JSON.stringify({
         protocolVersion: 2,
+        ...(jobId ? { jobId } : {}),
         requestedMode: settings.n8nAsync ? "evidence" : "summary",
         anomaly: pickAnomalyEvidence(anomaly),
         context: { ...pickContextEvidence(context), sameDashboardAnomalies: (context.sameDashboardAnomalies || []).slice(0, 5).map(pickAnomalyEvidence) },
@@ -111,32 +142,49 @@ async function callN8nAgent({ settings, anomaly, context, fetchFn }) {
       error.statusCode = 502;
       throw error;
     }
-    if (settings.n8nAsync && (payload?.accepted === true || payload?.status === "pending" || payload?.jobId)) {
-      return {
-        generatedAt: payload?.generatedAt || new Date().toISOString(),
-        provider: "n8n-evidence",
-        pending: true,
-        jobId: String(payload?.jobId || payload?.executionId || randomUUID()),
-        model: String(payload?.model || "n8n-configured-model"),
-        observability: payload?.observability || { enabled: false, written: false, reason: "n8n 任务已受理，等待回调" },
-      };
-    }
-    if (!payload?.analysis) {
-      const error = new Error("n8n Agent 未返回分析结果或异步任务编号");
-      error.statusCode = 502;
-      throw error;
-    }
-    return {
-      generatedAt: payload?.generatedAt || new Date().toISOString(),
-      provider: "n8n",
-      model: String(payload?.model || "n8n-configured-model"),
-      analysis: normalizeMetabaseAnomalyAnalysis(payload?.analysis),
-      fallbackUsed: Boolean(payload?.fallbackUsed),
-      observability: payload?.observability || { enabled: false, written: false, reason: "n8n 未返回 Langfuse 状态" },
-    };
+    return { payload };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function normalizeN8nAgentResponse({ settings, payload, jobId }) {
+  if (settings.n8nAsync && (payload?.accepted === true || payload?.status === "pending" || payload?.jobId)) {
+    return pendingN8nEvidenceJob({
+      jobId: String(payload?.jobId || payload?.executionId || jobId || randomUUID()),
+      generatedAt: payload?.generatedAt,
+      model: payload?.model,
+      observability: payload?.observability,
+    });
+  }
+  if (!payload?.analysis) {
+    const error = new Error("n8n Agent 未返回分析结果或异步任务编号");
+    error.statusCode = 502;
+    throw error;
+  }
+  return {
+    generatedAt: payload?.generatedAt || new Date().toISOString(),
+    provider: "n8n",
+    model: String(payload?.model || "n8n-configured-model"),
+    analysis: normalizeMetabaseAnomalyAnalysis(payload?.analysis),
+    fallbackUsed: Boolean(payload?.fallbackUsed),
+    observability: payload?.observability || { enabled: false, written: false, reason: "n8n 未返回 Langfuse 状态" },
+  };
+}
+
+function pendingN8nEvidenceJob({ jobId, generatedAt, model, observability } = {}) {
+  return {
+    generatedAt: generatedAt || new Date().toISOString(),
+    provider: "n8n-evidence",
+    pending: true,
+    jobId: String(jobId || randomUUID()),
+    model: String(model || "n8n-configured-model"),
+    observability: observability || { enabled: false, written: false, reason: "n8n 任务已受理，等待回调" },
+  };
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function callModel({ settings, promptMessages, fetchFn }) {

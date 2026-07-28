@@ -97,6 +97,34 @@ test("Metabase anomaly agent accepts an async n8n evidence job without blocking"
   assert.equal(result.jobId, "job-1");
 });
 
+test("Metabase anomaly agent returns pending when an async n8n job outlives the accept window", async () => {
+  let request = null;
+  const originalSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (callback, milliseconds, ...args) => originalSetTimeout(callback, milliseconds === 2_500 ? 0 : milliseconds, ...args);
+  try {
+    const result = await analyzeMetabaseAnomaly({
+      env: {
+        METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/metabase-anomaly-evidence-agent",
+        METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
+        METABASE_ANOMALY_AGENT_CALLBACK_URL: "https://duty.example/api/metabase-anomaly-analysis/callback",
+        METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",
+      },
+      anomaly: { message: "指标从 1 降为 0" },
+      context: { runId: "run-slow", countryCode: "MX" },
+      fetchFn: async (_url, options) => {
+        request = options;
+        await new Promise((resolve) => originalSetTimeout(resolve, 5));
+        return { ok: true, json: async () => ({ accepted: true, jobId: "job-slow" }) };
+      },
+    });
+    assert.equal(result.pending, true);
+    assert.match(result.jobId, /^[0-9a-f-]{36}$/);
+    assert.match(request.body, /"jobId"/);
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
 test("Metabase anomaly agent returns a safe fallback for non-JSON model responses", async () => {
   const result = await analyzeMetabaseAnomaly({
     env,
