@@ -31,8 +31,10 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
-await loadData();
+// Render the shell first. Inventory and history files can be large, and waiting for
+// them here used to leave users with a completely blank page during startup.
 render();
+void loadInitialData();
 
 export async function loadData() {
   const [summary, countries, inventory, rulesConfig, batchSchedule, batchHistory] = await Promise.all([
@@ -47,20 +49,69 @@ export async function loadData() {
   state.countries = countries;
   state.inventory = inventory;
   state.rulesConfig = rulesConfig;
-  state.batchSchedule = batchSchedule;
+  applyBatchSchedule(batchSchedule);
   state.batchHistory = batchHistory;
-  if (batchSchedule) {
-    state.batchNotifyConfig = {
-      webhookUrl: batchSchedule.webhookUrl || state.batchNotifyConfig.webhookUrl,
-      botId: batchSchedule.botId || state.batchNotifyConfig.botId,
-      mentions: batchSchedule.mentions || state.batchNotifyConfig.mentions,
+}
+
+async function loadInitialData() {
+  const historyRunId = state.route === "/batch-check" ? state.routeQuery?.historyRunId : "";
+  if (historyRunId) {
+    state.batchHistoryStatus = {
+      type: "loading",
+      title: "正在加载巡检历史详情",
+      detail: "只读取当前链接对应的一次巡检记录。",
     };
-    if (!state.selected.countryCode && batchSchedule.countryCode) {
-      state.selected.countryCode = batchSchedule.countryCode;
-    }
-    if (!state.selected.dashboardUuid && batchSchedule.dashboardUuid) {
-      state.selected.dashboardUuid = batchSchedule.dashboardUuid;
-    }
+  }
+
+  // Small configuration responses improve the first useful render without waiting
+  // for inventory, rules, or the full one-week history file.
+  const critical = await Promise.allSettled([
+    apiGet("/api/countries"),
+    apiGet("/api/batch-schedule"),
+    historyRunId
+      ? apiGet(`/api/batch-history?runId=${encodeURIComponent(historyRunId)}`)
+      : Promise.resolve(null),
+  ]);
+  if (critical[0].status === "fulfilled") state.countries = critical[0].value;
+  if (critical[1].status === "fulfilled") applyBatchSchedule(critical[1].value);
+  if (critical[2].status === "fulfilled") {
+    state.batchHistory = critical[2].value;
+    state.batchHistoryStatus = null;
+  } else if (historyRunId) {
+    state.batchHistoryStatus = {
+      type: "error",
+      title: "巡检历史详情读取失败",
+      detail: critical[2].reason?.message || "请稍后刷新重试。",
+    };
+  }
+  render();
+
+  const deferred = await Promise.allSettled([
+    apiGet("/api/summary"),
+    apiGet("/api/inventory"),
+    apiGet("/api/rules"),
+    historyRunId ? Promise.resolve(null) : apiGet("/api/batch-history?limit=50"),
+  ]);
+  if (deferred[0].status === "fulfilled") state.summary = deferred[0].value;
+  if (deferred[1].status === "fulfilled") state.inventory = deferred[1].value;
+  if (deferred[2].status === "fulfilled") state.rulesConfig = deferred[2].value;
+  if (deferred[3].status === "fulfilled") state.batchHistory = deferred[3].value;
+  render();
+}
+
+function applyBatchSchedule(batchSchedule) {
+  state.batchSchedule = batchSchedule;
+  if (!batchSchedule) return;
+  state.batchNotifyConfig = {
+    webhookUrl: batchSchedule.webhookUrl || state.batchNotifyConfig.webhookUrl,
+    botId: batchSchedule.botId || state.batchNotifyConfig.botId,
+    mentions: batchSchedule.mentions || state.batchNotifyConfig.mentions,
+  };
+  if (!state.selected.countryCode && batchSchedule.countryCode) {
+    state.selected.countryCode = batchSchedule.countryCode;
+  }
+  if (!state.selected.dashboardUuid && batchSchedule.dashboardUuid) {
+    state.selected.dashboardUuid = batchSchedule.dashboardUuid;
   }
 }
 

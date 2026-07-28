@@ -718,7 +718,21 @@ function renderSelectedHistoryRunDetail() {
   if (!runId) {
     return "";
   }
-  const history = state.batchHistory || { runs: [] };
+  if (!state.batchHistory) {
+    const status = state.batchHistoryStatus;
+    return `
+      <section class="panel history-detail-page">
+        <div class="detail-header compact-header">
+          <div>
+            <h2 class="panel-title">巡检历史详情</h2>
+            <p class="muted">${escapeHtml(status?.detail || "正在加载本次巡检详情...")}</p>
+          </div>
+          <a class="link-button" href="#/batch-check">返回定时巡检</a>
+        </div>
+      </section>
+    `;
+  }
+  const history = state.batchHistory;
   const run = (history.runs || []).find((item) => String(item.id || "") === String(runId));
   if (!run) {
     return `

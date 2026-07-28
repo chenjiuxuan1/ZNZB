@@ -2957,10 +2957,17 @@ function mergeInventories(inventories) {
 }
 
 function filterBatchHistory(history = DEFAULT_BATCH_HISTORY, filters = {}) {
+  const runId = String(filters.runId || "").trim();
   const countryCode = String(filters.countryCode || "").trim();
   const status = String(filters.status || "").trim();
   const limit = clampNumber(filters.limit ?? 50, 1, MAX_BATCH_HISTORY_RUNS, 50);
   let runs = keepRecentHistoryRuns(history.runs || []);
+
+  // History-detail links only need one record. Returning the complete history here
+  // makes the page slow when each run contains all Metabase, Wattrel, and DS details.
+  if (runId) {
+    runs = runs.filter((run) => String(run.id || "") === runId);
+  }
 
   if (countryCode) {
     runs = runs.filter((run) => (run.runs || []).some((countryRun) => countryRun.countryCode === countryCode));

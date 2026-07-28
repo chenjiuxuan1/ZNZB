@@ -1218,6 +1218,10 @@ test("platform api saves batch schedule and runs it when due", async () => {
 
   const filteredHistory = await api.getBatchHistory({ countryCode: "INE", status: "anomaly" });
   assert.equal(filteredHistory.runs.length, 1);
+
+  const selectedHistory = await api.getBatchHistory({ runId: history.runs[0].id });
+  assert.equal(selectedHistory.total, 1);
+  assert.equal(selectedHistory.runs[0].id, history.runs[0].id);
 });
 
 test("platform api persists the global DS switch on Metabase schedule", async () => {
