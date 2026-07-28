@@ -48,6 +48,18 @@ test("Wattrel row mapping uses the rule name when the source omits dest_tbl", ()
   assert.equal(anomaly.tableName, "dwb_asset_period_info_repaid_delay_cnt");
 });
 
+test("Wattrel row mapping reports a headerless n8n result instead of showing empty table fields", () => {
+  const [anomaly] = mapWattrelRowsToAnomalies([{
+    0: 0,
+    49: 49,
+    495956: 495957,
+    ods_qsa_erp: "ods_qsa_erp",
+  }]);
+
+  assert.equal(anomaly.cardTitle, "Wattrel 字段解析失败");
+  assert.match(anomaly.message, /n8n 未返回 Wattrel 查询列名/);
+});
+
 test("Wattrel row mapping keeps only the newest row for a repeated quality rule", () => {
   const anomalies = mapWattrelRowsToAnomalies([
     { quality_id: 7, name: "放款金额校验", dest_tbl: "dwd_grant", dest_value: 80 },

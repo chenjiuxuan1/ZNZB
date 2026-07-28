@@ -293,23 +293,60 @@ function formatDutyDsScheduleSummary(summary) {
       continue;
     }
     if (!country.success) {
-      lines.push(`${label}：检查失败`);
-      continue;
+      lines.push(`${label}：检查失败（项目失败 ${failedProjects.length}）`);
+    } else if (failedProjects.length && stuckCount === 0 && staleCount === 0 && failedCount === 0) {
+      lines.push(`${label}：部分失败（项目失败 ${failedProjects.length}）`);
+    } else {
+      lines.push(`${label}：异常（卡死 ${stuckCount}、离线 ${staleCount}、执行失败 ${failedCount}、项目失败 ${failedProjects.length}）`);
     }
-    if (failedProjects.length && stuckCount === 0 && staleCount === 0 && failedCount === 0) {
-      lines.push(`${label}：部分失败`);
-      continue;
-    }
-    lines.push(`${label}：异常（卡死 ${stuckCount}、离线 ${staleCount}、失败 ${failedCount}）`);
+    lines.push(...formatDutyDsIssueDetails(country));
   }
   return lines.join("\n");
 }
 
 function formatDutyDsFailedProjects(projects) {
-  return (projects || []).filter((project) => project.success === false).map((project) => {
+  return (projects || []).filter((project) => project.success === false);
+}
+
+function formatDutyDsIssueDetails(country = {}) {
+  const entries = [];
+  const failedProjects = formatDutyDsFailedProjects(country.projects || []);
+  for (const project of failedProjects) {
     const name = project.projectName || project.projectCode || "未命名项目";
-    return name;
-  });
+    entries.push(`项目 ${name}：巡检失败（${compactDutyDsReason(project.error)}）`);
+  }
+  if (!country.success && failedProjects.length === 0 && country.error) {
+    entries.push(`巡检失败（${compactDutyDsReason(country.error)}）`);
+  }
+  for (const workflow of country.stuckWorkflows || []) {
+    entries.push(formatDutyDsWorkflowIssue(workflow, "卡死", workflow.staleMessage || workflow.failureMessage));
+  }
+  for (const workflow of country.staleWorkflows || []) {
+    entries.push(formatDutyDsWorkflowIssue(workflow, "离线", workflow.staleMessage || workflow.staleReason));
+  }
+  for (const workflow of country.failedWorkflows || []) {
+    entries.push(formatDutyDsWorkflowIssue(workflow, "执行失败", workflow.failureMessage || workflow.failureReason));
+  }
+  const unique = [...new Set(entries.filter(Boolean))];
+  const samples = unique.slice(0, 3);
+  const lines = samples.map((entry) => `  - ${entry}`);
+  if (unique.length > samples.length) {
+    lines.push(`  - 另有 ${unique.length - samples.length} 项异常，详见历史明细`);
+  }
+  return lines;
+}
+
+function formatDutyDsWorkflowIssue(workflow = {}, kind, reason) {
+  const projectName = workflow.projectName || workflow.projectCode || "未命名项目";
+  const workflowName = workflow.workflowName || workflow.workflowCode || "未命名工作流";
+  const taskName = workflow.taskName || workflow.failedTaskName || workflow.taskCode || "";
+  const taskPart = taskName ? ` / 任务 ${taskName}` : "";
+  return `项目 ${projectName} / 工作流 ${workflowName}${taskPart}：${kind}（${compactDutyDsReason(reason)}）`;
+}
+
+function compactDutyDsReason(reason) {
+  const text = String(reason || "未返回失败原因").replace(/\s+/g, " ").trim();
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
 }
 
 function buildPublicCheckSummaryMessage(result, missingAnomalies, fluctuationAnomalies, countryGroups, options = {}) {
@@ -737,14 +774,6 @@ function appendDutyWattrelSummary(lines, wattrelSummary) {
       lines.push(`${label}：未配置`);
     } else {
       lines.push(`${label}：${formatCompactNumber(country.count || 0)}`);
-      const samples = (country.anomalies || []).slice(0, 3);
-      for (const anomaly of samples) {
-        lines.push(`  - ${formatDutyWattrelAnomaly(anomaly)}`);
-      }
-      const hiddenCount = Math.max(0, Number(country.count || 0) - samples.length);
-      if (samples.length && hiddenCount) {
-        lines.push(`  - 另有 ${hiddenCount} 条，详见历史明细`);
-      }
     }
   }
 }
@@ -798,17 +827,6 @@ function formatDutyHtmlLink(text, url) {
   const htmlLabel = escapeKnBotHtml(text || "查看异常");
   const target = escapeKnBotHtmlAttribute(compactDashboardUrl(url));
   return target ? `<a href="${target}">${htmlLabel}</a>` : htmlLabel;
-}
-
-function formatDutyWattrelAnomaly(anomaly = {}) {
-  const tableName = anomaly.destTbl
-    || anomaly.destTable
-    || anomaly.tableName
-    || anomaly.name
-    || anomaly.checkName
-    || anomaly.cardTitle
-    || "未返回表名";
-  return `表名 ${tableName}`;
 }
 
 function splitDutySummaryLines(lines, maxLength) {

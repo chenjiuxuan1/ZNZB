@@ -11,7 +11,7 @@ import {
 test("Wattrel n8n gateway keeps MySQL column headers for row mapping", async () => {
   const workflow = await fs.readFile(new URL("../n8n-wattrel-query-gateway.json", import.meta.url), "utf8");
   const client = await fs.readFile(new URL("../src/wattrel-client.mjs", import.meta.url), "utf8");
-  assert.match(workflow, /mysql --batch --raw/);
+  assert.match(workflow, /mysql --batch --raw --column-names --host/);
   assert.doesNotMatch(workflow, /mysql --batch --raw --silent --host=/);
   assert.doesNotMatch(client, /"--silent"/);
   assert.match(client, /request\.setTimeout\(/);

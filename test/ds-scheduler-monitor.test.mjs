@@ -289,3 +289,78 @@ test("DS check reports only online scheduled workflows whose current-day executi
     globalThis.fetch = originalFetch;
   }
 });
+
+test("DS check recognizes raw DolphinScheduler scheduled failure instances from legacy gateways", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    async text() {
+      return JSON.stringify({
+        success: true,
+        data: {
+          total_checked: 44,
+          records: [{
+            projectCode: "13068695921632",
+            projectName: "墨西哥数仓-工作流",
+            workflowInstanceId: "3018647",
+            workflowDefinitionCode: "20048471875198",
+            workflowInstanceName: "墨西哥-数仓工作流 (1/2H)-NEW-20260727190300033",
+            commandType: "SCHEDULER",
+            workflowExecutionStatus: "FAILURE",
+            recovery: "NO",
+            workflowStartTime: "2026-07-27 19:03:00",
+            workflowEndTime: "2026-07-27 19:21:34",
+          }],
+        },
+      });
+    },
+  });
+  try {
+    const result = await checkAllCountries(process.cwd(), {
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { mx: { name: "墨西哥", token: "real-token" } },
+      projects: { mx: [{ name: "墨西哥数仓-工作流", code: "13068695921632" }] },
+    });
+    const country = result.countries[0];
+    assert.equal(country.failedCount, 1);
+    assert.equal(country.failedWorkflows[0].workflowName, "墨西哥-数仓工作流 (1/2H)-NEW-20260727190300033");
+    assert.equal(country.failedWorkflows[0].instanceState, "FAILURE");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DS check retries one transient n8n timeout before marking a project failed", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      const error = new Error("request aborted");
+      error.name = "AbortError";
+      throw error;
+    }
+    return {
+      status: 200,
+      ok: true,
+      async text() {
+        return JSON.stringify({ success: true, data: { total_checked: 17, stuck_count: 0, stale_count: 0, failed_workflows: [] } });
+      },
+    };
+  };
+  try {
+    const result = await checkAllCountries(process.cwd(), {
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      checkRetries: 1,
+      checkRetryDelayMs: 0,
+      countries: { pk: { name: "巴基斯坦", token: "real-token" } },
+      projects: { pk: [{ name: "巴基斯坦数仓-工作流_new", code: "123" }] },
+    });
+    assert.equal(calls, 2);
+    assert.equal(result.countries[0].success, true);
+    assert.equal(result.countries[0].checkedWorkflows, 17);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

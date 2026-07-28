@@ -36,6 +36,7 @@ export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
   const anomalies = rows.map((inputRow) => {
     const row = normalizeWattrelRow(inputRow);
     const value = (...keys) => getWattrelRowValue(row, ...keys);
+    const malformedColumns = hasMalformedWattrelColumns(row);
     const countryCode = firstPresent(value("country_code", "countryCode", "country"), defaults.countryCode);
     const countryName = firstPresent(value("country_name", "countryName"), defaults.countryName);
     const destTbl = value("dest_tbl", "destTable", "table_name", "tableName", "dest_table", "target_table", "targetTable");
@@ -58,7 +59,7 @@ export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
       countryCode: countryCode ? String(countryCode) : "",
       countryName: countryName ? String(countryName) : "",
       dashboardTitle: firstPresent(value("dashboard_title", "dashboardTitle"), "Wattrel 数据质量"),
-      cardTitle: String(destTbl || checkName || value("id") || "Wattrel 告警"),
+      cardTitle: String(malformedColumns ? "Wattrel 字段解析失败" : (destTbl || checkName || value("id") || "Wattrel 告警")),
       name: checkName ? String(checkName) : "",
       srcTbl: srcTbl ? String(srcTbl) : "",
       destTbl: destTbl ? String(destTbl) : "",
@@ -79,7 +80,9 @@ export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
       destError: value("dest_error", "destError", "target_error", "targetError"),
       severity: firstPresent(value("alert_level", "level"), "warning"),
       row,
-      message: message ? String(message) : undefined,
+      message: malformedColumns
+        ? "n8n 未返回 Wattrel 查询列名，无法解析表名和值；请更新 Wattrel 查询网关。"
+        : (message ? String(message) : undefined),
     };
   });
   const seenRules = new Set();
@@ -91,6 +94,17 @@ export function mapWattrelRowsToAnomalies(rows = [], defaults = {}) {
     seenRules.add(key);
     return true;
   });
+}
+
+function hasMalformedWattrelColumns(row = {}) {
+  const keys = Object.keys(row || {});
+  if (keys.length === 0) return false;
+  const expected = ["id", "quality_id", "name", "dest_tbl", "src_tbl", "src_value", "dest_value", "diff"];
+  const normalizedKeys = new Set(keys.map((key) => normalizeWattrelKey(key)));
+  if (expected.some((key) => normalizedKeys.has(normalizeWattrelKey(key)))) return false;
+  // A headerless tabular response makes the first data row become object keys,
+  // such as "0", "495956" or a table name. Those fields cannot be decoded safely.
+  return keys.some((key) => /^-?\d+(?:\.\d+)?$/.test(key)) && keys.length >= 3;
 }
 
 function normalizeWattrelRow(input) {

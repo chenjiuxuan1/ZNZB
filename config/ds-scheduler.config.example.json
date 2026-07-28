@@ -1,5 +1,8 @@
 {
   "n8nWebhookUrl": "http://127.0.0.1:5678/webhook/ds-scheduler",
+  "checkTimeoutMs": 60000,
+  "checkRetries": 1,
+  "checkRetryDelayMs": 1000,
   "countries": {
     "cn": { "name": "中国", "token": "" },
     "ine": { "name": "印尼", "token": "" },

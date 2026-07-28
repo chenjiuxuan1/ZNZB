@@ -295,8 +295,8 @@ test("duty summary renders concise DS status by country", () => {
             stuckCount: 0,
             staleCount: 1,
             failedCount: 1,
-            staleWorkflows: [{ workflowName: "每日放款" }],
-            failedWorkflows: [{ workflowName: "每日还款" }],
+            staleWorkflows: [{ projectName: "国内数仓", workflowName: "每日放款", staleMessage: "错过计划执行时间" }],
+            failedWorkflows: [{ projectName: "国内风控", workflowName: "每日还款", taskName: "还款数据校验", failureMessage: "SQL 执行失败" }],
             projects: [
               { projectName: "国内数仓", projectCode: "1001", success: true, checkedWorkflows: 28 },
               { projectName: "国内风控", projectCode: "1002", success: true, checkedWorkflows: 20 },
@@ -307,8 +307,9 @@ test("duty summary renders concise DS status by country", () => {
     },
   );
 
-  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：正常\n🇨🇳 中国：异常（卡死 0、离线 1、失败 1）/);
-  assert.doesNotMatch(messages[0].body, /每日放款|每日还款|项目：/);
+  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：正常\n🇨🇳 中国：异常（卡死 0、离线 1、执行失败 1、项目失败 0）/);
+  assert.match(messages[0].body, /项目 国内数仓 \/ 工作流 每日放款：离线（错过计划执行时间）/);
+  assert.match(messages[0].body, /项目 国内风控 \/ 工作流 每日还款 \/ 任务 还款数据校验：执行失败（SQL 执行失败）/);
 });
 
 test("duty summary shows failed projects even when another project in the country is healthy", () => {
@@ -335,7 +336,8 @@ test("duty summary shows failed projects even when another project in the countr
     },
   );
 
-  assert.match(messages[0].body, /🇹🇭 泰国：部分失败/);
+  assert.match(messages[0].body, /🇹🇭 泰国：部分失败（项目失败 1）/);
+  assert.match(messages[0].body, /项目 泰国数仓-数据质量：巡检失败（gateway timeout）/);
   assert.doesNotMatch(messages[0].body, /🇹🇭 泰国：正常/);
 });
 

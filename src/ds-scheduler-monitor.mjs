@@ -3,7 +3,8 @@ import { fetchCompatible } from "./fetch-compatible.mjs";
 import { readJsonFile } from "./utils.mjs";
 import { notifyText } from "./notifier.mjs";
 
-const DS_FETCH_TIMEOUT_MS = 45_000;
+const DS_FETCH_TIMEOUT_MS = 60_000;
+const DS_CHECK_RETRY_COUNT = 1;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = DS_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -23,6 +24,25 @@ function fetchWithTimeout(url, options = {}, timeoutMs = DS_FETCH_TIMEOUT_MS) {
       throw error;
     })
     .finally(() => clearTimeout(timer));
+}
+
+async function fetchDsProjectCheck(url, options, { timeoutMs = DS_FETCH_TIMEOUT_MS, retries = DS_CHECK_RETRY_COUNT, retryDelayMs = 1_000 } = {}) {
+  let lastError;
+  const attempts = Math.max(1, Number(retries) + 1);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetchWithTimeout(url, options, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      const retryable = /请求超时|AbortError|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(error.message || error.name || "");
+      if (!retryable || attempt === attempts) break;
+      console.warn(`[ds-scheduler] project check retry ${attempt}/${attempts - 1} after: ${error.message}`);
+      if (retryDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+  }
+  throw new Error(`巡检请求连续 ${attempts} 次失败：${lastError?.message || "unknown error"}`);
 }
 
 const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
@@ -56,6 +76,21 @@ function normalizeProjects(config, code) {
   return names.map((name, index) => ({ name, code: index === 0 ? legacyCode : "", error: "" }));
 }
 
+function normalizeDsCheckTimeout(value) {
+  const timeout = Number(value);
+  return Number.isFinite(timeout) ? Math.max(15_000, Math.min(120_000, timeout)) : DS_FETCH_TIMEOUT_MS;
+}
+
+function normalizeDsCheckRetries(value) {
+  const retries = Number(value);
+  return Number.isFinite(retries) ? Math.max(0, Math.min(2, Math.floor(retries))) : DS_CHECK_RETRY_COUNT;
+}
+
+function normalizeDsCheckRetryDelay(value) {
+  const delay = Number(value);
+  return Number.isFinite(delay) ? Math.max(0, Math.min(10_000, delay)) : 1_000;
+}
+
 export async function loadDsSchedulerConfig(rootDir) {
   const configPath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
   let config = null;
@@ -73,6 +108,9 @@ export async function loadDsSchedulerConfig(rootDir) {
     projectCodes: config.projectCodes || {},
     projectNames: config.projectNames || {},
     projects: config.projects || {},
+    checkTimeoutMs: config.checkTimeoutMs,
+    checkRetries: config.checkRetries,
+    checkRetryDelayMs: config.checkRetryDelayMs,
     alerts: config.alerts || {},
   };
 }
@@ -250,7 +288,7 @@ export async function checkAllCountries(rootDir, config) {
     console.log(`[ds-scheduler] country=${countryCode} projects=${projectTargets.length} -> ${projectTargets.map((p) => p.code || p.name).join(",")}`);
     for (const project of projectTargets) try {
       console.log(`[ds-scheduler] country=${countryCode} project=${project.code || project.name || "-"} START`);
-      const response = await fetchWithTimeout(webhookUrl, {
+      const response = await fetchDsProjectCheck(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -269,6 +307,10 @@ export async function checkAllCountries(rootDir, config) {
             include_failed_workflows: true,
           },
         }),
+      }, {
+        timeoutMs: normalizeDsCheckTimeout(config.checkTimeoutMs),
+        retries: normalizeDsCheckRetries(config.checkRetries),
+        retryDelayMs: normalizeDsCheckRetryDelay(config.checkRetryDelayMs),
       });
 
       const body = await response.text();
@@ -304,7 +346,6 @@ export async function checkAllCountries(rootDir, config) {
       }
 
       const data = parsed.data || {};
-      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${data.stale_count || 0} failed=${data.failed_count || 0} checked=${data.total_checked || 0}`);
       const checkedWorkflowDetails = normalizeCheckedWorkflowDetails(data.checked_workflows || data.workflows);
       console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} workflows=${checkedWorkflowDetails.length ? checkedWorkflowDetails.map((workflow) => workflow.workflowName || workflow.workflowCode).join(",") : "not returned by gateway"}`);
       // The gateway determines schedule lateness from DS's schedule definition.
@@ -326,7 +367,7 @@ export async function checkAllCountries(rootDir, config) {
           nextRunAt: wf.next_run_at || null,
           totalInstancesChecked: wf.total_instances_checked,
         }));
-      const failedWorkflows = (data.failed_workflows || [])
+      const failedWorkflows = normalizeFailedSchedulerInstances(data)
         .filter((wf) => wf.schedule_status === "ONLINE" && wf.failure_reason === "scheduled_instance_failed" && wf.has_later_success !== true)
         .map((wf) => ({
           projectName: project.name,
@@ -339,10 +380,15 @@ export async function checkAllCountries(rootDir, config) {
           failureMessage: wf.failure_message,
           instanceId: wf.instance_id,
           instanceState: wf.instance_state,
+          taskName: wf.task_name || wf.failed_task_name || wf.task?.name || "",
+          taskCode: wf.task_code || wf.failed_task_code || wf.task?.code || "",
+          taskInstanceId: wf.task_instance_id || wf.failed_task_instance_id || wf.task?.instance_id || "",
+          taskState: wf.task_state || wf.failed_task_state || wf.task?.state || "",
           hasLaterSuccess: wf.has_later_success === true,
           startTime: wf.start_time || null,
           endTime: wf.end_time || null,
         }));
+      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${staleWorkflows.length} failed=${failedWorkflows.length} checked=${data.total_checked || 0}`);
       projectResults.push({
         projectName: project.name,
         projectCode: project.code,
@@ -414,6 +460,41 @@ export async function checkAllCountries(rootDir, config) {
     failedCountries,
     countries: results,
   };
+}
+
+function normalizeFailedSchedulerInstances(data = {}) {
+  const classified = Array.isArray(data.failed_workflows) ? data.failed_workflows : [];
+  if (classified.length > 0) return classified;
+
+  // Some deployed n8n routers return raw DolphinScheduler instances instead
+  // of the documented failed_workflows envelope. Normalize that shape so a
+  // scheduled failure cannot be silently reported as healthy.
+  const rawItems = Array.isArray(data)
+    ? data
+    : (data.records || data.list || data.workflows || data.instances || []);
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems
+    .filter((item) => {
+      const commandType = String(item.command_type || item.commandType || "").toUpperCase();
+      const state = String(item.instance_state || item.workflow_execution_status || item.workflowExecutionStatus || "").toUpperCase();
+      return commandType === "SCHEDULER" && ["FAILURE", "KILL", "STOP", "STOPPED"].includes(state);
+    })
+    .map((item) => ({
+      workflow_code: item.workflow_code || item.workflowCode || item.workflow_definition_code || item.workflowDefinitionCode,
+      workflow_name: item.workflow_name || item.workflowName || item.workflow_instance_name || item.workflowInstanceName,
+      schedule_status: item.schedule_status || item.scheduleStatus || "ONLINE",
+      failure_reason: "scheduled_instance_failed",
+      failure_message: item.failure_message || item.failureMessage || item.error_message || item.errorMessage || "定时调度实例执行失败",
+      instance_id: item.instance_id || item.instanceId || item.workflow_instance_id || item.workflowInstanceId,
+      instance_state: item.instance_state || item.instanceState || item.workflow_execution_status || item.workflowExecutionStatus,
+      has_later_success: item.has_later_success === true || item.hasLaterSuccess === true,
+      task_name: item.task_name || item.taskName,
+      task_code: item.task_code || item.taskCode,
+      task_instance_id: item.task_instance_id || item.taskInstanceId,
+      task_state: item.task_state || item.taskState,
+      start_time: item.start_time || item.startTime || item.workflow_start_time || item.workflowStartTime,
+      end_time: item.end_time || item.endTime || item.workflow_end_time || item.workflowEndTime,
+    }));
 }
 
 function normalizeCheckedWorkflowDetails(value) {
