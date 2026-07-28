@@ -3,7 +3,7 @@ import { fetchCompatible } from "./fetch-compatible.mjs";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const N8N_ASYNC_ACCEPT_WAIT_MS = 2_500;
-const DEFAULT_INTERNAL_CALLBACK_URL = "http://127.0.0.1:28787/api/metabase-anomaly-analysis/callback";
+const DEFAULT_INTERNAL_CALLBACK_URL = "http://172.17.0.1:28787/api/metabase-anomaly-analysis/callback";
 const AGENT_NAME = "Metabase 异常原因分析助手";
 
 export function getMetabaseAnomalyAgentSettings(env = process.env) {
@@ -11,8 +11,9 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const n8nWebhookUrl = String(env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL || "").trim();
   const n8nToken = String(env.METABASE_ANOMALY_AGENT_N8N_TOKEN || "").trim();
   const asyncSetting = String(env.METABASE_ANOMALY_AGENT_N8N_ASYNC || "").trim().toLowerCase();
-  const n8nAsync = ["1", "true", "on", "yes"].includes(asyncSetting)
-    || (!asyncSetting && /metabase-anomaly-evidence-agent/i.test(n8nWebhookUrl));
+  // n8n webhooks run evidence jobs by default. Legacy synchronous behavior is
+  // still available only through an explicit false value.
+  const n8nAsync = Boolean(n8nWebhookUrl) && !["0", "false", "off", "no"].includes(asyncSetting);
   const callbackUrl = String(env.METABASE_ANOMALY_AGENT_CALLBACK_URL || (n8nAsync && n8nWebhookUrl ? DEFAULT_INTERNAL_CALLBACK_URL : "")).trim();
   const callbackToken = String(env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN || "").trim();
   const baseUrl = String(env.METABASE_ANOMALY_AGENT_BASE_URL || "").trim().replace(/\/+$/, "");

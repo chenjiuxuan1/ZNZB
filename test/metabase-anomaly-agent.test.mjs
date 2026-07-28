@@ -51,6 +51,7 @@ test("Metabase anomaly agent delegates to an n8n webhook when configured", async
     env: {
       METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/metabase-anomaly-agent",
       METABASE_ANOMALY_AGENT_N8N_TOKEN: "webhook-token",
+      METABASE_ANOMALY_AGENT_N8N_ASYNC: "false",
     },
     anomaly: { dashboardTitle: "OKR", cardTitle: "转化", message: "指标从 1 降为 0" },
     context: { runId: "run-n8n", countryCode: "PH", sameDashboardAnomalies: [] },
@@ -103,7 +104,7 @@ test("Metabase evidence webhook enables async internal callback by default", () 
   });
   assert.equal(settings.enabled, true);
   assert.equal(settings.n8nAsync, true);
-  assert.equal(settings.callbackUrl, "http://127.0.0.1:28787/api/metabase-anomaly-analysis/callback");
+  assert.equal(settings.callbackUrl, "http://172.17.0.1:28787/api/metabase-anomaly-analysis/callback");
   assert.equal(settings.callbackToken, "");
 });
 
