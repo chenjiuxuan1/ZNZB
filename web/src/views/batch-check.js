@@ -60,31 +60,10 @@ export function renderBatchCheck(root) {
   root.querySelectorAll("[data-metabase-anomaly-analysis]").forEach((button) => {
     button.addEventListener("click", async () => {
       const result = root.querySelector(`#${button.dataset.analysisResultId}`);
-      button.disabled = true;
-      button.textContent = "AI 分析中...";
-      if (result) result.innerHTML = `<p class="muted">正在基于本次巡检证据分析，通常需要数秒。</p>`;
-      try {
-        const analysis = await apiPost("/api/metabase-anomaly-analysis", {
-          runId: button.dataset.runId,
-          countryCode: button.dataset.countryCode,
-          anomalyIndex: Number(button.dataset.anomalyIndex),
-        });
-        if (analysis.pending) {
-          if (result) result.innerHTML = `<p class="muted">数据侧取证任务已受理，正在查询 Metabase、StarRocks 与 DS 状态。此过程不会影响原始告警。</p>`;
-          button.textContent = "分析取证中...";
-          void waitForMetabaseAnalysis({ button, result, analysis });
-          return;
-        }
-        if (result) result.innerHTML = renderMetabaseAnomalyAnalysis(analysis);
-        button.textContent = analysis.cached ? "查看缓存分析" : "查看 AI 分析";
-      } catch (error) {
-        if (result) result.innerHTML = `<p class="error">${escapeHtml(error.message || "AI 分析失败")}</p>`;
-        button.textContent = "AI 分析原因";
-      } finally {
-        button.disabled = false;
-      }
+      void startMetabaseAnomalyAnalysis({ button, result });
     });
   });
+  bindMetabaseAnalysisRetryButtons(root);
 
   root.querySelector("#batch-country")?.addEventListener("change", (event) => {
     state.selected.countryCode = event.target.value;
@@ -258,7 +237,50 @@ export function renderBatchCheck(root) {
   });
 }
 
-async function waitForMetabaseAnalysis({ button, result, analysis }) {
+function bindMetabaseAnalysisRetryButtons(root) {
+  root.querySelectorAll("[data-metabase-anomaly-retry]").forEach((button) => {
+    if (button.dataset.bound === "true") return;
+    button.dataset.bound = "true";
+    button.addEventListener("click", () => {
+      const result = root.querySelector(`#${button.dataset.analysisResultId}`);
+      void startMetabaseAnomalyAnalysis({ button, result, force: true });
+    });
+  });
+}
+
+async function startMetabaseAnomalyAnalysis({ button, result, force = false }) {
+  const previousHtml = force && result ? result.innerHTML : "";
+  button.disabled = true;
+  button.textContent = force ? "重新分析中..." : "AI 分析中...";
+  if (result && !force) result.innerHTML = `<p class="muted">正在基于本次巡检证据分析，通常需要数秒。</p>`;
+  if (result && force) result.insertAdjacentHTML("beforeend", `<p class="muted">正在重新发起取证分析，旧结论会保留至新结果完成。</p>`);
+  try {
+    const analysis = await apiPost("/api/metabase-anomaly-analysis", {
+      runId: button.dataset.runId,
+      countryCode: button.dataset.countryCode,
+      anomalyIndex: Number(button.dataset.anomalyIndex),
+      force,
+    });
+    if (analysis.pending) {
+      if (result && !force) result.innerHTML = `<p class="muted">数据侧取证任务已受理，正在查询 Metabase、StarRocks 与 DS 状态。此过程不会影响原始告警。</p>`;
+      button.textContent = force ? "重新取证中..." : "分析取证中...";
+      void waitForMetabaseAnalysis({ button, result, analysis, previousHtml });
+      return;
+    }
+    if (result) result.innerHTML = renderMetabaseAnomalyAnalysis(analysis);
+    button.textContent = analysis.cached ? "查看缓存分析" : "查看 AI 分析";
+    bindMetabaseAnalysisRetryButtons(result?.parentElement || document);
+  } catch (error) {
+    if (result) result.innerHTML = force && previousHtml
+      ? `${previousHtml}<p class="error">重新分析失败：${escapeHtml(error.message || "请稍后重试")}</p>`
+      : `<p class="error">${escapeHtml(error.message || "AI 分析失败")}</p>`;
+    button.textContent = force ? "重新 AI 分析" : "AI 分析原因";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function waitForMetabaseAnalysis({ button, result, analysis, previousHtml = "" }) {
   const params = new URLSearchParams({
     runId: analysis.runId || "",
     countryCode: analysis.countryCode || "",
@@ -272,6 +294,7 @@ async function waitForMetabaseAnalysis({ button, result, analysis }) {
         if (result) result.innerHTML = renderMetabaseAnomalyAnalysis(latest);
         button.textContent = "查看 AI 分析";
         button.disabled = false;
+        bindMetabaseAnalysisRetryButtons(result?.parentElement || document);
         return;
       }
     } catch (error) {
@@ -281,7 +304,9 @@ async function waitForMetabaseAnalysis({ button, result, analysis }) {
       return;
     }
   }
-  if (result) result.innerHTML = `<p class="muted">数据侧取证仍在进行中，请稍后再次点击查看结果。原始异常和通知不受影响。</p>`;
+  if (result) result.innerHTML = previousHtml
+    ? `${previousHtml}<p class="muted">数据侧取证仍在进行中，请稍后再次点击查看结果。原始异常和通知不受影响。</p>`
+    : `<p class="muted">数据侧取证仍在进行中，请稍后再次点击查看结果。原始异常和通知不受影响。</p>`;
   button.textContent = "查看分析进度";
   button.disabled = false;
 }
@@ -1089,7 +1114,7 @@ function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySumm
   return `<p class="success">该范围没有规则异常。</p>`;
 }
 
-function renderMetabaseAnomalyAnalysis(response) {
+export function renderMetabaseAnomalyAnalysis(response) {
   if (response?.status === "pending" || response?.pending) {
     return `<div class="sandbox-status info"><strong>数据侧取证进行中</strong><span>任务 ${escapeHtml(response.jobId || "-")} 已提交；完成后可查看 StarRocks、血缘和 DS 的核查结论。</span></div>`;
   }
@@ -1104,6 +1129,9 @@ function renderMetabaseAnomalyAnalysis(response) {
     ${renderMetabaseAnalysisList("建议处理", analysis.recommendedActions)}
     ${analysis.dataSideVerdict ? `<p class="muted">数据侧判定：${escapeHtml(analysis.dataSideVerdict)}；通知建议：${escapeHtml(analysis.notificationAction || "enrich_only")}</p>` : ""}
     <p class="muted">置信度：${escapeHtml(analysis.confidence || "low")}；限制：${escapeHtml(analysis.limitations || "仅基于本次巡检记录分析。")}</p>
+    <div class="button-group">
+      <button class="secondary" type="button" data-metabase-anomaly-retry data-run-id="${escapeHtml(response.runId || "")}" data-country-code="${escapeHtml(response.countryCode || "")}" data-anomaly-index="${escapeHtml(response.anomalyIndex ?? "")}" data-analysis-result-id="metabase-ai-analysis-${encodeURIComponent(`${response.runId || ""}-${response.countryCode || ""}-${response.anomalyIndex ?? ""}`).replace(/%/g, "")}">重新 AI 分析</button>
+    </div>
   `;
 }
 

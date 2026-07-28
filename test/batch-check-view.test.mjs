@@ -6,6 +6,7 @@ const {
   buildBatchScheduleCountryConfig,
   parseAnomalyMessage,
   renderBatchCheck,
+  renderMetabaseAnomalyAnalysis,
   renderHistoryDsDetails,
   renderHistoryWattrelDetails,
 } = await import("../web/src/views/batch-check.js");
@@ -106,4 +107,8 @@ test("history anomaly detail exposes an AI analysis action", () => {
   renderBatchCheck(root);
   assert.match(root.innerHTML, /AI 分析原因/);
   assert.match(root.innerHTML, /data-run-id="run-ai"/);
+  assert.match(renderMetabaseAnomalyAnalysis({
+    runId: "run-ai", countryCode: "PH", anomalyIndex: 0,
+    analysis: { summary: "已完成", confidence: "low", limitations: "测试" },
+  }), /重新 AI 分析/);
 });

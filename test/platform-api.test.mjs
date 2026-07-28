@@ -143,6 +143,10 @@ test("platform api analyzes and caches a saved Metabase anomaly", async () => {
   assert.equal(calls, 1);
   const saved = JSON.parse(await fs.readFile(path.join(rootDir, "config/metabase-anomaly-analyses.json"), "utf8"));
   assert.equal(saved.analyses.length, 1);
+
+  const forced = await api.analyzeMetabaseAnomaly({ runId: "run-agent-1", countryCode: "INE", anomalyIndex: 0, force: true });
+  assert.equal(forced.cached, false);
+  assert.equal(calls, 2);
 });
 
 test("platform api stores an async Metabase evidence job and accepts its callback", async () => {
