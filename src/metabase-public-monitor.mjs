@@ -2,6 +2,7 @@ import path from "node:path";
 import { collectDataQualityMetrics } from "./grafana-quality-monitor.mjs";
 import { hasMetabaseInternalAuth, MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { MetabasePublicClient } from "./metabase-public-client.mjs";
+import { detectMetricFluctuation } from "./metric-fluctuation-detector.mjs";
 import {
   observeCardResult,
   pruneObservationCache,
@@ -354,6 +355,8 @@ export function evaluateRowsAgainstRule(rows, rule) {
       return checkLatestDayOverDayChange(eligibleRows, rule);
     case "completeDayChange":
       return checkCompleteDayChange(eligibleRows, rule);
+    case "robustCompleteDayChange":
+      return checkRobustCompleteDayChange(eligibleRows, rule);
     case "intradayProgress":
       return checkIntradayProgress(eligibleRows, rule);
     case "intradaySameTimeChange":
@@ -1143,6 +1146,83 @@ function checkCompleteDayChange(rows, rule) {
   return limitMessages(
     messages
       .sort((left, right) => right.absChangeRate - left.absChangeRate)
+      .map((item) => item.message),
+    rule,
+  );
+}
+
+function checkRobustCompleteDayChange(rows, rule) {
+  const dateColumn = rule.dateColumn || inferDateColumn(rows);
+  if (!dateColumn) {
+    return "no parseable date column found";
+  }
+
+  const numericColumns = selectNumericColumns(rows, rule);
+  const timezone = rule.timezone || "Asia/Jakarta";
+  const now = resolveNow(rule);
+  const latestAllowedDate = rule.completeDate || addDays(getZonedDateKey(now, timezone), -(rule.completeLagDays ?? 1));
+  const series = buildDailySeries(rows, dateColumn, numericColumns, rule.dimensionColumns, rule.ignoreDimensionColumns);
+  const historyWindowDays = rule.historyWindowDays ?? 28;
+  const minHistory = rule.minHistory ?? 14;
+  const messages = [];
+
+  for (const item of series) {
+    const dates = [...item.rowsByDate.keys()]
+      .filter((date) => date <= latestAllowedDate)
+      .sort();
+    const currentDate = dates[dates.length - 1];
+    if (!currentDate) {
+      continue;
+    }
+
+    const currentRow = item.rowsByDate.get(currentDate);
+    const historyStartDate = addDays(currentDate, -historyWindowDays);
+    const historyDates = dates.filter((date) => date < currentDate && date >= historyStartDate);
+
+    for (const column of numericColumns) {
+      const current = toNumber(currentRow[column]);
+      if (!Number.isFinite(current)) {
+        continue;
+      }
+
+      const historyValues = historyDates
+        .map((date) => toNumber(item.rowsByDate.get(date)?.[column]))
+        .filter(Number.isFinite);
+
+      const detection = detectMetricFluctuation(current, historyValues, {
+        minHistory,
+        minScore: rule.minAnomalyScore ?? 3,
+        minAbsDelta: rule.minAbsDelta ?? 0,
+        minRelativeDelta: rule.minRelativeDelta ?? 0,
+        ewmaAlpha: rule.ewmaAlpha ?? 0.35,
+        sigmaFloor: rule.sigmaFloor,
+        sigmaFloorRate: rule.sigmaFloorRate ?? 0.03,
+        zeroHistoryWindow: rule.zeroHistoryWindow ?? 7,
+        minZeroHistoryNonZeroCount: rule.minZeroHistoryNonZeroCount ?? 5,
+        minBaselineForZero: rule.minBaselineForZero ?? rule.minAbsDelta ?? 10,
+        relativeThresholdBands: rule.relativeThresholdBands,
+        highVolatilityRelativeThreshold: rule.highVolatilityRelativeThreshold,
+      });
+
+      if (!detection.isAnomaly) {
+        continue;
+      }
+
+      const expected = Number.isFinite(detection.expected) ? detection.expected : detection.baseline;
+      const changeRate = Number.isFinite(expected) && expected !== 0 ? (current - expected) / Math.abs(expected) : 0;
+      messages.push({
+        anomalyScore: detection.anomalyScore,
+        message:
+          `稳健完整日指标「${column}」从预期 ${formatMetricValue(expected, rule)} 到 ${formatMetricValue(current, rule)}，` +
+          `${formatChangeDescription(changeRate, current - expected, rule)}；异常分数 ${formatNumber(detection.anomalyScore)}` +
+          `${formatDateComparisonSuffix(item, dateColumn, currentDate, `最近${historyValues.length}个历史点`)}`,
+      });
+    }
+  }
+
+  return limitMessages(
+    messages
+      .sort((left, right) => right.anomalyScore - left.anomalyScore)
       .map((item) => item.message),
     rule,
   );
