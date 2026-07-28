@@ -8,8 +8,7 @@
     "stale_policy": "one_full_schedule_cycle",
     "include_checked_workflows": true,
     "failure_policy": "scheduled_today_final_failure",
-    "include_failed_workflows": true,
-    "include_offline_failures": true
+    "include_failed_workflows": true
   }
 }
 ```
@@ -41,7 +40,7 @@
 }
 ```
 
-当 `include_failed_workflows` 为 `true` 时，网关还必须返回 `failed_workflows`。通常只包含满足全部条件的在线工作流：当天计划执行时间已到、由定时调度触发、对应实例已结束且最终状态为失败、该失败实例之后没有成功实例。设置 `include_offline_failures: true` 后，已明确纳入巡检范围且当天仍有未恢复失败的离线工作流也必须返回，并在失败说明中标记调度已离线。尚未到当天调度时间、普通手动运行失败、历史失败但当天后续实例已成功、仍在运行的实例均不得返回。
+当 `include_failed_workflows` 为 `true` 时，网关还必须返回 `failed_workflows`。只可包含满足全部条件的工作流：调度状态为 `ONLINE`、当天计划执行时间已到、由定时调度触发、对应实例已结束且最终状态为失败、该失败实例之后没有成功实例。若调度列表状态与工作流详情的 `scheduleReleaseState` 不一致，网关必须回查详情后以详情状态为准。尚未到当天调度时间、手动运行失败、历史失败但当天后续实例已成功、仍在运行的实例均不得返回。
 
 ```json
 {

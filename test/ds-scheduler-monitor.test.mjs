@@ -280,7 +280,6 @@ test("DS check reports only online scheduled workflows whose current-day executi
     const country = result.countries[0];
     assert.equal(requestPayload.failure_policy, "scheduled_today_final_failure");
     assert.equal(requestPayload.include_failed_workflows, true);
-    assert.equal(requestPayload.include_offline_failures, true);
     assert.equal(country.failedCount, 1);
     assert.equal(country.failedWorkflows[0].workflowName, "daily-loan");
     assert.equal(country.failedWorkflows[0].instanceState, "FAILURE");
