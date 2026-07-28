@@ -76,6 +76,27 @@ test("Metabase anomaly agent delegates to an n8n webhook when configured", async
   assert.equal(result.observability.traceId, "trace-1");
 });
 
+test("Metabase anomaly agent accepts an async n8n evidence job without blocking", async () => {
+  const result = await analyzeMetabaseAnomaly({
+    env: {
+      METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/metabase-anomaly-evidence-agent",
+      METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
+      METABASE_ANOMALY_AGENT_CALLBACK_URL: "https://duty.example/api/metabase-anomaly-analysis/callback",
+      METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",
+    },
+    anomaly: { dashboardTitle: "OKR", cardTitle: "转化", message: "指标从 1 降为 0" },
+    context: { runId: "run-n8n", countryCode: "PH", sameDashboardAnomalies: [] },
+    fetchFn: async (_url, options) => ({
+      ok: true,
+      json: async () => ({ accepted: true, jobId: "job-1" }),
+      options,
+    }),
+  });
+
+  assert.equal(result.pending, true);
+  assert.equal(result.jobId, "job-1");
+});
+
 test("Metabase anomaly agent returns a safe fallback for non-JSON model responses", async () => {
   const result = await analyzeMetabaseAnomaly({
     env,

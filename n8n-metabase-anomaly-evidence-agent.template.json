@@ -1,0 +1,42 @@
+{
+  "name": "Metabase 异常数据侧取证 Agent（模板）",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "metabase-anomaly-evidence-agent", "responseMode": "responseNode" },
+      "id": "trigger", "name": "Receive Evidence Job", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": { "jsCode": "const body = $json.body || $json;\nconst anomaly = body.anomaly || {};\nconst context = body.context || {};\nconst callback = body.callback || {};\nif (body.protocolVersion !== 2 || !context.runId || !context.countryCode || !Number.isInteger(Number(context.anomalyIndex))) throw new Error('缺少 protocolVersion=2、runId、countryCode 或 anomalyIndex');\nif (!callback.url || !callback.token) throw new Error('缺少平台回调地址或回调令牌');\nreturn [{ json: { jobId: `mba-${Date.now()}-${Math.random().toString(16).slice(2)}`, anomaly, context, callback, requestedMode: body.requestedMode || 'evidence' } }];" },
+      "id": "normalize", "name": "Validate And Normalize", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { accepted: true, jobId: $json.jobId, generatedAt: new Date().toISOString() } }}" },
+      "id": "accepted", "name": "Respond Accepted", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.4, "position": [680, 180]
+    },
+    {
+      "parameters": { "jsCode": "const { anomaly, context } = $json;\nconst current = String(anomaly.message || '');\nconst tableHints = [...current.matchAll(/\\b(?:ods|dwd|dws|dwb|ads|dim)_[a-z0-9_]+\\b/gi)].map((m) => m[0]);\nreturn [{ json: { ...$json, evidencePlan: { maxDepth: 2, maxQueries: 8, checks: ['latest_partition', 'daily_row_count', 'metric_reaggregation', 'ds_status'], tableHints } } }];" },
+      "id": "plan", "name": "Build Guarded Evidence Plan", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [680, 420]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ $env.SR_BOX_BASE_URL + '/api/rust/v1/sr-sandboxes/sql-executions' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { taskName: 'metabase-anomaly-agent', country: $json.context.countryCode.toLowerCase().replace('ine','id'), purpose: 'agent', accessMode: 'local', sqlMode: 'query', sql: 'SELECT 1 AS connectivity_check', page: 1, pageSize: 1, timeoutSec: 20 } }}", "options": { "timeout": 30000 } },
+      "id": "sr", "name": "SR Box Readonly Probe", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [900, 420],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_WITH_SR_AGENT_CREDENTIAL", "name": "SR Box Agent Token" } }
+    },
+    {
+      "parameters": { "jsCode": "const base = $item(0).$node['Build Guarded Evidence Plan'].json;\nconst sr = $json || {};\nconst success = sr.success === true || sr.ok === true;\nconst analysis = { summary: success ? '已完成数据侧连接与基础取证；请根据 Metabase SQL、分区和 DS 证据进一步判定。' : 'SR Box 取证失败，无法据此压制原始告警。', possibleCauses: success ? ['待补充 Metabase Card 原始 SQL 与表级核查结果。'] : ['SR Box 服务账号权限、网络或网关不可用。'], verificationSteps: ['核查目标表最新分区、异常日与前一日行数。', '核查对应 DS 工作流最近执行状态。'], recommendedActions: ['保留原始巡检告警；仅在证据完整后调整通知等级。'], confidence: success ? 'low' : 'low', limitations: success ? '模板仅完成连通性探测；导入后需配置 Metabase Card 读取、表级 SQL 模板和代码血缘节点。' : String(sr.message || sr.error || 'SR Box 无有效返回').slice(0, 500), dataSideVerdict: 'insufficient_evidence', notificationAction: 'enrich_only' };\nreturn [{ json: { ...base, completion: { jobId: base.jobId, runId: base.context.runId, countryCode: base.context.countryCode, anomalyIndex: Number(base.context.anomalyIndex), model: 'n8n-evidence-template', analysis, evidence: { srConnectivity: success, evidencePlan: base.evidencePlan } } }];" },
+      "id": "report", "name": "Build Safe Analysis Report", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1120, 420]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ $json.callback.url }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Authorization", "value": "={{ 'Bearer ' + $json.callback.token }}" }, { "name": "Content-Type", "value": "application/json" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.completion }}", "options": { "timeout": 30000 } },
+      "id": "callback", "name": "Callback Duty Platform", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1340, 420]
+    }
+  ],
+  "connections": {
+    "Receive Evidence Job": { "main": [[{ "node": "Validate And Normalize", "type": "main", "index": 0 }]] },
+    "Validate And Normalize": { "main": [[{ "node": "Respond Accepted", "type": "main", "index": 0 }, { "node": "Build Guarded Evidence Plan", "type": "main", "index": 0 }]] },
+    "Build Guarded Evidence Plan": { "main": [[{ "node": "SR Box Readonly Probe", "type": "main", "index": 0 }]] },
+    "SR Box Readonly Probe": { "main": [[{ "node": "Build Safe Analysis Report", "type": "main", "index": 0 }]] },
+    "Build Safe Analysis Report": { "main": [[{ "node": "Callback Duty Platform", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

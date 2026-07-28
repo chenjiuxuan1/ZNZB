@@ -14,7 +14,7 @@ import { parseInternalMetabaseUrl } from "./metabase-internal-client.mjs";
 import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
-import { analyzeMetabaseAnomaly } from "./metabase-anomaly-agent.mjs";
+import { analyzeMetabaseAnomaly, normalizeMetabaseAnomalyAnalysis } from "./metabase-anomaly-agent.mjs";
 import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
@@ -236,6 +236,7 @@ export function createPlatformApi({
           startedAt: run.startedAt,
           countryCode: countryRun.countryCode,
           countryName: countryRun.countryName,
+          anomalyIndex,
           sameDashboardAnomalies,
         },
       });
@@ -245,11 +246,58 @@ export function createPlatformApi({
         countryCode,
         anomalyIndex,
         createdAt: new Date().toISOString(),
+        status: generated.pending ? "pending" : "completed",
         ...generated,
       };
       const analyses = keepRecentMetabaseAnalyses([entry, ...(cache.analyses || [])]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
       return { ...entry, cached: false };
+    },
+
+    async getMetabaseAnomalyAnalysis(body = {}) {
+      const { runId, countryCode, anomalyIndex, key } = normalizeMetabaseAnalysisIdentity(body);
+      const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const entry = (cache.analyses || []).find((item) => item.key === (key || `${runId}:${countryCode}:${anomalyIndex}`));
+      if (!entry) {
+        const error = new Error("未找到该异常的分析任务。");
+        error.statusCode = 404;
+        throw error;
+      }
+      return entry;
+    },
+
+    async completeMetabaseAnomalyAnalysis(body = {}) {
+      const { runId, countryCode, anomalyIndex, key } = normalizeMetabaseAnalysisIdentity(body);
+      if (!body.analysis || typeof body.analysis !== "object") {
+        throw badRequest("Invalid Metabase anomaly analysis callback", ["回调必须包含结构化 analysis 结果。"]);
+      }
+      const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const entryKey = key || `${runId}:${countryCode}:${anomalyIndex}`;
+      const existing = (cache.analyses || []).find((item) => item.key === entryKey);
+      if (!existing) {
+        const error = new Error("分析任务不存在或历史记录已清理。");
+        error.statusCode = 404;
+        throw error;
+      }
+      if (body.jobId && existing.jobId && String(body.jobId) !== String(existing.jobId)) {
+        throw badRequest("Invalid Metabase anomaly analysis callback", ["回调任务编号与待处理任务不一致。"]);
+      }
+      const completed = {
+        ...existing,
+        status: "completed",
+        completedAt: new Date().toISOString(),
+        pending: false,
+        model: String(body.model || existing.model || "n8n-configured-model"),
+        analysis: normalizeMetabaseAnomalyAnalysis(body.analysis),
+        evidence: normalizeAgentEvidence(body.evidence),
+        observability: body.observability && typeof body.observability === "object"
+          ? body.observability
+          : existing.observability,
+        fallbackUsed: Boolean(body.fallbackUsed),
+      };
+      const analyses = keepRecentMetabaseAnalyses([completed, ...(cache.analyses || []).filter((item) => item.key !== entryKey)]);
+      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
+      return completed;
     },
 
     async ingestExternalAlertRun(body = {}) {
@@ -2752,6 +2800,28 @@ async function appendBatchHistoryRun(historyFile, entry) {
   const history = await readJsonFile(historyFile, DEFAULT_BATCH_HISTORY);
   const runs = keepRecentHistoryRuns([entry, ...(history.runs || [])]);
   await writeJsonAtomic(historyFile, { updatedAt: new Date().toISOString(), runs });
+}
+
+function normalizeMetabaseAnalysisIdentity(body = {}) {
+  const runId = String(body.runId || body.historyRunId || "").trim();
+  const countryCode = String(body.countryCode || "").trim();
+  const anomalyIndex = Number(body.anomalyIndex);
+  const key = String(body.key || "").trim();
+  if (key) return { runId, countryCode, anomalyIndex, key };
+  if (!runId || !countryCode || !Number.isInteger(anomalyIndex) || anomalyIndex < 0) {
+    throw badRequest("Invalid Metabase anomaly analysis identity", ["请提供巡检记录、国家和异常序号。"]);
+  }
+  return { runId, countryCode, anomalyIndex, key: "" };
+}
+
+function normalizeAgentEvidence(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  // Evidence is visible in the duty platform. Keep it bounded and never persist
+  // credentials or raw query results that a workflow may accidentally include.
+  const jsonText = JSON.stringify(value, null, 2);
+  if (/authorization|token|secret|password/i.test(jsonText)) return { omitted: true, reason: "回调证据包含敏感字段，未保存。" };
+  if (jsonText.length > 20_000) return { omitted: true, reason: "回调证据过大，未保存。" };
+  return value;
 }
 
 function keepRecentMetabaseAnalyses(analyses, nowMs = Date.now()) {

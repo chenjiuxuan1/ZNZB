@@ -145,6 +145,31 @@ test("platform api analyzes and caches a saved Metabase anomaly", async () => {
   assert.equal(saved.analyses.length, 1);
 });
 
+test("platform api stores an async Metabase evidence job and accepts its callback", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-run-history.json"),
+    JSON.stringify({ runs: [{
+      id: "run-agent-callback", startedAt: "2026-07-28T00:00:00.000Z",
+      runs: [{ countryCode: "INE", countryName: "印尼", result: { anomalies: [{ dashboardTitle: "OKR", cardTitle: "规模", message: "指标从 10 降为 0" }] } }],
+    }] }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyAgentFn: async () => ({ pending: true, jobId: "job-callback", provider: "n8n-evidence" }),
+  });
+  const started = await api.analyzeMetabaseAnomaly({ runId: "run-agent-callback", countryCode: "INE", anomalyIndex: 0 });
+  assert.equal(started.status, "pending");
+  const completed = await api.completeMetabaseAnomalyAnalysis({
+    runId: "run-agent-callback", countryCode: "INE", anomalyIndex: 0, jobId: "job-callback",
+    analysis: { summary: "DWD 分区缺失", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send" },
+    evidence: { checkedTables: ["dwd_example"], dsStatus: "failed" },
+  });
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.analysis.dataSideVerdict, "data_issue");
+  assert.equal(completed.evidence.dsStatus, "failed");
+});
+
 test("platform api merges pending panel sources into the dashboard inventory", async () => {
   const rootDir = await makeFixture();
   await fs.copyFile(

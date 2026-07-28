@@ -8,12 +8,17 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const enabledValue = String(env.METABASE_ANOMALY_AGENT_ENABLED || "").trim().toLowerCase();
   const n8nWebhookUrl = String(env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL || "").trim();
   const n8nToken = String(env.METABASE_ANOMALY_AGENT_N8N_TOKEN || "").trim();
+  const n8nAsync = ["1", "true", "on", "yes"].includes(String(env.METABASE_ANOMALY_AGENT_N8N_ASYNC || "").trim().toLowerCase());
+  const callbackUrl = String(env.METABASE_ANOMALY_AGENT_CALLBACK_URL || "").trim();
+  const callbackToken = String(env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN || "").trim();
   const baseUrl = String(env.METABASE_ANOMALY_AGENT_BASE_URL || "").trim().replace(/\/+$/, "");
   const apiKey = String(env.METABASE_ANOMALY_AGENT_API_KEY || "").trim();
   const model = String(env.METABASE_ANOMALY_AGENT_MODEL || "").trim();
   const explicitlyDisabled = ["0", "false", "off", "no"].includes(enabledValue);
   const transport = n8nWebhookUrl ? "n8n" : "direct";
-  const configured = transport === "n8n" ? true : Boolean(baseUrl && apiKey && model);
+  const configured = transport === "n8n"
+    ? Boolean(n8nWebhookUrl && (!n8nAsync || (callbackUrl && callbackToken)))
+    : Boolean(baseUrl && apiKey && model);
   return {
     enabled: !explicitlyDisabled && configured,
     configured,
@@ -23,6 +28,9 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
     transport,
     n8nWebhookUrl,
     n8nToken,
+    n8nAsync,
+    callbackUrl,
+    callbackToken,
     langfuse: getLangfuseSettings(env),
   };
 }
@@ -30,7 +38,7 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
 export async function analyzeMetabaseAnomaly({ anomaly, context = {}, env = process.env, fetchFn = fetchCompatible } = {}) {
   const settings = getMetabaseAnomalyAgentSettings(env);
   if (!settings.enabled) {
-    const error = new Error("Metabase 异常分析 Agent 未配置。请设置 METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL，或设置直连模型配置。");
+    const error = new Error("Metabase 异常分析 Agent 未配置。请设置 n8n Webhook；异步取证还需配置 CALLBACK_URL 与 CALLBACK_TOKEN，或设置直连模型配置。");
     error.statusCode = 503;
     throw error;
   }
@@ -49,7 +57,7 @@ export async function analyzeMetabaseAnomaly({ anomaly, context = {}, env = proc
   const startedAt = new Date();
   const modelResponse = await callModel({ settings, promptMessages, fetchFn });
   const parsed = parseAnalysisOrFallback(modelResponse.rawOutput);
-  const analysis = normalizeAnalysis(parsed.value);
+  const analysis = normalizeMetabaseAnomalyAnalysis(parsed.value);
   const trace = await writeLangfuseTrace({
     settings: settings.langfuse,
     fetchFn,
@@ -85,7 +93,16 @@ async function callN8nAgent({ settings, anomaly, context, fetchFn }) {
         "Content-Type": "application/json",
         ...(settings.n8nToken ? { Authorization: `Bearer ${settings.n8nToken}` } : {}),
       },
-      body: JSON.stringify({ anomaly: pickAnomalyEvidence(anomaly), context: { ...pickContextEvidence(context), sameDashboardAnomalies: (context.sameDashboardAnomalies || []).slice(0, 5).map(pickAnomalyEvidence) } }),
+      body: JSON.stringify({
+        protocolVersion: 2,
+        requestedMode: settings.n8nAsync ? "evidence" : "summary",
+        anomaly: pickAnomalyEvidence(anomaly),
+        context: { ...pickContextEvidence(context), sameDashboardAnomalies: (context.sameDashboardAnomalies || []).slice(0, 5).map(pickAnomalyEvidence) },
+        callback: settings.n8nAsync && settings.callbackUrl ? {
+          url: settings.callbackUrl,
+          token: settings.callbackToken,
+        } : null,
+      }),
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => null);
@@ -94,11 +111,26 @@ async function callN8nAgent({ settings, anomaly, context, fetchFn }) {
       error.statusCode = 502;
       throw error;
     }
+    if (settings.n8nAsync && (payload?.accepted === true || payload?.status === "pending" || payload?.jobId)) {
+      return {
+        generatedAt: payload?.generatedAt || new Date().toISOString(),
+        provider: "n8n-evidence",
+        pending: true,
+        jobId: String(payload?.jobId || payload?.executionId || randomUUID()),
+        model: String(payload?.model || "n8n-configured-model"),
+        observability: payload?.observability || { enabled: false, written: false, reason: "n8n 任务已受理，等待回调" },
+      };
+    }
+    if (!payload?.analysis) {
+      const error = new Error("n8n Agent 未返回分析结果或异步任务编号");
+      error.statusCode = 502;
+      throw error;
+    }
     return {
       generatedAt: payload?.generatedAt || new Date().toISOString(),
       provider: "n8n",
       model: String(payload?.model || "n8n-configured-model"),
-      analysis: normalizeAnalysis(payload?.analysis),
+      analysis: normalizeMetabaseAnomalyAnalysis(payload?.analysis),
       fallbackUsed: Boolean(payload?.fallbackUsed),
       observability: payload?.observability || { enabled: false, written: false, reason: "n8n 未返回 Langfuse 状态" },
     };
@@ -242,11 +274,27 @@ function buildEvidencePrompt(anomaly, context) {
 }
 
 function pickAnomalyEvidence(anomaly = {}) {
-  return { dashboardTitle: anomaly.dashboardTitle || "", dashboardUrl: anomaly.dashboardUrl || "", cardTitle: anomaly.cardTitle || "", type: anomaly.type || "", message: anomaly.message || "", rule: anomaly.rule || null };
+  return {
+    dashboardTitle: anomaly.dashboardTitle || "",
+    dashboardUuid: anomaly.dashboardUuid || "",
+    dashboardUrl: anomaly.dashboardUrl || "",
+    cardTitle: anomaly.cardTitle || "",
+    cardId: anomaly.cardId ?? null,
+    dashcardId: anomaly.dashcardId ?? null,
+    type: anomaly.type || "",
+    message: anomaly.message || "",
+    rule: anomaly.rule || null,
+  };
 }
 
 function pickContextEvidence(context = {}) {
-  return { runId: context.runId || "", startedAt: context.startedAt || "", countryCode: context.countryCode || "", countryName: context.countryName || "" };
+  return {
+    runId: context.runId || "",
+    startedAt: context.startedAt || "",
+    countryCode: context.countryCode || "",
+    countryName: context.countryName || "",
+    anomalyIndex: Number.isInteger(Number(context.anomalyIndex)) ? Number(context.anomalyIndex) : null,
+  };
 }
 
 function extractModelContent(payload) {
@@ -285,7 +333,7 @@ function numberOrZero(value) {
   return Number.isFinite(number) ? Math.trunc(number) : null;
 }
 
-function normalizeAnalysis(value) {
+export function normalizeMetabaseAnomalyAnalysis(value) {
   const source = value && typeof value === "object" ? value : {};
   return {
     summary: text(source.summary, "模型未给出摘要。"),
@@ -294,6 +342,12 @@ function normalizeAnalysis(value) {
     recommendedActions: textList(source.recommendedActions),
     confidence: ["low", "medium", "high"].includes(source.confidence) ? source.confidence : "low",
     limitations: text(source.limitations, "仅基于巡检记录分析，未直接查询 Metabase、数据仓库或调度系统。"),
+    dataSideVerdict: ["data_issue", "business_change", "insufficient_evidence"].includes(source.dataSideVerdict)
+      ? source.dataSideVerdict
+      : "insufficient_evidence",
+    notificationAction: ["send", "downgrade", "enrich_only"].includes(source.notificationAction)
+      ? source.notificationAction
+      : "enrich_only",
   };
 }
 

@@ -89,6 +89,13 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis") {
     return sendJson(response, 200, await api.analyzeMetabaseAnomaly(await readBody(request, {})));
   }
+  if (method === "GET" && url.pathname === "/api/metabase-anomaly-analysis") {
+    return sendJson(response, 200, await api.getMetabaseAnomalyAnalysis(Object.fromEntries(url.searchParams.entries())));
+  }
+  if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/callback") {
+    assertMetabaseAgentCallbackAuthorized(request);
+    return sendJson(response, 200, await api.completeMetabaseAnomalyAnalysis(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/external-alert-runs") {
     return sendJson(response, 200, await api.ingestExternalAlertRun(await readBody(request, {})));
   }
@@ -167,6 +174,21 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await api.getDsHistory(Object.fromEntries(url.searchParams.entries())));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
+}
+
+function assertMetabaseAgentCallbackAuthorized(request) {
+  const expected = String(process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN || "").trim();
+  if (!expected) {
+    const error = new Error("Metabase Agent callback is not configured");
+    error.statusCode = 503;
+    throw error;
+  }
+  const received = String(request.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  if (received !== expected) {
+    const error = new Error("Unauthorized Metabase Agent callback");
+    error.statusCode = 401;
+    throw error;
+  }
 }
 
 function startBatchScheduler() {

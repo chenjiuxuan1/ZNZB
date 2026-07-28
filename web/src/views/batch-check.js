@@ -69,6 +69,12 @@ export function renderBatchCheck(root) {
           countryCode: button.dataset.countryCode,
           anomalyIndex: Number(button.dataset.anomalyIndex),
         });
+        if (analysis.pending) {
+          if (result) result.innerHTML = `<p class="muted">数据侧取证任务已受理，正在查询 Metabase、StarRocks 与 DS 状态。此过程不会影响原始告警。</p>`;
+          button.textContent = "分析取证中...";
+          void waitForMetabaseAnalysis({ button, result, analysis });
+          return;
+        }
         if (result) result.innerHTML = renderMetabaseAnomalyAnalysis(analysis);
         button.textContent = analysis.cached ? "查看缓存分析" : "查看 AI 分析";
       } catch (error) {
@@ -250,6 +256,34 @@ export function renderBatchCheck(root) {
     }
     renderBatchCheck(root);
   });
+}
+
+async function waitForMetabaseAnalysis({ button, result, analysis }) {
+  const params = new URLSearchParams({
+    runId: analysis.runId || "",
+    countryCode: analysis.countryCode || "",
+    anomalyIndex: String(analysis.anomalyIndex ?? ""),
+  });
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    try {
+      const latest = await apiGet(`/api/metabase-anomaly-analysis?${params}`);
+      if (latest.status !== "pending" && !latest.pending) {
+        if (result) result.innerHTML = renderMetabaseAnomalyAnalysis(latest);
+        button.textContent = "查看 AI 分析";
+        button.disabled = false;
+        return;
+      }
+    } catch (error) {
+      if (result) result.innerHTML = `<p class="error">分析状态读取失败：${escapeHtml(error.message || "请稍后刷新")}</p>`;
+      button.textContent = "AI 分析原因";
+      button.disabled = false;
+      return;
+    }
+  }
+  if (result) result.innerHTML = `<p class="muted">数据侧取证仍在进行中，请稍后再次点击查看结果。原始异常和通知不受影响。</p>`;
+  button.textContent = "查看分析进度";
+  button.disabled = false;
 }
 
 function renderBatchHeroStats() {
@@ -1056,6 +1090,9 @@ function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySumm
 }
 
 function renderMetabaseAnomalyAnalysis(response) {
+  if (response?.status === "pending" || response?.pending) {
+    return `<div class="sandbox-status info"><strong>数据侧取证进行中</strong><span>任务 ${escapeHtml(response.jobId || "-")} 已提交；完成后可查看 StarRocks、血缘和 DS 的核查结论。</span></div>`;
+  }
   const analysis = response?.analysis || {};
   return `
     <div class="sandbox-status info">
@@ -1065,6 +1102,7 @@ function renderMetabaseAnomalyAnalysis(response) {
     ${renderMetabaseAnalysisList("可能原因", analysis.possibleCauses)}
     ${renderMetabaseAnalysisList("核查步骤", analysis.verificationSteps)}
     ${renderMetabaseAnalysisList("建议处理", analysis.recommendedActions)}
+    ${analysis.dataSideVerdict ? `<p class="muted">数据侧判定：${escapeHtml(analysis.dataSideVerdict)}；通知建议：${escapeHtml(analysis.notificationAction || "enrich_only")}</p>` : ""}
     <p class="muted">置信度：${escapeHtml(analysis.confidence || "low")}；限制：${escapeHtml(analysis.limitations || "仅基于本次巡检记录分析。")}</p>
   `;
 }
