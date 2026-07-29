@@ -1,10 +1,10 @@
 {
-  "name": "Metabase 数据血缘只读网关（六国代码仓库）",
+  "name": "数仓代码血缘只读网关（六国代码仓库）",
   "nodes": [
     {
-      "parameters": { "httpMethod": "POST", "path": "metabase-lineage", "responseMode": "responseNode" },
-      "id": "lineage-webhook", "name": "接收血缘查询", "type": "n8n-nodes-base.webhook", "typeVersion": 2,
-      "position": [-720, 0], "webhookId": "metabase-lineage-readonly"
+      "parameters": { "httpMethod": "POST", "path": "warehouse-lineage", "responseMode": "responseNode" },
+      "id": "lineage-webhook", "name": "接收数仓血缘查询", "type": "n8n-nodes-base.webhook", "typeVersion": 2,
+      "position": [-720, 0], "webhookId": "warehouse-lineage-readonly"
     },
     {
       "parameters": {
@@ -38,7 +38,7 @@
     { "parameters": { "respondWith": "json", "responseBody": "={{ { success: false, error: $json.error || 'invalid request' } }}", "options": { "responseCode": 400 } }, "id": "invalid", "name": "返回请求错误", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.4, "position": [-40, 220] }
   ],
   "connections": {
-    "接收血缘查询": { "main": [[{ "node": "校验并构造只读检索命令", "type": "main", "index": 0 }]] },
+    "接收数仓血缘查询": { "main": [[{ "node": "校验并构造只读检索命令", "type": "main", "index": 0 }]] },
     "校验并构造只读检索命令": { "main": [[{ "node": "请求是否有效", "type": "main", "index": 0 }]] },
     "请求是否有效": { "main": [[{ "node": "按国家分流到跳板机", "type": "main", "index": 0 }], [{ "node": "返回请求错误", "type": "main", "index": 0 }]] },
     "按国家分流到跳板机": { "main": [[{ "node": "中国代码血缘检索", "type": "main", "index": 0 }], [{ "node": "菲律宾代码血缘检索", "type": "main", "index": 0 }], [{ "node": "印尼代码血缘检索", "type": "main", "index": 0 }], [{ "node": "墨西哥代码血缘检索", "type": "main", "index": 0 }], [{ "node": "泰国代码血缘检索", "type": "main", "index": 0 }], [{ "node": "巴基斯坦代码血缘检索", "type": "main", "index": 0 }]] },

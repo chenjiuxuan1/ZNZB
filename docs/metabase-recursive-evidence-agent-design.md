@@ -32,7 +32,7 @@ flowchart LR
 - **AI 决策器**：只能选择下一项动作，不能直接执行 SQL、SSH 或修改任务。
 - **n8n 编排器**：验证动作、执行工具、截断结果、累计预算并回传证据。
 - **平台**：提供历史异常、受已有 Metabase 凭证保护的 Card SQL 读取代理、回调和七天缓存。
-- **血缘适配器**：返回已验证的上游表、ETL SQL 或 DS 项目/工作流引用。它必须是真实数据源，不能用猜测的 HTTP URL 代替。
+- **血缘适配器**：公共的数仓代码血缘网关，返回已验证的上游表、ETL SQL 或 DS 项目/工作流引用。它必须是真实数据源，不能用猜测的 HTTP URL 代替。
 
 ## 受控动作
 
@@ -87,7 +87,7 @@ AI 只可从当前 `frontier` 选择表；SQL 由工具模板根据表名和日�
 
 当前项目没有可验证的在线血缘 REST API。之前直接请求 `data-map-dev` 的猜测路径会得到 403，因此已不再使用。
 
-本项目已提供可导入的 [n8n 六国代码血缘网关模板](../n8n-metabase-lineage-gateway.template.json)。它复用现有六国跳板机 Credential，只读检索以下目录：
+本项目已提供可导入的 [公共数仓代码血缘网关](warehouse-lineage-gateway.md) 和 [n8n 六国代码血缘网关模板](../n8n-warehouse-lineage-gateway.template.json)。它复用现有六国跳板机 Credential，只读检索以下目录：
 
 - 中国：`/data/git/starrocks/workflow/cn`
 - 菲律宾：`/data/git/starrocks/workflow/ph`
@@ -100,9 +100,9 @@ AI 只可从当前 `frontier` 选择表；SQL 由工具模板根据表名和日�
 
 接入方式：
 
-1. 在 n8n 导入血缘网关模板并发布，Production URL 例如 `http://127.0.0.1:5678/webhook/metabase-lineage`。
-2. 它调用现有代码检索/血缘脚本，输入表名，输出 `upstreamTables`、`etlSqlRefs`、`dsRefs`。
-3. n8n 只访问该网关的 `POST /lineage/trace`，不直接 SSH 或暴露仓库凭证。
+1. 在 n8n 导入血缘网关模板并发布，Production URL 例如 `http://127.0.0.1:5678/webhook/warehouse-lineage`。
+2. 它在对应仓库执行受控的静态代码检索，输入表名，输出 `matchedFiles`、`upstreamTables`、`dsRefs`。
+3. 递归 Agent 只访问该网关的 `POST /webhook/warehouse-lineage`，不直接 SSH 或暴露仓库凭证。
 4. 网关返回空结果时表示“未找到证据”，不表示没有上游。
 
 契约：
