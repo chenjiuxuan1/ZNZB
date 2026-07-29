@@ -104,7 +104,7 @@ test("Metabase evidence webhook enables async internal callback by default", () 
   });
   assert.equal(settings.enabled, true);
   assert.equal(settings.n8nAsync, true);
-  assert.equal(settings.callbackUrl, "http://172.17.0.1:28787/api/metabase-anomaly-analysis/callback");
+  assert.equal(settings.callbackUrl, "http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback");
   assert.equal(settings.callbackToken, "");
 });
 

@@ -3,7 +3,7 @@ import { fetchCompatible } from "./fetch-compatible.mjs";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const N8N_ASYNC_ACCEPT_WAIT_MS = 2_500;
-const DEFAULT_INTERNAL_CALLBACK_URL = "http://172.17.0.1:28787/api/metabase-anomaly-analysis/callback";
+const DEFAULT_INTERNAL_CALLBACK_URL = "http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback";
 const AGENT_NAME = "Metabase 异常原因分析助手";
 
 export function getMetabaseAnomalyAgentSettings(env = process.env) {
@@ -88,7 +88,9 @@ export async function analyzeMetabaseAnomaly({ anomaly, context = {}, env = proc
 }
 
 async function callN8nAgent({ settings, anomaly, context, fetchFn }) {
-  const jobId = settings.n8nAsync ? randomUUID() : "";
+  // The platform may supply an ID so callbacks and the pending cache always
+  // refer to the same job, even when a user retries quickly.
+  const jobId = settings.n8nAsync ? String(context.jobId || randomUUID()) : "";
   const request = requestN8nAgent({ settings, anomaly, context, fetchFn, jobId });
 
   // n8n may continue executing after the reverse proxy's short response window.

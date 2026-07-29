@@ -173,6 +173,13 @@ test("platform api stores an async Metabase evidence job and accepts its callbac
   assert.equal(completed.analysis.dataSideVerdict, "data_issue");
   assert.equal(completed.evidence.dsStatus, "failed");
 
+  const lowercaseCountryCallback = await api.completeMetabaseAnomalyAnalysis({
+    runId: "run-agent-callback", countryCode: "ine", anomalyIndex: 0, jobId: "job-callback",
+    analysis: { summary: "小写国家码回调", confidence: "medium" },
+  });
+  assert.equal(lowercaseCountryCallback.countryCode, "INE");
+  assert.equal(lowercaseCountryCallback.analysis.summary, "小写国家码回调");
+
   await assert.rejects(
     () => api.completeMetabaseAnomalyAnalysis({
       runId: "run-agent-callback", countryCode: "INE", anomalyIndex: 0,
@@ -180,6 +187,33 @@ test("platform api stores an async Metabase evidence job and accepts its callbac
     }),
     (error) => error.statusCode === 400,
   );
+});
+
+test("platform api deduplicates concurrent Metabase evidence requests", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-run-history.json"),
+    JSON.stringify({ runs: [{
+      id: "run-agent-concurrent", startedAt: "2026-07-28T00:00:00.000Z",
+      runs: [{ countryCode: "MX", countryName: "墨西哥", result: { anomalies: [{ dashboardTitle: "OKR", cardTitle: "放款", message: "归零" }] } }],
+    }] }),
+  );
+  let calls = 0;
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyAgentFn: async () => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return { pending: true, jobId: "job-concurrent", provider: "n8n-evidence" };
+    },
+  });
+  const [first, second] = await Promise.all([
+    api.analyzeMetabaseAnomaly({ runId: "run-agent-concurrent", countryCode: "mx", anomalyIndex: 0 }),
+    api.analyzeMetabaseAnomaly({ runId: "run-agent-concurrent", countryCode: "MX", anomalyIndex: 0 }),
+  ]);
+  assert.equal(calls, 1);
+  assert.equal(first.countryCode, "MX");
+  assert.equal(second.pending, true);
 });
 
 test("platform api preserves an n8n callback that arrives before its pending job is written", async () => {

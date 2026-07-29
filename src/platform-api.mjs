@@ -86,6 +86,7 @@ const DEFAULT_BATCH_HISTORY = { runs: [] };
 const DEFAULT_METABASE_ANOMALY_ANALYSES = { analyses: [] };
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BATCH_HISTORY_RUNS = 200;
+const METABASE_ANALYSIS_PENDING_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_DS_SCHEDULE = {
   enabled: false,
   intervalMinutes: 60,
@@ -109,6 +110,9 @@ export function createPlatformApi({
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
   let batchScheduleRunning = false;
+  // Prevent repeated UI clicks from dispatching several evidence jobs for the
+  // same historical anomaly before the first request has persisted its cache.
+  const metabaseAnalysisInFlight = new Set();
   let dashboardDiscoveryRunning = false;
   let dashboardDiscoveryProgress = { status: "idle", result: null, error: null, startedAt: null, finishedAt: null };
   const runIntegratedDsCheck = async (schedule) => {
@@ -205,7 +209,7 @@ export function createPlatformApi({
 
     async analyzeMetabaseAnomaly(body = {}) {
       const runId = String(body.runId || body.historyRunId || "").trim();
-      const countryCode = String(body.countryCode || "").trim();
+      const countryCode = normalizeCountryCode(body.countryCode);
       const anomalyIndex = Number(body.anomalyIndex);
       if (!runId || !countryCode || !Number.isInteger(anomalyIndex) || anomalyIndex < 0) {
         throw badRequest("Invalid Metabase anomaly analysis request", ["请提供巡检记录、国家和异常序号。"]);
@@ -219,9 +223,25 @@ export function createPlatformApi({
         throw badRequest("Metabase anomaly not found", ["未找到对应的 Metabase 异常，历史记录可能已经清理或变更。"]);
       }
       const cacheKey = `${runId}:${countryCode}:${anomalyIndex}`;
+      if (metabaseAnalysisInFlight.has(cacheKey)) {
+        return {
+          key: cacheKey,
+          runId,
+          countryCode,
+          anomalyIndex,
+          status: "pending",
+          pending: true,
+          cached: true,
+        };
+      }
+      metabaseAnalysisInFlight.add(cacheKey);
+      try {
       const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
       const existing = (cache.analyses || []).find((item) => item.key === cacheKey);
-      if (existing && !body.force) {
+      if (existing && existing.status === "pending" && !isExpiredMetabaseAnalysis(existing)) {
+        return { ...existing, cached: true };
+      }
+      if (existing && !body.force && !isExpiredMetabaseAnalysis(existing)) {
         return { ...existing, cached: true };
       }
       const sameDashboardAnomalies = anomalies.filter((item) => (
@@ -265,6 +285,9 @@ export function createPlatformApi({
       const analyses = keepRecentMetabaseAnalyses([entry, ...(refreshedCache.analyses || [])]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
       return { ...entry, cached: false };
+      } finally {
+        metabaseAnalysisInFlight.delete(cacheKey);
+      }
     },
 
     async getMetabaseAnomalyAnalysis(body = {}) {
@@ -2835,7 +2858,7 @@ async function appendBatchHistoryRun(historyFile, entry) {
 
 function normalizeMetabaseAnalysisIdentity(body = {}) {
   const runId = String(body.runId || body.historyRunId || "").trim();
-  const countryCode = String(body.countryCode || "").trim();
+  const countryCode = normalizeCountryCode(body.countryCode);
   const anomalyIndex = Number(body.anomalyIndex);
   const key = String(body.key || "").trim();
   if (key) return { runId, countryCode, anomalyIndex, key };
@@ -2843,6 +2866,16 @@ function normalizeMetabaseAnalysisIdentity(body = {}) {
     throw badRequest("Invalid Metabase anomaly analysis identity", ["请提供巡检记录、国家和异常序号。"]);
   }
   return { runId, countryCode, anomalyIndex, key: "" };
+}
+
+function normalizeCountryCode(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function isExpiredMetabaseAnalysis(entry, nowMs = Date.now()) {
+  if (entry?.status !== "pending") return false;
+  const createdAt = Date.parse(entry?.createdAt || "");
+  return !Number.isFinite(createdAt) || nowMs - createdAt >= METABASE_ANALYSIS_PENDING_TIMEOUT_MS;
 }
 
 function buildCompletedMetabaseAnalysis({ key, runId, countryCode, anomalyIndex, jobId, body, createdAt, callbackReceivedBeforePending = false, ...existing }) {
