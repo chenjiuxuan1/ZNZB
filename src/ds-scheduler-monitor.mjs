@@ -150,6 +150,97 @@ function describeGatewayError(parsed) {
   return err.code || "unknown error";
 }
 
+function unwrapGatewayData(parsed) {
+  return parsed?.data && typeof parsed.data === "object" ? parsed.data : {};
+}
+
+function taskInstanceRecords(data) {
+  if (Array.isArray(data)) return data;
+  for (const key of ["records", "list", "task_instances", "taskInstances"]) {
+    if (Array.isArray(data?.[key])) return data[key];
+  }
+  return [];
+}
+
+function isFailedTaskInstance(task) {
+  const state = String(task.state || task.task_state || task.taskState || task.execution_status || task.executionStatus || "").toUpperCase();
+  return ["FAILURE", "KILL", "STOP", "STOPPED"].includes(state);
+}
+
+function normalizeTaskInstance(task) {
+  return {
+    id: String(task.task_instance_id || task.taskInstanceId || task.id || "").trim(),
+    name: String(task.task_name || task.taskName || task.name || task.task?.name || "").trim(),
+    code: String(task.task_code || task.taskCode || task.code || task.task?.code || "").trim(),
+    state: String(task.state || task.task_state || task.taskState || task.execution_status || task.executionStatus || "").trim(),
+  };
+}
+
+function extractTaskLogFailure(log) {
+  const lines = String(log || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const meaningful = lines.filter((line) => /(?:ERROR|Exception|Caused by|SQLSTATE|FAILED)/i.test(line)
+    && !/\brun etl fail\b/i.test(line));
+  const candidate = meaningful.at(-1);
+  if (!candidate) return "任务日志未返回可识别的底层异常";
+  return candidate
+    .replace(/^.*?(?:console\s*-\s*)?(?:ERROR|Exception|Caused by)\s*[-:：]?\s*/i, "")
+    .trim() || candidate;
+}
+
+async function postDsAction(webhookUrl, countryCode, token, action, payload, config) {
+  const response = await fetchDsProjectCheck(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ country: countryCode, action, ds_token: token, payload }),
+  }, {
+    timeoutMs: normalizeDsCheckTimeout(config.checkTimeoutMs),
+    retries: normalizeDsCheckRetries(config.checkRetries),
+    retryDelayMs: normalizeDsCheckRetryDelay(config.checkRetryDelayMs),
+  });
+  const body = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new Error(gatewayErrorMessage(response.status, body));
+  }
+  if (!parsed.success) throw new Error(describeGatewayError(parsed));
+  return unwrapGatewayData(parsed);
+}
+
+async function enrichFailureWithTaskLog(failure, { webhookUrl, countryCode, token, projectCode, config }) {
+  if (!failure.instanceId || failure.taskInstanceId) return failure;
+  try {
+    const taskData = await postDsAction(webhookUrl, countryCode, token, "list_task_instances", {
+      project_code: projectCode,
+      instance_id: failure.instanceId,
+      process_instance_id: failure.instanceId,
+      page_no: 1,
+      page_size: 100,
+      state_type: "FAILURE",
+    }, config);
+    const failedTask = taskInstanceRecords(taskData).filter(isFailedTaskInstance).map(normalizeTaskInstance).find((task) => task.id);
+    if (!failedTask) return failure;
+
+    const logData = await postDsAction(webhookUrl, countryCode, token, "get_task_log", {
+      project_code: projectCode,
+      task_instance_id: failedTask.id,
+    }, config);
+    const log = logData.log || logData.task_log || logData.content || "";
+    return {
+      ...failure,
+      taskName: failedTask.name || failure.taskName,
+      taskCode: failedTask.code || failure.taskCode,
+      taskInstanceId: failedTask.id,
+      taskState: failedTask.state || failure.taskState,
+      failureMessage: extractTaskLogFailure(log),
+    };
+  } catch (error) {
+    console.warn(`[ds-scheduler] failure enrichment country=${countryCode} project=${projectCode} instance=${failure.instanceId}: ${error.message}`);
+    return failure;
+  }
+}
+
 /**
  * Resolve a project name to a project code by calling the n8n gateway.
  */
@@ -388,7 +479,19 @@ export async function checkAllCountries(rootDir, config) {
           startTime: wf.start_time || null,
           endTime: wf.end_time || null,
         }));
-      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${staleWorkflows.length} failed=${failedWorkflows.length} checked=${data.total_checked || 0}`);
+      // The current legacy gateway only returns raw workflow instances. Enrich
+      // those records here; the documented failed_workflows response already
+      // carries task-level failure details and must remain a single request.
+      const enrichedFailedWorkflows = Array.isArray(data.failed_workflows)
+        ? failedWorkflows
+        : await Promise.all(failedWorkflows.map((failure) => enrichFailureWithTaskLog(failure, {
+          webhookUrl,
+          countryCode,
+          token,
+          projectCode: project.code,
+          config,
+        })));
+      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${staleWorkflows.length} failed=${enrichedFailedWorkflows.length} checked=${data.total_checked || 0}`);
       projectResults.push({
         projectName: project.name,
         projectCode: project.code,
@@ -396,7 +499,7 @@ export async function checkAllCountries(rootDir, config) {
         error: null,
         stuckCount: data.stuck_count || 0,
         staleCount: staleWorkflows.length,
-        failedCount: failedWorkflows.length,
+        failedCount: enrichedFailedWorkflows.length,
         checkedWorkflows: data.total_checked || 0,
         checkedWorkflowDetails,
         stuckWorkflows: (data.stuck_workflows || []).map((wf) => ({
@@ -411,7 +514,7 @@ export async function checkAllCountries(rootDir, config) {
           recentFailures: (wf.recent_failures || []).slice(0, 5),
         })),
         staleWorkflows,
-        failedWorkflows,
+        failedWorkflows: enrichedFailedWorkflows,
       });
     } catch (error) {
       console.error(`[ds-scheduler] check_failed_instances ${countryCode} project=${project.code || project.name || "-"} -> ${webhookUrl} request failed: ${error.message}`);

@@ -331,6 +331,63 @@ test("DS check recognizes raw DolphinScheduler scheduled failure instances from 
   }
 });
 
+test("DS check enriches a raw failed instance with its failed task log", async () => {
+  const originalFetch = globalThis.fetch;
+  const actions = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    actions.push(request.action);
+    const responses = {
+      check_failed_instances: {
+        success: true,
+        data: {
+          records: [{
+            projectCode: "13068695921632",
+            workflowInstanceId: "3034793",
+            workflowDefinitionCode: "19834317535463",
+            workflowInstanceName: "墨西哥-数仓工作流（1H）",
+            commandType: "SCHEDULER",
+            workflowExecutionStatus: "FAILURE",
+          }],
+        },
+      },
+      list_task_instances: {
+        success: true,
+        data: {
+          records: [
+            { taskInstanceId: "99881", name: "ods_orders", state: "SUCCESS" },
+            { taskInstanceId: "99882", name: "dwd_orders", state: "FAILURE" },
+          ],
+        },
+      },
+      get_task_log: {
+        success: true,
+        data: {
+          task_name: "dwd_orders",
+          task_instance_id: "99882",
+          state: "FAILURE",
+          log: "INFO - begin\nERROR - StarRocks query failed: Table 'dw.dwd_orders' does not exist\nERROR - run etl fail",
+        },
+      },
+    };
+    return { status: 200, ok: true, async text() { return JSON.stringify(responses[request.action]); } };
+  };
+  try {
+    const result = await checkAllCountries(process.cwd(), {
+      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      countries: { mx: { name: "墨西哥", token: "real-token" } },
+      projects: { mx: [{ name: "墨西哥数仓-工作流", code: "13068695921632" }] },
+    });
+    const failure = result.countries[0].failedWorkflows[0];
+    assert.deepEqual(actions, ["check_failed_instances", "list_task_instances", "get_task_log"]);
+    assert.equal(failure.taskName, "dwd_orders");
+    assert.equal(failure.taskInstanceId, "99882");
+    assert.equal(failure.failureMessage, "StarRocks query failed: Table 'dw.dwd_orders' does not exist");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("DS check retries one transient n8n timeout before marking a project failed", async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;
