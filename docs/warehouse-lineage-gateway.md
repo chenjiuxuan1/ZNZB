@@ -40,11 +40,16 @@ Content-Type: application/json
   "table": "dwd_example_table",
   "repository": "/data/git/starrocks/workflow/mx",
   "matchedFiles": [{ "path": "daily/job.sql", "matches": [] }],
-  "upstreamTables": ["ods_example_table"],
+  "upstreamTables": [],
+  "relatedTables": ["ods_example_table"],
+  "downstreamTables": [{ "table": "dws_example_table", "evidence": "declared_dependency" }],
   "dsRefs": [],
+  "evidence": { "quality": "declared_dependency_only" },
   "truncated": false
 }
 ```
+
+`relatedTables` 是命中文件中的关联候选，不能直接当作上游血缘。只有后续版本从“产出目标表的 SQL”中解析出的 `upstreamTables` 才能供 Agent 递归查询；当前会明确把证据等级返回给调用方，避免错误追溯。
 
 ## 演进动作
 
