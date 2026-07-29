@@ -249,7 +249,20 @@ export function createPlatformApi({
         status: generated.pending ? "pending" : "completed",
         ...generated,
       };
-      const analyses = keepRecentMetabaseAnalyses([entry, ...(cache.analyses || [])]);
+      // n8n can finish a short evidence job before its webhook acceptance
+      // response reaches this process. Keep that earlier callback instead of
+      // overwriting it with a later pending marker.
+      const refreshedCache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const earlyCompletion = (refreshedCache.analyses || []).find((item) => (
+        item.key === cacheKey
+        && item.status === "completed"
+        && entry.jobId
+        && String(item.jobId || "") === String(entry.jobId)
+      ));
+      if (earlyCompletion) {
+        return { ...earlyCompletion, cached: false };
+      }
+      const analyses = keepRecentMetabaseAnalyses([entry, ...(refreshedCache.analyses || [])]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
       return { ...entry, cached: false };
     },
@@ -275,26 +288,44 @@ export function createPlatformApi({
       const entryKey = key || `${runId}:${countryCode}:${anomalyIndex}`;
       const existing = (cache.analyses || []).find((item) => item.key === entryKey);
       if (!existing) {
-        const error = new Error("分析任务不存在或历史记录已清理。");
-        error.statusCode = 404;
-        throw error;
+        // A fast n8n workflow can post its result before analyzeMetabaseAnomaly
+        // persists the pending record. Accept only callbacks tied to a retained
+        // history anomaly, then let the initiating request merge it by job ID.
+        const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
+        const run = (history.runs || []).find((item) => String(item.id || "") === runId);
+        const countryRun = (run?.runs || []).find((item) => String(item.countryCode || "") === countryCode);
+        if (!countryRun?.result?.anomalies?.[anomalyIndex]) {
+          const error = new Error("分析任务不存在或历史记录已清理。");
+          error.statusCode = 404;
+          throw error;
+        }
+        const earlyCompleted = buildCompletedMetabaseAnalysis({
+          key: entryKey,
+          runId,
+          countryCode,
+          anomalyIndex,
+          jobId: body.jobId,
+          body,
+          createdAt: new Date().toISOString(),
+          callbackReceivedBeforePending: true,
+        });
+        const analyses = keepRecentMetabaseAnalyses([earlyCompleted, ...(cache.analyses || [])]);
+        await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
+        return earlyCompleted;
       }
       if (existing.jobId && String(body.jobId || "") !== String(existing.jobId)) {
         throw badRequest("Invalid Metabase anomaly analysis callback", ["回调任务编号与待处理任务不一致。"]);
       }
-      const completed = {
+      const completed = buildCompletedMetabaseAnalysis({
         ...existing,
-        status: "completed",
-        completedAt: new Date().toISOString(),
-        pending: false,
-        model: String(body.model || existing.model || "n8n-configured-model"),
-        analysis: normalizeMetabaseAnomalyAnalysis(body.analysis),
-        evidence: normalizeAgentEvidence(body.evidence),
-        observability: body.observability && typeof body.observability === "object"
-          ? body.observability
-          : existing.observability,
-        fallbackUsed: Boolean(body.fallbackUsed),
-      };
+        key: entryKey,
+        runId,
+        countryCode,
+        anomalyIndex,
+        jobId: body.jobId || existing.jobId,
+        body,
+        createdAt: existing.createdAt,
+      });
       const analyses = keepRecentMetabaseAnalyses([completed, ...(cache.analyses || []).filter((item) => item.key !== entryKey)]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
       return completed;
@@ -2812,6 +2843,30 @@ function normalizeMetabaseAnalysisIdentity(body = {}) {
     throw badRequest("Invalid Metabase anomaly analysis identity", ["请提供巡检记录、国家和异常序号。"]);
   }
   return { runId, countryCode, anomalyIndex, key: "" };
+}
+
+function buildCompletedMetabaseAnalysis({ key, runId, countryCode, anomalyIndex, jobId, body, createdAt, callbackReceivedBeforePending = false, ...existing }) {
+  return {
+    ...existing,
+    key,
+    runId,
+    countryCode,
+    anomalyIndex,
+    jobId: String(jobId || existing.jobId || ""),
+    createdAt: createdAt || new Date().toISOString(),
+    status: "completed",
+    completedAt: new Date().toISOString(),
+    pending: false,
+    provider: existing.provider || "n8n-evidence",
+    model: String(body.model || existing.model || "n8n-configured-model"),
+    analysis: normalizeMetabaseAnomalyAnalysis(body.analysis),
+    evidence: normalizeAgentEvidence(body.evidence),
+    observability: body.observability && typeof body.observability === "object"
+      ? body.observability
+      : (existing.observability || { enabled: false, written: false, reason: "n8n 未返回 Langfuse 状态" }),
+    fallbackUsed: Boolean(body.fallbackUsed),
+    ...(callbackReceivedBeforePending ? { callbackReceivedBeforePending: true } : {}),
+  };
 }
 
 function normalizeAgentEvidence(value) {

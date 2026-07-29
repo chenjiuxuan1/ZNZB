@@ -182,6 +182,32 @@ test("platform api stores an async Metabase evidence job and accepts its callbac
   );
 });
 
+test("platform api preserves an n8n callback that arrives before its pending job is written", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-run-history.json"),
+    JSON.stringify({ runs: [{
+      id: "run-early-callback", startedAt: "2026-07-28T00:00:00.000Z",
+      runs: [{ countryCode: "PH", countryName: "菲律宾", result: { anomalies: [{ dashboardTitle: "OKR", cardTitle: "放款", message: "指标归零" }] } }],
+    }] }),
+  );
+  let api;
+  api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyAgentFn: async () => {
+      await api.completeMetabaseAnomalyAnalysis({
+        runId: "run-early-callback", countryCode: "PH", anomalyIndex: 0, jobId: "job-early",
+        analysis: { summary: "底表已核查", confidence: "high", dataSideVerdict: "data_issue" },
+      });
+      return { pending: true, jobId: "job-early", provider: "n8n-evidence" };
+    },
+  });
+  const result = await api.analyzeMetabaseAnomaly({ runId: "run-early-callback", countryCode: "PH", anomalyIndex: 0 });
+  assert.equal(result.status, "completed");
+  assert.equal(result.callbackReceivedBeforePending, true);
+  assert.equal(result.analysis.summary, "底表已核查");
+});
+
 test("platform api merges pending panel sources into the dashboard inventory", async () => {
   const rootDir = await makeFixture();
   await fs.copyFile(
