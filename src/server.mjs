@@ -108,6 +108,11 @@ async function handleApi(request, response, url) {
     assertWarehouseLineageToolAuthorized(request);
     return sendJson(response, 200, await proxyWarehouseLineageRequest(body));
   }
+  if (method === "POST" && url.pathname === "/api/tools/metabase-card-sql") {
+    const body = await readBody(request, {});
+    assertWarehouseLineageToolAuthorized(request);
+    return sendJson(response, 200, await api.getMetabaseAnomalyCardSql(body));
+  }
   if (method === "POST" && url.pathname === "/api/external-alert-runs") {
     return sendJson(response, 200, await api.ingestExternalAlertRun(await readBody(request, {})));
   }

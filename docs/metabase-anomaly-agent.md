@@ -116,3 +116,5 @@ METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=replace-with-a-long-random-secret
 `POST https://big-data-duty-management-platform.kuainiujinke.com/api/tools/warehouse-lineage`
 
 平台会将请求转发至本机只读的 n8n `warehouse-lineage` Webhook。需要在平台 `.env` 配置 `DIFY_WAREHOUSE_LINEAGE_TOOL_TOKEN`，并在 Dify 自定义工具的 Bearer 鉴权中配置相同值。该入口只接受六国白名单和 `trace_table`，不提供 SQL 执行、DS 重跑或写入能力。
+
+同一份 OpenAPI 还包含 `get_card_sql`。该工具只读取已保留的值班历史中指定异常的 Metabase Card 定义；Dify Agent 必须先用 `run_id`、`country_code` 和 `anomaly_index` 调用它，再从返回 SQL 中识别根表并调用 `trace_lineage`。手工 Dify 测试使用虚构 `run_id` 时会得到“卡片不可用”，这是预期行为；请从平台历史详情复制真实的巡检 ID 和异常序号测试。

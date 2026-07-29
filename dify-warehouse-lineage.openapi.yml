@@ -10,6 +10,50 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/tools/metabase-card-sql:
+    post:
+      operationId: get_card_sql
+      summary: 读取异常对应 Metabase 卡片 SQL
+      description: >-
+        仅能读取平台历史巡检中指定异常所关联卡片的 SQL。必须先调用此工具，
+        从 SQL 中提取根表后才能调用 trace_lineage；不能依据告警文字猜测表名。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [runId, countryCode, anomalyIndex]
+              properties:
+                runId:
+                  type: string
+                  description: 值班平台历史巡检 ID。
+                countryCode:
+                  type: string
+                  enum: [cn, ine, ph, th, pk, mx]
+                anomalyIndex:
+                  type: integer
+                  minimum: 0
+                  description: 该国家巡检结果中的异常序号。
+      responses:
+        '200':
+          description: 卡片定义与只读 SQL。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  card:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      name: { type: string }
+                      database_id: { type: integer, nullable: true }
+                      native_query: { type: object, nullable: true }
+                      dataset_query: { type: object, nullable: true }
   /api/tools/warehouse-lineage:
     post:
       operationId: trace_lineage
