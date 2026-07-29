@@ -209,7 +209,7 @@ test("platform api proxies a saved anomaly card through its Metabase readonly cl
     }),
   });
   const result = await api.getMetabaseAnomalyCardSql({ runId: "run-agent-card", countryCode: "ph", anomalyIndex: 0 });
-  assert.equal(receivedBaseUrl, "https://data.kuainiu.io");
+  assert.equal(receivedBaseUrl, "http://172.16.0.212:80");
   assert.equal(result.card.dataset_query.native.query, "SELECT * FROM dwd_loan");
 });
 

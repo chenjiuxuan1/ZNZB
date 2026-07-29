@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { createDefaultMetabaseClient } from "./metabase-public-monitor.mjs";
+import { createDefaultMetabaseClient, resolveInternalMetabaseApiBaseUrl } from "./metabase-public-monitor.mjs";
 import {
   buildDefaultCardParameters,
   buildUpdateFrequencyHistoryParameters,
@@ -313,7 +313,9 @@ export function createPlatformApi({
       if (!anomaly?.cardId) {
         throw badRequest("Metabase anomaly card is unavailable", ["该异常没有可读取的 Card ID。"]);
       }
-      const baseUrl = getMetabaseBaseUrl(anomaly.dashboardUrl);
+      // Dashboard links are commonly public URLs behind SSO. Card metadata must
+      // always use the same internal Metabase API endpoint as the scanner.
+      const baseUrl = resolveInternalMetabaseApiBaseUrl(getMetabaseBaseUrl(anomaly.dashboardUrl));
       const card = await metabaseInternalClientFactory(baseUrl).getCard(anomaly.cardId);
       return {
         success: true,
