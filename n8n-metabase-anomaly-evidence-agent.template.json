@@ -18,7 +18,7 @@
       "id": "plan", "name": "Build Guarded Evidence Plan", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [680, 420]
     },
     {
-      "parameters": { "method": "POST", "url": "={{ $env.SR_BOX_BASE_URL + '/api/rust/v1/sr-sandboxes/sql-executions' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { taskName: 'metabase-anomaly-agent', country: $json.context.countryCode.toLowerCase().replace('ine','id'), purpose: 'agent', accessMode: 'local', sqlMode: 'query', sql: 'SELECT 1 AS connectivity_check', page: 1, pageSize: 1, timeoutSec: 20 } }}", "options": { "timeout": 30000 } },
+      "parameters": { "method": "POST", "url": "={{ String($env.SR_BOX_BASE_URL || 'http://172.20.0.234:4888').replace(/\\/+$/, '') + '/api/rust/v1/sr-sandboxes/sql-executions' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { taskName: 'metabase-anomaly-agent', country: $json.context.countryCode.toLowerCase().replace('ine','id'), purpose: 'agent', accessMode: 'local', sqlMode: 'query', sql: 'SELECT 1 AS connectivity_check', page: 1, pageSize: 1, timeoutSec: 20 } }}", "options": { "timeout": 30000 } },
       "id": "sr", "name": "SR Box Readonly Probe", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [900, 420],
       "credentials": { "httpHeaderAuth": { "id": "REPLACE_WITH_SR_AGENT_CREDENTIAL", "name": "SR Box Agent Token" } }
     },

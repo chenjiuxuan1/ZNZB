@@ -29,6 +29,12 @@ export class MetabaseInternalClient {
     });
   }
 
+  async getCard(id) {
+    return this.requestJson(`/api/card/${encodeURIComponent(id)}`, {
+      method: "GET",
+    });
+  }
+
   async getCollectionItems(id) {
     return this.requestJson(`/api/collection/${encodeURIComponent(id)}/items`, {
       method: "GET",

@@ -189,6 +189,30 @@ test("platform api stores an async Metabase evidence job and accepts its callbac
   );
 });
 
+test("platform api proxies a saved anomaly card through its Metabase readonly client", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-run-history.json"),
+    JSON.stringify({ runs: [{
+      id: "run-agent-card", runs: [{ countryCode: "PH", result: { anomalies: [{ cardId: 99, cardTitle: "放款", dashboardUrl: "https://data.kuainiu.io/dashboard/123" }] } }],
+    }] }),
+  );
+  let receivedBaseUrl = "";
+  const api = createPlatformApi({
+    rootDir,
+    metabaseInternalClientFactory: (baseUrl) => ({
+      getCard: async (cardId) => {
+        receivedBaseUrl = baseUrl;
+        assert.equal(cardId, 99);
+        return { id: 99, name: "放款", database_id: 2, dataset_query: { native: { query: "SELECT * FROM dwd_loan" } } };
+      },
+    }),
+  });
+  const result = await api.getMetabaseAnomalyCardSql({ runId: "run-agent-card", countryCode: "ph", anomalyIndex: 0 });
+  assert.equal(receivedBaseUrl, "https://data.kuainiu.io");
+  assert.equal(result.card.dataset_query.native.query, "SELECT * FROM dwd_loan");
+});
+
 test("platform api deduplicates concurrent Metabase evidence requests", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

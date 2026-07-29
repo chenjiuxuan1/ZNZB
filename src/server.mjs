@@ -92,6 +92,11 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/metabase-anomaly-analysis") {
     return sendJson(response, 200, await api.getMetabaseAnomalyAnalysis(Object.fromEntries(url.searchParams.entries())));
   }
+  if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/card-sql") {
+    const body = await readBody(request, {});
+    assertMetabaseAgentCallbackAuthorized(request, body);
+    return sendJson(response, 200, await api.getMetabaseAnomalyCardSql(body));
+  }
   if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/callback") {
     const body = await readBody(request, {});
     assertMetabaseAgentCallbackAuthorized(request, body);

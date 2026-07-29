@@ -11,6 +11,7 @@ import {
 } from "./metabase-public-monitor.mjs";
 import { discoverPublicDashboards } from "./metabase-discovery.mjs";
 import { parseInternalMetabaseUrl } from "./metabase-internal-client.mjs";
+import { MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
@@ -101,6 +102,7 @@ const DEFAULT_DS_HISTORY = { runs: [] };
 export function createPlatformApi({
   rootDir = process.cwd(),
   metabaseClientFactory = createDefaultMetabaseClient,
+  metabaseInternalClientFactory = (baseUrl) => new MetabaseInternalClient({ baseUrl }),
   discoverDashboardsFn = discoverPublicDashboards,
   notifyTextFn = notifyText,
   wattrelQueryFn = null,
@@ -300,6 +302,29 @@ export function createPlatformApi({
         throw error;
       }
       return entry;
+    },
+
+    async getMetabaseAnomalyCardSql(body = {}) {
+      const { runId, countryCode, anomalyIndex } = normalizeMetabaseAnalysisIdentity(body);
+      const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
+      const run = (history.runs || []).find((item) => String(item.id || "") === runId);
+      const countryRun = (run?.runs || []).find((item) => normalizeCountryCode(item.countryCode) === countryCode);
+      const anomaly = countryRun?.result?.anomalies?.[anomalyIndex];
+      if (!anomaly?.cardId) {
+        throw badRequest("Metabase anomaly card is unavailable", ["该异常没有可读取的 Card ID。"]);
+      }
+      const baseUrl = getMetabaseBaseUrl(anomaly.dashboardUrl);
+      const card = await metabaseInternalClientFactory(baseUrl).getCard(anomaly.cardId);
+      return {
+        success: true,
+        card: {
+          id: card.id || anomaly.cardId,
+          name: card.name || anomaly.cardTitle || "",
+          database_id: card.database_id || null,
+          dataset_query: card.dataset_query || null,
+          native_query: card.native_query || null,
+        },
+      };
     },
 
     async completeMetabaseAnomalyAnalysis(body = {}) {
@@ -2870,6 +2895,14 @@ function normalizeMetabaseAnalysisIdentity(body = {}) {
 
 function normalizeCountryCode(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function getMetabaseBaseUrl(value) {
+  try {
+    return new URL(String(value || "https://data.kuainiu.io")).origin;
+  } catch {
+    return "https://data.kuainiu.io";
+  }
 }
 
 function isExpiredMetabaseAnalysis(entry, nowMs = Date.now()) {
