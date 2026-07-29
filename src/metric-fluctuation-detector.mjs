@@ -1,13 +1,15 @@
 export function detectMetricFluctuation(current, history, options = {}) {
   const values = normalizeNumericValues(history);
   const minHistory = options.minHistory ?? 14;
-  if (!Number.isFinite(current) || values.length < minHistory) {
+  const shortMinHistory = Math.min(options.shortMinHistory ?? 7, minHistory);
+  if (!Number.isFinite(current) || values.length < shortMinHistory) {
     return {
       isAnomaly: false,
-      reason: values.length < minHistory ? "history_not_enough" : "current_not_numeric",
+      reason: values.length < shortMinHistory ? "history_not_enough" : "current_not_numeric",
       historyCount: values.length,
     };
   }
+  const isShortHistory = values.length < minHistory;
 
   const baseline = median(values);
   const sigmaFloorRate = options.sigmaFloorRate ?? 0.03;
@@ -46,8 +48,12 @@ export function detectMetricFluctuation(current, history, options = {}) {
     options,
   );
   const minAbsDelta = options.minAbsDelta ?? 0;
-  const minRelativeDelta = options.minRelativeDelta ?? 0;
-  const minScore = options.minScore ?? 3;
+  const minRelativeDelta = isShortHistory
+    ? options.shortMinRelativeDelta ?? 0.3
+    : options.minRelativeDelta ?? 0;
+  const minScore = isShortHistory
+    ? options.shortMinScore ?? 5
+    : options.minScore ?? 3;
   const isAnomaly =
     anomalyScore >= minScore &&
     absDelta >= minAbsDelta &&
@@ -55,7 +61,9 @@ export function detectMetricFluctuation(current, history, options = {}) {
 
   return {
     isAnomaly,
-    reason: isAnomaly ? "robust_residual_check" : "normal",
+    reason: isAnomaly
+      ? (isShortHistory ? "short_history_robust_residual_check" : "robust_residual_check")
+      : "normal",
     current,
     baseline,
     expected,
@@ -65,6 +73,9 @@ export function detectMetricFluctuation(current, history, options = {}) {
     relativeDelta,
     anomalyScore,
     historyCount: values.length,
+    isShortHistory,
+    minScore,
+    minRelativeDelta,
     dynamicRelativeThreshold,
   };
 }
