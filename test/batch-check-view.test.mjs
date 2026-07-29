@@ -96,6 +96,20 @@ test("history anomaly details parse latest non-zero to zero values", () => {
   assert.equal(detail.timeText, "2026-07-27 / 对比 2026-07-26");
 });
 
+test("history anomaly details keep the concrete metric name for fluctuation alerts", () => {
+  const detail = parseAnomalyMessage(
+    "完整日指标「D7」从 24.7% 到 51.7%，绝对变化 +26.9个百分点（统计日期 2026-07-13 对比 2026-07-12）",
+    "completeDayChange",
+  );
+
+  assert.equal(detail.reason, "指标波动超阈值");
+  assert.equal(detail.metricName, "D7");
+  assert.equal(detail.baselineValue, "24.7%");
+  assert.equal(detail.currentValue, "51.7%");
+  assert.equal(detail.changeValue, "+26.9");
+  assert.equal(detail.timeText, "2026-07-13 / 对比 2026-07-12");
+});
+
 test("history anomaly detail exposes an AI analysis action", () => {
   const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
   state.routeQuery = { historyRunId: "run-ai" };

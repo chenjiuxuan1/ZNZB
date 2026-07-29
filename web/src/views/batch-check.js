@@ -1069,6 +1069,7 @@ function renderHistoryAnomalyTable(anomalies, context = {}) {
                 <span class="badge ${detail.changeValue ? "warn" : "idle"}">${escapeHtml(changeLabel)}</span>
               </div>
               <div class="anomaly-detail-metrics">
+                ${renderAnomalyDetailMetric("指标", detail.metricName || "-")}
                 ${renderAnomalyDetailMetric("当前值", detail.currentValue || "-")}
                 ${renderAnomalyDetailMetric("基准值", detail.baselineValue || "-")}
                 ${renderAnomalyDetailMetric("统计时间", detail.timeText || "-")}
@@ -1145,6 +1146,7 @@ export function parseAnomalyMessage(message, anomalyType = "") {
   const text = String(message || "");
   const detail = {
     reason: "",
+    metricName: "",
     currentValue: "",
     baselineValue: "",
     changeValue: "",
@@ -1162,6 +1164,11 @@ export function parseAnomalyMessage(message, anomalyType = "") {
   if (fromTo) {
     detail.baselineValue = fromTo[1];
     detail.currentValue = fromTo[2];
+  }
+
+  const metricName = extractAnomalyMetricName(text);
+  if (metricName) {
+    detail.metricName = metricName;
   }
 
   const change = text.match(/(?:波动|变化)\s*([+-]?\d+(?:\.\d+)?%?)/);
@@ -1184,6 +1191,21 @@ export function parseAnomalyMessage(message, anomalyType = "") {
   }
   detail.timeText = timeParts.join(" / ");
   return detail;
+}
+
+function extractAnomalyMetricName(text) {
+  const metricPatterns = [
+    /(?:完整日指标|稳健完整日指标|同时间指标|上一日同时间点指标|指标)「([^」]+)」/,
+    /(?:完整日指标|稳健完整日指标|同时间指标|上一日同时间点指标|指标)“([^”]+)”/,
+    /(?:完整日指标|稳健完整日指标|同时间指标|上一日同时间点指标|指标)"([^"]+)"/,
+  ];
+  for (const pattern of metricPatterns) {
+    const match = String(text || "").match(pattern);
+    if (match) {
+      return match[1];
+    }
+  }
+  return "";
 }
 
 function renderHistoryRunDetails(run) {
@@ -1708,6 +1730,9 @@ function summarizeAnomalySituation(anomaly) {
   const pieces = [];
   if (detail.reason) {
     pieces.push(detail.reason);
+  }
+  if (detail.metricName) {
+    pieces.push(`指标 ${detail.metricName}`);
   }
   if (["数据缺失", "查询异常"].includes(detail.reason) && anomaly.message) {
     pieces.push(shortenText(anomaly.message, 72));
