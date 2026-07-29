@@ -1,6 +1,10 @@
 # Metabase 异常原因分析 Agent
 
-推荐通过 n8n 调用模型与 Langfuse。私有工作流 `n8n-metabase-anomaly-agent.json` 在本地维护且被 Git 忽略，不会随代码仓库上推；导入该文件后，可按需在 n8n Variables 中配置：
+当前部署的 Agent 是 **n8n 编排 + DashScope 模型 + Langfuse 可观测性**，不是 Dify。私有工作流 [n8n-metabase-anomaly-evidence-agent.local.json](../n8n-metabase-anomaly-evidence-agent.local.json) 在本地维护且被 Git 忽略，不会随代码仓库上推。
+
+该工作流会先读取 Metabase Card SQL、执行只读 `EXPLAIN`，再调用已发布的六国公共血缘网关。它从 SQL 中最多取 3 张根表，只对网关确认的生产者 SQL 上游继续一次受控追溯；`declared_dependency_only` 只作为代码检索线索，不能被模型当作生产血缘事实。
+
+导入该文件后，在 n8n Variables 中配置：
 
 ```text
 DASHSCOPE_API_KEY
@@ -9,6 +13,8 @@ DASHSCOPE_MODEL=qwen3.7-plus
 LANGFUSE_BASE_URL=http://172.20.0.234:3000
 LANGFUSE_BASIC_AUTH=base64(publicKey:secretKey)
 METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN=optional-shared-token
+# 同机 Docker 默认值已经可用；外部 n8n 时改为实际 Production Webhook 根地址。
+LINEAGE_GATEWAY_URL=http://172.19.0.1:5678
 ```
 
 激活工作流后，在平台根目录 `.env` 配置 n8n Webhook：
@@ -72,6 +78,7 @@ Agent 只接收该异常的看板名称、卡片名称、规则类型、原始�
 METABASE_ANOMALY_AGENT_ENABLED=true
 METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL=https://n8n.example/webhook/metabase-anomaly-evidence-agent
 METABASE_ANOMALY_AGENT_N8N_ASYNC=true
+METABASE_ANOMALY_AGENT_MODE=recursive_evidence
 METABASE_ANOMALY_AGENT_N8N_TOKEN=optional-webhook-token
 
 # n8n 完成取证后回传平台。此 token 仅用于 n8n -> 平台回调。
@@ -102,3 +109,10 @@ METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=replace-with-a-long-random-secret
 ```
 
 默认兜底策略：巡检和通知先按当前规则执行；Agent 失败、超时、权限不足或证据不足时，只标记 `insufficient_evidence`，不会自动压制任何原始告警。完成一周人工复核后，才考虑对普通波动开启 `downgrade`；数据变为 0、数据缺失、查询错误和 DS 失败必须始终直发。
+# Dify 血缘工具网络说明
+
+`172.19.0.1` 是平台服务器 Docker 网络中的宿主机地址，只能被同一台服务器的容器访问，不能配置给远程 Dify。Dify 应使用平台的受鉴权入口：
+
+`POST https://big-data-duty-management-platform.kuainiujinke.com/api/tools/warehouse-lineage`
+
+平台会将请求转发至本机只读的 n8n `warehouse-lineage` Webhook。需要在平台 `.env` 配置 `DIFY_WAREHOUSE_LINEAGE_TOOL_TOKEN`，并在 Dify 自定义工具的 Bearer 鉴权中配置相同值。该入口只接受六国白名单和 `trace_table`，不提供 SQL 执行、DS 重跑或写入能力。

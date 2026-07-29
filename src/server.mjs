@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
 import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
+import { assertWarehouseLineageToolAuthorized, proxyWarehouseLineageRequest } from "./warehouse-lineage-proxy.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -101,6 +102,11 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     assertMetabaseAgentCallbackAuthorized(request, body);
     return sendJson(response, 200, await api.completeMetabaseAnomalyAnalysis(body));
+  }
+  if (method === "POST" && url.pathname === "/api/tools/warehouse-lineage") {
+    const body = await readBody(request, {});
+    assertWarehouseLineageToolAuthorized(request);
+    return sendJson(response, 200, await proxyWarehouseLineageRequest(body));
   }
   if (method === "POST" && url.pathname === "/api/external-alert-runs") {
     return sendJson(response, 200, await api.ingestExternalAlertRun(await readBody(request, {})));

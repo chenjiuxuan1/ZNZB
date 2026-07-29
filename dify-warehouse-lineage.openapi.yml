@@ -1,0 +1,99 @@
+openapi: 3.0.3
+info:
+  title: 数仓代码血缘查询
+  version: 1.0.0
+  description: >-
+    只读查询六国数仓代码仓库中的表级静态血缘。仅用于 Metabase 异常取证，
+    不执行 SQL、不修改代码、不触发 DS 重跑。
+servers:
+  - url: https://big-data-duty-management-platform.kuainiujinke.com
+security:
+  - bearerAuth: []
+paths:
+  /api/tools/warehouse-lineage:
+    post:
+      operationId: trace_lineage
+      summary: 查询表的代码血缘
+      description: >-
+        查询指定国家和表名的代码血缘。只有 evidence.quality=producer_sql 时，
+        upstreamTables 才可作为下一层递归追溯的有效证据；
+        declared_dependency_only 仅是线索，不能作为生产血缘结论。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - operation
+                - countryCode
+                - table
+              properties:
+                operation:
+                  type: string
+                  enum: [trace_table]
+                  description: 固定传 trace_table。
+                countryCode:
+                  type: string
+                  enum: [cn, ine, ph, th, pk, mx]
+                  description: 国家代码。印尼使用 ine。
+                table:
+                  type: string
+                  description: >-
+                    必须是此前 Metabase SQL 或上一次血缘结果中已出现的表名，
+                    例如 dws.dws_user_info_m。不得猜测或构造新表名。
+                maxFiles:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  default: 10
+                  description: 最多返回的匹配代码文件数；通常使用 10。
+      responses:
+        '200':
+          description: 血缘查询结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  table:
+                    type: string
+                  upstreamTables:
+                    type: array
+                    items:
+                      type: string
+                  downstreamTables:
+                    type: array
+                    items:
+                      type: string
+                  relatedTables:
+                    type: array
+                    items:
+                      type: string
+                  dsRefs:
+                    type: array
+                    items:
+                      type: object
+                  evidence:
+                    type: object
+                    properties:
+                      quality:
+                        type: string
+                        enum:
+                          - producer_sql
+                          - consumer_sql
+                          - declared_dependency_only
+                          - text_reference_only
+                      recursiveEligible:
+                        type: boolean
+                      warning:
+                        type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API token
