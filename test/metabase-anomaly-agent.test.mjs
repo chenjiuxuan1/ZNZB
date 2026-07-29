@@ -108,6 +108,23 @@ test("Metabase evidence webhook enables async internal callback by default", () 
   assert.equal(settings.callbackToken, "");
 });
 
+test("Metabase anomaly agent only enables recursive evidence through an explicit mode", async () => {
+  let body = null;
+  await analyzeMetabaseAnomaly({
+    env: {
+      METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/metabase-anomaly-recursive-agent",
+      METABASE_ANOMALY_AGENT_MODE: "recursive_evidence",
+    },
+    anomaly: { message: "指标从 1 降为 0" },
+    context: { runId: "run-recursive", countryCode: "ID" },
+    fetchFn: async (_url, options) => {
+      body = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ accepted: true, jobId: "recursive-1" }) };
+    },
+  });
+  assert.equal(body.requestedMode, "recursive_evidence");
+});
+
 test("Metabase anomaly agent returns pending when an async n8n job outlives the accept window", async () => {
   let request = null;
   const originalSetTimeout = globalThis.setTimeout;

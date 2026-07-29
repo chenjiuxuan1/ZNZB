@@ -5,6 +5,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const N8N_ASYNC_ACCEPT_WAIT_MS = 2_500;
 const DEFAULT_INTERNAL_CALLBACK_URL = "http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback";
 const AGENT_NAME = "Metabase 异常原因分析助手";
+const AGENT_MODES = new Set(["summary", "evidence", "recursive_evidence"]);
 
 export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const enabledValue = String(env.METABASE_ANOMALY_AGENT_ENABLED || "").trim().toLowerCase();
@@ -19,6 +20,7 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const baseUrl = String(env.METABASE_ANOMALY_AGENT_BASE_URL || "").trim().replace(/\/+$/, "");
   const apiKey = String(env.METABASE_ANOMALY_AGENT_API_KEY || "").trim();
   const model = String(env.METABASE_ANOMALY_AGENT_MODEL || "").trim();
+  const requestedMode = normalizeRequestedMode(env.METABASE_ANOMALY_AGENT_MODE, n8nAsync ? "evidence" : "summary");
   const explicitlyDisabled = ["0", "false", "off", "no"].includes(enabledValue);
   const transport = n8nWebhookUrl ? "n8n" : "direct";
   const configured = transport === "n8n"
@@ -36,6 +38,7 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
     n8nAsync,
     callbackUrl,
     callbackToken,
+    requestedMode,
     langfuse: getLangfuseSettings(env),
   };
 }
@@ -132,7 +135,9 @@ async function requestN8nAgent({ settings, anomaly, context, fetchFn, jobId }) {
       body: JSON.stringify({
         protocolVersion: 2,
         ...(jobId ? { jobId } : {}),
-        requestedMode: settings.n8nAsync ? "evidence" : "summary",
+        // The mode is opt-in. Existing deployments continue using the current
+        // one-pass evidence workflow until the recursive workflow is imported.
+        requestedMode: settings.requestedMode,
         anomaly: pickAnomalyEvidence(anomaly),
         context: { ...pickContextEvidence(context), sameDashboardAnomalies: (context.sameDashboardAnomalies || []).slice(0, 5).map(pickAnomalyEvidence) },
         callback: settings.n8nAsync && settings.callbackUrl ? {
@@ -152,6 +157,11 @@ async function requestN8nAgent({ settings, anomaly, context, fetchFn, jobId }) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function normalizeRequestedMode(value, fallback) {
+  const mode = String(value || "").trim().toLowerCase();
+  return AGENT_MODES.has(mode) ? mode : fallback;
 }
 
 function normalizeN8nAgentResponse({ settings, payload, jobId }) {

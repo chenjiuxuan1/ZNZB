@@ -1,0 +1,49 @@
+{
+  "name": "Metabase 数据血缘只读网关（六国代码仓库）",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "metabase-lineage", "responseMode": "responseNode" },
+      "id": "lineage-webhook", "name": "接收血缘查询", "type": "n8n-nodes-base.webhook", "typeVersion": 2,
+      "position": [-720, 0], "webhookId": "metabase-lineage-readonly"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body ?? $json;\nconst aliases = { id: 'ine', indonesia: 'ine', china: 'cn', thailand: 'th', pakistan: 'pk', mexico: 'mx', philippines: 'ph' };\nconst country = aliases[String(raw.countryCode || raw.country || '').trim().toLowerCase()] || String(raw.countryCode || raw.country || '').trim().toLowerCase();\nconst table = String(raw.table || '').trim().toLowerCase();\nconst maxFiles = Math.max(1, Math.min(20, Number(raw.maxFiles || 10) || 10));\nconst countries = { cn: ['中国', '10.20.47.14', 36000, '/data/git/starrocks/workflow/cn'], ph: ['菲律宾', '10.20.10.12', '', '/data/git/starrocks/workflow/ph'], ine: ['印尼', '192.168.21.236', 36000, '/data/git/starrocks/workflow/ine'], mx: ['墨西哥', '172.20.220.165', 36000, '/data/git/starrocks/workflow/mx'], th: ['泰国', '192.168.20.236', 36000, '/data/git/starrocks/workflow/th'], pk: ['巴基斯坦', '10.20.84.176', '', '/data/git/starrocks/workflow/pk'] };\nconst target = countries[country];\nconst validTable = /^(?:[a-z][a-z0-9_]{0,127}\\.)?[a-z][a-z0-9_]{2,127}$/.test(table);\nconst quote = (value) => \"'\" + String(value).replace(/'/g, \"'\\\"'\\\"'\") + \"'\";\nif (!target || !validTable) return [{ json: { valid: false, error: !target ? '不支持的国家，需为 cn/ine/ph/th/pk/mx。' : '表名格式不合法。' } }];\nconst py = `import json, os, re, sys\nroot, table, max_files = sys.argv[1], sys.argv[2], int(sys.argv[3])\nneedle = table.rsplit('.', 1)[-1].lower()\nhits, upstream, ds_refs = [], set(), set()\npat = re.compile(r'(?i)\\\\b(?:from|join|insert\\\\s+(?:overwrite|into)\\\\s+(?:table\\\\s+)?)\\\\s+([a-z0-9_\\\\.]+)')\nfor base, dirs, files in os.walk(root):\n dirs[:] = [d for d in dirs if d not in ('.git','node_modules','target','dist')]\n for name in files:\n  if len(hits) >= max_files: break\n  if not name.lower().endswith(('.sql','.py','.sh','.scala','.java')): continue\n  path=os.path.join(base,name)\n  try:\n   if os.path.getsize(path)>2097152: continue\n   text=open(path,encoding='utf-8',errors='ignore').read()\n  except OSError: continue\n  if not re.search(r'(?i)(?<![a-z0-9_])'+re.escape(needle)+r'(?![a-z0-9_])',text): continue\n  lines=[{'line':n,'text':line.strip()[:500]} for n,line in enumerate(text.splitlines(),1) if re.search(r'(?i)(?<![a-z0-9_])'+re.escape(needle)+r'(?![a-z0-9_])',line)][:8]\n  for item in pat.findall(text):\n   item=item.lower()\n   if item != needle and not item.endswith('.'+needle): upstream.add(item)\n  ds_refs.update(re.findall(r'(?i)(?:workflow|process)[_ -]?(?:code|name)?\\\\s*[:=]\\\\s*([a-z0-9_.-]+)',text))\n  hits.append({'path':os.path.relpath(path,root),'matches':lines})\n if len(hits)>=max_files: break\nprint(json.dumps({'success':True,'table':table,'repository':root,'matchedFiles':hits,'upstreamTables':sorted(upstream)[:30],'dsRefs':sorted(ds_refs)[:20],'truncated':len(hits)>=max_files},ensure_ascii=False))`;\nconst encoded = Buffer.from(py, 'utf8').toString('base64');\nconst remote = `set -euo pipefail; repo=${quote(target[3])}; [ -d \"$repo\" ] || { echo repository-not-found >&2; exit 2; }; printf %s ${quote(encoded)} | base64 -d | python3 - \"$repo\" ${quote(table)} ${quote(maxFiles)}`;\nconst command = ['ssh', target[2] ? '-p ' + target[2] : '', '-o BatchMode=yes', '-o ConnectTimeout=20', quote('root@' + target[1]), quote('bash -lc ' + quote(remote))].filter(Boolean).join(' ');\nreturn [{ json: { valid: true, country, countryName: target[0], table, repository: target[3], command } }];"
+      },
+      "id": "prepare", "name": "校验并构造只读检索命令", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [-500, 0]
+    },
+    {
+      "parameters": { "conditions": { "options": { "version": 2 }, "conditions": [{ "leftValue": "={{$json.valid}}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }], "combinator": "and" } },
+      "id": "valid", "name": "请求是否有效", "type": "n8n-nodes-base.if", "typeVersion": 2.3, "position": [-280, 0]
+    },
+    {
+      "parameters": { "rules": { "values": [
+        { "conditions": { "options": { "version": 3 }, "conditions": [{ "leftValue": "={{$json.country}}", "rightValue": "cn", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } },
+        { "conditions": { "options": { "version": 3 }, "conditions": [{ "leftValue": "={{$json.country}}", "rightValue": "ph", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } },
+        { "conditions": { "options": { "version": 3 }, "conditions": [{ "leftValue": "={{$json.country}}", "rightValue": "ine", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } },
+        { "conditions": { "options": { "version": 3 }, "conditions": [{ "leftValue": "={{$json.country}}", "rightValue": "mx", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } },
+        { "conditions": { "options": { "version": 3 }, "conditions": [{ "leftValue": "={{$json.country}}", "rightValue": "th", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } },
+        { "conditions": { "options": { "version": 3 }, "conditions": [{ "leftValue": "={{$json.country}}", "rightValue": "pk", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } }
+      ] } },
+      "id": "route", "name": "按国家分流到跳板机", "type": "n8n-nodes-base.switch", "typeVersion": 3, "position": [-60, -120]
+    },
+    { "parameters": { "authentication": "privateKey", "command": "={{$json.command}}" }, "id": "cn", "name": "中国代码血缘检索", "type": "n8n-nodes-base.ssh", "typeVersion": 1, "position": [180, -480], "credentials": { "sshPrivateKey": { "id": "wGL20YUQ7ZpN1xRA", "name": "中国跳板机" } } },
+    { "parameters": { "authentication": "privateKey", "command": "={{$json.command}}" }, "id": "ph", "name": "菲律宾代码血缘检索", "type": "n8n-nodes-base.ssh", "typeVersion": 1, "position": [180, -320], "credentials": { "sshPrivateKey": { "id": "MQWXoKIQxg8ae2Nt", "name": "菲律宾跳板机" } } },
+    { "parameters": { "authentication": "privateKey", "command": "={{$json.command}}" }, "id": "ine", "name": "印尼代码血缘检索", "type": "n8n-nodes-base.ssh", "typeVersion": 1, "position": [180, -160], "credentials": { "sshPrivateKey": { "id": "SyHW5nXUCnuULr2c", "name": "印尼跳板机" } } },
+    { "parameters": { "authentication": "privateKey", "command": "={{$json.command}}" }, "id": "mx", "name": "墨西哥代码血缘检索", "type": "n8n-nodes-base.ssh", "typeVersion": 1, "position": [180, 0], "credentials": { "sshPrivateKey": { "id": "7oQDoS8H2buTjr7H", "name": "墨西哥跳板机" } } },
+    { "parameters": { "authentication": "privateKey", "command": "={{$json.command}}" }, "id": "th", "name": "泰国代码血缘检索", "type": "n8n-nodes-base.ssh", "typeVersion": 1, "position": [180, 160], "credentials": { "sshPrivateKey": { "id": "SliSXhrkW6tiEFFo", "name": "泰国跳板机" } } },
+    { "parameters": { "authentication": "privateKey", "command": "={{$json.command}}" }, "id": "pk", "name": "巴基斯坦代码血缘检索", "type": "n8n-nodes-base.ssh", "typeVersion": 1, "position": [180, 320], "credentials": { "sshPrivateKey": { "id": "W8NbqcmBWoI5MZ3s", "name": "巴基斯坦跳板机" } } },
+    { "parameters": { "jsCode": "const stdout = String($json.stdout || '').trim(); const stderr = String($json.stderr || '').trim(); try { return [{ json: { ...JSON.parse(stdout.split(/\\n/).filter(Boolean).at(-1)), stderr: stderr || undefined } }]; } catch (error) { return [{ json: { success: false, error: `无法解析跳板机结果: ${error.message}`, stdout: stdout.slice(-2000), stderr: stderr.slice(-1000) } }]; }" }, "id": "parse", "name": "整理血缘结果", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, -80] },
+    { "parameters": { "respondWith": "json", "responseBody": "={{ $json }}" }, "id": "response", "name": "返回血缘结果", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.4, "position": [700, -80] },
+    { "parameters": { "respondWith": "json", "responseBody": "={{ { success: false, error: $json.error || 'invalid request' } }}", "options": { "responseCode": 400 } }, "id": "invalid", "name": "返回请求错误", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.4, "position": [-40, 220] }
+  ],
+  "connections": {
+    "接收血缘查询": { "main": [[{ "node": "校验并构造只读检索命令", "type": "main", "index": 0 }]] },
+    "校验并构造只读检索命令": { "main": [[{ "node": "请求是否有效", "type": "main", "index": 0 }]] },
+    "请求是否有效": { "main": [[{ "node": "按国家分流到跳板机", "type": "main", "index": 0 }], [{ "node": "返回请求错误", "type": "main", "index": 0 }]] },
+    "按国家分流到跳板机": { "main": [[{ "node": "中国代码血缘检索", "type": "main", "index": 0 }], [{ "node": "菲律宾代码血缘检索", "type": "main", "index": 0 }], [{ "node": "印尼代码血缘检索", "type": "main", "index": 0 }], [{ "node": "墨西哥代码血缘检索", "type": "main", "index": 0 }], [{ "node": "泰国代码血缘检索", "type": "main", "index": 0 }], [{ "node": "巴基斯坦代码血缘检索", "type": "main", "index": 0 }]] },
+    "中国代码血缘检索": { "main": [[{ "node": "整理血缘结果", "type": "main", "index": 0 }]] }, "菲律宾代码血缘检索": { "main": [[{ "node": "整理血缘结果", "type": "main", "index": 0 }]] }, "印尼代码血缘检索": { "main": [[{ "node": "整理血缘结果", "type": "main", "index": 0 }]] }, "墨西哥代码血缘检索": { "main": [[{ "node": "整理血缘结果", "type": "main", "index": 0 }]] }, "泰国代码血缘检索": { "main": [[{ "node": "整理血缘结果", "type": "main", "index": 0 }]] }, "巴基斯坦代码血缘检索": { "main": [[{ "node": "整理血缘结果", "type": "main", "index": 0 }]] },
+    "整理血缘结果": { "main": [[{ "node": "返回血缘结果", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

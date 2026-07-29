@@ -56,6 +56,8 @@ Agent 只接收该异常的看板名称、卡片名称、规则类型、原始�
 
 仓库提供可导入的无密钥模板 [n8n-metabase-anomaly-evidence-agent.template.json](../n8n-metabase-anomaly-evidence-agent.template.json)。它采用异步回调：平台只等待 n8n 受理任务，不会因为 StarRocks、DS 或模型耗时而阻塞巡检和既有通知。
 
+如需让 Agent 按证据自主决定是否继续从 ADS 向 DWS、DWD、ODS 下钻，请使用递归取证 v2，而不是替换当前工作流。完整架构、接入边界和上线步骤见 [递归取证 Agent v2 设计](metabase-recursive-evidence-agent-design.md)。
+
 在 n8n 中导入模板后：
 
 1. 创建 `SR Box Agent Token` HTTP Header Auth 凭证，值为 `Authorization: Bearer <只读机器身份 token>`。
