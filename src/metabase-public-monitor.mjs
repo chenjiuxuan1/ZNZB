@@ -1192,6 +1192,9 @@ function checkRobustCompleteDayChange(rows, rule) {
       const detection = detectMetricFluctuation(current, historyValues, {
         minHistory,
         minScore: rule.minAnomalyScore ?? 3,
+        shortMinHistory: rule.shortMinHistory ?? 7,
+        shortMinScore: rule.shortMinAnomalyScore ?? 5,
+        shortMinRelativeDelta: rule.shortMinRelativeDelta ?? 0.3,
         minAbsDelta: rule.minAbsDelta ?? 0,
         minRelativeDelta: rule.minRelativeDelta ?? 0,
         ewmaAlpha: rule.ewmaAlpha ?? 0.35,
@@ -1215,6 +1218,7 @@ function checkRobustCompleteDayChange(rows, rule) {
         message:
           `稳健完整日指标「${column}」从预期 ${formatMetricValue(expected, rule)} 到 ${formatMetricValue(current, rule)}，` +
           `${formatChangeDescription(changeRate, current - expected, rule)}；异常分数 ${formatNumber(detection.anomalyScore)}` +
+          `${detection.isShortHistory ? "；短历史样本" : ""}` +
           `${formatDateComparisonSuffix(item, dateColumn, currentDate, `最近${historyValues.length}个历史点`)}`,
       });
     }
