@@ -1,0 +1,662 @@
+{
+  "name": "Metabase Dynamic Evidence Agent (Dify async callback template)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "metabase-anomaly-dynamic-evidence-agent",
+        "responseMode": "responseNode"
+      },
+      "id": "receive",
+      "name": "Receive Dynamic Evidence Job",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        0
+      ],
+      "webhookId": "metabase-anomaly-dynamic-evidence-agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $json || {}; const body = request.body && typeof request.body === 'object' ? request.body : request; const header = String(request.headers?.authorization || request.headers?.Authorization || '').replace(/^Bearer\\s+/i, '').trim(); const expected = 'REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN'; const tokenEquals = (left, right) => { const actual = String(left); const configured = String(right); let diff = actual.length ^ configured.length; const length = Math.max(actual.length, configured.length); for (let index = 0; index < length; index += 1) diff |= (actual.charCodeAt(index) || 0) ^ (configured.charCodeAt(index) || 0); return diff === 0; }; if (!header || !tokenEquals(header, expected)) throw new Error('Unauthorized dynamic evidence webhook'); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('request body must be an object'); const allowedFields = new Set(['protocolVersion', 'jobId', 'requestedMode', 'anomaly', 'context', 'callback']); if (Object.keys(body).some(key => !allowedFields.has(key))) throw new Error('request contains unsupported fields'); const rawAnomaly = body.anomaly; const rawContext = body.context; const rawCallback = body.callback; if (body.protocolVersion !== 2 || !rawAnomaly || typeof rawAnomaly !== 'object' || Array.isArray(rawAnomaly) || !rawContext || typeof rawContext !== 'object' || Array.isArray(rawContext) || !rawCallback || typeof rawCallback !== 'object' || Array.isArray(rawCallback)) throw new Error('protocolVersion=2, anomaly, context and callback are required'); const jobId = typeof body.jobId === 'string' ? body.jobId.trim() : ''; const callbackToken = typeof rawCallback.token === 'string' ? rawCallback.token.trim() : ''; if (!/^[A-Za-z0-9._:-]{8,128}$/.test(jobId) || !callbackToken || callbackToken.length > 512) throw new Error('valid jobId and callback.token are required'); const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : ''; const context = { runId: text(rawContext.runId, 128), countryCode: text(rawContext.countryCode, 8).toUpperCase(), anomalyIndex: Number(rawContext.anomalyIndex) }; if (!context.runId || !/^[A-Z]{2,3}$/.test(context.countryCode) || !Number.isInteger(context.anomalyIndex) || context.anomalyIndex < 0) throw new Error('runId, countryCode and non-negative anomalyIndex are required'); const anomaly = { dashboardTitle: text(rawAnomaly.dashboardTitle, 256), cardTitle: text(rawAnomaly.cardTitle, 256), dashboardUrl: text(rawAnomaly.dashboardUrl, 2048), type: text(rawAnomaly.type, 64), message: text(rawAnomaly.message, 12000) }; const message = anomaly.message; const rawDates = [...message.matchAll(/(?<!\\d)(20\\d{2}[-/]\\d{1,2}[-/]\\d{1,2})(?!\\d)/g)].map(match => match[1]); const dates = rawDates.map(raw => { const value = raw.replace(/\\//g, '-').replace(/-(\\d)(?=-|$)/g, '-0$1'); const parsed = new Date(value + 'T00:00:00Z'); if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) throw new Error('invalid anomaly date: ' + raw); return value; }); const anomalyDate = dates.at(-1) || new Date().toISOString().slice(0,10); const baselineDate = dates.length > 1 ? dates.at(-2) : new Date(Date.parse(anomalyDate + 'T00:00:00Z') - 86400000).toISOString().slice(0,10); const callback = { url: 'REPLACE_WITH_DUTY_PLATFORM_INTERNAL_CALLBACK_URL', token: callbackToken }; const state = { discoveredTables: [], verifiedTables: [], evidence: [], lineage: [], budget: { maxDepth: 3, maxCalls: 10, maxPartitions: 3, maxDs: 3, depth: 0, calls: 0, partitions: 0, ds: 0 }, anomalyDate, baselineDate }; return [{ json: { jobId, anomaly, context, callback, state } }];"
+      },
+      "id": "normalize",
+      "name": "Normalize Async Job And Safe Dates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: true, jobId: $json.jobId, generatedAt: new Date().toISOString() } }}"
+      },
+      "id": "accepted",
+      "name": "Respond Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -440,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://REPLACE_WITH_DUTY_PLATFORM_HOST/api/metabase-anomaly-analysis/card-sql",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { runId: $json.context.runId, countryCode: $json.context.countryCode, anomalyIndex: Number($json.context.anomalyIndex) } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "card",
+      "name": "Get Verified Card SQL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        80
+      ],
+      "notes": "Replace the host and the same METABASE_ANOMALY_AGENT_CALLBACK_TOKEN configured by the platform. This read-only platform endpoint determines initial tables; Dify never supplies SQL."
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Normalize Async Job And Safe Dates').first().json; const response = $json && typeof $json === 'object' ? $json : {}; const card = response.card && typeof response.card === 'object' ? response.card : response; const pickSql = values => values.find(value => typeof value === 'string' && value.trim()) || ''; const sql = String(pickSql([card.dataset_query?.native?.query, card.dataset_query?.query, card.native_query?.query, card.native_query, card.sql, card.nativeSql, card.query, response.dataset_query?.native?.query, response.dataset_query?.query, response.native_query?.query, response.native_query, response.sql, response.nativeSql, response.query])).slice(0, 20000); const identifier = '[`]?([a-z][a-z0-9_]{0,127})[`]?\\s*\\.\\s*[`]?([a-z][a-z0-9_]{0,127})[`]?'; const tables = [...sql.matchAll(new RegExp('\\\\b(?:from|join|into|update)\\\\s+' + identifier, 'gi'))].map(match => (match[1] + '.' + match[2]).toLowerCase()); const discovered = Array.from(new Set(tables)).slice(0, 10); const error = typeof response.error?.message === 'string' ? response.error.message.slice(0, 600) : typeof response.error === 'string' ? response.error.slice(0, 600) : ''; const cardEvidence = error ? { kind: 'card_sql', status: 'unavailable', error } : { kind: 'card_sql', status: sql ? 'available' : 'unavailable', cardId: card.cardId || card.id || response.cardId || response.id || null, tables: discovered, sql: sql.slice(0, 4000) }; const state = { ...base.state, discoveredTables: discovered, verifiedTables: discovered, evidence: [cardEvidence] }; return [{ json: { ...base, state } }];"
+      },
+      "id": "seed",
+      "name": "Seed Only Verified Card Tables",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=REPLACE_WITH_DIFY_WORKFLOW_RUN_URL",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer REPLACE_WITH_DIFY_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { inputs: { run_id: $json.context.runId || '', country_code: $json.context.countryCode || '', anomaly_index: Number($json.context.anomalyIndex), anomaly_message: $json.anomaly.message || '', dashboard_title: $json.anomaly.dashboardTitle || '', card_title: $json.anomaly.cardTitle || '', dashboard_url: $json.anomaly.dashboardUrl || '', state_json: JSON.stringify($json.state) }, response_mode: 'blocking', user: 'metabase-evidence-' + $json.jobId } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "dify",
+      "name": "Ask Dify For Next Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        60,
+        80
+      ],
+      "notes": "Use a Dify workflow whose only output is one action JSON. API key is an import-time placeholder, never a repository secret."
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition"
+      },
+      "id": "merge-dify",
+      "name": "Preserve State With Dify Response",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        300,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $json; const raw = String($json.data?.outputs?.text || $json.data?.outputs?.result || $json.data?.outputs?.analysis_json || $json.data?.outputs?.answer || $json.answer || $json.text || ''); const parseLastBalancedObject = text => { let start = -1; let depth = 0; let inString = false; let escaped = false; let last; for (let index = 0; index < text.length; index += 1) { const char = text[index]; if (inString) { if (escaped) escaped = false; else if (char === '\\\\') escaped = true; else if (char === '\"') inString = false; continue; } if (char === '\"') { inString = true; continue; } if (char === '{') { if (depth === 0) start = index; depth += 1; continue; } if (char === '}' && depth > 0) { depth -= 1; if (depth === 0) { try { last = JSON.parse(text.slice(start, index + 1)); } catch {} } } } return depth === 0 ? last : undefined; }; const decision = parseLastBalancedObject(raw) || { action: 'finish', reason: 'Dify response has no trailing JSON' }; return [{ json: { ...base, difyText: raw.slice(-12000), decision } }];"
+      },
+      "id": "parse-dify",
+      "name": "Parse Trailing Dify JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.state ? $json : $('Parse Trailing Dify JSON').first().json; const state = input.state || {}; const budget = state.budget || {}; const raw = input.decision || (() => { const text = String(input.difyText || ''); let start = -1; let depth = 0; let inString = false; let escaped = false; let last; for (let index = 0; index < text.length; index += 1) { const char = text[index]; if (inString) { if (escaped) escaped = false; else if (char === '\\\\') escaped = true; else if (char === '\"') inString = false; continue; } if (char === '\"') { inString = true; continue; } if (char === '{') { if (depth === 0) start = index; depth += 1; continue; } if (char === '}' && depth > 0) { depth -= 1; if (depth === 0) { try { last = JSON.parse(text.slice(start, index + 1)); } catch {} } } } return depth === 0 ? (last || {}) : {}; })(); const action = String(raw.action || '').trim(); const table = String(raw.table || raw.target || '').trim().toLowerCase(); const known = new Set([...(state.discoveredTables || []), ...(state.verifiedTables || [])]); const allowed = new Set(['trace_lineage', 'check_partition', 'check_ds_workflow', 'finish']); let error = !allowed.has(action) ? 'unsupported_action' : ''; if (!error && action !== 'finish' && (!/^[a-z][a-z0-9_]{0,127}\\.[a-z][a-z0-9_]{0,127}$/.test(table) || !known.has(table))) error = 'target_must_be_discovered_or_verified'; if (!error && Number(raw.depth) > 3) error = 'depth_budget_exhausted'; if (!error && Number(budget.calls || 0) >= 10 && action !== 'finish') error = 'tool_call_budget_exhausted'; if (!error && action === 'trace_lineage' && Number(budget.depth || 0) >= 3) error = 'depth_budget_exhausted'; if (!error && action === 'check_partition' && Number(budget.partitions || 0) >= 3) error = 'partition_budget_exhausted'; if (!error && action === 'check_ds_workflow' && Number(budget.ds || 0) >= 3) error = 'ds_budget_exhausted'; const nextBudget = { ...budget, calls: Number(budget.calls || 0) + (action === 'finish' ? 0 : 1) }; return [{ json: { ...input, valid: !error, error, action: error ? 'finish' : action, table, state: { ...state, budget: nextBudget } } }];"
+      },
+      "id": "validate-action",
+      "name": "Validate Dify Action And Budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        80
+      ],
+      "notes": "Only known card/lineage tables can be targeted. Hard limits: depth 3, calls 10, partitions 3, DS 3."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "trace_lineage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "trace_lineage"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "check_partition",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "check_partition"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "check_ds_workflow",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "check_ds_workflow"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "finish",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "finish"
+            }
+          ]
+        }
+      },
+      "id": "switch",
+      "name": "Switch Validated Evidence Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        760,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://REPLACE_WITH_N8N_PUBLIC_HOST/webhook/warehouse-lineage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { operation: 'trace_table', countryCode: $json.context.countryCode, table: $json.table, maxFiles: 10 } }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "lineage",
+      "name": "Trace Lineage Via Public Gateway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1010,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://REPLACE_WITH_N8N_PUBLIC_HOST/webhook/warehouse-partition-evidence",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { countryCode: $json.context.countryCode, table: $json.table, anomalyDate: $json.state.anomalyDate, baselineDate: $json.state.baselineDate, metricHint: String($json.anomaly.cardTitle || '').slice(0, 120) } }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "partition",
+      "name": "Check Partition Via Public Gateway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1010,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://REPLACE_WITH_N8N_PUBLIC_HOST/webhook/ds-runtime-evidence",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.dsRequest }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "ds",
+      "name": "Check DS Runtime Via Public Gateway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1010,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.state ? $json : $('Validate Dify Action And Budget').first().json; const state = input.state || {}; const isPath = value => typeof value === 'string' && value.length <= 500 && !value.startsWith('/') && /^[A-Za-z0-9_./-]+$/.test(value) && !value.includes('..'); const line = [...(state.lineage || [])].reverse().find(item => item && item.table === input.table && item.producerSql === true); const producerFiles = Array.from(new Set((line?.producerFiles || []).filter(isPath))).slice(0, 20); const sourceSql = typeof line?.sourceSql === 'string' ? line.sourceSql.slice(0, 20000) : ''; const dsEvidenceAvailable = Boolean(producerFiles.length || sourceSql.trim()); const dsRequest = { countryCode: input.context.countryCode, table: input.table, anomalyDate: state.anomalyDate, producerFiles }; if (sourceSql.trim()) dsRequest.sourceSql = sourceSql; return [{ json: { ...input, dsEvidenceAvailable, dsRequest, status: dsEvidenceAvailable ? input.status : 'unavailable', reason: dsEvidenceAvailable ? input.reason : 'no_verified_producer_lineage_for_ds' } }];"
+      },
+      "id": "build-ds-request",
+      "name": "Build DS Runtime Evidence Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 180],
+      "notes": "Only producer_sql matched-file paths or source SQL already returned by the lineage gateway may be sent to DS. Missing evidence returns unavailable without invoking DS."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.dsEvidenceAvailable }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }]
+        }
+      },
+      "id": "has-ds-evidence",
+      "name": "Verified DS Runtime Evidence Is Available",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1010, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prior = $('Validate Dify Action And Budget').first().json; const result = $json || {}; const state = structuredClone(prior.state); const action = prior.action; const evidence = { kind: action, table: prior.table || null, result: JSON.parse(JSON.stringify(result)) }; state.evidence = [...(state.evidence || []), evidence].slice(-20); if (action === 'trace_lineage') { const producerSql = result.evidence?.quality === 'producer_sql'; const upstream = (producerSql ? result.upstreamTables : []).filter(t => /^[a-z][a-z0-9_]{0,127}\\.[a-z][a-z0-9_]{0,127}$/.test(String(t))).map(String); const isPath = value => typeof value === 'string' && value.length <= 500 && !value.startsWith('/') && /^[A-Za-z0-9_./-]+$/.test(value) && !value.includes('..'); const producerFiles = producerSql ? Array.from(new Set([...(result.evidence?.producerFiles || []), ...(Array.isArray(result.matchedFiles) ? result.matchedFiles.filter(file => file?.role === 'producer_sql').map(file => file.path) : [])].filter(isPath))).slice(0, 20) : []; const sourceSql = producerSql && typeof result.sourceSql === 'string' ? result.sourceSql.slice(0, 20000) : ''; state.discoveredTables = Array.from(new Set([...(state.discoveredTables || []), ...upstream])).slice(0, 20); state.verifiedTables = Array.from(new Set([...(state.verifiedTables || []), ...upstream])).slice(0, 20); state.lineage = [...(state.lineage || []), { table: prior.table, upstreamTables: upstream, producerSql, producerFiles, sourceSql }].slice(-10); state.budget.depth = Math.min(3, Number(state.budget.depth || 0) + 1); } if (action === 'check_partition') state.budget.partitions = Number(state.budget.partitions || 0) + 1; if (action === 'check_ds_workflow') state.budget.ds = Number(state.budget.ds || 0) + 1; return [{ json: { ...prior, state } }];"
+      },
+      "id": "append",
+      "name": "Append Bounded Gateway Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const state = $json.state || {}; const raw = $json.valid === true && $json.action === 'finish' && $json.decision && typeof $json.decision === 'object' && !Array.isArray($json.decision) ? $json.decision : {}; const text = (value, max, fallback = '') => typeof value === 'string' ? value.trim().slice(0, max) : fallback; const list = (value, maxItems, maxLength) => Array.isArray(value) ? value.filter(item => typeof item === 'string').map(item => item.trim().slice(0, maxLength)).filter(Boolean).slice(0, maxItems) : []; const sensitive = /authorization|token|secret|password|credential|cookie|api[_-]?key/i; const omit = /sql|command|stdout|stderr|body|headers?/i; const sanitize = (value, depth = 0) => { if (value === null || value === undefined) return value; if (typeof value === 'string') return value.trim().slice(0, 600); if (typeof value === 'number' || typeof value === 'boolean') return value; if (depth >= 3) return '[truncated]'; if (Array.isArray(value)) return value.slice(0, 10).map(item => sanitize(item, depth + 1)); if (typeof value === 'object') { const out = {}; for (const [key, item] of Object.entries(value).slice(0, 30)) { if (sensitive.test(key) || omit.test(key)) continue; out[key] = sanitize(item, depth + 1); } return out; } return String(value).slice(0, 600); }; const evidenceChain = Array.isArray(state.evidence) ? state.evidence.slice(-20).map(item => sanitize(item)) : []; const confidence = ['low', 'medium', 'high'].includes(raw.confidence) ? raw.confidence : 'low'; const dataSideVerdict = ['data_issue', 'business_change', 'insufficient_evidence'].includes(raw.dataSideVerdict) ? raw.dataSideVerdict : 'insufficient_evidence'; const notificationAction = ['send', 'downgrade', 'enrich_only'].includes(raw.notificationAction) ? raw.notificationAction : 'enrich_only'; const analysis = { summary: text(raw.summary, 1200, 'Dynamic evidence collection finished.'), evidence: list(raw.evidence, 5, 600), possibleCauses: list(raw.possibleCauses, 3, 600), verificationSteps: list(raw.verificationSteps, 3, 600), recommendedActions: list(raw.recommendedActions, 3, 600), confidence, limitations: text(raw.limitations, 1600, $json.error || 'Evidence is bounded and must be reviewed.'), dataSideVerdict, notificationAction, evidenceChain: evidenceChain.map(item => ({ kind: item?.kind || 'evidence', table: item?.table || null, result: item?.result || null })) }; return [{ json: { jobId: $json.jobId, runId: $json.context.runId, countryCode: $json.context.countryCode, anomalyIndex: Number($json.context.anomalyIndex), analysis, evidence: { evidenceChain } } }];"
+      },
+      "id": "finish",
+      "name": "Build Conservative Completion Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1010,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=REPLACE_WITH_DUTY_PLATFORM_INTERNAL_CALLBACK_URL",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Normalize Async Job And Safe Dates').first().json.callback.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "callback",
+      "name": "Callback Duty Platform",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1260,
+        360
+      ],
+      "notes": "This is a fixed internal platform callback URL. Never derive a callback destination from the inbound request."
+    }
+  ],
+  "connections": {
+    "Receive Dynamic Evidence Job": {
+      "main": [
+        [
+          {
+            "node": "Normalize Async Job And Safe Dates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Async Job And Safe Dates": {
+      "main": [
+        [
+          {
+            "node": "Respond Accepted",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Verified Card SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Verified Card SQL": {
+      "main": [
+        [
+          {
+            "node": "Seed Only Verified Card Tables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seed Only Verified Card Tables": {
+      "main": [
+        [
+          {
+            "node": "Ask Dify For Next Action",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preserve State With Dify Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Dify For Next Action": {
+      "main": [
+        [
+          {
+            "node": "Preserve State With Dify Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Preserve State With Dify Response": {
+      "main": [
+        [
+          {
+            "node": "Parse Trailing Dify JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Trailing Dify JSON": {
+      "main": [
+        [
+          {
+            "node": "Validate Dify Action And Budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Dify Action And Budget": {
+      "main": [
+        [
+          {
+            "node": "Switch Validated Evidence Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Validated Evidence Action": {
+      "main": [
+        [
+          {
+            "node": "Trace Lineage Via Public Gateway",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Partition Via Public Gateway",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build DS Runtime Evidence Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Conservative Completion Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trace Lineage Via Public Gateway": {
+      "main": [
+        [
+          {
+            "node": "Append Bounded Gateway Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Partition Via Public Gateway": {
+      "main": [
+        [
+          {
+            "node": "Append Bounded Gateway Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build DS Runtime Evidence Request": {
+      "main": [
+        [
+          {
+            "node": "Verified DS Runtime Evidence Is Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verified DS Runtime Evidence Is Available": {
+      "main": [
+        [
+          {
+            "node": "Check DS Runtime Via Public Gateway",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append Bounded Gateway Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check DS Runtime Via Public Gateway": {
+      "main": [
+        [
+          {
+            "node": "Append Bounded Gateway Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Bounded Gateway Evidence": {
+      "main": [
+        [
+          {
+            "node": "Ask Dify For Next Action",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preserve State With Dify Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Conservative Completion Callback": {
+      "main": [
+        [
+          {
+            "node": "Callback Duty Platform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -124,22 +124,9 @@ AI 只可从当前 `frontier` 选择表；SQL 由工具模板根据表名和日�
 }
 ```
 
-## n8n 部署
+## n8n 部署（已由动态模板替代）
 
-1. 导入 [n8n-metabase-anomaly-recursive-agent.template.json](../n8n-metabase-anomaly-recursive-agent.template.json)。
-2. 在 n8n Variables 中设置 `DASHSCOPE_API_KEY`、`SR_BOX_BASE_URL`、`LINEAGE_GATEWAY_URL`；令牌请放 n8n Credential，不要写入 Git 模板。
-3. 给 SR Box Credential 仅授予 `SELECT`、`SHOW`、`DESC`、`EXPLAIN`。
-4. 将模板中的“血缘适配器”请求地址配置为实际网关，确认它能返回上面的契约。
-5. 发布工作流，取得 Production Webhook URL。
-6. 平台 `.env` 配置：
-
-```dotenv
-METABASE_ANOMALY_AGENT_ENABLED=true
-METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/metabase-anomaly-recursive-agent
-METABASE_ANOMALY_AGENT_MODE=recursive_evidence
-```
-
-平台和 n8n 同机 Docker 时，模板回调地址使用 `http://172.19.0.1:28787`；该地址已由平台默认回调配置生成。
+此设计文档中的旧递归模板不再交付，也不得导入或发布。请改用 [动态取证 Agent 模板](../n8n-metabase-anomaly-dynamic-evidence-agent.template.json)，并按 [n8n Dify 动态取证决策环](n8n-dify-decision-loop.md) 配置固定内网 callback、入口 Bearer token 与三个只读公共网关。动态模板不读取 n8n `$env` / `$vars`，也不允许任意 callback URL 或模型提供 SQL。
 
 ## 灰度
 
