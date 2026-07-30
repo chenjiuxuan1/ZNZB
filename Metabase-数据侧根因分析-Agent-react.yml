@@ -150,6 +150,9 @@ workflow:
       width: 242
     - data:
         agent_parameters:
+          max_iterations:
+            type: constant
+            value: 15
           instruction:
             type: constant
             value: '你是 Metabase 异常数据侧根因分析 Agent。你拥有 4 个只读工具，需要自主调用它们来追溯异常根因。
