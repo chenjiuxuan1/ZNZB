@@ -8,6 +8,7 @@ import { createPlatformApi } from "./platform-api.mjs";
 import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
 import { assertWarehouseLineageToolAuthorized, proxyWarehouseLineageRequest } from "./warehouse-lineage-proxy.mjs";
 import { assertMetabaseAgentCallbackAuthorized } from "./metabase-agent-callback-auth.mjs";
+import { proxyWattrelQuery, proxyDsSchedulerRequest } from "./evidence-tool-proxy.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
