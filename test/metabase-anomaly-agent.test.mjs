@@ -81,6 +81,7 @@ test("Metabase anomaly agent accepts an async n8n evidence job without blocking"
   const result = await analyzeMetabaseAnomaly({
     env: {
       METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/metabase-anomaly-evidence-agent",
+      METABASE_ANOMALY_AGENT_N8N_TOKEN: "webhook-token",
       METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
       METABASE_ANOMALY_AGENT_CALLBACK_URL: "https://duty.example/api/metabase-anomaly-analysis/callback",
       METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",
@@ -98,14 +99,21 @@ test("Metabase anomaly agent accepts an async n8n evidence job without blocking"
   assert.equal(result.jobId, "job-1");
 });
 
-test("Metabase evidence webhook enables async internal callback by default", () => {
+test("Metabase evidence webhook requires ingress and callback tokens", () => {
   const settings = getMetabaseAnomalyAgentSettings({
     METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "http://127.0.0.1:5678/webhook/metabase-anomaly-evidence-agent",
   });
-  assert.equal(settings.enabled, true);
+  assert.equal(settings.enabled, false);
   assert.equal(settings.n8nAsync, true);
   assert.equal(settings.callbackUrl, "http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback");
   assert.equal(settings.callbackToken, "");
+
+  const configured = getMetabaseAnomalyAgentSettings({
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "http://127.0.0.1:5678/webhook/metabase-anomaly-evidence-agent",
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: "webhook-token",
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",
+  });
+  assert.equal(configured.enabled, true);
 });
 
 test("Metabase anomaly agent only enables recursive evidence through an explicit mode", async () => {
@@ -113,6 +121,8 @@ test("Metabase anomaly agent only enables recursive evidence through an explicit
   await analyzeMetabaseAnomaly({
     env: {
       METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/metabase-anomaly-recursive-agent",
+      METABASE_ANOMALY_AGENT_N8N_TOKEN: "webhook-token",
+      METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",
       METABASE_ANOMALY_AGENT_MODE: "recursive_evidence",
     },
     anomaly: { message: "指标从 1 降为 0" },
@@ -133,6 +143,7 @@ test("Metabase anomaly agent returns pending when an async n8n job outlives the 
     const result = await analyzeMetabaseAnomaly({
       env: {
         METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/metabase-anomaly-evidence-agent",
+        METABASE_ANOMALY_AGENT_N8N_TOKEN: "webhook-token",
         METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
         METABASE_ANOMALY_AGENT_CALLBACK_URL: "https://duty.example/api/metabase-anomaly-analysis/callback",
         METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",

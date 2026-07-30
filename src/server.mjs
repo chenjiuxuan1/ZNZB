@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
 import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
 import { assertWarehouseLineageToolAuthorized, proxyWarehouseLineageRequest } from "./warehouse-lineage-proxy.mjs";
+import { assertMetabaseAgentCallbackAuthorized } from "./metabase-agent-callback-auth.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -191,24 +192,6 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await api.getDsHistory(Object.fromEntries(url.searchParams.entries())));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
-}
-
-function assertMetabaseAgentCallbackAuthorized(request, body = {}) {
-  const expected = String(process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN || "").trim();
-  if (!expected) {
-    // A generated pending job ID is an unguessable one-time capability when a
-    // same-host n8n workflow uses the internal callback URL without a shared secret.
-    if (String(body?.jobId || "").trim()) return;
-    const error = new Error("Metabase Agent callback requires a job ID");
-    error.statusCode = 401;
-    throw error;
-  }
-  const received = String(request.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
-  if (received !== expected) {
-    const error = new Error("Unauthorized Metabase Agent callback");
-    error.statusCode = 401;
-    throw error;
-  }
 }
 
 function startBatchScheduler() {

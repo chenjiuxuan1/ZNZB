@@ -24,7 +24,7 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const explicitlyDisabled = ["0", "false", "off", "no"].includes(enabledValue);
   const transport = n8nWebhookUrl ? "n8n" : "direct";
   const configured = transport === "n8n"
-    ? Boolean(n8nWebhookUrl && (!n8nAsync || callbackUrl))
+    ? Boolean(n8nWebhookUrl && n8nToken && (!n8nAsync || (callbackUrl && callbackToken)))
     : Boolean(baseUrl && apiKey && model);
   return {
     enabled: !explicitlyDisabled && configured,

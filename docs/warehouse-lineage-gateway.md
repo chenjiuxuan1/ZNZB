@@ -17,6 +17,7 @@
 ```text
 POST http://127.0.0.1:5678/webhook/warehouse-lineage
 Content-Type: application/json
+Authorization: Bearer <shared-evidence-gateway-token>
 ```
 
 请求：
@@ -31,6 +32,8 @@ Content-Type: application/json
 ```
 
 `operation` 当前可省略，默认约定为 `trace_table`；调用方当前必须只传该动作。保留该字段是为了未来扩展而不改变调用方契约。
+
+导入后必须把模板内所有 `REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN` 替换为同一个组织共享的随机值。缺少或不匹配的 Bearer token 会返回 400，且不会进入 SSH 检索节点。“公共”仅表示可由多个已授权 n8n 工作流复用，绝不表示匿名开放；该 token 独立于 Dify API Key、值班平台 callback token 和 Card SQL token。
 
 响应：
 
@@ -66,6 +69,7 @@ Content-Type: application/json
 ```bash
 curl -sS -X POST http://127.0.0.1:5678/webhook/warehouse-lineage \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <shared-evidence-gateway-token>' \
   -d '{"operation":"trace_table","countryCode":"mx","table":"dm_strategy_ps_mex017_c1c2_s1_month_start"}'
 ```
 

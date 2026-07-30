@@ -167,11 +167,14 @@ test("platform api stores an async Metabase evidence job and accepts its callbac
   const completed = await api.completeMetabaseAnomalyAnalysis({
     runId: "run-agent-callback", countryCode: "INE", anomalyIndex: 0, jobId: "job-callback",
     analysis: { summary: "DWD 分区缺失", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send" },
-    evidence: { checkedTables: ["dwd_example"], dsStatus: "failed" },
+    evidence: { evidenceChain: Array.from({ length: 20 }, (_, index) => ({ kind: "trace_lineage", table: `dwd_example_${index}`, result: { quality: "producer_sql" } })), dsStatus: "failed" },
   });
   assert.equal(completed.status, "completed");
   assert.equal(completed.analysis.dataSideVerdict, "data_issue");
   assert.equal(completed.evidence.dsStatus, "failed");
+  assert.ok(completed.evidence);
+  assert.equal(completed.evidence.evidenceChain.length, 20);
+  assert.equal(completed.evidence.evidenceChain[0].result.quality, "producer_sql");
 
   const lowercaseCountryCallback = await api.completeMetabaseAnomalyAnalysis({
     runId: "run-agent-callback", countryCode: "ine", anomalyIndex: 0, jobId: "job-callback",
