@@ -1,0 +1,394 @@
+app:
+  description: 只读取证型 Agent。根据 Metabase 异常，自主选择 SQL、血缘、分区和 DS 工具进行有限层级追溯，并给出数据侧判断。
+  icon: 🔎
+  icon_background: '#D5F5E3'
+  icon_type: emoji
+  mode: workflow
+  name: Metabase 数据侧根因分析 Agent
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: agent
+      id: start-source-agent-target
+      source: start
+      sourceHandle: source
+      target: agent
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: agent
+        targetType: end
+      id: agent-source-end-target
+      source: agent
+      sourceHandle: source
+      target: end
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: 由值班平台传入单条 Metabase 异常及运行上下文。
+        selected: false
+        title: 接收异常
+        type: start
+        variables:
+        - label: 巡检运行 ID
+          max_length: 128
+          required: true
+          type: text-input
+          variable: run_id
+        - label: 国家代码
+          max_length: 16
+          required: true
+          type: text-input
+          variable: country_code
+        - label: 异常序号
+          required: true
+          type: number
+          variable: anomaly_index
+        - label: 异常原文
+          max_length: 12000
+          required: true
+          type: paragraph
+          variable: anomaly_message
+        - label: 看板名称
+          max_length: 256
+          required: false
+          type: text-input
+          variable: dashboard_title
+        - label: 卡片名称
+          max_length: 256
+          required: false
+          type: text-input
+          variable: card_title
+        - label: 看板链接
+          max_length: 2048
+          required: false
+          type: text-input
+          variable: dashboard_url
+        - default: ''
+          hint: ''
+          label: state_json
+          options: []
+          placeholder: ''
+          required: true
+          type: paragraph
+          variable: state_json
+          max_length: 50000
+      height: 361
+      id: start
+      position:
+        x: 80
+        y: 280
+      positionAbsolute:
+        x: 80
+        y: 280
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        agent_parameters:
+          instruction:
+            type: constant
+            value: '你是 Metabase 异常数据侧根因分析 Agent。你拥有 4 个只读工具，需要自主调用它们来追溯异常根因。
+
+
+              可用工具：
+
+              1. get_card_sql - 读取异常对应 Metabase 卡片的 SQL，从中提取底表。必须最先调用。
+
+              2. trace_lineage - 查询表的代码血缘，发现上游表和 producer SQL。只有 evidence.quality=producer_sql
+              时 upstreamTables 才是有效上游。
+
+              3. check_wattrel - 查询国家的 Wattrel 质量告警。如果异常表有质量告警，异常可能归因到数据质量问题。
+
+              4. check_ds_status - 查询 DolphinScheduler 任务运行状态。action 可选 check_failed_instances（查失败实例）、search_resource_sql（按
+              SQL 搜 DS 资源）。用于判断上游 DS 任务是否失败导致数据未产出。
+
+
+              分析流程：
+
+              1. 先调用 get_card_sql 获取卡片 SQL，提取 FROM/JOIN 后的表名。
+
+              2. 对底表调用 trace_lineage 追溯上游。如果 evidence.quality=producer_sql，继续追溯 upstreamTables。
+
+              3. 如果有 producer SQL，调用 check_ds_status（action=search_resource_sql，search_val=producer
+              SQL）找到对应的 DS 工作流。
+
+              4. 找到 DS 工作流后，调用 check_ds_status（action=check_failed_instances，search_val=工作流名）查询是否失败。
+
+              5. 调用 check_wattrel 检查相关表是否有质量告警。
+
+              6. 综合所有证据给出结论。
+
+
+              根因判定：
+
+              - DS 任务失败/延迟 -> data_issue
+
+              - Wattrel 质量告警匹配 -> data_issue
+
+              - DS 正常 + 无质量告警 + 指标变化 -> business_change
+
+              - 证据不足 -> insufficient_evidence
+
+
+              输入字段：
+
+              - run_id: {{#start.run_id#}}
+
+              - country_code: {{#start.country_code#}}
+
+              - anomaly_index: {{#start.anomaly_index#}}
+
+              - anomaly_message: {{#start.anomaly_message#}}
+
+              - dashboard_title: {{#start.dashboard_title#}}
+
+              - card_title: {{#start.card_title#}}
+
+              - dashboard_url: {{#start.dashboard_url#}}
+
+              - state_json: {{#start.state_json#}}
+
+
+              state_json 是 n8n 传入的上下文（可能包含已获取的 Card SQL 证据）。如果 state_json 中已有 card_sql
+              证据，可以跳过 get_card_sql 直接调用 trace_lineage。
+
+
+              输出规则：
+
+              - 最终输出必须是一个合法 JSON 对象，第一个字符是 {，最后一个字符是 }。
+
+              - 不要输出 Markdown、代码块或多个 JSON。
+
+              - 不得编造未通过工具获取的表名、SQL、工作流名称或运行状态。
+
+              - 不得输出重跑、修复、写入等操作指令。
+
+
+              输出格式：
+
+              {"action":"finish","summary":"根因摘要","evidence":["证据1","证据2"],"possibleCauses":["原因1"],"verificationSteps":["步骤1"],"recommendedActions":["建议1"],"confidence":"high|medium|low","limitations":"证据边界","dataSideVerdict":"data_issue|business_change|insufficient_evidence","notificationAction":"send|downgrade|enrich_only"}'
+          model:
+            type: constant
+            value:
+              completion_params: {}
+              mode: chat
+              model: qwen3.6-plus
+              model_type: llm
+              provider: langgenius/tongyi/tongyi
+              type: model-selector
+          query:
+            type: constant
+            value: '{{#start.anomaly_message#}}'
+          tools:
+            type: constant
+            value:
+            - enabled: true
+              extra:
+                description: 仅能读取平台历史巡检中指定异常所关联卡片的 SQL。必须先调用此工具， 从 SQL 中提取根表后才能调用
+                  trace_lineage；不能依据告警文字猜测表名。
+              parameters:
+                anomalyIndex:
+                  auto: 1
+                  value: null
+                countryCode:
+                  auto: 1
+                  value: null
+                runId:
+                  auto: 1
+                  value: null
+              provider_name: cb8c5409-2ece-4e19-bd5d-babea222bfaa
+              provider_show_name: 数仓代码血缘查询
+              settings: {}
+              tool_description: 仅能读取平台历史巡检中指定异常所关联卡片的 SQL。必须先调用此工具， 从 SQL 中提取根表后才能调用
+                trace_lineage；不能依据告警文字猜测表名。
+              tool_label: get_card_sql
+              tool_name: get_card_sql
+              type: api
+            - enabled: true
+              extra:
+                description: 查询指定国家和表名的代码血缘。只有 evidence.quality=producer_sql 时， upstreamTables
+                  才可作为下一层递归追溯的有效证据； declared_dependency_only 仅是线索，不能作为生产血缘结论。
+              parameters:
+                countryCode:
+                  auto: 1
+                  value: null
+                maxFiles:
+                  auto: 1
+                  value: null
+                operation:
+                  auto: 1
+                  value: null
+                table:
+                  auto: 1
+                  value: null
+              provider_name: cb8c5409-2ece-4e19-bd5d-babea222bfaa
+              provider_show_name: 数仓代码血缘查询
+              settings: {}
+              tool_description: 查询指定国家和表名的代码血缘。只有 evidence.quality=producer_sql 时，
+                upstreamTables 才可作为下一层递归追溯的有效证据； declared_dependency_only 仅是线索，不能作为生产血缘结论。
+              tool_label: trace_lineage
+              tool_name: trace_lineage
+              type: api
+            - enabled: true
+              extra:
+                description: 查询指定国家的 Wattrel 质量告警。返回最近 3 天内 result=1 的质量规则告警，包含 src_tbl、dest_tbl、status
+                  等字段。用于判断异常表是否存在数据质量问题。
+              parameters:
+                country:
+                  auto: 1
+                  value: null
+                limit:
+                  auto: 1
+                  value: null
+              provider_name: cb8c5409-2ece-4e19-bd5d-babea222bfaa
+              provider_show_name: 数仓代码血缘查询
+              settings: {}
+              tool_description: 查询指定国家的 Wattrel 质量告警。返回最近 3 天内 result=1 的质量规则告警。用于判断异常表是否存在数据质量问题。
+              tool_label: check_wattrel
+              tool_name: check_wattrel
+              type: api
+            - enabled: true
+              extra:
+                description: 查询 DolphinScheduler 任务运行状态。action 可选 check_failed_instances（查失败实例）、search_resource_sql（按
+                  SQL 搜 DS 资源）、list_workflows（列工作流）。用于判断上游 DS 任务是否失败导致数据未产出。
+              parameters:
+                country:
+                  auto: 1
+                  value: null
+                action:
+                  auto: 1
+                  value: null
+                search_val:
+                  auto: 1
+                  value: null
+                start_time:
+                  auto: 1
+                  value: null
+                end_time:
+                  auto: 1
+                  value: null
+              provider_name: cb8c5409-2ece-4e19-bd5d-babea222bfaa
+              provider_show_name: 数仓代码血缘查询
+              settings: {}
+              tool_description: 查询 DolphinScheduler 任务运行状态。action 可选 check_failed_instances（查失败实例）、search_resource_sql（按
+                SQL 搜 DS 资源）。用于判断上游 DS 任务是否失败。
+              tool_label: check_ds_status
+              tool_name: check_ds_status
+              type: api
+        agent_strategy_label: ReAct
+        agent_strategy_name: ReAct
+        agent_strategy_provider_name: langgenius/agent/agent
+        desc: 限制工具调用和递归层数的只读异常根因分析。
+        output_schema: null
+        plugin_unique_identifier: langgenius/agent
+        selected: true
+        title: 数据侧取证 Agent
+        tool_node_version: '2'
+        type: agent
+      height: 232
+      id: agent
+      position:
+        x: 390
+        y: 250
+      positionAbsolute:
+        x: 390
+        y: 250
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        desc: 返回给值班平台的结构化 JSON。
+        outputs:
+        - type: string
+          value_selector:
+          - agent
+          - text
+          variable: analysis_json
+        selected: false
+        title: 返回分析结果
+        type: end
+      height: 116
+      id: end
+      position:
+        x: 742.6928942083712
+        y: 314.1261826970085
+      positionAbsolute:
+        x: 742.6928942083712
+        y: 314.1261826970085
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: 152.01308522701993
+      y: 67.95386157395501
+      zoom: 0.9980355331119375
+  rag_pipeline_variables: []

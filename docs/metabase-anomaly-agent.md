@@ -8,7 +8,7 @@
 
 `POST /webhook/metabase-anomaly-dynamic-evidence-agent`
 
-Dify 只返回下一步的 JSON 动作（`trace_lineage`、`check_partition`、`check_ds_workflow` 或 `finish`），不会直接访问 ZNZB、StarRocks、DS，也不能执行重跑、修复、写入或权限变更。n8n 只接受已发现的表名，且硬限制为：血缘深度 3、总工具调用 10、分区检查 3、DS 检查 3。完整循环与 Dify 输出契约见 [n8n Dify 动态取证决策环](n8n-dify-decision-loop.md)。
+Dify 只返回下一步的 JSON 动作（`trace_lineage`、`check_wattrel`、`check_ds_workflow`、`check_ds_status` 或 `finish`），不会直接访问 ZNZB、StarRocks、DolphinScheduler、Wattrel，也不能执行重跑、修复、写入或权限变更。n8n 只接受已发现的表名，且硬限制为：血缘深度 3、总工具调用 12、Wattrel 检查 3、DS 匹配 3、DS 状态检查 3。完整循环与 Dify 输出契约见 [n8n Dify 动态取证决策环](n8n-dify-decision-loop.md)，Dify 系统提示词见 [Dify 系统提示词](dify-metabase-anomaly-system-prompt.md)。完整循环与 Dify 输出契约见 [n8n Dify 动态取证决策环](n8n-dify-decision-loop.md)。
 
 ## 必填配置与凭证边界
 
@@ -44,10 +44,10 @@ METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=replace-with-long-random-callback-token
 1. `REPLACE_WITH_DUTY_PLATFORM_HOST` 为 ZNZB 可被 n8n 容器访问的内部主机；`Get Verified Card SQL` 节点填写 `METABASE_ANOMALY_AGENT_CALLBACK_TOKEN`。
 2. `REPLACE_WITH_DUTY_PLATFORM_INTERNAL_CALLBACK_URL` 为上面的固定内网 callback 地址。
 3. `REPLACE_WITH_DIFY_WORKFLOW_RUN_URL` 必须直接填写完整内网地址 `http://172.20.0.234/v1/workflows/run`，不能拼接路径、不能填写公网域名；`REPLACE_WITH_DIFY_API_KEY` 为 Dify `app-` key。
-4. `REPLACE_WITH_N8N_PUBLIC_HOST` 为已发布取证网关的稳定 n8n 主机；保留 `/webhook/warehouse-lineage`、`/webhook/warehouse-partition-evidence`、`/webhook/ds-runtime-evidence` 三个路径。所有模板中的 `REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN` 必须替换为同一个共享随机 Bearer token；它仅保护可复用只读网关，独立于 Dify、平台 callback 和 Card SQL token。“公共”不代表匿名访问。
-5. 发布动态 Agent 及三个网关。公共复用不等于匿名开放：入口及网关须由 n8n/反向代理的组织认证保护。
-
-分区网关必须先绑定各国只读 StarRocks 凭证；DS 网关必须先绑定已审核的只读候选查询工作流。未完成绑定时它们只返回 `unavailable` 证据，绝不重跑 DS 或改写数据。
+4. `REPLACE_WITH_N8N_PUBLIC_HOST` 为已发布取证网关的稳定 n8n 主机；保留 `/webhook/warehouse-lineage`（血缘）、`/webhook/wattrel-query`（质量告警）、`/webhook/ds-scheduler`（DS 运行状态）三个路径。血缘网关的 `REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN` 必须替换为共享随机 Bearer token；Wattrel 和 DS scheduler 网关通过 webhook 路径隔离，不需要额外 bearer token。
+5. `REPLACE_WITH_DS_TASK_MATCH_WORKFLOW_ID`：DS 任务匹配子流程的 n8n workflow ID。动态 Agent 通过 `executeWorkflow` 节点直接调用该子流程，传入 producer SQL、国家、告警时间等上下文，而不是通过 HTTP 网关。
+6. `REPLACE_WITH_DS_API_TOKEN`：DolphinScheduler API token，用于 DS scheduler 网关查询任务运行状态。仅用于只读查询，不能用于重跑或修改任务。
+7. 发布动态 Agent 及三个网关（血缘、Wattrel、DS scheduler）。分区核验由 Codex `sr_box` 技能人工只读执行，不在 n8n 自动化流程中。DS 匹配通过 `executeWorkflow` 复用已有子流程，不新建 HTTP 网关。DS 失败重跑工作流**不得**被取证流程调用。
 
 ## 行为与结果
 

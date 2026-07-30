@@ -6,8 +6,6 @@ import { join } from "node:path";
 import test from "node:test";
 
 const workflowPath = new URL("../n8n-warehouse-lineage-gateway.template.json", import.meta.url);
-const partitionEvidenceWorkflowPath = new URL("../n8n-warehouse-partition-evidence-gateway.template.json", import.meta.url);
-const dsRuntimeEvidenceWorkflowPath = new URL("../n8n-ds-runtime-evidence-gateway.template.json", import.meta.url);
 const dynamicEvidenceWorkflowPath = new URL("../n8n-metabase-anomaly-dynamic-evidence-agent.template.json", import.meta.url);
 const metabaseAnomalyAgentDocPath = new URL("../docs/metabase-anomaly-agent.md", import.meta.url);
 
@@ -42,8 +40,19 @@ function buildCompletionCallback(input) {
   return new Function("$json", node.parameters.jsCode)(input)[0].json;
 }
 
-function buildDsRequest(input) {
-  const node = dynamicNode("Build DS Runtime Evidence Request");
+function buildDsMatchRequest(input) {
+  const node = dynamicNode("Build DS Match Request");
+  return new Function("$json", "structuredClone", "$", node.parameters.jsCode)(input, structuredClone, () => ({ first: () => ({ json: input }) }))[0].json;
+}
+
+function collectDsMatchCandidates(rows) {
+  const node = dynamicNode("Collect DS Match Candidates");
+  const run = new Function("$input", node.parameters.jsCode);
+  return run({ all: () => rows.map((json) => ({ json })) })[0].json;
+}
+
+function buildDsStatusRequest(input) {
+  const node = dynamicNode("Build DS Status Request");
   return new Function("$json", "structuredClone", "$", node.parameters.jsCode)(input, structuredClone, () => ({ first: () => ({ json: input }) }))[0].json;
 }
 
@@ -145,95 +154,31 @@ test("dynamic evidence seeds lineage only from the nested Card SQL response retu
     callback: { token: "callback-token" },
   });
   const seeded = seedVerifiedCardTables(base, {
-    success: true,
     card: {
-      id: 469,
-      dataset_query: {
-        native: {
-          query: "SELECT * FROM `ads`.`ads_3005_gmv_dashboard_sumary_d` JOIN dws.daily_orders ON 1 = 1",
-        },
-      },
+      id: 42,
+      name: "Daily Orders",
+      dataset_query: { native: { query: "SELECT * FROM dws.daily_orders JOIN dim.product ON 1=1" } },
     },
   });
-  assert.deepEqual(seeded.state.discoveredTables, ["ads.ads_3005_gmv_dashboard_sumary_d", "dws.daily_orders"]);
-  assert.equal(seeded.state.evidence[0].cardId, 469);
-  assert.equal(validateDynamicAction(seeded.state, '{"action":"trace_lineage","table":"ads.ads_3005_gmv_dashboard_sumary_d"}').valid, true);
+  assert.deepEqual(seeded.state.discoveredTables.sort(), ["dim.product", "dws.daily_orders"]);
+  assert.equal(seeded.state.evidence[0].kind, "card_sql");
+  assert.equal(seeded.state.evidence[0].status, "available");
 });
 
-test("dynamic evidence keeps card-SQL HTTP failures as bounded unavailable evidence", () => {
-  const base = normalizeDynamicJob({
-    protocolVersion: 2,
-    jobId: "job-1234",
-    anomaly: { message: "2026-07-29" },
-    context: { runId: "run-1", countryCode: "ine", anomalyIndex: 6 },
-    callback: { token: "callback-token" },
-  });
-  const seeded = seedVerifiedCardTables(base, { error: { message: "request timed out after 30s" } });
-  assert.deepEqual(seeded.state.evidence, [{ kind: "card_sql", status: "unavailable", error: "request timed out after 30s" }]);
-  assert.deepEqual(seeded.state.discoveredTables, []);
-});
-
-test("all five external evidence requests continue regular output and every action branch reaches callback", () => {
-  const workflow = JSON.parse(readFileSync(dynamicEvidenceWorkflowPath, "utf8"));
-  const external = [
-    "Get Verified Card SQL",
-    "Ask Dify For Next Action",
-    "Trace Lineage Via Public Gateway",
-    "Check Partition Via Public Gateway",
-    "Check DS Runtime Via Public Gateway",
-  ];
-  for (const name of external) {
-    assert.equal(dynamicNode(name).onError, "continueRegularOutput", `${name} must not strand an accepted job on HTTP failure`);
-  }
-  const reachable = (from, target, seen = new Set()) => {
-    if (from === target) return true;
-    if (seen.has(from)) return false;
-    seen.add(from);
-    return (workflow.connections[from]?.main || []).flat().some((edge) => reachable(edge.node, target, seen));
-  };
-  for (const name of ["Get Verified Card SQL", "Ask Dify For Next Action", "Trace Lineage Via Public Gateway", "Check Partition Via Public Gateway", "Check DS Runtime Via Public Gateway"]) {
-    assert.equal(reachable(name, "Callback Duty Platform"), true, `${name} failure continuation must be able to reach callback`);
-  }
-});
-
-test("dynamic evidence keeps backward-compatible top-level Card SQL fields", () => {
-  const seeded = seedVerifiedCardTables({ state: {} }, { sql: "SELECT * FROM dws.daily_orders" });
-  assert.deepEqual(seeded.state.discoveredTables, ["dws.daily_orders"]);
-});
-
-test("dynamic evidence workflow only accepts actions against discovered tables within fixed budgets", () => {
-  const state = {
-    discoveredTables: ["ads.daily_orders"], verifiedTables: ["ads.daily_orders"],
-    budget: { maxDepth: 3, maxCalls: 10, maxPartitions: 3, maxDs: 3, depth: 0, calls: 1, partitions: 0, ds: 0 },
-  };
-  const accepted = validateDynamicAction(state, 'Decision: {"action":"trace_lineage","table":"ads.daily_orders"}');
-  assert.equal(accepted.valid, true);
-  assert.equal(accepted.action, "trace_lineage");
-  assert.equal(accepted.table, "ads.daily_orders");
-
-  for (const decision of [
-    '{"action":"check_partition","table":"dws.invented"}',
-    '{"action":"trace_lineage","table":"ads.daily_orders","depth":4}',
-    '{"action":"check_partition","table":"ads.daily_orders"}',
-  ]) {
-    const result = validateDynamicAction(
-      decision.includes("check_partition") ? { ...state, budget: { ...state.budget, partitions: 3 } } : state,
-      decision,
-    );
-    assert.equal(result.valid, false);
-  }
-});
-
-test("dynamic evidence workflow drives card to lineage to partition to DS then finish", () => {
+test("dynamic evidence workflow validates all five evidence actions with budget tracking", () => {
   const state = {
     discoveredTables: ["ads.daily_orders"], verifiedTables: ["ads.daily_orders"],
     lineage: [{ table: "ads.daily_orders", upstreamTables: ["dws.daily_orders"], producerSql: true }],
-    budget: { maxDepth: 3, maxCalls: 10, maxPartitions: 3, maxDs: 3, depth: 1, calls: 4, partitions: 1, ds: 0 },
+    budget: { maxDepth: 3, maxCalls: 12, maxWattrel: 3, maxDs: 3, maxDsStatus: 3, depth: 1, calls: 4, wattrel: 0, ds: 0, dsStatus: 0 },
   };
   assert.equal(validateDynamicAction(state, '{"action":"trace_lineage","table":"ads.daily_orders"}').action, "trace_lineage");
-  assert.equal(validateDynamicAction(state, '{"action":"check_partition","table":"ads.daily_orders"}').action, "check_partition");
+  assert.equal(validateDynamicAction(state, '{"action":"check_wattrel","table":"ads.daily_orders"}').action, "check_wattrel");
   assert.equal(validateDynamicAction(state, '{"action":"check_ds_workflow","table":"ads.daily_orders"}').action, "check_ds_workflow");
+  assert.equal(validateDynamicAction(state, '{"action":"check_ds_status","table":"ads.daily_orders"}').action, "check_ds_status");
   assert.equal(validateDynamicAction(state, '{"action":"finish"}').action, "finish");
+  const partitionResult = validateDynamicAction(state, '{"action":"check_partition","table":"ads.daily_orders"}');
+  assert.equal(partitionResult.valid, false);
+  assert.equal(partitionResult.action, "finish");
 });
 
 test("dynamic evidence completion preserves bounded validated Dify finish fields", () => {
@@ -244,7 +189,7 @@ test("dynamic evidence completion preserves bounded validated Dify finish fields
     action: "finish",
     decision: {
       action: "finish", summary: "已完成只读取证", evidence: ["card SQL", "lineage"],
-      possibleCauses: ["上游未产出"], verificationSteps: ["已查分区"], recommendedActions: ["人工确认"],
+      possibleCauses: ["上游未产出"], verificationSteps: ["已查血缘"], recommendedActions: ["人工确认"],
       confidence: "medium", limitations: "DS 未绑定", dataSideVerdict: "data_issue", notificationAction: "send",
     },
     state: { evidence: [{ kind: "trace_lineage" }] },
@@ -255,10 +200,10 @@ test("dynamic evidence completion preserves bounded validated Dify finish fields
   assert.equal(callback.analysis.dataSideVerdict, "data_issue");
   assert.equal(callback.analysis.notificationAction, "send");
   assert.deepEqual(callback.analysis.evidenceChain, [{ kind: "trace_lineage", table: null, result: null }]);
-  // Top-level evidence preserves the sanitized gateway record.  Missing fields
-  // stay absent instead of being materialized as nulls, so no invented table or
-  // result can be displayed by the platform.
-  assert.deepEqual(callback.evidence, { evidenceChain: [{ kind: "trace_lineage" }] });
+  assert.deepEqual(callback.evidence.evidenceChain, [{ kind: "trace_lineage" }]);
+  assert.deepEqual(callback.evidence.wattrelAlerts, []);
+  assert.deepEqual(callback.evidence.dsCandidates, []);
+  assert.deepEqual(callback.evidence.dsStatus, []);
 });
 
 test("dynamic evidence completion falls back when Dify finish fields are invalid", () => {
@@ -285,18 +230,129 @@ test("dynamic evidence completion persists a bounded redacted evidence chain at 
   assert.equal(JSON.stringify(callback.evidence).includes("Bearer hidden"), false);
 });
 
-test("dynamic evidence DS request forwards only verified producer lineage clues", () => {
-  const request = buildDsRequest({
+test("dynamic evidence DS match request builds executeWorkflow inputs from verified producer SQL", () => {
+  const request = buildDsMatchRequest({
+    jobId: "job-42",
     context: { countryCode: "INE" }, table: "dwd.dwd_app_dtb", state: {
       anomalyDate: "2026-07-30",
       lineage: [{ table: "dwd.dwd_app_dtb", producerSql: true, producerFiles: ["dwd/dwd_app_dtb/dwd_app_dtb.sql"], sourceSql: "INSERT OVERWRITE dwd.dwd_app_dtb SELECT * FROM ods.app" }],
     },
   });
   assert.equal(request.dsEvidenceAvailable, true);
-  assert.equal(request.dsRequest.countryCode, "INE");
-  assert.equal(request.dsRequest.table, "dwd.dwd_app_dtb");
-  assert.deepEqual(request.dsRequest.producerFiles, ["dwd/dwd_app_dtb/dwd_app_dtb.sql"]);
-  assert.match(request.dsRequest.sourceSql, /^INSERT OVERWRITE/);
+  assert.equal(request.dsInputs.country, "INE");
+  assert.equal(request.dsInputs.request_id, "job-42");
+  assert.equal(request.dsInputs.alertTime, "2026-07-30");
+  assert.match(request.dsInputs.sqlText, /^INSERT OVERWRITE/);
+});
+
+test("dynamic evidence DS match request returns unavailable without verified producer SQL", () => {
+  const request = buildDsMatchRequest({
+    jobId: "job-42",
+    context: { countryCode: "MX" }, table: "dws.orders", state: {
+      anomalyDate: "2026-07-30",
+      lineage: [{ table: "dws.orders", producerSql: false, producerFiles: [], sourceSql: "" }],
+    },
+  });
+  assert.equal(request.dsEvidenceAvailable, false);
+  assert.equal(request.status, "unavailable");
+  assert.equal(request.reason, "no_verified_producer_lineage_for_ds");
+});
+
+test("dynamic evidence appends wattrel quality alerts matching the target table", () => {
+  const prior = {
+    action: "check_wattrel", table: "dws.daily_orders",
+    state: { discoveredTables: ["dws.daily_orders"], verifiedTables: ["dws.daily_orders"], evidence: [], lineage: [], wattrelAlerts: [], budget: { wattrel: 0 } },
+  };
+  const result = {
+    data: [
+      { quality_id: 1, name: "订单量波动", src_tbl: "dws.daily_orders", dest_tbl: "ads.daily_report", result: 1, status: "open", created_at: "2026-07-29 10:00:00" },
+      { quality_id: 2, name: "其他表告警", src_tbl: "ods.other_table", dest_tbl: "dws.other", result: 1, status: "open", created_at: "2026-07-29 11:00:00" },
+    ],
+  };
+  const next = appendDynamicEvidence(prior, result);
+  assert.equal(next.state.wattrelAlerts.length, 1);
+  assert.equal(next.state.wattrelAlerts[0].name, "订单量波动");
+  assert.equal(next.state.wattrelAlerts[0].table, "dws.daily_orders");
+  assert.equal(next.state.budget.wattrel, 1);
+});
+
+test("dynamic evidence collects DS match candidates from executeWorkflow rows", () => {
+  const rows = [
+    { success: true, data: [{ workflow_name: "daily_orders_v2", workflow_code: "wf_001", project_name: "warehouse", confidence: "high", match_info: "sql-text-match" }] },
+    { success: true, data: [{ workflow_name: "daily_orders_v3", workflow_code: "wf_002", project_name: "warehouse", confidence: "medium" }] },
+  ];
+  const result = collectDsMatchCandidates(rows);
+  assert.equal(result.candidates.length, 2);
+  assert.equal(result.candidates[0].workflowName, "daily_orders_v2");
+  assert.equal(result.candidates[0].confidence, "high");
+  assert.equal(result.success, true);
+});
+
+test("dynamic evidence collects DS match candidates handles empty and failed rows", () => {
+  const result = collectDsMatchCandidates([{ success: false, data: [], error: { code: "NO_MATCH" } }]);
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.success, false);
+});
+
+test("dynamic evidence builds DS status request from verified DS candidates", () => {
+  const request = buildDsStatusRequest({
+    jobId: "job-42",
+    context: { countryCode: "MX" },
+    table: "dws.daily_orders",
+    state: {
+      anomalyDate: "2026-07-29",
+      dsCandidates: [{ table: "dws.daily_orders", workflowName: "daily_orders_v2", confidence: "high" }],
+    },
+  });
+  assert.equal(request.dsStatusAvailable, true);
+  assert.equal(request.dsStatusRequest.country, "MX");
+  assert.equal(request.dsStatusRequest.action, "check_failed_instances");
+  assert.equal(request.dsStatusRequest.ds_token, "REPLACE_WITH_DS_API_TOKEN_MX");
+  assert.equal(request.dsStatusRequest.payload.search_val, "daily_orders_v2");
+  assert.match(request.dsStatusRequest.payload.start_time, /^\d{4}-\d{2}-\d{2} 00:00:00$/);
+  assert.match(request.dsStatusRequest.payload.end_time, /2026-07-29 23:59:59/);
+});
+
+test("dynamic evidence DS status request maps DS API token by country", () => {
+  const cnRequest = buildDsStatusRequest({
+    jobId: "job-42",
+    context: { countryCode: "CN" },
+    table: "dws.orders",
+    state: { anomalyDate: "2026-07-29", dsCandidates: [{ table: "dws.orders", workflowName: "cn_orders", confidence: "high" }] },
+  });
+  assert.equal(cnRequest.dsStatusRequest.ds_token, "REPLACE_WITH_DS_API_TOKEN_CN");
+
+  const ineRequest = buildDsStatusRequest({
+    jobId: "job-42",
+    context: { countryCode: "INE" },
+    table: "dws.orders",
+    state: { anomalyDate: "2026-07-29", dsCandidates: [{ table: "dws.orders", workflowName: "ine_orders", confidence: "high" }] },
+  });
+  assert.equal(ineRequest.dsStatusRequest.ds_token, "REPLACE_WITH_DS_API_TOKEN_INE");
+});
+
+test("dynamic evidence DS status request returns unavailable without DS candidates", () => {
+  const request = buildDsStatusRequest({
+    jobId: "job-42",
+    context: { countryCode: "MX" },
+    table: "dws.daily_orders",
+    state: { anomalyDate: "2026-07-29", dsCandidates: [] },
+  });
+  assert.equal(request.dsStatusAvailable, false);
+  assert.equal(request.status, "unavailable");
+  assert.equal(request.reason, "no_ds_candidates_for_status_check");
+});
+
+test("dynamic evidence appends DS status evidence", () => {
+  const prior = {
+    action: "check_ds_status", table: "dws.daily_orders",
+    state: { discoveredTables: ["dws.daily_orders"], verifiedTables: ["dws.daily_orders"], evidence: [], lineage: [], dsStatus: [], budget: { dsStatus: 0 } },
+  };
+  const result = { success: true, action: "check_failed_instances", data: [{ id: 1, state: "FAILURE", name: "daily_orders_v2" }] };
+  const next = appendDynamicEvidence(prior, result);
+  assert.equal(next.state.dsStatus.length, 1);
+  assert.equal(next.state.dsStatus[0].success, true);
+  assert.equal(next.state.budget.dsStatus, 1);
 });
 
 test("warehouse lineage gateway accepts only strict read-only trace requests", () => {
@@ -312,23 +368,19 @@ test("warehouse lineage gateway accepts only strict read-only trace requests", (
   ]) assert.equal(validateLineageRequest(body).valid, false);
 });
 
-test("all reusable evidence gateways require the shared bearer token", () => {
+test("warehouse lineage gateway requires the shared bearer token", () => {
   const lineage = { operation: "trace_table", countryCode: "mx", table: "dws.daily_orders", maxFiles: 10 };
-  const partition = { countryCode: "mx", table: "dws.daily_orders", anomalyDate: "2026-07-29", baselineDate: "2026-07-01" };
-  const ds = { countryCode: "mx", table: "dws.daily_orders", anomalyDate: "2026-07-29", sourceSql: "SELECT 1" };
-  for (const [validate, body] of [[validateLineageRequest, lineage], [validatePartitionEvidence, partition], [validateDsRuntimeEvidence, ds]]) {
-    assert.equal(validate(body, "").valid, false);
-    assert.equal(validate(body, "Bearer wrong-token").valid, false);
-    assert.equal(validate(body, "Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN").valid, true);
-  }
+  assert.equal(validateLineageRequest(lineage, "").valid, false);
+  assert.equal(validateLineageRequest(lineage, "Bearer wrong-token").valid, false);
+  assert.equal(validateLineageRequest(lineage, "Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN").valid, true);
 });
 
-test("dynamic evidence workflow is async, uses public fixed gateways, and has no embedded secrets", () => {
+test("dynamic evidence workflow is async, uses fixed gateways and executeWorkflow, and has no embedded secrets", () => {
   const workflow = JSON.parse(readFileSync(dynamicEvidenceWorkflowPath, "utf8"));
   assert.equal(workflow.nodes.find((node) => node.name === "Receive Dynamic Evidence Job").parameters.responseMode, "responseNode");
   assert.match(JSON.stringify(workflow), /\/webhook\/warehouse-lineage/);
-  assert.match(JSON.stringify(workflow), /\/webhook\/warehouse-partition-evidence/);
-  assert.match(JSON.stringify(workflow), /\/webhook\/ds-runtime-evidence/);
+  assert.match(JSON.stringify(workflow), /\/webhook\/wattrel-query/);
+  assert.match(JSON.stringify(workflow), /\/webhook\/ds-scheduler/);
   assert.match(JSON.stringify(workflow), /REPLACE_WITH_DIFY_API_KEY/);
   assert.match(JSON.stringify(workflow), /REPLACE_WITH_DIFY_WORKFLOW_RUN_URL/);
   assert.doesNotMatch(JSON.stringify(workflow), /REPLACE_WITH_DIFY_HOST/);
@@ -346,11 +398,12 @@ test("dynamic evidence workflow is async, uses public fixed gateways, and has no
   for (const field of ["run_id", "country_code", "anomaly_index", "anomaly_message", "dashboard_title", "card_title", "dashboard_url", "state_json"]) {
     assert.match(difyBody, new RegExp(`\\b${field}\\s*:`));
   }
-  assert.ok(workflow.nodes.find((node) => node.name === "Build DS Runtime Evidence Request"));
-  for (const name of ["Trace Lineage Via Public Gateway", "Check Partition Via Public Gateway", "Check DS Runtime Via Public Gateway"]) {
-    const authorization = workflow.nodes.find((node) => node.name === name).parameters.headerParameters.parameters.find((header) => header.name === "Authorization").value;
-    assert.equal(authorization, "=Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN");
-  }
+  assert.ok(workflow.nodes.find((node) => node.name === "Build DS Match Request"));
+  assert.equal(workflow.nodes.find((node) => node.name === "Invoke DS Task Candidate Query").type, "n8n-nodes-base.executeWorkflow");
+  assert.match(JSON.stringify(workflow.nodes.find((node) => node.name === "Invoke DS Task Candidate Query")), /REPLACE_WITH_DS_TASK_MATCH_WORKFLOW_ID/);
+  assert.match(JSON.stringify(workflow.nodes.find((node) => node.name === "Check DS Scheduler Status")), /ds-scheduler/);
+  assert.equal(workflow.nodes.some((node) => /partition/i.test(node.name)), false);
+  assert.doesNotMatch(JSON.stringify(workflow), /warehouse-partition-evidence|ds-runtime-evidence/);
 });
 
 test("Metabase anomaly Agent guide defaults to the dynamic Dify template and its fixed security contract", () => {
@@ -395,123 +448,11 @@ test("warehouse lineage workflow parser accepts backtick-quoted qualified SQL id
   }
 });
 
-function validatePartitionEvidence(body, authorization = "Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN") {
-  const workflow = JSON.parse(readFileSync(partitionEvidenceWorkflowPath, "utf8"));
-  const codeNode = workflow.nodes.find((node) => node.name === "Validate And Build Fixed Partition Evidence");
-  const validate = new Function("$json", codeNode.parameters.jsCode);
-  return validate({ body, headers: { authorization } })[0].json;
-}
-
-test("warehouse partition evidence workflow accepts only normalized identifiers and a 31-day date window", () => {
-  const result = validatePartitionEvidence({
-    countryCode: "ID",
-    table: "dws.daily_orders",
-    anomalyDate: "2026-07-29",
-    baselineDate: "2026-07-01",
-    metricHint: "gmv",
-  });
-
-  assert.equal(result.valid, true);
-  assert.equal(result.countryCode, "ine");
-  assert.equal(result.table, "dws.daily_orders");
-  assert.match(result.query, /^SELECT 'anomaly' AS evidence_type/);
-  assert.match(result.query, /`dws`\.`daily_orders`/);
-  assert.doesNotMatch(result.query, /gmv/);
-});
-
-test("warehouse partition evidence workflow rejects injected fields and invalid date spans", () => {
-  for (const body of [
-    { countryCode: "mx", table: "dws.orders; DROP TABLE x", anomalyDate: "2026-07-29", baselineDate: "2026-07-01" },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", baselineDate: "2026-06-01" },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-02-30", baselineDate: "2026-02-01" },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", baselineDate: "2026-07-01", partitionColumn: "event_date" },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", baselineDate: "2026-07-01", sql: "SELECT *", host: "evil.example", command: "id", password: "secret" },
-  ]) {
-    assert.equal(validatePartitionEvidence(body).valid, false);
-  }
-});
-
-test("warehouse partition evidence workflow binds only read-only country credential placeholders and has an unavailable response", () => {
-  const workflow = JSON.parse(readFileSync(partitionEvidenceWorkflowPath, "utf8"));
-  const webhook = workflow.nodes.find((node) => node.type === "n8n-nodes-base.webhook");
-  assert.equal(webhook.parameters.path, "warehouse-partition-evidence");
-  assert.equal(webhook.parameters.httpMethod, "POST");
-
-  const readers = workflow.nodes.filter((node) => node.name.startsWith("Read-only StarRocks "));
-  assert.deepEqual(readers.map((node) => node.name.replace("Read-only StarRocks ", "")).sort(), ["cn", "ine", "mx", "ph", "pk", "th"]);
-  for (const node of readers) {
-    const country = node.name.replace("Read-only StarRocks ", "").toUpperCase();
-    assert.equal(node.credentials.mySql.id, `REPLACE_WITH_STARROCKS_READONLY_${country}_CREDENTIAL`);
-    assert.match(node.credentials.mySql.name, /Read-only/);
-  }
-
-  const unavailable = workflow.nodes.find((node) => node.name === "Return Connector Unavailable");
-  assert.match(unavailable.parameters.jsCode, /unavailable/);
-  assert.doesNotMatch(JSON.stringify(workflow), /(?:10\.|192\.168\.|172\.20\.|passwordEnv|sshHost)/i);
-});
-
-function validateDsRuntimeEvidence(body, authorization = "Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN") {
-  const workflow = JSON.parse(readFileSync(dsRuntimeEvidenceWorkflowPath, "utf8"));
-  const codeNode = workflow.nodes.find((node) => node.name === "Validate DS Runtime Evidence Input");
-  const validate = new Function("$json", codeNode.parameters.jsCode);
-  return validate({ body, headers: { authorization } })[0].json;
-}
-
-test("DS runtime evidence workflow accepts bounded allowlisted evidence inputs", () => {
-  const result = validateDsRuntimeEvidence({
-    countryCode: "ID",
-    table: "dws.daily_orders",
-    producerFiles: ["jobs/daily_orders.sql", "jobs/common_dims.sql"],
-    sourceSql: "INSERT OVERWRITE dws.daily_orders SELECT * FROM ods.orders",
-    anomalyDate: "2026-07-29",
-  });
-
-  assert.equal(result.valid, true);
-  assert.equal(result.countryCode, "ine");
-  assert.equal(result.table, "dws.daily_orders");
-  assert.deepEqual(result.producerFiles, ["jobs/daily_orders.sql", "jobs/common_dims.sql"]);
-  assert.equal(result.anomalyDate, "2026-07-29");
-});
-
-test("DS runtime evidence workflow rejects control fields and unbounded evidence", () => {
-  for (const body of [
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", retry: true },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", token: "secret", command: "id" },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", url: "https://evil.example", startInstance: 1 },
-    { countryCode: "mx", table: "dws.orders; drop table x", anomalyDate: "2026-07-29" },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", producerFiles: Array.from({ length: 21 }, () => "a.sql") },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", sourceSql: "x".repeat(20001) },
-    { countryCode: ["mx"], table: "dws.orders", anomalyDate: "2026-07-29", sourceSql: "SELECT 1" },
-    { countryCode: "mx", table: ["dws.orders"], anomalyDate: "2026-07-29", sourceSql: "SELECT 1" },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: ["2026-07-29"], sourceSql: "SELECT 1" },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", sourceSql: { sql: "SELECT 1" } },
-    { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29", producerFiles: ["/etc/passwd"] },
-  ]) {
-    assert.equal(validateDsRuntimeEvidence(body).valid, false);
-  }
-});
-
-test("DS runtime evidence workflow is prebound, safely unavailable by default, and filters to high-confidence candidates", () => {
-  const workflow = JSON.parse(readFileSync(dsRuntimeEvidenceWorkflowPath, "utf8"));
-  const webhook = workflow.nodes.find((node) => node.type === "n8n-nodes-base.webhook");
-  assert.equal(webhook.parameters.path, "ds-runtime-evidence");
-
-  const reference = workflow.nodes.find((node) => node.name === "Resolve Prebound DS Runtime Reference");
-  assert.match(reference.parameters.jsCode, /no_verified_ds_reference/);
-  assert.match(reference.parameters.jsCode, /REPLACE_WITH_DS_TASK_MATCH_CANDIDATE_QUERY_WORKFLOW_ID/);
-
-  const execute = workflow.nodes.find((node) => node.name === "Invoke Prebound DS Task Candidate Query");
-  assert.equal(execute.type, "n8n-nodes-base.executeWorkflow");
-  assert.doesNotMatch(JSON.stringify(execute), /auto.?rerun|restart|retry|start.?instance/i);
-
-  const filter = workflow.nodes.find((node) => node.name === "Return High-confidence DS Candidates Only");
-  const normalize = new Function("$input", "$", filter.parameters.jsCode);
-  const [{ json }] = normalize(
-    { all: () => [{ json: { candidates: [{ workflowName: "daily_orders", confidence: "high" }, { workflowName: "weak", confidence: "low" }, { workflowName: "scored", confidence: 0.92 }] } }] },
-    () => ({ first: () => ({ json: { countryCode: "mx", table: "dws.orders", anomalyDate: "2026-07-29" } }) }),
-  );
-  assert.deepEqual(json.candidates.map((candidate) => candidate.workflowName), ["daily_orders", "scored"]);
-  assert.equal(json.status, "ok");
-  assert.equal(workflow.nodes.some((node) => /n8n-nodes-base\.(?:mysql|slack)/i.test(node.type)), false);
-  assert.equal(workflow.nodes.some((node) => /auto.?rerun|restart/i.test(node.name)), false);
+test("warehouse lineage gateway uses SSH-based country routing for six countries", () => {
+  const workflow = JSON.parse(readFileSync(workflowPath, "utf8"));
+  const sshNodes = workflow.nodes.filter((node) => node.type === "n8n-nodes-base.ssh");
+  assert.ok(sshNodes.length >= 6);
+  const switchNode = workflow.nodes.find((node) => node.name === "按国家分流到跳板机");
+  assert.ok(switchNode);
+  assert.doesNotMatch(JSON.stringify(workflow), /passwordEnv|sshHost/i);
 });

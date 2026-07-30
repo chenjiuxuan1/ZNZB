@@ -1,0 +1,171 @@
+openapi: 3.0.3
+info:
+  title: Metabase 异常数据侧取证工具集
+  version: 2.0.0
+  description: >-
+    只读取证工具集。Dify Agent 通过这 4 个工具自主追溯 Metabase 异常根因：
+    读取卡片 SQL、追溯代码血缘、查询 Wattrel 质量告警、查询 DS 任务运行状态。
+    不执行 SQL、不修改代码、不触发 DS 重跑。
+servers:
+- url: https://big-data-duty-management-platform.kuainiujinke.com
+security:
+- bearerAuth: []
+paths:
+  /api/tools/metabase-card-sql:
+    post:
+      operationId: get_card_sql
+      summary: 读取异常对应 Metabase 卡片 SQL
+      description: >-
+        读取平台历史巡检中指定异常所关联卡片的 SQL。必须先调用此工具，
+        从 SQL 中提取根表后才能调用 trace_lineage。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [runId, countryCode, anomalyIndex]
+              properties:
+                runId: { type: string, description: 值班平台历史巡检 ID }
+                countryCode: { type: string, enum: [cn, ine, ph, th, pk, mx] }
+                anomalyIndex: { type: integer, minimum: 0, description: 异常序号 }
+      responses:
+        '200':
+          description: 卡片定义与只读 SQL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  card:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      name: { type: string }
+                      native_query: { type: object, nullable: true }
+                      dataset_query: { type: object, nullable: true }
+  /api/tools/warehouse-lineage:
+    post:
+      operationId: trace_lineage
+      summary: 查询表的代码血缘
+      description: >-
+        查询指定国家和表名的代码血缘。只有 evidence.quality=producer_sql 时，
+        upstreamTables 才可作为下一层递归追溯的有效证据。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [operation, countryCode, table]
+              properties:
+                operation: { type: string, enum: [trace_table] }
+                countryCode: { type: string, enum: [cn, ine, ph, th, pk, mx] }
+                table: { type: string, description: schema.table 格式的表名 }
+                maxFiles: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        '200':
+          description: 血缘查询结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  table: { type: string }
+                  upstreamTables: { type: array, items: { type: string } }
+                  downstreamTables: { type: array, items: { type: string } }
+                  evidence:
+                    type: object
+                    properties:
+                      quality: { type: string, enum: [producer_sql, consumer_sql, declared_dependency_only, text_reference_only] }
+  /api/tools/wattrel-query:
+    post:
+      operationId: check_wattrel
+      summary: 查询 Wattrel 质量告警
+      description: >-
+        查询指定国家最近 3 天内的 Wattrel 质量告警（result=1）。
+        返回的告警包含 src_tbl 和 dest_tbl，用于判断异常表是否存在数据质量问题。
+        如果异常表匹配到质量告警，异常可归因到数据质量问题。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [country]
+              properties:
+                country: { type: string, enum: [cn, ine, ph, th, pk, mx], description: 国家代码 }
+                limit: { type: integer, minimum: 1, maximum: 200, default: 50, description: 最多返回的告警数 }
+      responses:
+        '200':
+          description: Wattrel 质量告警列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        quality_id: { type: integer }
+                        name: { type: string }
+                        type: { type: string }
+                        src_tbl: { type: string }
+                        dest_tbl: { type: string }
+                        result: { type: integer }
+                        status: { type: string }
+                        created_at: { type: string }
+  /api/tools/ds-scheduler:
+    post:
+      operationId: check_ds_status
+      summary: 查询 DolphinScheduler 任务运行状态
+      description: >-
+        查询 DS 任务的运行状态。常用 action：
+        - check_failed_instances：查失败实例，search_val 传工作流名或表名
+        - search_resource_sql：按 SQL 搜 DS 资源，search_val 传 producer SQL
+        - list_workflows：列工作流
+        DS API token 由平台自动注入，无需传入。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [country, action]
+              properties:
+                country: { type: string, enum: [cn, ine, ph, th, pk, mx], description: 国家代码 }
+                action:
+                  type: string
+                  enum: [check_failed_instances, search_resource_sql, list_workflows, get_workflow, list_instances, get_instance, list_task_instances, get_task_log, list_projects, resolve_project, list_schedules, get_schedule, search_country_git_sql, dump_workflow_graph]
+                  description: 只读查询动作
+                search_val: { type: string, description: 搜索关键词（工作流名或 SQL） }
+                start_time: { type: string, description: 开始时间 YYYY-MM-DD HH:mm:ss }
+                end_time: { type: string, description: 结束时间 YYYY-MM-DD HH:mm:ss }
+      responses:
+        '200':
+          description: DS 查询结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  country: { type: string }
+                  action: { type: string }
+                  data: { type: array, items: { type: object } }
+                  error: { type: object, nullable: true }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API token

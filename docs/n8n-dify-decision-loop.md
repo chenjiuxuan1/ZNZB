@@ -19,11 +19,12 @@ Dify 可在文字说明后追加一个 JSON 对象；n8n 只解析最后一个 J
 允许的 `action` 是：
 
 - `trace_lineage`
-- `check_partition`
+- `check_wattrel`
 - `check_ds_workflow`
+- `check_ds_status`
 - `finish`
 
-对于除 `finish` 外的动作，`table` 必须是已从 Card SQL 识别、或由 `producer_sql` 血缘结果验证过的 `schema.table`。任意 SQL、URL、凭据、工作流执行/重跑参数都会被忽略或结案。硬限制为深度 3、总工具调用 10、分区检查 3、DS 检查 3；超过限制立即保守结案。
+对于除 `finish` 外的动作，`table` 必须是已从 Card SQL 识别、或由 `producer_sql` 血缘结果验证过的 `schema.table`。任意 SQL、URL、凭据、工作流执行/重跑参数都会被忽略或结案。硬限制为深度 3、总工具调用 12、Wattrel 检查 3、DS 匹配 3、DS 状态检查 3；超过限制立即保守结案。
 
 日期只从异常消息中的 `YYYY-MM-DD` 或 `YYYY/MM/DD` 提取，并验证为真实日期；找不到时使用当天，基准日默认前一天。网关仍会独立执行其自己的输入验证。
 
@@ -33,12 +34,12 @@ Dify 可在文字说明后追加一个 JSON 对象；n8n 只解析最后一个 J
 
 - `REPLACE_WITH_DUTY_PLATFORM_HOST` 与 `REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN`：平台受保护的 Card SQL 读取接口。后者必须与 ZNZB `.env` 的 `METABASE_ANOMALY_AGENT_CALLBACK_TOKEN` 完全相同；它也用于 n8n → 平台 callback。绝不能在这里填写 Dify App API Key 或 `DIFY_WAREHOUSE_LINEAGE_TOOL_TOKEN`。
 - `REPLACE_WITH_DIFY_WORKFLOW_RUN_URL` 与 `REPLACE_WITH_DIFY_API_KEY`：Dify Workflow API。当前环境 URL 必须完整写为 `http://172.20.0.234/v1/workflows/run`，不得自动拼接路径，也不能填写公网域名。
-- `REPLACE_WITH_N8N_PUBLIC_HOST`：已发布的固定公共网关主机；路径必须分别保持 `/webhook/warehouse-lineage`、`/webhook/warehouse-partition-evidence`、`/webhook/ds-runtime-evidence`。
-- `REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN`：三个公共只读网关共用的随机 Bearer token。三个网关和动态 Agent 中所有同名占位符必须替换成同一值；它独立于 Dify API Key、平台 callback token 和 Card SQL token。
+- `REPLACE_WITH_N8N_PUBLIC_HOST`：已发布的固定公共网关主机；路径必须分别保持 `/webhook/warehouse-lineage`（血缘）、`/webhook/wattrel-query`（Wattrel 质量告警）、`/webhook/ds-scheduler`（DS 运行状态）。DS 任务匹配通过 `executeWorkflow` 节点直接调用已有子流程（`REPLACE_WITH_DS_TASK_MATCH_WORKFLOW_ID`），不需要 HTTP 网关。
+- `REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN`：血缘网关的随机 Bearer token。Wattrel 和 DS scheduler 网关通过 webhook 路径隔离。`REPLACE_WITH_DS_API_TOKEN` 是 DolphinScheduler API token，仅用于只读查询任务状态。`REPLACE_WITH_DS_TASK_MATCH_WORKFLOW_ID` 是 DS 匹配子流程的 workflow ID。
 - `REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN`：动态 Agent 入口的专用随机 Bearer token。ZNZB 的 `METABASE_ANOMALY_AGENT_N8N_TOKEN` 必须使用同一个值；没有该 token 时平台不会派发任务。
 - `REPLACE_WITH_DUTY_PLATFORM_INTERNAL_CALLBACK_URL`：固定为值班平台的内网 callback，例如 `http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback`。不要填写公网域名，也不要从请求 body 中读取或信任 `callback.url`。
 
-先导入并发布三个公共网关模板。DS 网关还必须绑定已审核的只读候选查询工作流；未绑定时它会返回 `unavailable`，动态 Agent 会把它作为受限证据，而不是执行或重跑 DS 任务。
+先导入并发布血缘网关、Wattrel 网关和 DS scheduler 网关。DS 任务匹配通过 `executeWorkflow` 复用已有 `DS任务匹配候选查询` 子流程，不需要额外导入网关模板。分区核验由 Codex `sr_box` 技能人工只读执行。DS 失败重跑工作流**不得**被取证流程调用。当 producer SQL 不可信或 DS 候选为空时，对应分支返回 `unavailable` 证据，而不是执行或重跑任务。
 
 平台侧应配置 `METABASE_ANOMALY_AGENT_N8N_ASYNC=true`、动态模板 webhook URL、`METABASE_ANOMALY_AGENT_N8N_TOKEN`、固定内网 `METABASE_ANOMALY_AGENT_CALLBACK_URL` 和非空的 `METABASE_ANOMALY_AGENT_CALLBACK_TOKEN`。callback token 由 ZNZB 在每次任务请求中携带，n8n 只会把它发送到模板中固定的内网 callback URL；缺失 token 或 jobId 的请求会失败。
 

@@ -240,7 +240,9 @@ export function createPlatformApi({
       try {
       const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
       const existing = (cache.analyses || []).find((item) => item.key === cacheKey);
-      if (existing && existing.status === "pending" && !isExpiredMetabaseAnalysis(existing)) {
+      // A pending callback may be stuck after n8n fails. Keep normal clicks
+      // deduplicated, but let an explicit force retry create a new job.
+      if (existing && existing.status === "pending" && !body.force && !isExpiredMetabaseAnalysis(existing)) {
         return { ...existing, cached: true };
       }
       if (existing && !body.force && !isExpiredMetabaseAnalysis(existing)) {

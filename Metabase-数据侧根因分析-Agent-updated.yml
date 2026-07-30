@@ -1,0 +1,331 @@
+app:
+  description: 只读取证型 Agent。根据 Metabase 异常，自主选择 SQL、血缘、分区和 DS 工具进行有限层级追溯，并给出数据侧判断。
+  icon: 🔎
+  icon_background: '#D5F5E3'
+  icon_type: emoji
+  mode: workflow
+  name: Metabase 数据侧根因分析 Agent
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: agent
+      id: start-source-agent-target
+      source: start
+      sourceHandle: source
+      target: agent
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: agent
+        targetType: end
+      id: agent-source-end-target
+      source: agent
+      sourceHandle: source
+      target: end
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: 由值班平台传入单条 Metabase 异常及运行上下文。
+        selected: false
+        title: 接收异常
+        type: start
+        variables:
+        - label: 巡检运行 ID
+          max_length: 128
+          required: true
+          type: text-input
+          variable: run_id
+        - label: 国家代码
+          max_length: 16
+          required: true
+          type: text-input
+          variable: country_code
+        - label: 异常序号
+          required: true
+          type: number
+          variable: anomaly_index
+        - label: 异常原文
+          max_length: 12000
+          required: true
+          type: paragraph
+          variable: anomaly_message
+        - label: 看板名称
+          max_length: 256
+          required: false
+          type: text-input
+          variable: dashboard_title
+        - label: 卡片名称
+          max_length: 256
+          required: false
+          type: text-input
+          variable: card_title
+        - label: 看板链接
+          max_length: 2048
+          required: false
+          type: text-input
+          variable: dashboard_url
+        - default: ''
+          hint: ''
+          label: state_json
+          options: []
+          placeholder: ''
+          required: true
+          type: paragraph
+          variable: state_json
+          max_length: 50000
+      height: 361
+      id: start
+      position:
+        x: 80
+        y: 280
+      positionAbsolute:
+        x: 80
+        y: 280
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        type: llm
+        title: 数据侧取证决策
+        desc: 根据 state_json 决定下一步取证动作
+        model:
+          provider: langgenius/tongyi/tongyi
+          model: qwen3.6-plus
+          model_type: llm
+          mode: chat
+          completion_params:
+            temperature: 0.1
+            max_tokens: 2000
+        prompt_template:
+        - role: system
+          text: '你是 Metabase 异常数据侧取证决策 Agent。你的唯一职责是根据 n8n 已获取的证据状态决定下一步取证动作，或在证据充分时给出最终结论。
+
+
+            你不会直接访问 Metabase、StarRocks、DolphinScheduler、Wattrel 或任何数据库。所有实际查询由 n8n
+            执行，结果通过 state_json 回传给你。你必须且只能依据 state_json 中的证据做判断，不得编造表名、SQL、运行状态、数据值或已执行的修复。
+
+
+            state_json 是 JSON 字符串，解析后包含：
+
+            - discoveredTables: Card SQL 识别的底表列表
+
+            - verifiedTables: 已追溯过的表列表
+
+            - evidence: 已获取的证据数组，每项有 kind(card_sql/trace_lineage/check_wattrel/check_ds_workflow/check_ds_status)、table、result
+
+            - lineage: 血缘结果数组，每项有 table、upstreamTables、producerSql(布尔)、producerFiles、sourceSql
+
+            - wattrelAlerts: Wattrel 质量告警数组
+
+            - dsCandidates: DS 匹配候选数组，每项有 table、workflowName、confidence、matchInfo
+
+            - dsStatus: DS 运行状态数组，每项有 table、success、data、error
+
+            - budget: 预算对象，含 maxCalls/calls/maxDepth/depth/maxWattrel/wattrel/maxDs/ds/maxDsStatus/dsStatus
+
+            - anomalyDate: 异常日期
+
+            - baselineDate: 基准日期
+
+
+            可选动作（除 finish 外，table 必须是 discoveredTables 或 verifiedTables 中已存在的 schema.table）：
+
+
+            1. trace_lineage - 追溯表的代码血缘，发现上游表和 producer SQL。有未追溯的表时优先执行。
+
+            2. check_wattrel - 查询表是否有 Wattrel 质量告警。任何时候都可以检查。
+
+            3. check_ds_workflow - 将 producer SQL 匹配到 DS 工作流。仅当 lineage 中存在 producerSql=true
+            且有 sourceSql 时才有效。
+
+            4. check_ds_status - 查询 DS 任务运行状态。仅当 dsCandidates 中有候选工作流时才有效。
+
+            5. finish - 结束分析，给出结构化结论。
+
+
+            推荐决策路径：
+
+            1. 有未追溯的表 -> trace_lineage
+
+            2. 血缘已产出 producer SQL 但尚未匹配 DS -> check_ds_workflow
+
+            3. DS 候选已找到但尚未查状态 -> check_ds_status
+
+            4. 任何时候 -> check_wattrel（检查表是否有质量告警）
+
+            5. 以下任一条件满足时 -> finish：DS 任务状态已查明、Wattrel 告警已匹配、血缘追溯完且无 producer SQL、预算接近耗尽、证据不足以继续
+
+
+            根因判定逻辑：
+
+            - DS 任务失败/延迟 -> dataSideVerdict 为 data_issue
+
+            - Wattrel 质量告警匹配 -> dataSideVerdict 为 data_issue
+
+            - DS 任务正常 + 无质量告警 + 指标变化 -> dataSideVerdict 为 business_change
+
+            - 证据不足 -> dataSideVerdict 为 insufficient_evidence
+
+
+            输出规则：
+
+            - 只能输出一个合法 JSON 对象，第一个字符必须是 {，最后一个字符必须是 }。
+
+            - 不要输出 Markdown、代码块、解释性文字或多个 JSON。
+
+            - 每次都必须包含 action 字段。
+
+
+            中间轮次输出格式（非 finish）：
+
+            {"action":"trace_lineage","table":"ads.daily_orders"}
+
+            {"action":"check_wattrel","table":"dws.daily_orders"}
+
+            {"action":"check_ds_workflow","table":"dws.daily_orders"}
+
+            {"action":"check_ds_status","table":"dws.daily_orders"}
+
+
+            结束轮次输出格式：
+
+            {"action":"finish","summary":"根因摘要不超过1200字符","evidence":["最多5条证据"],"possibleCauses":["最多3条"],"verificationSteps":["最多3条"],"recommendedActions":["最多3条"],"confidence":"high|medium|low","limitations":"证据边界说明","dataSideVerdict":"data_issue|business_change|insufficient_evidence","notificationAction":"send|downgrade|enrich_only"}
+
+
+            禁止事项：
+
+            - 不得编造未出现在 state_json 中的表名、SQL、工作流名称、运行状态或数据值。
+
+            - 不得声称已自行查询任何系统。
+
+            - 不得输出重跑、修复、写入、删除等操作指令。
+
+            - 如果 evidence 为空或 state_json 无法解析，直接输出 finish 且 dataSideVerdict 为 insufficient_evidence。'
+        - role: user
+          text: '请根据以下信息决定下一步取证动作。
+
+
+            国家: {{#start.country_code#}}
+
+            仪表盘: {{#start.dashboard_title#}}
+
+            卡片: {{#start.card_title#}}
+
+            异常消息: {{#start.anomaly_message#}}
+
+
+            state_json:
+
+            {{#start.state_json#}}'
+        context:
+          enabled: false
+          variable: []
+        vision:
+          enabled: false
+        structured_output_enabled: false
+      height: 98
+      id: agent
+      position:
+        x: 390
+        y: 250
+      positionAbsolute:
+        x: 390
+        y: 250
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        desc: 返回给值班平台的结构化 JSON。
+        outputs:
+        - type: string
+          value_selector:
+          - agent
+          - text
+          variable: analysis_json
+        selected: false
+        title: 返回分析结果
+        type: end
+      height: 116
+      id: end
+      position:
+        x: 742.6928942083712
+        y: 314.1261826970085
+      positionAbsolute:
+        x: 742.6928942083712
+        y: 314.1261826970085
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: 152.01308522701993
+      y: 67.95386157395501
+      zoom: 0.9980355331119375
+  rag_pipeline_variables: []

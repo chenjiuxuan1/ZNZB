@@ -192,6 +192,32 @@ test("platform api stores an async Metabase evidence job and accepts its callbac
   );
 });
 
+test("platform api force retries a pending Metabase evidence job", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-run-history.json"),
+    JSON.stringify({ runs: [{
+      id: "run-agent-force-pending",
+      runs: [{ countryCode: "INE", result: { anomalies: [{ dashboardTitle: "OKR", cardTitle: "规模", message: "指标归零" }] } }],
+    }] }),
+  );
+  let calls = 0;
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyAgentFn: async () => ({ pending: true, jobId: `job-${++calls}`, provider: "n8n-evidence" }),
+  });
+
+  const first = await api.analyzeMetabaseAnomaly({ runId: "run-agent-force-pending", countryCode: "INE", anomalyIndex: 0 });
+  const cached = await api.analyzeMetabaseAnomaly({ runId: "run-agent-force-pending", countryCode: "INE", anomalyIndex: 0 });
+  const forced = await api.analyzeMetabaseAnomaly({ runId: "run-agent-force-pending", countryCode: "INE", anomalyIndex: 0, force: true });
+
+  assert.equal(first.jobId, "job-1");
+  assert.equal(cached.cached, true);
+  assert.equal(forced.jobId, "job-2");
+  assert.equal(forced.cached, false);
+  assert.equal(calls, 2);
+});
+
 test("platform api proxies a saved anomaly card through its Metabase readonly client", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

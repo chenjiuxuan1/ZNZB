@@ -18,4 +18,9 @@ config/metabase.auth.json
 config/ds-scheduler.config.json
 n8n-metabase-anomaly-agent.json
 n8n-metabase-anomaly-evidence-agent.local.json
+n8n-metabase-anomaly-dify-orchestrator.local.json
+n8n-metabase-anomaly-evidence-agent.complete.local.json
+n8n-warehouse-lineage-gateway.backtick.local.json
 n8n-wattrel-query-gateway.local.json
+meatbase-agent-filled.json
+meatbase-agent-latest.json

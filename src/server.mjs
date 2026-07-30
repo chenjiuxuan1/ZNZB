@@ -114,6 +114,16 @@ async function handleApi(request, response, url) {
     assertWarehouseLineageToolAuthorized(request);
     return sendJson(response, 200, await api.getMetabaseAnomalyCardSql(body));
   }
+  if (method === "POST" && url.pathname === "/api/tools/wattrel-query") {
+    const body = await readBody(request, {});
+    assertWarehouseLineageToolAuthorized(request);
+    return sendJson(response, 200, await proxyWattrelQuery(body));
+  }
+  if (method === "POST" && url.pathname === "/api/tools/ds-scheduler") {
+    const body = await readBody(request, {});
+    assertWarehouseLineageToolAuthorized(request);
+    return sendJson(response, 200, await proxyDsSchedulerRequest(body));
+  }
   if (method === "POST" && url.pathname === "/api/external-alert-runs") {
     return sendJson(response, 200, await api.ingestExternalAlertRun(await readBody(request, {})));
   }
