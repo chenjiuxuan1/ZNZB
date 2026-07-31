@@ -47,24 +47,12 @@ export function renderFluctuationVisual(root) {
       renderFluctuationVisual(root);
     });
   });
-  root.querySelectorAll("[data-fluctuation-point]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const countryCode = button.getAttribute("data-country") || "";
-      const index = Number(button.getAttribute("data-index") || 0);
-      state.fluctuationVisualSelected = {
-        ...(state.fluctuationVisualSelected || {}),
-        [countryCode]: index,
-      };
-      renderFluctuationVisual(root);
-    });
-  });
-
   if (!state.fluctuationVisualLoaded && state.batchHistoryStatus?.type !== "loading") {
     void reloadFluctuationHistory(root);
   }
-  const selected = getSelectedModelAnomaly(model);
-  if (selected && !hasRealSeries(selected)) {
-    void hydrateFluctuationSeries(root, selected);
+  const selectedCountry = getSelectedFluctuationCountry(model.countries || []);
+  if (selectedCountry) {
+    void hydrateVisibleFluctuationSeries(root, selectedCountry);
   }
 }
 
@@ -147,7 +135,7 @@ function renderFluctuationCountries(model) {
       </div>
     </section>
     <div class="fluctuation-country-focus">
-      ${renderFluctuationCountry(selectedCountry)}
+      ${renderFluctuationCountryRows(selectedCountry)}
     </div>
   `;
 }
@@ -160,6 +148,52 @@ function getSelectedFluctuationCountry(countries = []) {
     state.fluctuationVisualCountryCode = fallback.countryCode;
   }
   return fallback;
+}
+
+function renderFluctuationCountryRows(country) {
+  const drawableCount = country.anomalies.filter(hasRealSeries).length;
+  return `
+    <article class="panel fluctuation-country-card">
+      <div class="fluctuation-country-head">
+        <div>
+          <h2 class="panel-title">${escapeHtml(country.countryName || country.countryCode || "-")}</h2>
+          <p class="muted">${escapeHtml(country.countryCode || "-")} · ${escapeHtml(country.anomalies.length)} 个波动指标${drawableCount < country.anomalies.length ? `，${escapeHtml(drawableCount)} 个已保存真实序列` : ""}</p>
+        </div>
+        <span class="badge warn">${escapeHtml(country.anomalies.length)} 点</span>
+      </div>
+      <div class="fluctuation-row-list">
+        ${country.anomalies.map((anomaly, index) => renderFluctuationRow(anomaly, index)).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderFluctuationRow(anomaly, index) {
+  const chart = buildChart(anomaly);
+  const seriesState = state.fluctuationVisualSeries?.[anomaly.seriesKey];
+  return `
+    <section class="fluctuation-row">
+      <div class="fluctuation-row-meta">
+        <span class="fluctuation-row-index">${escapeHtml(index + 1)}</span>
+        <div class="fluctuation-row-title">
+          <h3>${escapeHtml(anomaly.metricLabel)}</h3>
+          <p>${escapeHtml(anomaly.dashboardTitle || "-")}</p>
+          <p>${escapeHtml(anomaly.cardTitle || "-")}</p>
+        </div>
+        <div class="fluctuation-row-detail">
+          <div>${renderDetailField("当前值", anomaly.detail.currentValue || "-")}</div>
+          <div>${renderDetailField("基准值", anomaly.detail.baselineValue || "-")}</div>
+          <div>${renderDetailField("变化", anomaly.detail.changeValue || "-")}</div>
+          <div>${renderDetailField("时间", anomaly.detail.timeText || "-")}</div>
+        </div>
+      </div>
+      <div class="fluctuation-row-chart">
+        ${renderLineChart(chart)}
+        ${seriesState?.type === "loading" ? `<div class="fluctuation-chart-note">正在按看板 URL 拉取最近历史数据...</div>` : ""}
+        ${seriesState?.type === "error" ? `<div class="fluctuation-chart-note error">${escapeHtml(seriesState.detail || "历史数据拉取失败")}</div>` : ""}
+      </div>
+    </section>
+  `;
 }
 
 function renderFluctuationCountry(country) {
@@ -452,7 +486,28 @@ function getSelectedModelAnomaly(model) {
   return country.anomalies[selectedIndex] || country.anomalies[0] || null;
 }
 
-async function hydrateFluctuationSeries(root, anomaly) {
+async function hydrateVisibleFluctuationSeries(root, country) {
+  const countryCode = country.countryCode || "";
+  if (!countryCode) return;
+  state.fluctuationVisualHydratingCountries = state.fluctuationVisualHydratingCountries || {};
+  if (state.fluctuationVisualHydratingCountries[countryCode]) return;
+  const pending = (country.anomalies || []).filter((anomaly) => {
+    if (hasRealSeries(anomaly)) return false;
+    const current = state.fluctuationVisualSeries?.[anomaly.seriesKey];
+    return !current || current.type === "idle";
+  });
+  if (!pending.length) return;
+  state.fluctuationVisualHydratingCountries[countryCode] = true;
+  try {
+    for (const anomaly of pending) {
+      await hydrateFluctuationSeries(root, anomaly, { renderLoading: false });
+    }
+  } finally {
+    state.fluctuationVisualHydratingCountries[countryCode] = false;
+  }
+}
+
+async function hydrateFluctuationSeries(root, anomaly, options = {}) {
   const key = anomaly.seriesKey || buildSeriesKey(anomaly.runId, anomaly.countryCode, anomaly.anomalyIndex, anomaly);
   const current = state.fluctuationVisualSeries?.[key];
   if (current?.type === "loading" || current?.type === "loaded" || current?.type === "error") {
@@ -462,7 +517,9 @@ async function hydrateFluctuationSeries(root, anomaly) {
     ...(state.fluctuationVisualSeries || {}),
     [key]: { type: "loading", series: [] },
   };
-  renderFluctuationVisual(root);
+  if (options.renderLoading !== false) {
+    renderFluctuationVisual(root);
+  }
   try {
     const result = await apiPost("/api/fluctuation-visual/series", {
       anomaly,
