@@ -151,7 +151,7 @@ test("fluctuation visual model groups fluctuation anomalies by country", () => {
         },
       }],
     }],
-  }, [{ code: "MX", name: "Mexico" }]);
+  }, [{ code: "MX", name: "Mexico" }], { today: "2026-07-28" });
 
   assert.equal(model.countryCount, 1);
   assert.equal(model.anomalyCount, 1);
@@ -179,4 +179,81 @@ test("fluctuation visual synthesizes a reference series when history points are 
   assert.equal(points[0].value, 14.7);
   assert.equal(points.at(-1).value, 26.7);
   assert.equal(points.at(-1).anomaly, true);
+});
+
+test("fluctuation visual only uses runs updated today", () => {
+  const model = fluctuationVisualTest.buildFluctuationVisualModel({
+    runs: [{
+      id: "old-run",
+      startedAt: "2026-07-27T01:00:00.000Z",
+      runs: [{
+        countryCode: "MX",
+        result: {
+          anomalies: [{
+            dashboardTitle: "Old",
+            cardTitle: "Old",
+            type: "completeDayChange",
+            message: "完整日指标「D1」从 10 到 30，变化 +200%（统计日期 2026-07-27 对比 2026-07-26）",
+          }],
+        },
+      }],
+    }, {
+      id: "today-run",
+      startedAt: "2026-07-28T01:00:00.000Z",
+      runs: [{
+        countryCode: "MX",
+        result: {
+          anomalies: [{
+            dashboardTitle: "Today",
+            cardTitle: "Today",
+            type: "completeDayChange",
+            message: "完整日指标「D7」从 14.7% 到 26.7%，绝对变化 +12.0个百分点（统计日期 2026-07-13 对比 2026-07-12）",
+          }],
+        },
+      }],
+    }],
+  }, [], { today: "2026-07-28" });
+
+  assert.equal(model.run.id, "today-run");
+  assert.equal(model.anomalyCount, 1);
+  assert.equal(model.countries[0].anomalies[0].dashboardTitle, "Today");
+});
+
+test("fluctuation visual excludes China empty and zero-style anomalies", () => {
+  const model = fluctuationVisualTest.buildFluctuationVisualModel({
+    runs: [{
+      id: "cn-run",
+      startedAt: "2026-07-28T01:00:00.000Z",
+      runs: [{
+        countryCode: "CN",
+        result: {
+          anomalies: [{
+            dashboardTitle: "CN zero",
+            cardTitle: "CN zero",
+            type: "latestNonZeroToZero",
+            message: "指标「注册数」从 100 降为 0（统计日期 2026-07-28 对比 2026-07-27）",
+          }, {
+            dashboardTitle: "CN empty",
+            cardTitle: "CN empty",
+            type: "noData",
+            message: "没有数据",
+          }],
+        },
+      }, {
+        countryCode: "MX",
+        result: {
+          anomalies: [{
+            dashboardTitle: "MX zero",
+            cardTitle: "MX zero",
+            type: "latestNonZeroToZero",
+            message: "指标「注册数」从 100 降为 0（统计日期 2026-07-28 对比 2026-07-27）",
+          }],
+        },
+      }],
+    }],
+  }, [], { today: "2026-07-28" });
+
+  assert.equal(model.countryCount, 1);
+  assert.equal(model.countries[0].countryCode, "MX");
+  assert.equal(model.anomalyCount, 1);
 });
