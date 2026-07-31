@@ -743,7 +743,7 @@ function formatRuleMessage(message, dashboard, card, rule = {}) {
   return rule.context ? `${rule.context}：${formatted}` : formatted;
 }
 
-function ruleMatchesCard(rule, dashboard, card) {
+export function ruleMatchesCard(rule, dashboard, card) {
   if ((rule.exclude || []).some((excludeRule) => ruleMatchesCard(excludeRule, dashboard, card))) {
     return false;
   }
@@ -1891,7 +1891,7 @@ function buildDailySeries(rows, dateColumn, numericColumns, explicitDimensionCol
   return [...groups.values()];
 }
 
-function buildAnomalyMetricSeries(rows = [], rule = {}, message = "", options = {}) {
+export function buildAnomalyMetricSeries(rows = [], rule = {}, message = "", options = {}) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return [];
   }

@@ -89,6 +89,9 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/batch-history") {
     return sendJson(response, 200, await api.getBatchHistory(Object.fromEntries(url.searchParams.entries())));
   }
+  if (method === "POST" && url.pathname === "/api/fluctuation-visual/series") {
+    return sendJson(response, 200, await api.getFluctuationVisualSeries(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis") {
     return sendJson(response, 200, await api.analyzeMetabaseAnomaly(await readBody(request, {})));
   }

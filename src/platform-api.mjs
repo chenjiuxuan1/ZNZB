@@ -3,11 +3,13 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createDefaultMetabaseClient, resolveInternalMetabaseApiBaseUrl } from "./metabase-public-monitor.mjs";
 import {
+  buildAnomalyMetricSeries,
   buildDefaultCardParameters,
   buildUpdateFrequencyHistoryParameters,
   checkPublicDashboards,
   evaluateRowsAgainstRule,
   mergeParameters,
+  ruleMatchesCard,
 } from "./metabase-public-monitor.mjs";
 import { discoverPublicDashboards } from "./metabase-discovery.mjs";
 import { parseInternalMetabaseUrl } from "./metabase-internal-client.mjs";
@@ -207,6 +209,58 @@ export function createPlatformApi({
     async getBatchHistory(filters = {}) {
       const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
       return filterBatchHistory(history, filters);
+    },
+
+    async getFluctuationVisualSeries(body = {}) {
+      const anomaly = body.anomaly && typeof body.anomaly === "object" ? body.anomaly : body;
+      const inventory = await readPlatformInventory(rootDir, resolve("inventory"));
+      const rulesConfig = await readJsonFile(resolve("rules"), { rules: [], ruleDefaults: {} });
+      const { dashboard, card } = findInventoryCardForAnomaly(inventory, anomaly);
+      if (!dashboard || !card) {
+        throw badRequest("Fluctuation card not found", ["未能在看板清单中找到该异常对应的看板卡片，请先重新发现该国家看板。"]);
+      }
+      const matchingRules = (rulesConfig.rules || []).filter((rule) => ruleMatchesCard(rule, dashboard, card));
+      const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, body.lookbackDays || 45);
+      const ruleParameters = matchingRules.reduce(
+        (parameters, rule) => mergeParameters(parameters, rule.parameters || []),
+        [],
+      );
+      const parameters = mergeParameters(
+        mergeParameters(buildDefaultCardParameters(dashboard, card), ruleParameters),
+        historyParameters,
+      );
+      const client = metabaseClientFactory(dashboard);
+      const request = {
+        cardId: card.cardId,
+        dashcardId: card.dashcardId,
+        parameters,
+      };
+      if (dashboard.access === "internal") {
+        request.dashboardId = dashboard.dashboardId;
+      } else {
+        request.dashboardUuid = dashboard.uuid;
+      }
+      const rows = await client.queryDashcardJson(request);
+      const ruleForSeries = matchingRules.find((rule) => String(rule.type || "") === String(anomaly.type || ""))
+        || matchingRules[0]
+        || {};
+      const series = buildAnomalyMetricSeries(Array.isArray(rows) ? rows : [], ruleForSeries, anomaly.message || "", {
+        maxPoints: Number(body.maxPoints || 16),
+      });
+      return {
+        ok: series.length > 0,
+        dashboard: {
+          countryCode: dashboard.countryCode || dashboard.country?.code || "",
+          dashboardUuid: dashboard.uuid || "",
+          dashboardUrl: dashboard.url || "",
+          cardId: card.cardId,
+          dashcardId: card.dashcardId,
+          cardTitle: card.title || "",
+        },
+        rowCount: Array.isArray(rows) ? rows.length : 0,
+        series,
+        message: series.length ? "" : "已查询看板卡片，但未能从返回数据中匹配到这条告警指标的历史序列。",
+      };
     },
 
     async analyzeMetabaseAnomaly(body = {}) {
@@ -3185,6 +3239,55 @@ function filterBatchHistory(history = DEFAULT_BATCH_HISTORY, filters = {}) {
     total: runs.length,
     runs: runs.slice(0, limit),
   };
+}
+
+function findInventoryCardForAnomaly(inventory = {}, anomaly = {}) {
+  const countryCode = normalizeCountryCode(anomaly.countryCode);
+  const dashboardUuid = String(anomaly.dashboardUuid || "").trim();
+  const dashboardUrl = dashboardUrlIdentity(anomaly.dashboardUrl || "");
+  const cardId = String(anomaly.cardId ?? "").trim();
+  const dashcardId = String(anomaly.dashcardId ?? "").trim();
+  const cardTitle = String(anomaly.cardTitle || "").trim();
+  const dashboards = (inventory.dashboards || []).filter((dashboard) => {
+    if (countryCode && normalizeCountryCode(dashboard.countryCode || dashboard.country?.code) !== countryCode) {
+      return false;
+    }
+    if (dashboardUuid && String(dashboard.uuid || "") === dashboardUuid) {
+      return true;
+    }
+    if (dashboardUrl && dashboardUrlIdentity(dashboard.url || "") === dashboardUrl) {
+      return true;
+    }
+    return !dashboardUuid && !dashboardUrl;
+  });
+
+  for (const dashboard of dashboards) {
+    const cards = dashboard.cards || [];
+    const card = cards.find((item) => cardId && String(item.cardId ?? "") === cardId)
+      || cards.find((item) => dashcardId && String(item.dashcardId ?? "") === dashcardId)
+      || cards.find((item) => cardTitle && String(item.title || "").trim() === cardTitle);
+    if (card) {
+      return { dashboard, card };
+    }
+  }
+  return { dashboard: null, card: null };
+}
+
+function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays = 45) {
+  const days = clampNumber(lookbackDays, 14, 90, 45);
+  const dashboardParameters = new Map((dashboard.parameters || []).map((parameter) => [parameter.id, parameter]));
+  return (card.parameterMappings || []).flatMap((mapping) => {
+    const parameter = dashboardParameters.get(mapping.parameter_id);
+    if (!parameter?.type?.startsWith("date/")) {
+      return [];
+    }
+    return [{
+      id: parameter.id,
+      type: parameter.type,
+      target: mapping.target,
+      value: `past${days}days~`,
+    }];
+  });
 }
 
 function normalizeDashboardUuids(value) {

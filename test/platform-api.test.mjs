@@ -105,6 +105,90 @@ test("platform api returns summary and inventory", async () => {
   assert.equal(inventory.dashboards[0].cards.length, 1);
 });
 
+test("platform api hydrates fluctuation series from saved dashboard card", async () => {
+  const rootDir = await makeFixture();
+  const inventoryPath = path.join(rootDir, "config/discovered-public-dashboards.ready.json");
+  await fs.writeFile(
+    inventoryPath,
+    JSON.stringify({
+      dashboardCount: 1,
+      dashboards: [{
+        countryCode: "MX",
+        countryName: "墨西哥",
+        sourcePanelTitle: "OKR",
+        title: "Dashboard",
+        uuid: "dash-mx",
+        url: "https://data.example/public/dashboard/dash-mx",
+        parameters: [{
+          id: "date-param",
+          name: "统计日期",
+          type: "date/all-options",
+          default: "past30days~",
+        }],
+        cards: [{
+          title: "规模",
+          cardId: 11,
+          dashcardId: 22,
+          parameterMappings: [{
+            parameter_id: "date-param",
+            target: ["dimension", ["template-tag", "stat_date"], { "stage-number": 0 }],
+          }],
+        }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/public-monitor.config.json"),
+    JSON.stringify({
+      rules: [{
+        type: "completeDayChange",
+        dashboardTitle: "OKR",
+        cardTitle: "规模",
+        dateColumn: "统计日期",
+        columns: ["注册数"],
+      }],
+    }),
+  );
+  const calls = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson(request) {
+        calls.push(request);
+        return [
+          { "统计日期": "2026-07-01", "注册数": 100 },
+          { "统计日期": "2026-07-02", "注册数": 110 },
+          { "统计日期": "2026-07-03", "注册数": 220 },
+        ];
+      },
+    }),
+  });
+
+  const result = await api.getFluctuationVisualSeries({
+    anomaly: {
+      countryCode: "MX",
+      dashboardUuid: "dash-mx",
+      dashboardUrl: "https://data.example/public/dashboard/dash-mx",
+      dashboardTitle: "OKR",
+      cardTitle: "规模",
+      cardId: 11,
+      dashcardId: 22,
+      type: "completeDayChange",
+      message: "完整日指标「注册数」从 110 到 220，波动 +100.0%（统计日期 2026-07-03 对比 2026-07-02）",
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].dashboardUuid, "dash-mx");
+  assert.equal(calls[0].cardId, 11);
+  assert.equal(calls[0].parameters[0].value, "past45days~");
+  assert.deepEqual(result.series.map((point) => [point.date, point.value, point.anomaly]), [
+    ["2026-07-01", 100, false],
+    ["2026-07-02", 110, false],
+    ["2026-07-03", 220, true],
+  ]);
+});
+
 test("platform api analyzes and caches a saved Metabase anomaly", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

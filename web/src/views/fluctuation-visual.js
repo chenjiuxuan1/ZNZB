@@ -1,4 +1,4 @@
-import { apiGet } from "../api.js";
+import { apiGet, apiPost } from "../api.js";
 import { state } from "../state.js";
 import { escapeHtml } from "../view-utils.js";
 import { parseAnomalyMessage } from "./batch-check.js";
@@ -61,6 +61,10 @@ export function renderFluctuationVisual(root) {
 
   if (!state.fluctuationVisualLoaded && state.batchHistoryStatus?.type !== "loading") {
     void reloadFluctuationHistory(root);
+  }
+  const selected = getSelectedModelAnomaly(model);
+  if (selected && !hasRealSeries(selected)) {
+    void hydrateFluctuationSeries(root, selected);
   }
 }
 
@@ -164,6 +168,7 @@ function renderFluctuationCountry(country) {
   const selected = country.anomalies[selectedIndex] || country.anomalies[0];
   const chart = buildChart(selected);
   const drawableCount = country.anomalies.filter(hasRealSeries).length;
+  const seriesState = state.fluctuationVisualSeries?.[selected.seriesKey];
   return `
     <article class="panel fluctuation-country-card">
       <div class="fluctuation-country-head">
@@ -176,6 +181,8 @@ function renderFluctuationCountry(country) {
       <div class="fluctuation-visual-body">
         <div class="fluctuation-chart-wrap">
           ${renderLineChart(chart)}
+          ${seriesState?.type === "loading" ? `<div class="fluctuation-chart-note">正在按看板 URL 拉取最近历史数据...</div>` : ""}
+          ${seriesState?.type === "error" ? `<div class="fluctuation-chart-note error">${escapeHtml(seriesState.detail || "历史数据拉取失败")}</div>` : ""}
           <div class="fluctuation-chart-caption">
             <strong>${escapeHtml(selected.metricLabel)}</strong>
             <span>${escapeHtml(selected.dashboardTitle)} / ${escapeHtml(selected.cardTitle)}</span>
@@ -212,7 +219,7 @@ function renderDetailField(label, value) {
 
 function renderLineChart(chart) {
   if (!chart.points.length) {
-    return `<div class="fluctuation-chart-empty">已读到这条异常，但该历史记录没有保存前十几天真实序列。需要用当前代码重新跑一次巡检，下一次历史里才会带真实折线。</div>`;
+    return `<div class="fluctuation-chart-empty">已读到这条异常，正在尝试按保存的看板 URL 回查最近历史数据；如果无法匹配，会在下方显示原因。</div>`;
   }
   const width = 560;
   const height = 260;
@@ -315,15 +322,21 @@ function collectFluctuationAnomalies(run, countries = []) {
   for (const countryRun of run.runs || []) {
     const countryCode = String(countryRun.countryCode || "").toUpperCase();
     const countryName = countryRun.countryName || countryNames.get(countryCode) || countryCode;
-    for (const anomaly of countryRun.result?.anomalies || []) {
+    for (const [anomalyIndex, anomaly] of (countryRun.result?.anomalies || []).entries()) {
       const detail = parseAnomalyMessage(anomaly.message || "", anomaly.type || "");
       if (!isFluctuationAnomaly(anomaly, detail, countryCode)) {
         continue;
       }
+      const seriesKey = buildSeriesKey(run.id, countryCode, anomalyIndex, anomaly);
+      const hydrated = state.fluctuationVisualSeries?.[seriesKey];
       rows.push({
         ...anomaly,
         countryCode,
         countryName,
+        runId: run.id || "",
+        anomalyIndex,
+        seriesKey,
+        hydratedSeries: hydrated?.series || null,
         detail,
         metricLabel: buildMetricLabel(anomaly, detail),
       });
@@ -396,7 +409,7 @@ function hasRealSeries(anomaly) {
 }
 
 function normalizeSeries(anomaly) {
-  const candidate = anomaly.series || anomaly.history || anomaly.points || anomaly.evidence?.series || anomaly.fluctuation?.history;
+  const candidate = anomaly.series || anomaly.hydratedSeries || anomaly.history || anomaly.points || anomaly.evidence?.series || anomaly.fluctuation?.history;
   const rawPoints = Array.isArray(candidate) ? candidate : [];
   return rawPoints
     .map((point, index) => {
@@ -411,6 +424,65 @@ function normalizeSeries(anomaly) {
     })
     .filter(Boolean)
     .slice(-16);
+}
+
+function getSelectedModelAnomaly(model) {
+  const country = getSelectedFluctuationCountry(model.countries || []);
+  if (!country) return null;
+  const requestedIndex = clampIndex(state.fluctuationVisualSelected?.[country.countryCode], country.anomalies.length);
+  const selectedIndex = chooseDisplayAnomalyIndex(country.anomalies, requestedIndex);
+  return country.anomalies[selectedIndex] || country.anomalies[0] || null;
+}
+
+async function hydrateFluctuationSeries(root, anomaly) {
+  const key = anomaly.seriesKey || buildSeriesKey(anomaly.runId, anomaly.countryCode, anomaly.anomalyIndex, anomaly);
+  const current = state.fluctuationVisualSeries?.[key];
+  if (current?.type === "loading" || current?.type === "loaded" || current?.type === "error") {
+    return;
+  }
+  state.fluctuationVisualSeries = {
+    ...(state.fluctuationVisualSeries || {}),
+    [key]: { type: "loading", series: [] },
+  };
+  renderFluctuationVisual(root);
+  try {
+    const result = await apiPost("/api/fluctuation-visual/series", {
+      anomaly,
+      lookbackDays: 45,
+      maxPoints: 16,
+    });
+    state.fluctuationVisualSeries = {
+      ...(state.fluctuationVisualSeries || {}),
+      [key]: {
+        type: result.series?.length ? "loaded" : "error",
+        series: result.series || [],
+        detail: result.message || "",
+      },
+    };
+  } catch (error) {
+    state.fluctuationVisualSeries = {
+      ...(state.fluctuationVisualSeries || {}),
+      [key]: {
+        type: "error",
+        series: [],
+        detail: error.payload?.errors?.join("\n") || error.message,
+      },
+    };
+  }
+  renderFluctuationVisual(root);
+}
+
+function buildSeriesKey(runId, countryCode, anomalyIndex, anomaly = {}) {
+  return [
+    runId || "",
+    countryCode || anomaly.countryCode || "",
+    anomalyIndex ?? "",
+    anomaly.dashboardUuid || "",
+    anomaly.cardId ?? "",
+    anomaly.dashcardId ?? "",
+    anomaly.type || "",
+    anomaly.message || "",
+  ].join("::");
 }
 
 function parseNumericValue(value) {

@@ -199,6 +199,22 @@ test("fluctuation visual prefers a point with saved real series", () => {
   assert.equal(fluctuationVisualTest.chooseDisplayAnomalyIndex(anomalies, 1), 1);
 });
 
+test("fluctuation visual chart accepts hydrated series", () => {
+  const chart = fluctuationVisualTest.buildChart({
+    metricLabel: "注册数",
+    message: "完整日指标「注册数」从 100 到 200",
+    hydratedSeries: [
+      { date: "2026-07-01", value: 100 },
+      { date: "2026-07-02", value: 200, anomaly: true },
+    ],
+  });
+
+  assert.deepEqual(chart.points.map((point) => [point.label, point.value, point.anomaly]), [
+    ["2026-07-01", 100, false],
+    ["2026-07-02", 200, true],
+  ]);
+});
+
 test("fluctuation visual does not use pure numeric fallback as metric name", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
     runs: [{
