@@ -4394,3 +4394,223 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+.fluctuation-stats {
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+}
+
+.fluctuation-toolbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.fluctuation-country-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+}
+
+.fluctuation-country-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.fluctuation-country-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.fluctuation-visual-body {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  min-height: 280px;
+}
+
+.fluctuation-chart-wrap {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fluctuation-line-chart {
+  background: #f8fafc;
+  border: 1px solid #dce3ee;
+  border-radius: 8px;
+  display: block;
+  height: auto;
+  max-height: 280px;
+  width: 100%;
+}
+
+.fluctuation-line-chart rect {
+  fill: #f8fafc;
+}
+
+.fluctuation-line-chart .grid-line {
+  stroke: #dfe7f1;
+  stroke-width: 1;
+}
+
+.fluctuation-line-chart .axis-label,
+.fluctuation-line-chart .x-label {
+  fill: #667085;
+  font-size: 12px;
+}
+
+.fluctuation-line-chart .full-line {
+  fill: none;
+  stroke: #f59e0b;
+  stroke-dasharray: 4 5;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.fluctuation-line-chart .normal-line {
+  fill: none;
+  stroke: #059669;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.fluctuation-line-chart .normal-dot {
+  fill: #10b981;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+
+.fluctuation-line-chart .anomaly-dot {
+  fill: #dc2626;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.fluctuation-chart-caption {
+  display: grid;
+  gap: 3px;
+}
+
+.fluctuation-chart-caption strong {
+  font-size: 15px;
+}
+
+.fluctuation-chart-caption span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fluctuation-chart-empty {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  min-height: 260px;
+}
+
+.fluctuation-point-rail {
+  align-content: center;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  justify-content: center;
+  max-height: 280px;
+  overflow: auto;
+  padding: 5px;
+}
+
+.fluctuation-point-rail button {
+  align-items: center;
+  aspect-ratio: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  justify-content: center;
+  padding: 0;
+  width: 30px;
+}
+
+.fluctuation-point-rail button span {
+  background: #f97316;
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.14);
+  display: block;
+  height: 10px;
+  width: 10px;
+}
+
+.fluctuation-point-rail button:hover,
+.fluctuation-point-rail button.active {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.fluctuation-point-rail button.active span {
+  background: #dc2626;
+  box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.16);
+  height: 13px;
+  width: 13px;
+}
+
+.fluctuation-selected-detail {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.fluctuation-selected-detail div {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.fluctuation-selected-detail span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fluctuation-selected-detail strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .fluctuation-country-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fluctuation-toolbar,
+  .fluctuation-country-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .fluctuation-visual-body {
+    grid-template-columns: 1fr;
+  }
+
+  .fluctuation-point-rail {
+    flex-direction: row;
+    justify-content: flex-start;
+    max-height: none;
+    overflow-x: auto;
+  }
+
+  .fluctuation-selected-detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

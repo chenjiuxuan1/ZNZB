@@ -10,6 +10,7 @@ const {
   renderHistoryDsDetails,
   renderHistoryWattrelDetails,
 } = await import("../web/src/views/batch-check.js");
+const { __test__: fluctuationVisualTest } = await import("../web/src/views/fluctuation-visual.js");
 const { state } = await import("../web/src/state.js");
 
 test("buildBatchScheduleCountryConfig keeps KN Chat personal recipients and group chat together", () => {
@@ -126,4 +127,56 @@ test("history anomaly detail exposes an AI analysis action", () => {
     runId: "run-ai", countryCode: "PH", anomalyIndex: 0,
     analysis: { summary: "已完成", confidence: "low", limitations: "测试" },
   }), /重新 AI 分析/);
+});
+test("fluctuation visual model groups fluctuation anomalies by country", () => {
+  const model = fluctuationVisualTest.buildFluctuationVisualModel({
+    runs: [{
+      id: "run-fluctuation",
+      startedAt: "2026-07-28T00:00:00.000Z",
+      runs: [{
+        countryCode: "MX",
+        countryName: "Mexico",
+        result: {
+          anomalies: [{
+            dashboardTitle: "Overdue",
+            cardTitle: "D7 overdue rate",
+            type: "completeDayChange",
+            message: "完整日指标「D7」从 14.7% 到 26.7%，绝对变化 +12.0个百分点（统计日期 2026-07-13 对比 2026-07-12，APP=MEX023）",
+          }, {
+            dashboardTitle: "Empty table",
+            cardTitle: "Empty table",
+            type: "noData",
+            message: "没有数据",
+          }],
+        },
+      }],
+    }],
+  }, [{ code: "MX", name: "Mexico" }]);
+
+  assert.equal(model.countryCount, 1);
+  assert.equal(model.anomalyCount, 1);
+  assert.equal(model.countries[0].countryCode, "MX");
+  assert.equal(model.countries[0].anomalies[0].metricLabel, "D7 · APP=MEX023");
+});
+
+test("fluctuation visual synthesizes a reference series when history points are absent", () => {
+  const [anomaly] = fluctuationVisualTest.collectFluctuationAnomalies({
+    runs: [{
+      countryCode: "MX",
+      result: {
+        anomalies: [{
+          dashboardTitle: "Overdue",
+          cardTitle: "D7",
+          type: "completeDayChange",
+          message: "完整日指标「D7」从 14.7% 到 26.7%，绝对变化 +12.0个百分点（统计日期 2026-07-13 对比 2026-07-12）",
+        }],
+      },
+    }],
+  });
+
+  const points = fluctuationVisualTest.synthesizeSeries(anomaly);
+  assert.equal(points.length, 13);
+  assert.equal(points[0].value, 14.7);
+  assert.equal(points.at(-1).value, 26.7);
+  assert.equal(points.at(-1).anomaly, true);
 });

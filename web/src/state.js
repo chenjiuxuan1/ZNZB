@@ -28,6 +28,7 @@ export const state = {
   },
   batchHistoryStatus: null,
   batchCheckTab: "manual",
+  fluctuationVisualSelected: {},
   wattrelCurrentResult: null,
   wattrelCurrentStatus: null,
   wattrelCurrentLoaded: false,
