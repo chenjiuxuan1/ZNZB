@@ -41,6 +41,12 @@ export function renderFluctuationVisual(root) {
   root.querySelector("#refresh-fluctuation-history")?.addEventListener("click", () => {
     void reloadFluctuationHistory(root);
   });
+  root.querySelectorAll("[data-fluctuation-country]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.fluctuationVisualCountryCode = button.getAttribute("data-fluctuation-country") || "";
+      renderFluctuationVisual(root);
+    });
+  });
   root.querySelectorAll("[data-fluctuation-point]").forEach((button) => {
     button.addEventListener("click", () => {
       const countryCode = button.getAttribute("data-country") || "";
@@ -112,11 +118,39 @@ function renderFluctuationCountries(model) {
     `;
   }
 
+  const selectedCountry = getSelectedFluctuationCountry(model.countries);
   return `
-    <div class="fluctuation-country-grid">
-      ${model.countries.map((country) => renderFluctuationCountry(country)).join("")}
+    <section class="panel fluctuation-country-selector">
+      <div>
+        <h2 class="panel-title">选择国家</h2>
+        <p class="muted">每次只展示一个国家的大图，避免多个国家图表挤在同一页。</p>
+      </div>
+      <div class="fluctuation-country-buttons">
+        ${model.countries.map((country) => {
+          const active = country.countryCode === selectedCountry.countryCode;
+          return `
+            <button class="${active ? "active" : ""}" type="button" data-fluctuation-country="${escapeHtml(country.countryCode)}">
+              <strong>${escapeHtml(country.countryName || country.countryCode || "-")}</strong>
+              <span>${escapeHtml(country.countryCode || "-")} · ${escapeHtml(country.anomalies.length)} 点</span>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    </section>
+    <div class="fluctuation-country-focus">
+      ${renderFluctuationCountry(selectedCountry)}
     </div>
   `;
+}
+
+function getSelectedFluctuationCountry(countries = []) {
+  const selectedCode = String(state.fluctuationVisualCountryCode || "").toUpperCase();
+  const selected = countries.find((country) => String(country.countryCode || "").toUpperCase() === selectedCode);
+  const fallback = selected || countries[0] || null;
+  if (fallback && state.fluctuationVisualCountryCode !== fallback.countryCode) {
+    state.fluctuationVisualCountryCode = fallback.countryCode;
+  }
+  return fallback;
 }
 
 function renderFluctuationCountry(country) {

@@ -4406,16 +4406,52 @@ body {
   margin-bottom: 14px;
 }
 
-.fluctuation-country-grid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-}
-
 .fluctuation-country-card {
   display: grid;
   gap: 14px;
   min-width: 0;
+}
+
+.fluctuation-country-selector {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  margin-bottom: 14px;
+}
+
+.fluctuation-country-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.fluctuation-country-buttons button {
+  align-items: flex-start;
+  background: #ffffff;
+  border-color: #d8e0eb;
+  display: grid;
+  gap: 3px;
+  min-width: 132px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.fluctuation-country-buttons button:hover,
+.fluctuation-country-buttons button.active {
+  background: #eef4ff;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
+}
+
+.fluctuation-country-buttons span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fluctuation-country-focus .fluctuation-country-card {
+  min-height: 600px;
 }
 
 .fluctuation-country-head {
@@ -4429,8 +4465,8 @@ body {
   align-items: stretch;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) 42px;
-  min-height: 280px;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  min-height: 430px;
 }
 
 .fluctuation-chart-wrap {
@@ -4445,7 +4481,7 @@ body {
   border-radius: 8px;
   display: block;
   height: auto;
-  max-height: 280px;
+  max-height: 430px;
   width: 100%;
 }
 
@@ -4514,7 +4550,7 @@ body {
   color: var(--muted);
   display: flex;
   justify-content: center;
-  min-height: 260px;
+  min-height: 410px;
 }
 
 .fluctuation-point-rail {
@@ -4523,7 +4559,7 @@ body {
   flex-direction: column;
   gap: 9px;
   justify-content: center;
-  max-height: 280px;
+  max-height: 430px;
   overflow: auto;
   padding: 5px;
 }
@@ -4589,14 +4625,19 @@ body {
 }
 
 @media (max-width: 720px) {
-  .fluctuation-country-grid {
+  .fluctuation-country-selector {
     grid-template-columns: 1fr;
   }
 
   .fluctuation-toolbar,
+  .fluctuation-country-selector,
   .fluctuation-country-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .fluctuation-country-buttons {
+    justify-content: flex-start;
   }
 
   .fluctuation-visual-body {
