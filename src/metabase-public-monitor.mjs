@@ -186,14 +186,15 @@ export async function checkPublicDashboards({
   const dataQuality = ruleConfigData.dataQuality?.enabled
     ? await dataQualityFn({ config: ruleConfigData.dataQuality })
     : null;
+  const reportableAnomalies = anomalies.filter((anomaly) => !shouldSuppressCountryAnomaly(anomaly, ruleConfigData));
 
   const result = {
     checkedAt,
     dashboardCount: inventoryData.dashboardCount,
     checkedCardCount: checkedCards.length,
-    anomalyCount: anomalies.length,
+    anomalyCount: reportableAnomalies.length,
     dataQualityAnomalyCount: countDataQualityIssues(dataQuality),
-    anomalies,
+    anomalies: reportableAnomalies,
     checkedCards,
     dataQuality,
     ...(validationMode ? { validation: {
@@ -231,6 +232,31 @@ export async function checkPublicDashboards({
   }
 
   return result;
+}
+
+const DEFAULT_SUPPRESSED_CN_ANOMALY_TYPES = new Set([
+  "noData",
+  "emptyMetrics",
+  "latestNonZeroToZero",
+  "latestZeroRate",
+  "notEmpty",
+]);
+
+function shouldSuppressCountryAnomaly(anomaly, config = {}) {
+  const countryCode = String(anomaly?.countryCode || "").trim().toUpperCase();
+  const type = String(anomaly?.type || "").trim();
+  if (!countryCode || !type) {
+    return false;
+  }
+
+  const configured = config.suppressedAnomalyTypesByCountry?.[countryCode];
+  const suppressedTypes = Array.isArray(configured)
+    ? new Set(configured)
+    : countryCode === "CN"
+      ? DEFAULT_SUPPRESSED_CN_ANOMALY_TYPES
+      : null;
+
+  return suppressedTypes?.has(type) || false;
 }
 
 function buildValidationEntry(dashboard, card, context, result, freshness) {
