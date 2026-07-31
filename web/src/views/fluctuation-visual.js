@@ -531,8 +531,21 @@ function resolvePercentDisplayScale(chart = {}) {
 function formatChartValue(value, percent = false, percentScale = 1) {
   if (!Number.isFinite(Number(value))) return "-";
   const displayValue = percent ? Number(value) * percentScale : Number(value);
-  const rounded = Math.abs(displayValue) >= 100 ? displayValue.toFixed(0) : displayValue.toFixed(1);
+  const rounded = formatCompactNumber(displayValue);
   return percent ? `${rounded}%` : rounded;
+}
+
+function formatCompactNumber(value) {
+  const abs = Math.abs(Number(value));
+  if (!Number.isFinite(abs)) return "-";
+  if (abs === 0) return "0";
+  if (Number.isInteger(Number(value))) return String(Number(value));
+  const decimals = abs >= 100 ? 0
+    : abs >= 10 ? 1
+      : abs >= 0.1 ? 2
+        : abs >= 0.01 ? 3
+          : 4;
+  return Number(value).toFixed(decimals).replace(/\.?0+$/, "");
 }
 
 function formatDateTime(value) {
