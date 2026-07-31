@@ -1,53 +1,50 @@
 {
-  "name": "Metabase Dynamic Evidence Agent (Dify async callback template)",
+  "name": "Metabase Anomaly Evidence Agent (Simplified)",
   "nodes": [
     {
       "parameters": {
+        "path": "metabase-anomaly-evidence-agent",
         "httpMethod": "POST",
-        "path": "metabase-anomaly-dynamic-evidence-agent",
         "responseMode": "responseNode"
       },
-      "id": "receive",
-      "name": "Receive Dynamic Evidence Job",
+      "name": "Receive Evidence Job",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -900,
+        0,
         0
-      ],
-      "webhookId": "metabase-anomaly-dynamic-evidence-agent"
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const request = $json || {}; const body = request.body && typeof request.body === 'object' ? request.body : request; const header = String(request.headers?.authorization || request.headers?.Authorization || '').replace(/^Bearer\\s+/i, '').trim(); const expected = 'REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN'; const tokenEquals = (left, right) => { const actual = String(left); const configured = String(right); let diff = actual.length ^ configured.length; const length = Math.max(actual.length, configured.length); for (let index = 0; index < length; index += 1) diff |= (actual.charCodeAt(index) || 0) ^ (configured.charCodeAt(index) || 0); return diff === 0; }; if (!header || !tokenEquals(header, expected)) throw new Error('Unauthorized dynamic evidence webhook'); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('request body must be an object'); const allowedFields = new Set(['protocolVersion', 'jobId', 'requestedMode', 'anomaly', 'context', 'callback']); if (Object.keys(body).some(key => !allowedFields.has(key))) throw new Error('request contains unsupported fields'); const rawAnomaly = body.anomaly; const rawContext = body.context; const rawCallback = body.callback; if (body.protocolVersion !== 2 || !rawAnomaly || typeof rawAnomaly !== 'object' || Array.isArray(rawAnomaly) || !rawContext || typeof rawContext !== 'object' || Array.isArray(rawContext) || !rawCallback || typeof rawCallback !== 'object' || Array.isArray(rawCallback)) throw new Error('protocolVersion=2, anomaly, context and callback are required'); const jobId = typeof body.jobId === 'string' ? body.jobId.trim() : ''; const callbackToken = typeof rawCallback.token === 'string' ? rawCallback.token.trim() : ''; if (!/^[A-Za-z0-9._:-]{8,128}$/.test(jobId) || !callbackToken || callbackToken.length > 512) throw new Error('valid jobId and callback.token are required'); const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : ''; const context = { runId: text(rawContext.runId, 128), countryCode: text(rawContext.countryCode, 8).toUpperCase(), anomalyIndex: Number(rawContext.anomalyIndex) }; if (!context.runId || !/^[A-Z]{2,3}$/.test(context.countryCode) || !Number.isInteger(context.anomalyIndex) || context.anomalyIndex < 0) throw new Error('runId, countryCode and non-negative anomalyIndex are required'); const anomaly = { dashboardTitle: text(rawAnomaly.dashboardTitle, 256), cardTitle: text(rawAnomaly.cardTitle, 256), dashboardUrl: text(rawAnomaly.dashboardUrl, 2048), type: text(rawAnomaly.type, 64), message: text(rawAnomaly.message, 12000) }; const message = anomaly.message; const rawDates = [...message.matchAll(/(?<!\\d)(20\\d{2}[-/]\\d{1,2}[-/]\\d{1,2})(?!\\d)/g)].map(match => match[1]); const dates = rawDates.map(raw => { const value = raw.replace(/\\//g, '-').replace(/-(\\d)(?=-|$)/g, '-0$1'); const parsed = new Date(value + 'T00:00:00Z'); if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) throw new Error('invalid anomaly date: ' + raw); return value; }); const anomalyDate = dates.at(-1) || new Date().toISOString().slice(0,10); const baselineDate = dates.length > 1 ? dates.at(-2) : new Date(Date.parse(anomalyDate + 'T00:00:00Z') - 86400000).toISOString().slice(0,10); const callback = { url: 'REPLACE_WITH_DUTY_PLATFORM_INTERNAL_CALLBACK_URL', token: callbackToken }; const state = { discoveredTables: [], verifiedTables: [], evidence: [], lineage: [], wattrelAlerts: [], dsCandidates: [], dsStatus: [], budget: { maxDepth: 3, maxCalls: 12, maxWattrel: 3, maxDs: 3, maxDsStatus: 3, depth: 0, calls: 0, wattrel: 0, ds: 0, dsStatus: 0 }, anomalyDate, baselineDate }; return [{ json: { jobId, anomaly, context, callback, state } }];"
+        "jsCode": "const request = $json || {}; const body = request.body && typeof request.body === 'object' ? request.body : request; const header = String(request.headers?.authorization || request.headers?.Authorization || '').replace(/^Bearer\\s+/i, '').trim(); const expected = 'REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN'; const tokenEquals = (left, right) => { const actual = String(left); const configured = String(right); let diff = actual.length ^ configured.length; const length = Math.max(actual.length, configured.length); for (let index = 0; index < length; index += 1) diff |= (actual.charCodeAt(index) || 0) ^ (configured.charCodeAt(index) || 0); return diff === 0; }; if (!header || !tokenEquals(header, expected)) throw new Error('Unauthorized dynamic evidence webhook'); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('request body must be an object'); const allowedFields = new Set(['protocolVersion', 'jobId', 'requestedMode', 'anomaly', 'context', 'callback']); if (Object.keys(body).some(key => !allowedFields.has(key))) throw new Error('request contains unsupported fields'); const rawAnomaly = body.anomaly; const rawContext = body.context; const rawCallback = body.callback; if (body.protocolVersion !== 2 || !rawAnomaly || typeof rawAnomaly !== 'object' || Array.isArray(rawAnomaly) || !rawContext || typeof rawContext !== 'object' || Array.isArray(rawContext) || !rawCallback || typeof rawCallback !== 'object' || Array.isArray(rawCallback)) throw new Error('protocolVersion=2, anomaly, context and callback are required'); const jobId = typeof body.jobId === 'string' ? body.jobId.trim() : ''; const callbackToken = typeof rawCallback.token === 'string' ? rawCallback.token.trim() : ''; if (!/^[A-Za-z0-9._:-]{8,128}$/.test(jobId) || !callbackToken || callbackToken.length > 512) throw new Error('valid jobId and callback.token are required'); const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : ''; const context = { runId: text(rawContext.runId, 128), countryCode: text(rawContext.countryCode, 8).toLowerCase(), anomalyIndex: Number(rawContext.anomalyIndex) }; if (!context.runId || !/^[A-Za-z]{2,3}$/.test(context.countryCode) || !Number.isInteger(context.anomalyIndex) || context.anomalyIndex < 0) throw new Error('runId, countryCode and non-negative anomalyIndex are required'); const anomaly = { dashboardTitle: text(rawAnomaly.dashboardTitle, 256), cardTitle: text(rawAnomaly.cardTitle, 256), dashboardUrl: text(rawAnomaly.dashboardUrl, 2048), type: text(rawAnomaly.type, 64), message: text(rawAnomaly.message, 12000) }; const message = anomaly.message; const rawDates = [...message.matchAll(/(?<!\\d)(20\\d{2}[-/]\\d{1,2}[-/]\\d{1,2})(?!\\d)/g)].map(match => match[1]); const dates = rawDates.map(raw => { const value = raw.replace(/\\//g, '-').replace(/-(\\d)(?=-|$)/g, '-0$1'); const parsed = new Date(value + 'T00:00:00Z'); if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) throw new Error('invalid anomaly date: ' + raw); return value; }); const anomalyDate = dates.at(-1) || new Date().toISOString().slice(0,10); const baselineDate = dates.length > 1 ? dates.at(-2) : new Date(Date.parse(anomalyDate + 'T00:00:00Z') - 86400000).toISOString().slice(0,10); const callback = { url: 'http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback', token: callbackToken }; const state = { discoveredTables: [], verifiedTables: [], evidence: [], lineage: [], wattrelAlerts: [], dsCandidates: [], dsStatus: [], budget: { maxDepth: 3, maxCalls: 12, maxWattrel: 3, maxDs: 3, maxDsStatus: 3, depth: 0, calls: 0, wattrel: 0, ds: 0, dsStatus: 0 }, anomalyDate, baselineDate }; return [{ json: { jobId, anomaly, context, callback, state } }];"
       },
-      "id": "normalize",
-      "name": "Normalize Async Job And Safe Dates",
+      "name": "Normalize Job",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -680,
+        220,
         0
       ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { accepted: true, jobId: $json.jobId, generatedAt: new Date().toISOString() } }}"
+        "responseBody": "={{ { accepted: true, jobId: $json.jobId } }}",
+        "options": {}
       },
-      "id": "accepted",
       "name": "Respond Accepted",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.4,
+      "typeVersion": 1,
       "position": [
-        -440,
-        -140
+        440,
+        -100
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://REPLACE_WITH_DUTY_PLATFORM_HOST/api/metabase-anomaly-analysis/card-sql",
+        "url": "http://172.19.0.1:28787/api/metabase-anomaly-analysis/card-sql",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -65,37 +62,34 @@
         "specifyBody": "json",
         "jsonBody": "={{ { runId: $json.context.runId, countryCode: $json.context.countryCode, anomalyIndex: Number($json.context.anomalyIndex) } }}",
         "options": {
-          "timeout": 30000
+          "timeout": 45000
         }
       },
-      "onError": "continueRegularOutput",
-      "id": "card",
-      "name": "Get Verified Card SQL",
+      "name": "Get Card SQL",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -440,
-        80
+        440,
+        100
       ],
-      "notes": "Replace the host and the same METABASE_ANOMALY_AGENT_CALLBACK_TOKEN configured by the platform. This read-only platform endpoint determines initial tables; Dify never supplies SQL."
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "const base = $('Normalize Async Job And Safe Dates').first().json; const response = $json && typeof $json === 'object' ? $json : {}; const card = response.card && typeof response.card === 'object' ? response.card : response; const pickSql = values => values.find(value => typeof value === 'string' && value.trim()) || ''; const sql = String(pickSql([card.dataset_query?.native?.query, card.dataset_query?.query, card.native_query?.query, card.native_query, card.sql, card.nativeSql, card.query, response.dataset_query?.native?.query, response.dataset_query?.query, response.native_query?.query, response.native_query, response.sql, response.nativeSql, response.query])).slice(0, 20000); const identifier = '[`]?([a-z][a-z0-9_]{0,127})[`]?\\s*\\.\\s*[`]?([a-z][a-z0-9_]{0,127})[`]?'; const tables = [...sql.matchAll(new RegExp('\\\\b(?:from|join|into|update)\\\\s+' + identifier, 'gi'))].map(match => (match[1] + '.' + match[2]).toLowerCase()); const discovered = Array.from(new Set(tables)).slice(0, 10); const error = typeof response.error?.message === 'string' ? response.error.message.slice(0, 600) : typeof response.error === 'string' ? response.error.slice(0, 600) : ''; const cardEvidence = error ? { kind: 'card_sql', status: 'unavailable', error } : { kind: 'card_sql', status: sql ? 'available' : 'unavailable', cardId: card.cardId || card.id || response.cardId || response.id || null, tables: discovered, sql: sql.slice(0, 4000) }; const state = { ...base.state, discoveredTables: discovered, verifiedTables: discovered, evidence: [cardEvidence] }; return [{ json: { ...base, state } }];"
+        "jsCode": "const norm = $('Normalize Job').first().json;\nconst cardResult = $json || {};\nconst cardSql = cardResult.card?.dataset_query?.native?.query || cardResult.card?.native_query || cardResult.native_query || '';\nconst cardName = cardResult.card?.name || norm.anomaly?.cardTitle || '';\nconst tables = [];\nconst sqlText = typeof cardSql === 'string' ? cardSql : JSON.stringify(cardSql);\nconst matches = sqlText.matchAll(/(?:from|join)\\s+`?([\\w.]+)`?/gi);\nfor (const m of matches) {\n  const t = m[1].replace(/[`\"]/g, '').toLowerCase();\n  if (t.includes('.')) tables.push(t);\n}\nconst state = norm.state || {};\nstate.cardSql = sqlText.slice(0, 20000);\nstate.cardTables = [...new Set(tables)].slice(0, 10);\nstate.discoveredTables = state.cardTables;\nstate.verifiedTables = state.cardTables;\nreturn [{ json: { ...norm, state } }];"
       },
-      "id": "seed",
-      "name": "Seed Only Verified Card Tables",
+      "name": "Seed Card SQL",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -180,
-        80
+        660,
+        100
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=REPLACE_WITH_DIFY_WORKFLOW_RUN_URL",
+        "url": "http://172.20.0.234/v1/workflows/run",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -116,273 +110,43 @@
           "timeout": 300000
         }
       },
-      "onError": "continueRegularOutput",
-      "id": "dify",
-      "name": "Ask Dify For Next Action",
+      "name": "Call Dify Agent",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        60,
-        80
+        880,
+        100
       ],
-      "notes": "Use a Dify workflow whose only output is one action JSON. API key is an import-time placeholder, never a repository secret."
-    },
-    {
-      "parameters": {
-        "mode": "combine",
-        "combineBy": "combineByPosition"
-      },
-      "id": "merge-dify",
-      "name": "Preserve State With Dify Response",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        300,
-        80
-      ]
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "jsCode": "const base = $json; const raw = String($json.data?.outputs?.text || $json.data?.outputs?.result || $json.data?.outputs?.analysis_json || $json.data?.outputs?.answer || $json.answer || $json.text || ''); const parseLastBalancedObject = text => { let start = -1; let depth = 0; let inString = false; let escaped = false; let last; for (let index = 0; index < text.length; index += 1) { const char = text[index]; if (inString) { if (escaped) escaped = false; else if (char === '\\\\') escaped = true; else if (char === '\"') inString = false; continue; } if (char === '\"') { inString = true; continue; } if (char === '{') { if (depth === 0) start = index; depth += 1; continue; } if (char === '}' && depth > 0) { depth -= 1; if (depth === 0) { try { last = JSON.parse(text.slice(start, index + 1)); } catch {} } } } return depth === 0 ? last : undefined; }; const decision = parseLastBalancedObject(raw) || { action: 'finish', reason: 'Dify response has no trailing JSON' }; return [{ json: { ...base, difyText: raw.slice(-12000), decision } }];"
       },
-      "id": "parse-dify",
-      "name": "Parse Trailing Dify JSON",
+      "name": "Parse Dify Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        520,
-        80
+        1100,
+        100
       ]
     },
     {
       "parameters": {
-        "jsCode": "const input = $json.state ? $json : $('Parse Trailing Dify JSON').first().json; const state = input.state || {}; const budget = state.budget || {}; const raw = input.decision || (() => { const text = String(input.difyText || ''); let start = -1; let depth = 0; let inString = false; let escaped = false; let last; for (let index = 0; index < text.length; index += 1) { const char = text[index]; if (inString) { if (escaped) escaped = false; else if (char === '\\\\') escaped = true; else if (char === '\"') inString = false; continue; } if (char === '\"') { inString = true; continue; } if (char === '{') { if (depth === 0) start = index; depth += 1; continue; } if (char === '}' && depth > 0) { depth -= 1; if (depth === 0) { try { last = JSON.parse(text.slice(start, index + 1)); } catch {} } } } return depth === 0 ? (last || {}) : {}; })(); const action = String(raw.action || '').trim(); const table = String(raw.table || raw.target || '').trim().toLowerCase(); const known = new Set([...(state.discoveredTables || []), ...(state.verifiedTables || [])]); const allowed = new Set(['trace_lineage', 'check_wattrel', 'check_ds_workflow', 'check_ds_status', 'finish']); let error = !allowed.has(action) ? 'unsupported_action' : ''; if (!error && action !== 'finish' && (!/^[a-z][a-z0-9_]{0,127}\\.[a-z][a-z0-9_]{0,127}$/.test(table) || !known.has(table))) error = 'target_must_be_discovered_or_verified'; if (!error && Number(raw.depth) > 3) error = 'depth_budget_exhausted'; if (!error && Number(budget.calls || 0) >= 12 && action !== 'finish') error = 'tool_call_budget_exhausted'; if (!error && action === 'trace_lineage' && Number(budget.depth || 0) >= 3) error = 'depth_budget_exhausted'; if (!error && action === 'check_wattrel' && Number(budget.wattrel || 0) >= 3) error = 'wattrel_budget_exhausted'; if (!error && action === 'check_ds_workflow' && Number(budget.ds || 0) >= 3) error = 'ds_budget_exhausted'; if (!error && action === 'check_ds_status' && Number(budget.dsStatus || 0) >= 3) error = 'ds_status_budget_exhausted'; const nextBudget = { ...budget, calls: Number(budget.calls || 0) + (action === 'finish' ? 0 : 1) }; return [{ json: { ...input, valid: !error, error, action: error ? 'finish' : action, table, state: { ...state, budget: nextBudget } } }];"
+        "jsCode": "const norm = $('Normalize Job').first().json;\nconst parsed = $('Parse Dify Response').first().json;\nconst decision = parsed.decision || {};\nconst raw = decision;\nconst text = (value, max, fallback = '') => typeof value === 'string' ? value.trim().slice(0, max) : fallback;\nconst list = (value, maxItems, maxLength) => Array.isArray(value) ? value.filter(item => typeof item === 'string').map(item => item.trim().slice(0, maxLength)).filter(Boolean).slice(0, maxItems) : [];\nconst confidence = ['low', 'medium', 'high'].includes(raw.confidence) ? raw.confidence : 'low';\nconst dataSideVerdict = ['data_issue', 'business_change', 'insufficient_evidence'].includes(raw.dataSideVerdict) ? raw.dataSideVerdict : 'insufficient_evidence';\nconst notificationAction = ['send', 'downgrade', 'enrich_only'].includes(raw.notificationAction) ? raw.notificationAction : 'enrich_only';\nconst analysis = {\n  summary: text(raw.summary, 1200, 'Evidence collection finished.'),\n  evidence: list(raw.evidence, 5, 600),\n  possibleCauses: list(raw.possibleCauses, 3, 600),\n  verificationSteps: list(raw.verificationSteps, 3, 600),\n  recommendedActions: list(raw.recommendedActions, 3, 600),\n  confidence,\n  limitations: text(raw.limitations, 1600, parsed.difyText?.slice(-500) || 'Evidence is bounded.'),\n  dataSideVerdict,\n  notificationAction\n};\nreturn [{ json: {\n  jobId: norm.jobId,\n  runId: norm.context.runId,\n  countryCode: norm.context.countryCode,\n  anomalyIndex: Number(norm.context.anomalyIndex),\n  analysis,\n  evidence: { evidenceChain: [] }\n} }];"
       },
-      "id": "validate-action",
-      "name": "Validate Dify Action And Budget",
+      "name": "Build Callback",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        760,
-        80
-      ],
-      "notes": "Only known card/lineage tables can be targeted. Hard limits: depth 3, calls 10, partitions 3, DS 3."
-    },
-    {
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.action }}",
-                    "rightValue": "trace_lineage",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "trace_lineage"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.action }}",
-                    "rightValue": "check_wattrel",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "check_wattrel"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.action }}",
-                    "rightValue": "check_ds_workflow",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "check_ds_workflow"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.action }}",
-                    "rightValue": "check_ds_status",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "check_ds_status"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.action }}",
-                    "rightValue": "finish",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "finish"
-            }
-          ]
-        }
-      },
-      "id": "switch",
-      "name": "Switch Validated Evidence Action",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3,
-      "position": [
-        760,
-        80
+        1320,
+        100
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://REPLACE_WITH_N8N_PUBLIC_HOST/webhook/warehouse-lineage",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { operation: 'trace_table', countryCode: $json.context.countryCode, table: $json.table, maxFiles: 10 } }}",
-        "options": {
-          "timeout": 45000
-        }
-      },
-      "onError": "continueRegularOutput",
-      "id": "lineage",
-      "name": "Trace Lineage Via Public Gateway",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1010,
-        -220
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $json.state ? $json : $('Validate Dify Action And Budget').first().json; const state = input.state || {}; const line = [...(state.lineage || [])].reverse().find(item => item && item.table === input.table && item.producerSql === true); const sourceSql = typeof line?.sourceSql === 'string' ? line.sourceSql.slice(0, 20000) : ''; const dsEvidenceAvailable = Boolean(sourceSql.trim()); const dsInputs = { country: input.context.countryCode, sqlText: sourceSql, alertTime: state.anomalyDate, request_id: input.jobId }; return [{ json: { ...input, dsEvidenceAvailable, dsInputs, status: dsEvidenceAvailable ? input.status : 'unavailable', reason: dsEvidenceAvailable ? input.reason : 'no_verified_producer_lineage_for_ds' } }];"
-      },
-      "id": "build-ds-request",
-      "name": "Build DS Match Request",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        900,
-        140
-      ],
-      "notes": "Only producer_sql matched-file paths or source SQL already returned by the lineage gateway may be sent to DS. Missing evidence returns unavailable without invoking DS."
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "leftValue": "={{ $json.dsEvidenceAvailable }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ]
-        }
-      },
-      "id": "has-ds-evidence",
-      "name": "Verified Producer SQL Is Available",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1140,
-        140
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const prior = $('Validate Dify Action And Budget').first().json; const result = $json || {}; const state = structuredClone(prior.state); const action = prior.action; const evidence = { kind: action, table: prior.table || null, result: JSON.parse(JSON.stringify(result)) }; state.evidence = [...(state.evidence || []), evidence].slice(-20); if (action === 'trace_lineage') { const producerSql = result.evidence?.quality === 'producer_sql'; const upstream = (producerSql ? result.upstreamTables : []).filter(t => /^[a-z][a-z0-9_]{0,127}\\.[a-z][a-z0-9_]{0,127}$/.test(String(t))).map(String); const isPath = value => typeof value === 'string' && value.length <= 500 && !value.startsWith('/') && /^[A-Za-z0-9_./-]+$/.test(value) && !value.includes('..'); const producerFiles = producerSql ? Array.from(new Set([...(result.evidence?.producerFiles || []), ...(Array.isArray(result.matchedFiles) ? result.matchedFiles.filter(file => file?.role === 'producer_sql').map(file => file.path) : [])].filter(isPath))).slice(0, 20) : []; const sourceSql = producerSql && typeof result.sourceSql === 'string' ? result.sourceSql.slice(0, 20000) : ''; state.discoveredTables = Array.from(new Set([...(state.discoveredTables || []), ...upstream])).slice(0, 20); state.verifiedTables = Array.from(new Set([...(state.verifiedTables || []), ...upstream])).slice(0, 20); state.lineage = [...(state.lineage || []), { table: prior.table, upstreamTables: upstream, producerSql, producerFiles, sourceSql }].slice(-10); state.budget.depth = Math.min(3, Number(state.budget.depth || 0) + 1); } if (action === 'check_wattrel') { const alerts = Array.isArray(result.data) ? result.data : []; const tableName = String(prior.table || '').toLowerCase(); const tableBase = (tableName.split('.').pop() || tableName).toLowerCase(); const matching = alerts.filter(alert => { const src = String(alert.src_tbl || alert.srcTbl || '').toLowerCase(); const dest = String(alert.dest_tbl || alert.destTbl || '').toLowerCase(); return src.includes(tableBase) || dest.includes(tableBase) || src.includes(tableName) || dest.includes(tableName); }); state.wattrelAlerts = [...(state.wattrelAlerts || []), ...matching.map(alert => ({ table: prior.table, qualityId: alert.quality_id, name: String(alert.name || '').slice(0, 200), type: String(alert.type || '').slice(0, 64), srcTbl: String(alert.src_tbl || ''), destTbl: String(alert.dest_tbl || ''), result: alert.result, status: String(alert.status || ''), createdAt: String(alert.created_at || '') }))].slice(-20); state.budget.wattrel = Number(state.budget.wattrel || 0) + 1; } if (action === 'check_ds_workflow') { const candidates = Array.isArray(result.candidates) ? result.candidates : []; state.dsCandidates = [...(state.dsCandidates || []), ...candidates.map(c => ({ table: prior.table, workflowName: String(c.workflowName || c.workflow_name || '').slice(0, 200), workflowCode: String(c.workflowCode || c.workflow_code || '').slice(0, 200), projectName: String(c.projectName || c.project_name || '').slice(0, 200), taskName: String(c.taskName || c.task_name || '').slice(0, 200), confidence: String(c.confidence || '').slice(0, 32), matchInfo: String(c.matchInfo || c.match_info || '').slice(0, 200) }))].slice(-20); state.budget.ds = Number(state.budget.ds || 0) + 1; } if (action === 'check_ds_status') { const data = result.data || result; state.dsStatus = [...(state.dsStatus || []), { table: prior.table, action: String(result.action || 'check_failed_instances').slice(0, 64), success: Boolean(result.success), data: Array.isArray(data) ? JSON.parse(JSON.stringify(data.slice(0, 10))) : JSON.parse(JSON.stringify(data)), error: result.error || null }].slice(-10); state.budget.dsStatus = Number(state.budget.dsStatus || 0) + 1; } return [{ json: { ...prior, state } }];"
-      },
-      "id": "append",
-      "name": "Append Bounded Gateway Evidence",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1860,
-        60
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const state = $json.state || {}; const raw = $json.valid === true && $json.action === 'finish' && $json.decision && typeof $json.decision === 'object' && !Array.isArray($json.decision) ? $json.decision : {}; const text = (value, max, fallback = '') => typeof value === 'string' ? value.trim().slice(0, max) : fallback; const list = (value, maxItems, maxLength) => Array.isArray(value) ? value.filter(item => typeof item === 'string').map(item => item.trim().slice(0, maxLength)).filter(Boolean).slice(0, maxItems) : []; const sensitive = /authorization|token|secret|password|credential|cookie|api[_-]?key/i; const omit = /sql|command|stdout|stderr|body|headers?/i; const sanitize = (value, depth = 0) => { if (value === null || value === undefined) return value; if (typeof value === 'string') return value.trim().slice(0, 600); if (typeof value === 'number' || typeof value === 'boolean') return value; if (depth >= 3) return '[truncated]'; if (Array.isArray(value)) return value.slice(0, 10).map(item => sanitize(item, depth + 1)); if (typeof value === 'object') { const out = {}; for (const [key, item] of Object.entries(value).slice(0, 30)) { if (sensitive.test(key) || omit.test(key)) continue; out[key] = sanitize(item, depth + 1); } return out; } return String(value).slice(0, 600); }; const evidenceChain = Array.isArray(state.evidence) ? state.evidence.slice(-20).map(item => sanitize(item)) : []; const wattrelAlerts = (state.wattrelAlerts || []).slice(0, 5).map(a => sanitize(a)); const dsCandidates = (state.dsCandidates || []).slice(0, 5).map(c => sanitize(c)); const dsStatus = (state.dsStatus || []).slice(0, 5).map(s => sanitize(s)); const confidence = ['low', 'medium', 'high'].includes(raw.confidence) ? raw.confidence : 'low'; const dataSideVerdict = ['data_issue', 'business_change', 'insufficient_evidence'].includes(raw.dataSideVerdict) ? raw.dataSideVerdict : 'insufficient_evidence'; const notificationAction = ['send', 'downgrade', 'enrich_only'].includes(raw.notificationAction) ? raw.notificationAction : 'enrich_only'; const analysis = { summary: text(raw.summary, 1200, 'Dynamic evidence collection finished.'), evidence: list(raw.evidence, 5, 600), possibleCauses: list(raw.possibleCauses, 3, 600), verificationSteps: list(raw.verificationSteps, 3, 600), recommendedActions: list(raw.recommendedActions, 3, 600), confidence, limitations: text(raw.limitations, 1600, $json.error || 'Evidence is bounded and must be reviewed.'), dataSideVerdict, notificationAction, evidenceChain: evidenceChain.map(item => ({ kind: item?.kind || 'evidence', table: item?.table || null, result: item?.result || null })) }; return [{ json: { jobId: $json.jobId, runId: $json.context.runId, countryCode: $json.context.countryCode, anomalyIndex: Number($json.context.anomalyIndex), analysis, evidence: { evidenceChain, wattrelAlerts, dsCandidates, dsStatus } } }];"
-      },
-      "id": "finish",
-      "name": "Build Conservative Completion Callback",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1010,
-        500
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=REPLACE_WITH_DUTY_PLATFORM_INTERNAL_CALLBACK_URL",
+        "url": "http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -392,7 +156,7 @@
             },
             {
               "name": "Authorization",
-              "value": "={{ 'Bearer ' + $('Normalize Async Job And Safe Dates').first().json.callback.token }}"
+              "value": "=Bearer REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN"
             }
           ]
         },
@@ -400,124 +164,32 @@
         "specifyBody": "json",
         "jsonBody": "={{ $json }}",
         "options": {
-          "timeout": 30000
-        }
-      },
-      "id": "callback",
-      "name": "Callback Duty Platform",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1260,
-        500
-      ],
-      "notes": "This is a fixed internal platform callback URL. Never derive a callback destination from the inbound request."
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=http://REPLACE_WITH_N8N_PUBLIC_HOST/webhook/wattrel-query",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { country: $json.context.countryCode, limit: 50 } }}",
-        "options": {
           "timeout": 45000
         }
       },
-      "id": "wattrel",
-      "name": "Check Wattrel Quality Alerts",
+      "name": "Callback Platform",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1010,
-        -40
-      ],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "REPLACE_WITH_DS_TASK_MATCH_WORKFLOW_ID",
-          "mode": "list",
-          "cachedResultName": "DS任务匹配候选查询_execute_workflow"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": "={{ { country: String($json.dsInputs.country || \"\"), sqlText: String($json.dsInputs.sqlText || \"\"), alertTime: String($json.dsInputs.alertTime || \"\"), request_id: String($json.dsInputs.request_id || \"\") } }}"
-        }
-      },
-      "id": "ds-match",
-      "name": "Invoke DS Task Candidate Query",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [
-        1380,
-        80
-      ],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const rows = $input.all().map(item => item.json || {}).filter(row => row && Object.keys(row).length > 0); const candidates = rows.filter(row => row.success !== false).flatMap(row => { const data = Array.isArray(row.data) ? row.data : (Array.isArray(row.candidates) ? row.candidates : []); return data.map(item => ({ workflowName: String(item.workflow_name || item.workflowName || '').slice(0, 200), workflowCode: String(item.workflow_code || item.workflowCode || '').slice(0, 200), projectName: String(item.project_name || item.projectName || '').slice(0, 200), taskName: String(item.task_name || item.taskName || '').slice(0, 200), confidence: String(item.confidence || row.confidence || '').slice(0, 32), matchInfo: String(item.match_info || row.match_info || row.dsTaskMatchInfo || '').slice(0, 200) })); }).slice(0, 10); return [{ json: { candidates, success: candidates.length > 0, count: candidates.length, rawRowCount: rows.length } }];"
-      },
-      "id": "collect-ds-match",
-      "name": "Collect DS Match Candidates",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1620,
-        80
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $json.state ? $json : $('Validate Dify Action And Budget').first().json; const state = input.state || {}; const candidates = (state.dsCandidates || []).filter(c => c && c.workflowName); const matching = candidates.find(c => c.table === input.table) || candidates[0]; const dsStatusAvailable = Boolean(matching && matching.workflowName); const startDate = new Date(Date.parse(state.anomalyDate + 'T00:00:00Z') - 2 * 86400000).toISOString().slice(0, 10); const endDate = state.anomalyDate; const dsTokens = { CN: 'REPLACE_WITH_DS_API_TOKEN_CN', MX: 'REPLACE_WITH_DS_API_TOKEN_MX', INE: 'REPLACE_WITH_DS_API_TOKEN_INE', PK: 'REPLACE_WITH_DS_API_TOKEN_PK', PH: 'REPLACE_WITH_DS_API_TOKEN_PH', TH: 'REPLACE_WITH_DS_API_TOKEN_TH' }; const dsToken = dsTokens[String(input.context.countryCode || '').toUpperCase()] || ''; const dsStatusRequest = { country: input.context.countryCode, action: 'check_failed_instances', ds_token: dsToken, request_id: input.jobId, payload: { search_val: matching ? matching.workflowName : '', start_time: startDate + ' 00:00:00', end_time: endDate + ' 23:59:59' } }; return [{ json: { ...input, dsStatusAvailable, dsStatusRequest, status: dsStatusAvailable ? input.status : 'unavailable', reason: dsStatusAvailable ? input.reason : 'no_ds_candidates_for_status_check' } }];"
-      },
-      "id": "build-ds-status",
-      "name": "Build DS Status Request",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1010,
-        320
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=http://REPLACE_WITH_N8N_PUBLIC_HOST/webhook/ds-scheduler",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json.dsStatusRequest }}",
-        "options": {
-          "timeout": 45000
-        }
-      },
-      "id": "ds-status",
-      "name": "Check DS Scheduler Status",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1250,
-        320
+        1540,
+        100
       ],
       "onError": "continueRegularOutput"
     }
   ],
   "connections": {
-    "Receive Dynamic Evidence Job": {
+    "Receive Evidence Job": {
       "main": [
         [
           {
-            "node": "Normalize Async Job And Safe Dates",
+            "node": "Normalize Job",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Normalize Async Job And Safe Dates": {
+    "Normalize Job": {
       "main": [
         [
           {
@@ -526,239 +198,62 @@
             "index": 0
           },
           {
-            "node": "Get Verified Card SQL",
+            "node": "Get Card SQL",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Verified Card SQL": {
+    "Get Card SQL": {
       "main": [
         [
           {
-            "node": "Seed Only Verified Card Tables",
+            "node": "Seed Card SQL",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Seed Only Verified Card Tables": {
+    "Seed Card SQL": {
       "main": [
         [
           {
-            "node": "Ask Dify For Next Action",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Preserve State With Dify Response",
+            "node": "Call Dify Agent",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Ask Dify For Next Action": {
+    "Call Dify Agent": {
       "main": [
         [
           {
-            "node": "Preserve State With Dify Response",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Preserve State With Dify Response": {
-      "main": [
-        [
-          {
-            "node": "Parse Trailing Dify JSON",
+            "node": "Parse Dify Response",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Parse Trailing Dify JSON": {
+    "Parse Dify Response": {
       "main": [
         [
           {
-            "node": "Validate Dify Action And Budget",
+            "node": "Build Callback",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Validate Dify Action And Budget": {
+    "Build Callback": {
       "main": [
         [
           {
-            "node": "Switch Validated Evidence Action",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Switch Validated Evidence Action": {
-      "main": [
-        [
-          {
-            "node": "Trace Lineage Via Public Gateway",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Check Wattrel Quality Alerts",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build DS Match Request",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build DS Status Request",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Conservative Completion Callback",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Trace Lineage Via Public Gateway": {
-      "main": [
-        [
-          {
-            "node": "Append Bounded Gateway Evidence",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check Wattrel Quality Alerts": {
-      "main": [
-        [
-          {
-            "node": "Append Bounded Gateway Evidence",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build DS Match Request": {
-      "main": [
-        [
-          {
-            "node": "Verified Producer SQL Is Available",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Verified Producer SQL Is Available": {
-      "main": [
-        [
-          {
-            "node": "Invoke DS Task Candidate Query",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Append Bounded Gateway Evidence",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Invoke DS Task Candidate Query": {
-      "main": [
-        [
-          {
-            "node": "Collect DS Match Candidates",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Collect DS Match Candidates": {
-      "main": [
-        [
-          {
-            "node": "Append Bounded Gateway Evidence",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build DS Status Request": {
-      "main": [
-        [
-          {
-            "node": "Check DS Scheduler Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check DS Scheduler Status": {
-      "main": [
-        [
-          {
-            "node": "Append Bounded Gateway Evidence",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Append Bounded Gateway Evidence": {
-      "main": [
-        [
-          {
-            "node": "Ask Dify For Next Action",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Preserve State With Dify Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Conservative Completion Callback": {
-      "main": [
-        [
-          {
-            "node": "Callback Duty Platform",
+            "node": "Callback Platform",
             "type": "main",
             "index": 0
           }
@@ -768,5 +263,6 @@
   },
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "active": false
 }
