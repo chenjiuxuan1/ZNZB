@@ -656,7 +656,13 @@ function evaluateBuiltIns(config, dashboard, card, result, options = {}) {
       },
     );
     for (const message of zeroDrops) {
-      anomalies.push(buildAnomaly(dashboard, card, "latestNonZeroToZero", message));
+      anomalies.push(buildAnomaly(dashboard, card, "latestNonZeroToZero", message, null, {
+        series: buildAnomalyMetricSeries(result.rows, {
+          dateColumn: intradayRule?.dateColumn,
+          metricColumnFallback: metricColumns,
+          timezone,
+        }, message),
+      }));
     }
   }
 
@@ -696,6 +702,9 @@ function evaluateRules(rules, dashboard, card, result, options = {}) {
           message === "没有数据" ? "noData" : effectiveRule.type,
           formatRuleMessage(message, dashboard, card, effectiveRule),
           effectiveRule.context,
+          {
+            series: buildAnomalyMetricSeries(result.rows, effectiveRule, String(message || "")),
+          },
         ),
       );
     })
@@ -1882,6 +1891,138 @@ function buildDailySeries(rows, dateColumn, numericColumns, explicitDimensionCol
   return [...groups.values()];
 }
 
+function buildAnomalyMetricSeries(rows = [], rule = {}, message = "", options = {}) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return [];
+  }
+
+  const dateColumn = (rule.dateColumn && rows.some((row) => row && rule.dateColumn in row))
+    ? rule.dateColumn
+    : inferDateColumn(rows);
+  if (!dateColumn) {
+    return [];
+  }
+
+  const metricFromMessage = extractMetricColumnFromAnomalyMessage(message);
+  const metricColumns = metricFromMessage && rows.some((row) => row && metricFromMessage in row)
+    ? [metricFromMessage]
+    : selectNumericColumns(rows, rule);
+  if (!metricColumns.length) {
+    return [];
+  }
+
+  const targetColumn = metricColumns[0];
+  const dimensionFilters = extractDimensionFiltersFromAnomalyMessage(message);
+  const dailySeries = buildDailySeries(
+    rows,
+    dateColumn,
+    metricColumns,
+    rule.dimensionColumns,
+    rule.ignoreDimensionColumns,
+  );
+  const targetDate = extractLastDateFromText(message);
+  const targetValue = extractCurrentValueFromAnomalyMessage(message);
+  const selectedSeries = selectAnomalySeriesGroup(dailySeries, {
+    targetColumn,
+    targetDate,
+    targetValue,
+    dimensionFilters,
+  });
+  if (!selectedSeries) {
+    return [];
+  }
+
+  const dates = [...selectedSeries.rowsByDate.keys()].sort();
+  const boundedDates = (targetDate
+    ? dates.filter((date) => date <= targetDate)
+    : dates).slice(-(options.maxPoints || 16));
+
+  return boundedDates
+    .map((date) => {
+      const row = selectedSeries.rowsByDate.get(date);
+      const value = toNumber(row?.[targetColumn]);
+      if (!Number.isFinite(value)) {
+        return null;
+      }
+      return {
+        date,
+        label: date,
+        value,
+        metric: targetColumn,
+        anomaly: targetDate ? date === targetDate : date === boundedDates[boundedDates.length - 1],
+      };
+    })
+    .filter(Boolean);
+}
+
+function selectAnomalySeriesGroup(seriesGroups = [], { targetColumn, targetDate, targetValue, dimensionFilters = [] } = {}) {
+  const dimensionMatched = seriesGroups.filter((group) => dimensionsMatch(group.dimensionValues, dimensionFilters));
+  const candidates = dimensionMatched.length ? dimensionMatched : seriesGroups;
+  if (!candidates.length) {
+    return null;
+  }
+
+  if (targetDate && Number.isFinite(targetValue)) {
+    const exact = candidates.find((group) => toNumber(group.rowsByDate.get(targetDate)?.[targetColumn]) === targetValue);
+    if (exact) {
+      return exact;
+    }
+  }
+
+  if (targetDate) {
+    const withDate = candidates.find((group) => Number.isFinite(toNumber(group.rowsByDate.get(targetDate)?.[targetColumn])));
+    if (withDate) {
+      return withDate;
+    }
+  }
+
+  return candidates.find((group) => [...group.rowsByDate.values()].some((row) => Number.isFinite(toNumber(row?.[targetColumn])))) || null;
+}
+
+function dimensionsMatch(values = {}, filters = []) {
+  if (!filters.length) {
+    return true;
+  }
+  return filters.every(({ key, value }) => String(values[key] ?? "").trim() === String(value ?? "").trim());
+}
+
+function extractMetricColumnFromAnomalyMessage(message = "") {
+  const text = String(message || "");
+  const match = text.match(/(?:完整日指标|稳健完整日指标|同时间指标|上一日同时间点指标|指标)「([^」]+)」/)
+    || text.match(/(?:完整日指标|稳健完整日指标|同时间指标|上一日同时间点指标|指标)"([^"]+)"/);
+  return match?.[1] || "";
+}
+
+function extractDimensionFiltersFromAnomalyMessage(message = "") {
+  const sections = [...String(message || "").matchAll(/[（(]([^（）()]+)[）)]/g)].map((match) => match[1]);
+  const filters = [];
+  for (const section of sections) {
+    for (const rawPart of section.split(/[，,]/)) {
+      const part = rawPart.trim();
+      if (!part.includes("=")) continue;
+      const [key, ...rest] = part.split("=");
+      const name = key.trim();
+      if (/^(统计日期|stat_date|注册日期|到期日期|日期|时间|timezone)$/i.test(name)) continue;
+      filters.push({ key: name, value: rest.join("=").trim() });
+    }
+  }
+  return filters;
+}
+
+function extractLastDateFromText(message = "") {
+  const matches = [...String(message || "").matchAll(/[0-9]{4}-[0-9]{2}-[0-9]{2}/g)].map((match) => match[0]);
+  return matches[0] || "";
+}
+
+function extractCurrentValueFromAnomalyMessage(message = "") {
+  const text = String(message || "");
+  const match = text.match(/(?:到|降为|=)\s*([+-]?\d+(?:\.\d+)?%?)/);
+  if (!match) {
+    return Number.NaN;
+  }
+  return toNumber(match[1]);
+}
+
 function buildIntradaySeries(rows, dateColumn, timeColumn, numericColumns, explicitDimensionColumns, ignoredDimensionColumns = []) {
   if (!rows.length) {
     return [];
@@ -2484,7 +2625,7 @@ function formatSignedPercentagePoint(value) {
   return `${sign}${(value * 100).toFixed(1)}个百分点`;
 }
 
-function buildAnomaly(dashboard, card, type, message, context = null) {
+function buildAnomaly(dashboard, card, type, message, context = null, extra = {}) {
   return {
     country: dashboard.country || null,
     countryCode: dashboard.countryCode || dashboard.country?.code,
@@ -2498,5 +2639,6 @@ function buildAnomaly(dashboard, card, type, message, context = null) {
     context,
     type,
     message,
+    ...extra,
   };
 }

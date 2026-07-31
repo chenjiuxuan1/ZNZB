@@ -891,6 +891,54 @@ test("evaluateRowsAgainstRule checks complete day change before today", () => {
   ]);
 });
 
+test("checkPublicDashboards attaches real historical series to complete day anomalies", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [{
+        title: "转化率",
+        url: "https://data.example/public/dashboard/conversion",
+        countryCode: "MX",
+        timezone: "America/Mexico_City",
+        cards: [{ title: "分app规模&转化", cardId: 1, dashcardId: 2, metrics: ["注册~放款"] }],
+      }],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: false, nonZeroToZero: false },
+      rules: [{
+        type: "completeDayChange",
+        dashboardTitle: "转化率",
+        cardTitle: "分app规模&转化",
+        dateColumn: "统计日期",
+        column: "注册~放款",
+        timezone: "America/Mexico_City",
+        now: "2026-06-08T18:00:00Z",
+        maxRiseRate: 0.25,
+      }],
+    },
+    dataQualityFn: async () => null,
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [
+        { "统计日期": "2026-06-04", "注册~放款": 0.018 },
+        { "统计日期": "2026-06-05", "注册~放款": 0.021 },
+        { "统计日期": "2026-06-06", "注册~放款": 0.02 },
+        { "统计日期": "2026-06-07", "注册~放款": 0.027 },
+      ],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.anomalyCount, 1);
+  assert.equal(result.anomalies[0].type, "completeDayChange");
+  assert.deepEqual(result.anomalies[0].series.map((point) => [point.date, point.value, point.anomaly]), [
+    ["2026-06-04", 0.018, false],
+    ["2026-06-05", 0.021, false],
+    ["2026-06-06", 0.02, false],
+    ["2026-06-07", 0.027, true],
+  ]);
+});
+
 test("evaluateRowsAgainstRule supports absolute percentage point threshold", () => {
   const healthyResult = evaluateRowsAgainstRule(
     [
@@ -1206,6 +1254,14 @@ test("checkPublicDashboards flags a dated metric that suddenly drops from histor
   assert.equal(result.anomalyCount, 1);
   assert.equal(result.anomalies[0].type, "latestNonZeroToZero");
   assert.match(result.anomalies[0].message, /关键指标.*从 0\.05 降为 0/);
+  assert.deepEqual(result.anomalies[0].series.map((point) => [point.date, point.value, point.anomaly]), [
+    ["2026-07-20", 0.04, false],
+    ["2026-07-21", 0.05, false],
+    ["2026-07-22", 0.04, false],
+    ["2026-07-23", 0.05, false],
+    ["2026-07-24", 0.05, false],
+    ["2026-07-25", 0, true],
+  ]);
 });
 
 test("checkPublicDashboards ignores a latest zero when the metric is frequently zero historically", async () => {
