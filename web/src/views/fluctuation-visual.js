@@ -159,15 +159,17 @@ function getSelectedFluctuationCountry(countries = []) {
 }
 
 function renderFluctuationCountry(country) {
-  const selectedIndex = clampIndex(state.fluctuationVisualSelected?.[country.countryCode], country.anomalies.length);
+  const requestedIndex = clampIndex(state.fluctuationVisualSelected?.[country.countryCode], country.anomalies.length);
+  const selectedIndex = chooseDisplayAnomalyIndex(country.anomalies, requestedIndex);
   const selected = country.anomalies[selectedIndex] || country.anomalies[0];
   const chart = buildChart(selected);
+  const drawableCount = country.anomalies.filter(hasRealSeries).length;
   return `
     <article class="panel fluctuation-country-card">
       <div class="fluctuation-country-head">
         <div>
           <h2 class="panel-title">${escapeHtml(country.countryName || country.countryCode || "-")}</h2>
-          <p class="muted">${escapeHtml(country.countryCode || "-")} · ${escapeHtml(country.anomalies.length)} 个波动指标</p>
+          <p class="muted">${escapeHtml(country.countryCode || "-")} · ${escapeHtml(country.anomalies.length)} 个波动指标${drawableCount < country.anomalies.length ? `，${escapeHtml(drawableCount)} 个已保存真实序列` : ""}</p>
         </div>
         <span class="badge warn">${escapeHtml(country.anomalies.length)} 点</span>
       </div>
@@ -210,7 +212,7 @@ function renderDetailField(label, value) {
 
 function renderLineChart(chart) {
   if (!chart.points.length) {
-    return `<div class="fluctuation-chart-empty">这条历史记录没有保存真实历史序列，需等待下一次巡检生成真实折线</div>`;
+    return `<div class="fluctuation-chart-empty">已读到这条异常，但该历史记录没有保存前十几天真实序列。需要用当前代码重新跑一次巡检，下一次历史里才会带真实折线。</div>`;
   }
   const width = 560;
   const height = 260;
@@ -381,6 +383,18 @@ function buildChart(anomaly) {
   };
 }
 
+function chooseDisplayAnomalyIndex(anomalies = [], requestedIndex = 0) {
+  if (!anomalies.length) return 0;
+  const clamped = clampIndex(requestedIndex, anomalies.length);
+  if (hasRealSeries(anomalies[clamped])) return clamped;
+  const firstDrawable = anomalies.findIndex(hasRealSeries);
+  return firstDrawable >= 0 ? firstDrawable : clamped;
+}
+
+function hasRealSeries(anomaly) {
+  return normalizeSeries(anomaly).length > 0;
+}
+
 function normalizeSeries(anomaly) {
   const candidate = anomaly.series || anomaly.history || anomaly.points || anomaly.evidence?.series || anomaly.fluctuation?.history;
   const rawPoints = Array.isArray(candidate) ? candidate : [];
@@ -440,4 +454,5 @@ export const __test__ = {
   buildFluctuationVisualModel,
   buildChart,
   collectFluctuationAnomalies,
+  chooseDisplayAnomalyIndex,
 };

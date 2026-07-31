@@ -178,6 +178,27 @@ test("fluctuation visual does not synthesize fake history when points are absent
   assert.deepEqual(chart.points, []);
 });
 
+test("fluctuation visual prefers a point with saved real series", () => {
+  const anomalies = [{
+    dashboardTitle: "Overdue",
+    cardTitle: "D1",
+    type: "completeDayChange",
+    message: "完整日指标「D1」从 10 到 30，变化 +200%",
+  }, {
+    dashboardTitle: "Overdue",
+    cardTitle: "D7",
+    type: "completeDayChange",
+    message: "完整日指标「D7」从 10 到 30，变化 +200%",
+    series: [
+      { date: "2026-07-11", value: 10 },
+      { date: "2026-07-12", value: 30, anomaly: true },
+    ],
+  }];
+
+  assert.equal(fluctuationVisualTest.chooseDisplayAnomalyIndex(anomalies, 0), 1);
+  assert.equal(fluctuationVisualTest.chooseDisplayAnomalyIndex(anomalies, 1), 1);
+});
+
 test("fluctuation visual does not use pure numeric fallback as metric name", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
     runs: [{
