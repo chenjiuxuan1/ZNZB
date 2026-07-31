@@ -107,22 +107,18 @@ async function handleApi(request, response, url) {
   }
   if (method === "POST" && url.pathname === "/api/tools/warehouse-lineage") {
     const body = await readBody(request, {});
-    assertWarehouseLineageToolAuthorized(request);
     return sendJson(response, 200, await proxyWarehouseLineageRequest(body));
   }
   if (method === "POST" && url.pathname === "/api/tools/metabase-card-sql") {
     const body = await readBody(request, {});
-    assertWarehouseLineageToolAuthorized(request);
     return sendJson(response, 200, await api.getMetabaseAnomalyCardSql(body));
   }
   if (method === "POST" && url.pathname === "/api/tools/wattrel-query") {
     const body = await readBody(request, {});
-    assertWarehouseLineageToolAuthorized(request);
     return sendJson(response, 200, await proxyWattrelQuery(body));
   }
   if (method === "POST" && url.pathname === "/api/tools/ds-scheduler") {
     const body = await readBody(request, {});
-    assertWarehouseLineageToolAuthorized(request);
     return sendJson(response, 200, await proxyDsSchedulerRequest(body));
   }
   if (method === "POST" && url.pathname === "/api/external-alert-runs") {

@@ -1,13 +1,12 @@
 openapi: 3.0.3
 info:
   title: Metabase 异常数据侧取证工具集
-  version: 2.1.0
+  version: 2.2.0
   description: >-
     只读取证工具集。Dify Agent 通过这 4 个工具自主追溯 Metabase 异常根因。
+    不执行 SQL、不修改代码、不触发 DS 重跑。
 servers:
 - url: http://172.20.0.235:28787
-security:
-- apiKeyAuth: []
 paths:
   /api/tools/metabase-card-sql:
     post:
@@ -160,10 +159,3 @@ paths:
                   action: { type: string }
                   data: { type: array, items: { type: object } }
                   error: { type: object, nullable: true }
-components:
-  securitySchemes:
-    apiKeyAuth:
-      type: apiKey
-      in: header
-      name: Authorization
-      description: 填入 Bearer 20aaa340bb55a2322b60f63e7a4024b5e5364eb9eceb9cad18f044c0e3f2f197
