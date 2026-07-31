@@ -1334,9 +1334,44 @@ test("checkPublicDashboards ignores future hourly metric columns within the allo
     }),
   });
 
-  assert.equal(result.anomalyCount, 1);
-  assert.match(result.anomalies[0].message, /指标「8」从 120 降为 0/);
-  assert.doesNotMatch(result.anomalies[0].message, /指标「10」|指标「20」/);
+  assert.equal(result.anomalies.some((anomaly) => anomaly.type === "latestNonZeroToZero"), false);
+});
+
+test("checkPublicDashboards does not report hourly columns as generic zero-drop metrics", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [{
+        title: "每小时监控",
+        url: "https://data.example/dashboard/1053",
+        countryCode: "PK",
+        timezone: "Asia/Karachi",
+        cards: [{ title: "进件 - 老客", cardId: 1, dashcardId: 2, metrics: ["1", "2", "3", "4"] }],
+      }],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: false },
+      rules: [{
+        type: "intradayTimePointChange",
+        dashboardTitle: "每小时监控",
+        timeColumn: "小时",
+        intervalMinutes: 60,
+        thresholdPct: 999,
+      }],
+    },
+    dataQualityFn: async () => null,
+    checkedAt: "2026-07-30T04:00:00.000Z",
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [
+        { "日期": "2026-07-29", "1": 99, "2": 73, "3": 46, "4": 28 },
+        { "日期": "2026-07-30", "1": 0, "2": 0, "3": 0, "4": 0 },
+      ],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.anomalies.some((anomaly) => anomaly.type === "latestNonZeroToZero"), false);
 });
 
 test("evaluateRowsAgainstRule reports no data when an intraday card has no parseable date column", () => {

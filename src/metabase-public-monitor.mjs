@@ -652,6 +652,7 @@ function evaluateBuiltIns(config, dashboard, card, result, options = {}) {
         timezone,
         now: options.checkedAt,
         allowedDelayMinutes: intradayRule?.allowedDelayMinutes ?? intradayRule?.dataDelayMinutes,
+        skipHourlyMetricColumns: Boolean(intradayRule),
         skipFutureHourlyMetricColumns: Boolean(intradayRule),
       },
     );
@@ -998,6 +999,9 @@ function checkLatestNonZeroToZero(rows, metricColumns, options = {}) {
       continue;
     }
     for (const column of metricColumns) {
+      if (options.skipHourlyMetricColumns && isHourlyMetricColumn(column)) {
+        continue;
+      }
       if (isFutureHourlyMetricColumn(column, item.latest, dateColumn, options)) {
         continue;
       }
@@ -1023,11 +1027,11 @@ function isFutureHourlyMetricColumn(column, latestRow, dateColumn, options = {})
     return false;
   }
 
-  const hour = Number(String(column).trim());
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+  if (!isHourlyMetricColumn(column)) {
     return false;
   }
 
+  const hour = Number(String(column).trim());
   const latestDate = normalizeDateKey(latestRow?.[dateColumn]);
   const localNow = getZonedNow(resolveNow({ now: options.now }), options.timezone || "Asia/Jakarta");
   if (latestDate !== localNow.dateKey) {
@@ -1036,6 +1040,14 @@ function isFutureHourlyMetricColumn(column, latestRow, dateColumn, options = {})
 
   const allowedDelayMinutes = Number(options.allowedDelayMinutes) || 0;
   return hour * 60 > localNow.hour * 60 + localNow.minute - allowedDelayMinutes;
+}
+
+function isHourlyMetricColumn(column) {
+  const hour = Number(String(column).trim());
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    return false;
+  }
+  return true;
 }
 
 function hasFrequentHistoricalZeros(rows, column, options = {}) {
