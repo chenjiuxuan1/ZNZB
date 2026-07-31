@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: Metabase 异常数据侧取证工具集
-  version: 2.2.0
+  version: 2.3.0
   description: >-
-    只读取证工具集。Dify Agent 通过这 4 个工具自主追溯 Metabase 异常根因。
-    不执行 SQL、不修改代码、不触发 DS 重跑。
+    只读取证工具集。Dify Agent 通过这 5 个工具自主追溯 Metabase 异常根因。
+    不修改代码、不触发 DS 重跑。query_table_data 仅允许只读 SELECT。
 servers:
 - url: http://172.20.0.235:28787
 paths:
@@ -159,3 +159,37 @@ paths:
                   action: { type: string }
                   data: { type: array, items: { type: object } }
                   error: { type: object, nullable: true }
+  /api/tools/query-table-data:
+    post:
+      operationId: query_table_data
+      summary: 直接查询 StarRocks 表数据（只读）
+      description: >-
+        通过 Fuxi SR 网关执行只读 SELECT 查询，直接验证底表数据是否存在、
+        指标字段值是否为 0 或 NULL。用于区分「数据未产出」vs「数据产出但值为 0」。
+        仅允许 SELECT/WITH/SHOW/DESC/EXPLAIN，禁止任何写操作。
+        country 传 cn/ine/ph/th/pk/mx，平台自动映射到 SR 网关国家路由。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [country, sql]
+              properties:
+                country: { type: string, enum: [cn, ine, ph, th, pk, mx], description: 国家代码 }
+                sql: { type: string, description: 只读 SELECT SQL，例如 SELECT grant_cnt_1d,pass_cnt_1d FROM ads.ads_3003_user_smmary_d WHERE stat_date='2026-07-31' AND user_category='总计' }
+                limit: { type: integer, minimum: 1, maximum: 500, default: 100, description: 最多返回行数 }
+      responses:
+        '200':
+          description: 查询结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  columns: { type: array, items: { type: string } }
+                  rows: { type: array, items: { type: object } }
+                  rowCount: { type: integer }
+                  truncated: { type: boolean }

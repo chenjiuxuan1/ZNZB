@@ -82,3 +82,77 @@ test("ds scheduler proxy normalizes country aliases", async () => {
   await proxyDsSchedulerRequest({ country: "ID", action: "list_workflows" }, { env: { DS_API_TOKEN_INE: "t" }, fetchFn });
   assert.equal(captured.country, "ine");
 });
+
+/* ── proxySrQuery tests ── */
+
+import { proxySrQuery } from "../src/evidence-tool-proxy.mjs";
+
+test("SR query proxy maps ine to id and forwards read-only SQL to the gateway", async () => {
+  let capturedUrl, capturedBody, capturedHeaders;
+  const fetchFn = async (url, options) => {
+    capturedUrl = url;
+    capturedBody = JSON.parse(options.body);
+    capturedHeaders = options.headers;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { columns: ["stat_date", "grant_cnt_1d"], rows: [{ stat_date: "2026-07-31", grant_cnt_1d: 0 }], total: 1 } }) };
+  };
+  const result = await proxySrQuery(
+    { country: "ine", sql: "SELECT grant_cnt_1d FROM ads.ads_3003_user_smmary_d WHERE stat_date='2026-07-31'" },
+    { env: { FUXI_SR_TOKEN: "test-token" }, fetchFn },
+  );
+  assert.match(capturedUrl, /\/api\/rust\/v1\/sr-sandboxes\/sql-executions$/);
+  assert.equal(capturedBody.country, "id");
+  assert.equal(capturedBody.sqlMode, "query");
+  assert.equal(capturedHeaders.Authorization, "Bearer test-token");
+  assert.deepEqual(result.columns, ["stat_date", "grant_cnt_1d"]);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rowCount, 1);
+});
+
+test("SR query proxy rejects write SQL", async () => {
+  const fetchFn = async () => { throw new Error("should not be called"); };
+  await assert.rejects(
+    () => proxySrQuery({ country: "cn", sql: "INSERT INTO testdb.t VALUES (1)" }, { env: { FUXI_SR_TOKEN: "t" }, fetchFn }),
+    /Only read-only SQL is allowed|Write\/DDL\/DML/,
+  );
+});
+
+test("SR query proxy rejects DROP and DELETE", async () => {
+  const fetchFn = async () => { throw new Error("should not be called"); };
+  await assert.rejects(() => proxySrQuery({ country: "cn", sql: "DROP TABLE ads.t" }, { env: { FUXI_SR_TOKEN: "t" }, fetchFn }), /Only read-only SQL is allowed/);
+  await assert.rejects(() => proxySrQuery({ country: "cn", sql: "DELETE FROM ads.t" }, { env: { FUXI_SR_TOKEN: "t" }, fetchFn }), /Only read-only SQL is allowed/);
+});
+
+test("SR query proxy rejects unsupported country", async () => {
+  await assert.rejects(
+    () => proxySrQuery({ country: "xx", sql: "SELECT 1" }, { env: { FUXI_SR_TOKEN: "t" }, fetchFn: async () => ({}) }),
+    /Unsupported countryCode/,
+  );
+});
+
+test("SR query proxy returns 503 when FUXI_SR_TOKEN is missing", async () => {
+  const err = await proxySrQuery({ country: "cn", sql: "SELECT 1" }, { env: {}, fetchFn: async () => ({}) }).catch((e) => e);
+  assert.equal(err.statusCode, 503);
+  assert.match(err.message, /FUXI_SR_TOKEN/);
+});
+
+test("SR query proxy allows SHOW and DESC", async () => {
+  const fetchFn = async (url, options) => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { columns: [], rows: [], total: 0 } }) });
+  await proxySrQuery({ country: "cn", sql: "SHOW TABLES FROM ads" }, { env: { FUXI_SR_TOKEN: "t" }, fetchFn });
+  await proxySrQuery({ country: "cn", sql: "DESC ads.ads_3003_user_smmary_d" }, { env: { FUXI_SR_TOKEN: "t" }, fetchFn });
+});
+
+test("SR query proxy clamps limit to 1-500", async () => {
+  let captured;
+  const fetchFn = async (url, options) => { captured = JSON.parse(options.body); return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { columns: [], rows: [], total: 0 } }) }; };
+  await proxySrQuery({ country: "cn", sql: "SELECT 1", limit: 999 }, { env: { FUXI_SR_TOKEN: "t" }, fetchFn });
+  assert.equal(captured.pageSize, 500);
+  await proxySrQuery({ country: "cn", sql: "SELECT 1", limit: 0 }, { env: { FUXI_SR_TOKEN: "t" }, fetchFn });
+  assert.equal(captured.pageSize, 1);
+});
+
+test("SR query proxy surfaces gateway error message on 4xx", async () => {
+  const fetchFn = async () => ({ ok: false, status: 401, text: async () => JSON.stringify({ message: "Token 无权访问" }) });
+  const err = await proxySrQuery({ country: "cn", sql: "SELECT 1" }, { env: { FUXI_SR_TOKEN: "bad" }, fetchFn }).catch((e) => e);
+  assert.equal(err.statusCode, 502);
+  assert.match(err.message, /Token 无权访问/);
+});

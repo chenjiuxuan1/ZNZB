@@ -60,3 +60,22 @@ METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=replace-with-long-random-callback-token
 `n8n-metabase-anomaly-evidence-agent.template.json` 已从仓库交付中移除：它使用不安全的入口与 callback 设计，不能再导入、发布或作为兼容模板保留。已有该旧工作流的实例应下线，并迁移至本文顶部的动态模板及 `/webhook/metabase-anomaly-dynamic-evidence-agent`。
 
 未配置 n8n 时，项目仍保留直连 OpenAI 兼容模型的摘要模式作为兼容回退。它不具备动态血缘、分区或 DS 取证能力，也不是当前生产推荐路径。
+
+## query_table_data 工具（SR 数据直查）
+
+Dify Agent 的第 5 个工具 `query_table_data` 通过 Fuxi SR 网关直接查询 StarRocks 表数据，用于区分「数据未产出」vs「数据产出但值为 0」。
+
+### 环境变量
+
+- `FUXI_SR_TOKEN`：Fuxi SR 网关 API token（`Authorization: Bearer <token>`）。从 `https://data-map-dev.kuainiu.io` 获取。
+- `FUXI_SR_GATEWAY_URL`（可选）：默认 `https://data-map-dev.kuainiu.io`。
+
+### 国家映射
+
+ZNZB 使用 `ine` 表示印尼，SR 网关使用 `id`。平台自动映射：`cn->cn, ine->id, ph->ph, th->th, pk->pk, mx->mx`。
+
+### 安全限制
+
+- 仅允许 `SELECT`、`WITH`、`SHOW`、`DESC`、`DESCRIBE`、`EXPLAIN` 开头的 SQL。
+- 禁止任何 `INSERT`、`UPDATE`、`DELETE`、`CREATE`、`ALTER`、`DROP`、`TRUNCATE`、`REPLACE`、`MERGE`、`REFRESH` 关键字。
+- 单次查询最多返回 500 行。
