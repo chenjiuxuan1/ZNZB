@@ -236,6 +236,32 @@ test("fluctuation visual chart accepts hydrated series", () => {
   ]);
 });
 
+test("fluctuation visual does not format count metrics as percent because change text has percent", () => {
+  const chart = fluctuationVisualTest.buildChart({
+    metricLabel: "注册数",
+    message: "完整日指标「注册数」从 100 到 200，波动 +100.0%",
+    hydratedSeries: [
+      { date: "2026-07-01", value: 100 },
+      { date: "2026-07-02", value: 200, anomaly: true },
+    ],
+  });
+
+  assert.equal(chart.percent, false);
+});
+
+test("fluctuation visual formats rate metrics as percent", () => {
+  const chart = fluctuationVisualTest.buildChart({
+    metricLabel: "D7逾期率",
+    message: "完整日指标「D7逾期率」从 10.0% 到 20.0%",
+    hydratedSeries: [
+      { date: "2026-07-01", value: 10 },
+      { date: "2026-07-02", value: 20, anomaly: true },
+    ],
+  });
+
+  assert.equal(chart.percent, true);
+});
+
 test("fluctuation visual does not use pure numeric fallback as metric name", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
     runs: [{
