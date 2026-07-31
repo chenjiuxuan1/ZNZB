@@ -293,6 +293,104 @@ test("checkPublicDashboards treats zero metric chart value as present", async ()
   assert.equal(result.anomalyCount, 0);
 });
 
+test("checkPublicDashboards suppresses China empty and zero-style anomalies", async () => {
+  const inventory = {
+    dashboardCount: 1,
+    dashboards: [
+      {
+        countryCode: "CN",
+        countryName: "中国",
+        sourcePanelTitle: "中国看板",
+        title: "中国看板",
+        uuid: "cn-dashboard",
+        url: "https://data.example/public/dashboard/cn-dashboard",
+        cards: [
+          {
+            title: "空表",
+            cardId: 1,
+            dashcardId: 11,
+            metrics: ["注册数"],
+            parameterMappings: [],
+          },
+          {
+            title: "空指标",
+            cardId: 2,
+            dashcardId: 12,
+            metrics: ["注册数"],
+            parameterMappings: [],
+          },
+          {
+            title: "全为0",
+            cardId: 3,
+            dashcardId: 13,
+            metrics: ["注册数"],
+            parameterMappings: [],
+          },
+        ],
+      },
+    ],
+  };
+  const rowsByCard = new Map([
+    [1, []],
+    [2, [{ "统计日期": "2026-07-30", "注册数": null }]],
+    [3, [{ "统计日期": "2026-07-30", "注册数": 0 }]],
+  ]);
+
+  const result = await checkPublicDashboards({
+    inventory,
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: true, emptyMetrics: true, nonZeroToZero: false },
+      rules: [
+        {
+          type: "latestZeroRate",
+          cardId: 3,
+          dateColumn: "统计日期",
+          column: "注册数",
+          timezone: "Asia/Shanghai",
+          now: "2026-07-31T02:00:00Z",
+        },
+      ],
+    },
+    queryCardFn: async (_client, _dashboard, card) => ({
+      ok: true,
+      rows: rowsByCard.get(card.cardId),
+      error: null,
+    }),
+  });
+
+  assert.equal(result.checkedCardCount, 3);
+  assert.equal(result.anomalyCount, 0);
+  assert.deepEqual(result.anomalies, []);
+});
+
+test("checkPublicDashboards still reports empty metric anomalies outside China", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [
+        {
+          countryCode: "TH",
+          countryName: "泰国",
+          sourcePanelTitle: "泰国看板",
+          title: "泰国看板",
+          uuid: "th-dashboard",
+          url: "https://data.example/public/dashboard/th-dashboard",
+          cards: [{ title: "空指标", cardId: 1, dashcardId: 11, metrics: ["注册数"], parameterMappings: [] }],
+        },
+      ],
+    },
+    ruleConfig: { builtInChecks: { queryError: false, noData: false, emptyMetrics: true }, rules: [] },
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [{ "统计日期": "2026-07-30", "注册数": null }],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.anomalyCount, 1);
+  assert.equal(result.anomalies[0].type, "emptyMetrics");
+});
+
 test("checkPublicDashboards resolves TH card 376 English schema instead of reporting empty Chinese metrics", async () => {
   const result = await checkPublicDashboards({
     inventory: { dashboardCount: 1, dashboards: [{
