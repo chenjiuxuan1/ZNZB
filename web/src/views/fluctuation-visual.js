@@ -241,6 +241,7 @@ function renderLineChart(chart) {
   const path = normalCoords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
   const fullPath = coords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
   const yTicks = buildTicks(yMin, yMax, 4);
+  const percentScale = resolvePercentDisplayScale(chart);
 
   return `
     <svg class="fluctuation-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">
@@ -249,14 +250,14 @@ function renderLineChart(chart) {
         const y = pad.top + ((yMax - tick) / (yMax - yMin || 1)) * plotHeight;
         return `
           <line class="grid-line" x1="${pad.left}" y1="${y.toFixed(1)}" x2="${width - pad.right}" y2="${y.toFixed(1)}"></line>
-          <text class="axis-label" x="${pad.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${escapeHtml(formatChartValue(tick, chart.percent))}</text>
+          <text class="axis-label" x="${pad.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${escapeHtml(formatChartValue(tick, chart.percent, percentScale))}</text>
         `;
       }).join("")}
       <path class="full-line" d="${fullPath}"></path>
       ${path ? `<path class="normal-line" d="${path}"></path>` : ""}
       ${coords.map((point) => `
         <circle class="${point.anomaly ? "anomaly-dot" : "normal-dot"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.anomaly ? 5.8 : 3.8}">
-          <title>${escapeHtml(point.label || "")} ${escapeHtml(formatChartValue(point.value, chart.percent))}</title>
+          <title>${escapeHtml(point.label || "")} ${escapeHtml(formatChartValue(point.value, chart.percent, percentScale))}</title>
         </circle>
       `).join("")}
       <text class="x-label" x="${pad.left}" y="${height - 10}">${escapeHtml(coords[0]?.label || "")}</text>
@@ -521,9 +522,17 @@ function buildTicks(minValue, maxValue, count) {
   return ticks;
 }
 
-function formatChartValue(value, percent = false) {
+function resolvePercentDisplayScale(chart = {}) {
+  if (!chart.percent) return 1;
+  const values = (chart.points || []).map((point) => Math.abs(Number(point.value))).filter(Number.isFinite);
+  if (!values.length) return 1;
+  return Math.max(...values) <= 1 ? 100 : 1;
+}
+
+function formatChartValue(value, percent = false, percentScale = 1) {
   if (!Number.isFinite(Number(value))) return "-";
-  const rounded = Math.abs(value) >= 100 ? Number(value).toFixed(0) : Number(value).toFixed(1);
+  const displayValue = percent ? Number(value) * percentScale : Number(value);
+  const rounded = Math.abs(displayValue) >= 100 ? displayValue.toFixed(0) : displayValue.toFixed(1);
   return percent ? `${rounded}%` : rounded;
 }
 
@@ -547,4 +556,6 @@ export const __test__ = {
   chooseDisplayAnomalyIndex,
   getDisplayAnomalyIndex,
   isPercentMetric,
+  resolvePercentDisplayScale,
+  formatChartValue,
 };
