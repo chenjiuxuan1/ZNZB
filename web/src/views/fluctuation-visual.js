@@ -384,7 +384,7 @@ function cleanMetricLabelPart(value) {
 function buildChart(anomaly) {
   const realPoints = normalizeSeries(anomaly);
   const points = realPoints;
-  const percent = points.some((point) => point.percent) || /%|百分点/.test(anomaly.message || "");
+  const percent = points.some((point) => point.percent) || isPercentMetric(anomaly);
   return {
     title: anomaly.metricLabel,
     percent,
@@ -393,6 +393,18 @@ function buildChart(anomaly) {
       anomaly: point.anomaly || index === points.length - 1,
     })),
   };
+}
+
+function isPercentMetric(anomaly = {}) {
+  const metricText = [
+    anomaly.metricLabel,
+    anomaly.detail?.metricName,
+    anomaly.metricName,
+    anomaly.metricColumn,
+    anomaly.column,
+    anomaly.cardTitle,
+  ].filter(Boolean).join(" ");
+  return /(率|占比|转化|逾期|入催|复借|费率|rate|ratio|percent|conversion|overdue)/i.test(metricText);
 }
 
 function chooseDisplayAnomalyIndex(anomalies = [], requestedIndex = 0) {
@@ -534,4 +546,5 @@ export const __test__ = {
   collectFluctuationAnomalies,
   chooseDisplayAnomalyIndex,
   getDisplayAnomalyIndex,
+  isPercentMetric,
 };
