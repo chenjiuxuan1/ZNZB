@@ -68,7 +68,7 @@ Dify Agent 的第 5 个工具 `query_table_data` 通过 Fuxi SR 网关直接查�
 ### 环境变量
 
 - `FUXI_SR_TOKEN`（可选）：Fuxi SR 网关 API token。如果设置了则直接使用。
-- `FUXI_SR_GATEWAY_URL`（可选）：默认 `https://data-map-dev.kuainiu.io`。
+- `FUXI_SR_GATEWAY_URL`（可选）：默认 `http://172.20.0.234:4888`（内网直连，绕过 WAF）。
 - `SR_SKILLS_SESSION_FILE`（可选）：sr-box skill 的 SSO session 文件路径，默认 `~/.config/sr-skills/session-data-map-dev.json`。
 
 ### Token 获取方式

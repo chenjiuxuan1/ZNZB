@@ -126,7 +126,7 @@ export async function proxyDsSchedulerRequest(body = {}, { env = process.env, fe
 /* ── SR Box (StarRocks) read-only data query proxy ── */
 
 const SR_COUNTRY_MAP = { cn: "cn", ine: "id", ph: "ph", th: "th", pk: "pk", mx: "mx" };
-const DEFAULT_SR_GATEWAY_URL = "https://data-map-dev.kuainiu.io";
+const DEFAULT_SR_GATEWAY_URL = "http://172.20.0.234:4888";
 const SR_QUERY_TIMEOUT_MS = 60_000;
 const READONLY_SQL_PREFIXES = ["select", "with", "show", "desc", "describe", "explain"];
 
