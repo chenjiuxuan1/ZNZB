@@ -262,6 +262,34 @@ test("fluctuation visual formats rate metrics as percent", () => {
   assert.equal(chart.percent, true);
 });
 
+test("fluctuation visual displays decimal rate values as percentage points", () => {
+  const chart = fluctuationVisualTest.buildChart({
+    metricLabel: "D7逾期率",
+    hydratedSeries: [
+      { date: "2026-07-01", value: 0.145 },
+      { date: "2026-07-02", value: 0.286, anomaly: true },
+    ],
+  });
+
+  const scale = fluctuationVisualTest.resolvePercentDisplayScale(chart);
+  assert.equal(scale, 100);
+  assert.equal(fluctuationVisualTest.formatChartValue(0.286, chart.percent, scale), "28.6%");
+});
+
+test("fluctuation visual keeps already-percent rate values unchanged", () => {
+  const chart = fluctuationVisualTest.buildChart({
+    metricLabel: "D7逾期率",
+    hydratedSeries: [
+      { date: "2026-07-01", value: 14.5 },
+      { date: "2026-07-02", value: 28.6, anomaly: true },
+    ],
+  });
+
+  const scale = fluctuationVisualTest.resolvePercentDisplayScale(chart);
+  assert.equal(scale, 1);
+  assert.equal(fluctuationVisualTest.formatChartValue(28.6, chart.percent, scale), "28.6%");
+});
+
 test("fluctuation visual does not use pure numeric fallback as metric name", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
     runs: [{
