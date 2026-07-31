@@ -1070,6 +1070,7 @@ function renderHistoryAnomalyTable(anomalies, context = {}) {
               </div>
               <div class="anomaly-detail-metrics">
                 ${renderAnomalyDetailMetric("指标", detail.metricName || "-")}
+                ${renderAnomalyDetailMetric("维度", detail.dimensionText || "-")}
                 ${renderAnomalyDetailMetric("当前值", detail.currentValue || "-")}
                 ${renderAnomalyDetailMetric("基准值", detail.baselineValue || "-")}
                 ${renderAnomalyDetailMetric("统计时间", detail.timeText || "-")}
@@ -1190,6 +1191,7 @@ export function parseAnomalyMessage(message, anomalyType = "") {
     timeParts.push(timePoint[1]);
   }
   detail.timeText = timeParts.join(" / ");
+  detail.dimensionText = extractAnomalyDimensionText(text);
   return detail;
 }
 
@@ -1206,6 +1208,27 @@ function extractAnomalyMetricName(text) {
     }
   }
   return "";
+}
+
+function extractAnomalyDimensionText(text) {
+  const parenthesizedSections = [...String(text || "").matchAll(/[（(]([^（）()]+)[）)]/g)]
+    .map((match) => match[1]);
+  const dimensionParts = [];
+
+  for (const section of parenthesizedSections) {
+    for (const rawPart of section.split(/[，,]/)) {
+      const part = rawPart.trim();
+      if (!part.includes("=")) {
+        continue;
+      }
+      if (/^(统计日期|stat_date|注册日期|到期日期|日期|时间|timezone)\s*=/.test(part)) {
+        continue;
+      }
+      dimensionParts.push(part);
+    }
+  }
+
+  return [...new Set(dimensionParts)].join("，");
 }
 
 function renderHistoryRunDetails(run) {
@@ -1733,6 +1756,9 @@ function summarizeAnomalySituation(anomaly) {
   }
   if (detail.metricName) {
     pieces.push(`指标 ${detail.metricName}`);
+  }
+  if (detail.dimensionText) {
+    pieces.push(detail.dimensionText);
   }
   if (["数据缺失", "查询异常"].includes(detail.reason) && anomaly.message) {
     pieces.push(shortenText(anomaly.message, 72));

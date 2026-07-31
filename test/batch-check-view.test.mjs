@@ -98,12 +98,13 @@ test("history anomaly details parse latest non-zero to zero values", () => {
 
 test("history anomaly details keep the concrete metric name for fluctuation alerts", () => {
   const detail = parseAnomalyMessage(
-    "完整日指标「D7」从 24.7% 到 51.7%，绝对变化 +26.9个百分点（统计日期 2026-07-13 对比 2026-07-12）",
+    "完整日指标「D7」从 24.7% 到 51.7%，绝对变化 +26.9个百分点（统计日期 2026-07-13 对比 2026-07-12，APP=MEX023）",
     "completeDayChange",
   );
 
   assert.equal(detail.reason, "指标波动超阈值");
   assert.equal(detail.metricName, "D7");
+  assert.equal(detail.dimensionText, "APP=MEX023");
   assert.equal(detail.baselineValue, "24.7%");
   assert.equal(detail.currentValue, "51.7%");
   assert.equal(detail.changeValue, "+26.9");
