@@ -4553,6 +4553,21 @@ body {
   min-height: 410px;
 }
 
+.fluctuation-chart-note {
+  background: #eef6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #1d4ed8;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.fluctuation-chart-note.error {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
 .fluctuation-point-rail {
   align-content: center;
   display: flex;
