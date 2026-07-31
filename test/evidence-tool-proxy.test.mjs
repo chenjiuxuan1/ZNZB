@@ -129,10 +129,46 @@ test("SR query proxy rejects unsupported country", async () => {
   );
 });
 
-test("SR query proxy returns 503 when FUXI_SR_TOKEN is missing", async () => {
-  const err = await proxySrQuery({ country: "cn", sql: "SELECT 1" }, { env: {}, fetchFn: async () => ({}) }).catch((e) => e);
+test("SR query proxy returns 503 when no token and no valid session", async () => {
+  const err = await proxySrQuery({ country: "cn", sql: "SELECT 1" }, { env: { SR_SKILLS_SESSION_FILE: "/nonexistent/session.json" }, fetchFn: async () => ({}) }).catch((e) => e);
   assert.equal(err.statusCode, 503);
-  assert.match(err.message, /FUXI_SR_TOKEN/);
+  assert.match(err.message, /SR query token not available/);
+});
+
+test("SR query proxy auto-reads SSO session token from sr-skills session file", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const tmpFile = path.join(os.tmpdir(), `sr-session-test-${Date.now()}.json`);
+  const futureDate = new Date(Date.now() + 3600_000).toISOString();
+  fs.writeFileSync(tmpFile, JSON.stringify({ sessionToken: "srbs_test123", expiresAt: futureDate, lastAccessedAt: new Date().toISOString() }));
+  let capturedHeaders;
+  const fetchFn = async (url, options) => {
+    capturedHeaders = options.headers;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { columns: [], rows: [], total: 0 } }) };
+  };
+  try {
+    await proxySrQuery({ country: "cn", sql: "SELECT 1" }, { env: { SR_SKILLS_SESSION_FILE: tmpFile }, fetchFn });
+    assert.equal(capturedHeaders.Authorization, "Bearer srbs_test123");
+  } finally {
+    fs.unlinkSync(tmpFile);
+  }
+});
+
+test("SR query proxy rejects expired SSO session and falls back to error", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const tmpFile = path.join(os.tmpdir(), `sr-session-expired-${Date.now()}.json`);
+  const pastDate = new Date(Date.now() - 7200_000).toISOString();
+  fs.writeFileSync(tmpFile, JSON.stringify({ sessionToken: "srbs_expired", expiresAt: pastDate, lastAccessedAt: pastDate }));
+  try {
+    const err = await proxySrQuery({ country: "cn", sql: "SELECT 1" }, { env: { SR_SKILLS_SESSION_FILE: tmpFile }, fetchFn: async () => ({}) }).catch((e) => e);
+    assert.equal(err.statusCode, 503);
+    assert.match(err.message, /SR query token not available/);
+  } finally {
+    fs.unlinkSync(tmpFile);
+  }
 });
 
 test("SR query proxy allows SHOW and DESC", async () => {

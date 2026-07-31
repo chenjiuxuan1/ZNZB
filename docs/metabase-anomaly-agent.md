@@ -67,8 +67,22 @@ Dify Agent 的第 5 个工具 `query_table_data` 通过 Fuxi SR 网关直接查�
 
 ### 环境变量
 
-- `FUXI_SR_TOKEN`：Fuxi SR 网关 API token（`Authorization: Bearer <token>`）。从 `https://data-map-dev.kuainiu.io` 获取。
+- `FUXI_SR_TOKEN`（可选）：Fuxi SR 网关 API token。如果设置了则直接使用。
 - `FUXI_SR_GATEWAY_URL`（可选）：默认 `https://data-map-dev.kuainiu.io`。
+- `SR_SKILLS_SESSION_FILE`（可选）：sr-box skill 的 SSO session 文件路径，默认 `~/.config/sr-skills/session-data-map-dev.json`。
+
+### Token 获取方式
+
+平台自动按以下顺序解析 token：
+
+1. 如果 `.env` 中设置了 `FUXI_SR_TOKEN`，直接使用该 token。
+2. 否则自动读取 sr-box skill 的 SSO session 文件（`session-data-map-dev.json`），
+   提取 `sessionToken`（`srbs_` 前缀），并检查 `expiresAt` 和空闲超时（默认 1 小时）。
+3. 如果两者都不可用，返回 503 错误，提示在服务器上执行：
+   ```bash
+   python3 sr_gateway_client.py sso login
+   ```
+   完成浏览器 SSO 登录后，session 文件会自动生成，无需手动配置 token。
 
 ### 国家映射
 
