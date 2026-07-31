@@ -159,7 +159,7 @@ test("fluctuation visual model groups fluctuation anomalies by country", () => {
   assert.equal(model.countries[0].anomalies[0].metricLabel, "D7 · APP=MEX023");
 });
 
-test("fluctuation visual synthesizes a reference series when history points are absent", () => {
+test("fluctuation visual does not synthesize fake history when points are absent", () => {
   const [anomaly] = fluctuationVisualTest.collectFluctuationAnomalies({
     runs: [{
       countryCode: "MX",
@@ -174,14 +174,8 @@ test("fluctuation visual synthesizes a reference series when history points are 
     }],
   });
 
-  const points = fluctuationVisualTest.synthesizeSeries(anomaly);
   const chart = fluctuationVisualTest.buildChart(anomaly);
-  assert.equal(points.length, 13);
-  assert.equal(points[0].value, 14.7);
-  assert.equal(points[0].reference, true);
-  assert.equal(points.at(-1).value, 26.7);
-  assert.equal(points.at(-1).anomaly, true);
-  assert.equal(chart.synthetic, true);
+  assert.deepEqual(chart.points, []);
 });
 
 test("fluctuation visual does not use pure numeric fallback as metric name", () => {
