@@ -199,6 +199,27 @@ test("fluctuation visual prefers a point with saved real series", () => {
   assert.equal(fluctuationVisualTest.chooseDisplayAnomalyIndex(anomalies, 1), 1);
 });
 
+test("fluctuation visual keeps the manually selected point", () => {
+  state.fluctuationVisualSelected = { MX: 0 };
+  const country = {
+    countryCode: "MX",
+    anomalies: [{
+      dashboardTitle: "Overdue",
+      cardTitle: "D1",
+      type: "completeDayChange",
+      message: "完整日指标「D1」从 10 到 30，变化 +200%",
+    }, {
+      dashboardTitle: "Overdue",
+      cardTitle: "D7",
+      type: "completeDayChange",
+      message: "完整日指标「D7」从 10 到 30，变化 +200%",
+      series: [{ date: "2026-07-12", value: 30, anomaly: true }],
+    }],
+  };
+
+  assert.equal(fluctuationVisualTest.getDisplayAnomalyIndex(country), 0);
+});
+
 test("fluctuation visual chart accepts hydrated series", () => {
   const chart = fluctuationVisualTest.buildChart({
     metricLabel: "注册数",
