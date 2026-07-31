@@ -175,10 +175,35 @@ test("fluctuation visual synthesizes a reference series when history points are 
   });
 
   const points = fluctuationVisualTest.synthesizeSeries(anomaly);
+  const chart = fluctuationVisualTest.buildChart(anomaly);
   assert.equal(points.length, 13);
   assert.equal(points[0].value, 14.7);
+  assert.equal(points[0].reference, true);
   assert.equal(points.at(-1).value, 26.7);
   assert.equal(points.at(-1).anomaly, true);
+  assert.equal(chart.synthetic, true);
+});
+
+test("fluctuation visual does not use pure numeric fallback as metric name", () => {
+  const model = fluctuationVisualTest.buildFluctuationVisualModel({
+    runs: [{
+      id: "numeric-title-run",
+      startedAt: "2026-07-28T01:00:00.000Z",
+      runs: [{
+        countryCode: "PK",
+        result: {
+          anomalies: [{
+            dashboardTitle: "每小时监控",
+            cardTitle: "10",
+            type: "latestNonZeroToZero",
+            message: "指标从 192 降为 0（统计日期 2026-07-29 对比 2026-07-28）",
+          }],
+        },
+      }],
+    }],
+  }, [], { today: "2026-07-28" });
+
+  assert.equal(model.countries[0].anomalies[0].metricLabel, "每小时监控");
 });
 
 test("fluctuation visual only uses runs updated today", () => {

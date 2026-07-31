@@ -25,7 +25,7 @@ export function renderFluctuationVisual(root) {
     <div class="page-header batch-hero">
       <div>
         <h1 class="page-title">波动图谱</h1>
-        <p class="page-note">按国家展示最近一次巡检中的波动异常指标；点击图旁的点，查看该指标报异常前的正常走势与异常当天红点。</p>
+        <p class="page-note">按国家展示今天更新的波动异常指标；点击图旁的点，查看真实历史走势，或在历史未保存时查看基准参考线与异常红点。</p>
       </div>
       <div class="hero-stats fluctuation-stats">
         <article><span>国家</span><strong>${escapeHtml(model.countryCount)}</strong></article>
@@ -80,7 +80,7 @@ function renderFluctuationStatus() {
     <section class="panel fluctuation-toolbar">
       <div>
         <h2 class="panel-title">异常走势视图</h2>
-        <p class="muted">绿色表示异常前历史数据，红色表示报警当天的数据。历史记录未保存完整序列时，会用报警消息中的基准值生成参考基线。</p>
+        <p class="muted">真实历史序列会画成绿色折线，红色表示报警当天的数据。历史记录未保存完整序列时，只显示绿色基准参考线，不伪造成历史走势。</p>
       </div>
       <button id="refresh-fluctuation-history" class="primary" type="button">刷新历史</button>
     </section>
@@ -193,6 +193,8 @@ function renderLineChart(chart) {
   const anomalyPoint = coords.find((point) => point.anomaly) || coords[coords.length - 1];
   const path = normalCoords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
   const fullPath = coords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const baselineCoords = chart.synthetic ? coords.filter((point) => point.reference) : [];
+  const baselineY = baselineCoords[0]?.y;
   const yTicks = buildTicks(yMin, yMax, 4);
 
   return `
@@ -205,13 +207,15 @@ function renderLineChart(chart) {
           <text class="axis-label" x="${pad.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${escapeHtml(formatChartValue(tick, chart.percent))}</text>
         `;
       }).join("")}
-      <path class="full-line" d="${fullPath}"></path>
-      ${path ? `<path class="normal-line" d="${path}"></path>` : ""}
+      ${chart.synthetic && baselineY ? `<line class="baseline-line" x1="${pad.left}" y1="${baselineY.toFixed(1)}" x2="${width - pad.right}" y2="${baselineY.toFixed(1)}"></line>` : ""}
+      ${chart.synthetic ? "" : `<path class="full-line" d="${fullPath}"></path>`}
+      ${!chart.synthetic && path ? `<path class="normal-line" d="${path}"></path>` : ""}
       ${coords.map((point) => `
-        <circle class="${point.anomaly ? "anomaly-dot" : "normal-dot"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.anomaly ? 5.8 : 3.8}">
+        <circle class="${point.anomaly ? "anomaly-dot" : point.reference ? "reference-dot" : "normal-dot"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.anomaly ? 5.8 : 3.8}">
           <title>${escapeHtml(point.label || "")} ${escapeHtml(formatChartValue(point.value, chart.percent))}</title>
         </circle>
       `).join("")}
+      ${chart.synthetic ? `<text class="chart-note" x="${pad.left}" y="${pad.top + 12}">历史明细未保存真实序列，绿色为基准参考值</text>` : ""}
       <text class="x-label" x="${pad.left}" y="${height - 10}">${escapeHtml(coords[0]?.label || "")}</text>
       <text class="x-label" x="${width - pad.right}" y="${height - 10}" text-anchor="end">${escapeHtml(anomalyPoint?.label || "")}</text>
     </svg>
@@ -304,11 +308,28 @@ function isFluctuationAnomaly(anomaly, detail, countryCode = "") {
 }
 
 function buildMetricLabel(anomaly, detail) {
-  const parts = [
-    detail.metricName,
-    detail.dimensionText,
-  ].filter(Boolean);
-  return parts.join(" · ") || anomaly.column || anomaly.cardTitle || "未命名指标";
+  const parts = [detail.metricName, detail.dimensionText]
+    .map(cleanMetricLabelPart)
+    .filter(Boolean);
+  if (parts.length) {
+    return parts.join(" · ");
+  }
+
+  const fallback = [
+    anomaly.column,
+    anomaly.metricColumn,
+    anomaly.metricName,
+    anomaly.cardTitle,
+    anomaly.dashboardTitle,
+  ].map(cleanMetricLabelPart).find(Boolean);
+  return fallback || "未命名指标";
+}
+
+function cleanMetricLabelPart(value) {
+  const text = String(value ?? "").trim();
+  if (!text || text === "-") return "";
+  if (/^[+-]?\d+(?:\.\d+)?%?$/.test(text)) return "";
+  return text;
 }
 
 function buildChart(anomaly) {
@@ -318,6 +339,7 @@ function buildChart(anomaly) {
   return {
     title: anomaly.metricLabel,
     percent,
+    synthetic: !realPoints.length,
     points: points.map((point, index) => ({
       ...point,
       anomaly: point.anomaly || index === points.length - 1,
@@ -359,6 +381,7 @@ function synthesizeSeries(anomaly) {
       value: baseline,
       percent: /%/.test(detail.baselineValue || detail.currentValue || anomaly.message || ""),
       anomaly: false,
+      reference: true,
     });
   }
   points.push({
@@ -427,6 +450,7 @@ function clampIndex(value, length) {
 
 export const __test__ = {
   buildFluctuationVisualModel,
+  buildChart,
   collectFluctuationAnomalies,
   synthesizeSeries,
 };
