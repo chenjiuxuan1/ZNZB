@@ -57,6 +57,9 @@ export async function loadData() {
 
 async function loadInitialData() {
   const historyRunId = state.route === "/batch-check" ? state.routeQuery?.historyRunId : "";
+  const deferredHistoryUrl = state.route === "/fluctuation-visual"
+    ? "/api/batch-history?status=anomaly&limit=1"
+    : "/api/batch-history?limit=50";
   if (historyRunId) {
     state.batchHistoryStatus = {
       type: "loading",
@@ -92,7 +95,7 @@ async function loadInitialData() {
     apiGet("/api/summary"),
     apiGet("/api/inventory"),
     apiGet("/api/rules"),
-    historyRunId ? Promise.resolve(null) : apiGet("/api/batch-history?limit=50"),
+    historyRunId ? Promise.resolve(null) : apiGet(deferredHistoryUrl),
   ]);
   if (deferred[0].status === "fulfilled") state.summary = deferred[0].value;
   if (deferred[1].status === "fulfilled") state.inventory = deferred[1].value;
