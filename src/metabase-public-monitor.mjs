@@ -1916,15 +1916,28 @@ export function buildAnomalyMetricSeries(rows = [], rule = {}, message = "", opt
   }
 
   const metricFromMessage = extractMetricColumnFromAnomalyMessage(message);
-  const metricColumns = metricFromMessage && rows.some((row) => row && metricFromMessage in row)
+  const selectedNumericColumns = selectNumericColumns(rows, rule);
+  const metricColumns = metricFromMessage && !isHourlyMetricColumn(metricFromMessage) && rows.some((row) => row && metricFromMessage in row)
     ? [metricFromMessage]
-    : selectNumericColumns(rows, rule);
+    : selectedNumericColumns;
   if (!metricColumns.length) {
     return [];
   }
 
   const targetColumn = metricColumns[0];
   const dimensionFilters = extractDimensionFiltersFromAnomalyMessage(message);
+  const hourlySeries = buildHourlyAnomalyMetricSeries(rows, {
+    dateColumn,
+    metricColumns,
+    rule,
+    message,
+    dimensionFilters,
+    metricFromMessage,
+    maxPoints: options.maxPoints || 16,
+  });
+  if (hourlySeries.length) {
+    return hourlySeries;
+  }
   const dailySeries = buildDailySeries(
     rows,
     dateColumn,
@@ -1965,6 +1978,146 @@ export function buildAnomalyMetricSeries(rows = [], rule = {}, message = "", opt
       };
     })
     .filter(Boolean);
+}
+
+function buildHourlyAnomalyMetricSeries(rows, {
+  dateColumn,
+  metricColumns,
+  rule = {},
+  message = "",
+  dimensionFilters = [],
+  metricFromMessage = "",
+  maxPoints = 16,
+} = {}) {
+  const shouldUseHourlyAxis = isIntradayRuleType(rule.type) || Boolean(rule.timeColumn) || metricColumns.some(isHourlyMetricColumn);
+  if (!shouldUseHourlyAxis) {
+    return [];
+  }
+  const resolvedTimeColumn = resolveIntradayTimeColumn(rows, rule.timeColumn);
+  const timeColumn = rows.some((row) => row && resolvedTimeColumn in row) ? resolvedTimeColumn : "";
+  const targetDate = extractLastDateFromText(message);
+  const targetValue = extractCurrentValueFromAnomalyMessage(message);
+  const targetHour = resolveTargetHourFromMessage(message, metricFromMessage);
+
+  if (timeColumn) {
+    const targetColumn = metricFromMessage && !isHourlyMetricColumn(metricFromMessage) && rows.some((row) => row && metricFromMessage in row)
+      ? metricFromMessage
+      : metricColumns.find((column) => !isHourlyMetricColumn(column)) || metricColumns[0];
+    if (!targetColumn) return [];
+    const groups = buildIntradaySeries(
+      rows,
+      dateColumn,
+      timeColumn,
+      [targetColumn],
+      rule.dimensionColumns,
+      rule.ignoreDimensionColumns,
+    );
+    const selected = selectHourlySeriesGroup(groups, { targetDate, targetColumn, targetValue, dimensionFilters });
+    if (!selected) return [];
+    const dates = [...selected.rowsByDate.keys()].sort();
+    const selectedDate = targetDate && selected.rowsByDate.has(targetDate) ? targetDate : dates.at(-1);
+    const selectedRows = (selected.rowsByDate.get(selectedDate) || [])
+      .map((row) => ({
+        row,
+        minutes: parseScheduleMinutes(row[timeColumn]),
+      }))
+      .filter((item) => Number.isFinite(item.minutes))
+      .sort((left, right) => left.minutes - right.minutes)
+      .slice(-maxPoints);
+    if (!selectedRows.length) return [];
+    const anomalyMinutes = Number.isFinite(targetHour) ? Math.round(targetHour * 60) : selectedRows.at(-1)?.minutes;
+    return selectedRows
+      .map(({ row, minutes }) => {
+        const value = toNumber(row[targetColumn]);
+        if (!Number.isFinite(value)) return null;
+        const label = formatHourLabel(minutes / 60);
+        return {
+          date: selectedDate,
+          label,
+          value,
+          metric: targetColumn,
+          anomaly: minutes === anomalyMinutes,
+          xType: "hour",
+          timezone: rule.timezone || "",
+        };
+      })
+      .filter(Boolean);
+  }
+
+  const hourlyColumns = metricColumns.filter(isHourlyMetricColumn).sort((left, right) => Number(left) - Number(right));
+  if (!hourlyColumns.length) {
+    return [];
+  }
+
+  const groups = buildDailySeries(
+    rows,
+    dateColumn,
+    hourlyColumns,
+    rule.dimensionColumns,
+    rule.ignoreDimensionColumns,
+  );
+  const selected = selectHourlySeriesGroup(groups, {
+    targetDate,
+    targetColumn: Number.isFinite(targetHour) ? String(Math.floor(targetHour)) : hourlyColumns[0],
+    targetValue,
+    dimensionFilters,
+  });
+  if (!selected) return [];
+  const dates = [...selected.rowsByDate.keys()].sort();
+  const selectedDate = targetDate && selected.rowsByDate.has(targetDate) ? targetDate : dates.at(-1);
+  const row = selected.rowsByDate.get(selectedDate);
+  if (!row) return [];
+  const anomalyColumn = Number.isFinite(targetHour) ? String(Math.floor(targetHour)) : hourlyColumns.find((column) => Number.isFinite(toNumber(row[column])));
+  return hourlyColumns
+    .slice(-maxPoints)
+    .map((column) => {
+      const value = toNumber(row[column]);
+      if (!Number.isFinite(value)) return null;
+      const hour = Number(column);
+      return {
+        date: selectedDate,
+        label: formatHourLabel(hour),
+        value,
+        metric: metricFromMessage && !isHourlyMetricColumn(metricFromMessage) ? metricFromMessage : column,
+        anomaly: column === anomalyColumn,
+        xType: "hour",
+        timezone: rule.timezone || "",
+      };
+    })
+    .filter(Boolean);
+}
+
+function selectHourlySeriesGroup(seriesGroups = [], { targetDate, targetColumn, targetValue, dimensionFilters = [] } = {}) {
+  const dimensionMatched = seriesGroups.filter((group) => dimensionsMatch(group.dimensionValues, dimensionFilters));
+  const candidates = dimensionMatched.length ? dimensionMatched : seriesGroups;
+  if (!candidates.length) return null;
+
+  if (targetDate && targetColumn && Number.isFinite(targetValue)) {
+    const exact = candidates.find((group) => {
+      const rowsOrRow = group.rowsByDate.get(targetDate);
+      if (Array.isArray(rowsOrRow)) {
+        return rowsOrRow.some((row) => toNumber(row?.[targetColumn]) === targetValue);
+      }
+      return toNumber(rowsOrRow?.[targetColumn]) === targetValue;
+    });
+    if (exact) return exact;
+  }
+
+  if (targetDate) {
+    const withDate = candidates.find((group) => group.rowsByDate.has(targetDate));
+    if (withDate) return withDate;
+  }
+
+  return candidates.find((group) => group.rowsByDate.size > 0) || null;
+}
+
+function isIntradayRuleType(type = "") {
+  return [
+    "intradayProgress",
+    "intradaySameTimeChange",
+    "intradayTimePointCompleteness",
+    "intradayTimePointChange",
+  ].includes(String(type || ""));
 }
 
 function selectAnomalySeriesGroup(seriesGroups = [], { targetColumn, targetDate, targetValue, dimensionFilters = [] } = {}) {
@@ -2024,6 +2177,20 @@ function extractDimensionFiltersFromAnomalyMessage(message = "") {
 function extractLastDateFromText(message = "") {
   const matches = [...String(message || "").matchAll(/[0-9]{4}-[0-9]{2}-[0-9]{2}/g)].map((match) => match[0]);
   return matches[0] || "";
+}
+
+function resolveTargetHourFromMessage(message = "", metricFromMessage = "") {
+  if (isHourlyMetricColumn(metricFromMessage)) {
+    return Number(String(metricFromMessage).trim());
+  }
+  const text = String(message || "");
+  const timeMatch = text.match(/(?:^|[^\d])([01]?\d|2[0-3]):([0-5]\d)(?:[^\d]|$)/);
+  if (timeMatch) {
+    return Number(timeMatch[1]) + Number(timeMatch[2]) / 60;
+  }
+  const hourMatch = text.match(/(?:小时|hour|点)\s*[:=：]?\s*([01]?\d|2[0-3])(?:[^\d]|$)/i)
+    || text.match(/(?:^|[^\d])([01]?\d|2[0-3])\s*(?:点|时|小时|hour)(?:[^\d]|$)/i);
+  return hourMatch ? Number(hourMatch[1]) : Number.NaN;
 }
 
 function extractCurrentValueFromAnomalyMessage(message = "") {

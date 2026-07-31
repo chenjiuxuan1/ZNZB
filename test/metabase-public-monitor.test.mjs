@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   checkPublicDashboards,
+  buildAnomalyMetricSeries,
   buildDefaultCardParameters,
   buildUpdateFrequencyHistoryParameters,
   evaluateRowsAgainstRule,
@@ -1372,6 +1373,53 @@ test("checkPublicDashboards does not report hourly columns as generic zero-drop 
   });
 
   assert.equal(result.anomalies.some((anomaly) => anomaly.type === "latestNonZeroToZero"), false);
+});
+
+test("buildAnomalyMetricSeries uses hour labels for wide hourly monitor cards", () => {
+  const series = buildAnomalyMetricSeries(
+    [
+      { "日期": "2026-07-29", "0": 10, "1": 99, "2": 73, "3": 46 },
+      { "日期": "2026-07-30", "0": 12, "1": 0, "2": 61, "3": 44 },
+    ],
+    {
+      type: "intradayTimePointChange",
+      dateColumn: "日期",
+      columns: ["0", "1", "2", "3"],
+      timezone: "Asia/Karachi",
+    },
+    "同时间点指标「1」从 99 到 0，波动 -100.0%（Asia/Karachi 01:00，日期 2026-07-30 对比 2026-07-29）",
+  );
+
+  assert.deepEqual(series.map((point) => [point.label, point.value, point.anomaly, point.xType]), [
+    ["00:00", 12, false, "hour"],
+    ["01:00", 0, true, "hour"],
+    ["02:00", 61, false, "hour"],
+    ["03:00", 44, false, "hour"],
+  ]);
+});
+
+test("buildAnomalyMetricSeries uses hour labels for long hourly monitor cards", () => {
+  const series = buildAnomalyMetricSeries(
+    [
+      { "日期": "2026-07-30", "小时": 0, "进件数": 12 },
+      { "日期": "2026-07-30", "小时": 1, "进件数": 0 },
+      { "日期": "2026-07-30", "小时": 2, "进件数": 61 },
+    ],
+    {
+      type: "intradayTimePointChange",
+      dateColumn: "日期",
+      timeColumn: "小时",
+      columns: ["进件数"],
+      timezone: "Asia/Karachi",
+    },
+    "同时间点指标「进件数」从 99 到 0，波动 -100.0%（Asia/Karachi 01:00，日期 2026-07-30 对比 2026-07-29）",
+  );
+
+  assert.deepEqual(series.map((point) => [point.label, point.value, point.anomaly, point.xType]), [
+    ["00:00", 12, false, "hour"],
+    ["01:00", 0, true, "hour"],
+    ["02:00", 61, false, "hour"],
+  ]);
 });
 
 test("evaluateRowsAgainstRule reports no data when an intraday card has no parseable date column", () => {

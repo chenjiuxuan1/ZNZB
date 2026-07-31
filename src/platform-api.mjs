@@ -219,7 +219,9 @@ export function createPlatformApi({
       if (!dashboard || !card) {
         throw badRequest("Fluctuation card not found", ["未能在看板清单中找到该异常对应的看板卡片，请先重新发现该国家看板。"]);
       }
-      const matchingRules = (rulesConfig.rules || []).filter((rule) => ruleMatchesCard(rule, dashboard, card));
+      const matchingRules = (rulesConfig.rules || [])
+        .filter((rule) => ruleMatchesCard(rule, dashboard, card))
+        .map((rule) => applyDashboardRuleDefaults(applyRuleTypeDefaults(rule, rulesConfig.ruleDefaults || {}), dashboard));
       const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, body.lookbackDays || 45);
       const ruleParameters = matchingRules.reduce(
         (parameters, rule) => mergeParameters(parameters, rule.parameters || []),
