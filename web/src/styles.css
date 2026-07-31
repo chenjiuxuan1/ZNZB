@@ -4480,8 +4480,21 @@ body {
   stroke-width: 3;
 }
 
+.fluctuation-line-chart .baseline-line {
+  stroke: #34d399;
+  stroke-dasharray: 6 6;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
 .fluctuation-line-chart .normal-dot {
   fill: #10b981;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+
+.fluctuation-line-chart .reference-dot {
+  fill: #a7f3d0;
   stroke: #ffffff;
   stroke-width: 1.5;
 }
@@ -4490,6 +4503,11 @@ body {
   fill: #dc2626;
   stroke: #ffffff;
   stroke-width: 2;
+}
+
+.fluctuation-line-chart .chart-note {
+  fill: #667085;
+  font-size: 12px;
 }
 
 .fluctuation-chart-caption {
