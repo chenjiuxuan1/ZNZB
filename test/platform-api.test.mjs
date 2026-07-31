@@ -129,6 +129,11 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
           title: "规模",
           cardId: 11,
           dashcardId: 22,
+          visualizationSettings: {
+            column_settings: {
+              "[\"name\",\"注册数\"]": { number_style: "decimal" },
+            },
+          },
           parameterMappings: [{
             parameter_id: "date-param",
             target: ["dimension", ["template-tag", "stat_date"], { "stage-number": 0 }],
@@ -187,6 +192,72 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
     ["2026-07-02", 110, false],
     ["2026-07-03", 220, true],
   ]);
+  assert.deepEqual(result.series.map((point) => point.percent), [false, false, false]);
+});
+
+test("platform api marks hydrated fluctuation series as percent from card visualization settings", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboardCount: 1,
+      dashboards: [{
+        countryCode: "MX",
+        countryName: "墨西哥",
+        sourcePanelTitle: "新客转化率(注册~放款)",
+        uuid: "dash-mx-rate",
+        url: "https://data.example/public/dashboard/dash-mx-rate",
+        parameters: [],
+        cards: [{
+          title: "分app趋势",
+          cardId: 12,
+          dashcardId: 23,
+          visualizationSettings: {
+            column_settings: {
+              "[\"name\",\"注册-放款率\"]": { number_style: "percent" },
+            },
+          },
+          parameterMappings: [],
+        }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/public-monitor.config.json"),
+    JSON.stringify({
+      rules: [{
+        type: "completeDayChange",
+        dashboardTitle: "新客转化率(注册~放款)",
+        cardTitle: "分app趋势",
+        dateColumn: "注册日期",
+        columns: ["注册-放款率"],
+      }],
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [
+          { "注册日期": "2026-07-01", "注册-放款率": 0.1 },
+          { "注册日期": "2026-07-02", "注册-放款率": 0.2 },
+        ];
+      },
+    }),
+  });
+
+  const result = await api.getFluctuationVisualSeries({
+    anomaly: {
+      countryCode: "MX",
+      dashboardUuid: "dash-mx-rate",
+      cardId: 12,
+      dashcardId: 23,
+      type: "completeDayChange",
+      message: "完整日指标「注册-放款率」从 10.0% 到 20.0%（统计日期 2026-07-02 对比 2026-07-01）",
+    },
+  });
+
+  assert.deepEqual(result.series.map((point) => point.percent), [true, true]);
 });
 
 test("platform api analyzes and caches a saved Metabase anomaly", async () => {

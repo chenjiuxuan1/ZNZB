@@ -403,7 +403,6 @@ function isPercentMetric(anomaly = {}) {
     anomaly.metricName,
     anomaly.metricColumn,
     anomaly.column,
-    anomaly.cardTitle,
   ].filter(Boolean).join(" ");
   return /(率|占比|转化|逾期|入催|复借|费率|rate|ratio|percent|conversion|overdue)/i.test(metricText);
 }

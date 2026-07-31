@@ -160,6 +160,7 @@ function extractCards(dashboard) {
       cardId: dashcard.card_id,
       title: dashcard.card.name,
       display: dashcard.card.display,
+      visualizationSettings: dashcard.card.visualization_settings || {},
       dimensions: dashcard.card.visualization_settings?.["graph.dimensions"] || [],
       metrics: dashcard.card.visualization_settings?.["graph.metrics"] || [],
       parameterMappings: dashcard.parameter_mappings || [],

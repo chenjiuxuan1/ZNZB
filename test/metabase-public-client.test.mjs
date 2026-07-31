@@ -200,6 +200,7 @@ test("discoverPublicDashboards expands internal collection dashboards with auth 
   assert.equal(result.dashboards[0].access, "internal");
   assert.equal(result.dashboards[0].countryCode, "CN");
   assert.equal(result.dashboards[0].cards[0].queryStatus, "ok");
+  assert.deepEqual(result.dashboards[0].cards[0].visualizationSettings, { "graph.dimensions": ["统计日期"], "graph.metrics": ["注册数"] });
 });
 
 test("discoverPublicDashboards queries cards concurrently", async () => {

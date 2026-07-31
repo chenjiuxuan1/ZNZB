@@ -247,8 +247,14 @@ export function createPlatformApi({
       const series = buildAnomalyMetricSeries(Array.isArray(rows) ? rows : [], ruleForSeries, anomaly.message || "", {
         maxPoints: Number(body.maxPoints || 16),
       });
+      const metricName = series.find((point) => point.metric)?.metric || "";
+      const seriesPercent = isPercentSeriesFromCard(card, metricName, ruleForSeries);
+      const formattedSeries = series.map((point) => ({
+        ...point,
+        percent: seriesPercent,
+      }));
       return {
-        ok: series.length > 0,
+        ok: formattedSeries.length > 0,
         dashboard: {
           countryCode: dashboard.countryCode || dashboard.country?.code || "",
           dashboardUuid: dashboard.uuid || "",
@@ -258,8 +264,8 @@ export function createPlatformApi({
           cardTitle: card.title || "",
         },
         rowCount: Array.isArray(rows) ? rows.length : 0,
-        series,
-        message: series.length ? "" : "已查询看板卡片，但未能从返回数据中匹配到这条告警指标的历史序列。",
+        series: formattedSeries,
+        message: formattedSeries.length ? "" : "已查询看板卡片，但未能从返回数据中匹配到这条告警指标的历史序列。",
       };
     },
 
@@ -3288,6 +3294,45 @@ function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays =
       value: `past${days}days~`,
     }];
   });
+}
+
+function isPercentSeriesFromCard(card = {}, metricName = "", rule = {}) {
+  const setting = findColumnVisualizationSetting(card, metricName);
+  if (setting) {
+    return isPercentColumnSetting(setting);
+  }
+  return rule.valueFormat === "percent";
+}
+
+function findColumnVisualizationSetting(card = {}, metricName = "") {
+  if (!metricName) return null;
+  const settings = card.visualizationSettings || card.visualization_settings || {};
+  const columnSettings = settings.column_settings || settings["column_settings"] || {};
+  for (const [key, value] of Object.entries(columnSettings || {})) {
+    if (String(key).includes(metricName)) {
+      return value && typeof value === "object" ? value : null;
+    }
+  }
+  const seriesSettings = settings.series_settings || settings["series_settings"] || {};
+  for (const [key, value] of Object.entries(seriesSettings || {})) {
+    if (String(key) === metricName || String(key).includes(metricName)) {
+      return value && typeof value === "object" ? value : null;
+    }
+  }
+  return null;
+}
+
+function isPercentColumnSetting(setting = {}) {
+  const values = [
+    setting.number_style,
+    setting.numberStyle,
+    setting.style,
+    setting.format,
+    setting.unit,
+    setting.suffix,
+    setting.prefix,
+  ].map((value) => String(value || "").toLowerCase());
+  return values.some((value) => value === "%" || value.includes("percent") || value.includes("percentage"));
 }
 
 function normalizeDashboardUuids(value) {
