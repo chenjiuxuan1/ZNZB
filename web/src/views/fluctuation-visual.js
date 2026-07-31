@@ -11,6 +11,14 @@ const FLUCTUATION_TYPES = new Set([
   "latestNonZeroToZero",
 ]);
 
+const CHINA_SUPPRESSED_ANOMALY_TYPES = new Set([
+  "noData",
+  "emptyMetrics",
+  "latestNonZeroToZero",
+  "latestZeroRate",
+  "notEmpty",
+]);
+
 export function renderFluctuationVisual(root) {
   const model = buildFluctuationVisualModel(state.batchHistory, state.countries?.countries || []);
   root.innerHTML = `
@@ -98,8 +106,8 @@ function renderFluctuationCountries(model) {
   if (!model.countries.length) {
     return `
       <section class="panel empty-state">
-        <h2 class="panel-title">最近一次巡检没有波动异常</h2>
-        <p class="success">没有可绘制的波动点。</p>
+        <h2 class="panel-title">今日巡检没有波动异常</h2>
+        <p class="success">今天更新的巡检记录里没有可绘制的波动点。</p>
       </section>
     `;
   }
@@ -210,8 +218,10 @@ function renderLineChart(chart) {
   `;
 }
 
-function buildFluctuationVisualModel(history, countries = []) {
-  const run = (history?.runs || []).find((item) => collectFluctuationAnomalies(item, countries).length) || (history?.runs || [])[0] || null;
+function buildFluctuationVisualModel(history, countries = [], options = {}) {
+  const today = options.today || getBeijingDateKey(new Date());
+  const todayRuns = (history?.runs || []).filter((item) => isRunUpdatedOnDate(item, today));
+  const run = todayRuns.find((item) => collectFluctuationAnomalies(item, countries).length) || todayRuns[0] || null;
   const anomalies = collectFluctuationAnomalies(run, countries);
   const byCountry = new Map();
   for (const anomaly of anomalies) {
@@ -227,10 +237,34 @@ function buildFluctuationVisualModel(history, countries = []) {
   const countryModels = [...byCountry.values()].sort((a, b) => b.anomalies.length - a.anomalies.length);
   return {
     run,
+    today,
     countries: countryModels,
     countryCount: countryModels.length,
     anomalyCount: anomalies.length,
   };
+}
+
+function isRunUpdatedOnDate(run = {}, dateKey) {
+  const candidates = [
+    run.finishedAt,
+    run.startedAt,
+    run.checkedAt,
+    run.updatedAt,
+  ];
+  return candidates.some((value) => getBeijingDateKey(value) === dateKey);
+}
+
+function getBeijingDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
 }
 
 function collectFluctuationAnomalies(run, countries = []) {
@@ -242,7 +276,7 @@ function collectFluctuationAnomalies(run, countries = []) {
     const countryName = countryRun.countryName || countryNames.get(countryCode) || countryCode;
     for (const anomaly of countryRun.result?.anomalies || []) {
       const detail = parseAnomalyMessage(anomaly.message || "", anomaly.type || "");
-      if (!isFluctuationAnomaly(anomaly, detail)) {
+      if (!isFluctuationAnomaly(anomaly, detail, countryCode)) {
         continue;
       }
       rows.push({
@@ -257,9 +291,12 @@ function collectFluctuationAnomalies(run, countries = []) {
   return rows;
 }
 
-function isFluctuationAnomaly(anomaly, detail) {
+function isFluctuationAnomaly(anomaly, detail, countryCode = "") {
   const type = String(anomaly?.type || "");
   const text = `${anomaly?.message || ""} ${detail?.reason || ""}`;
+  if (String(countryCode || "").toUpperCase() === "CN" && CHINA_SUPPRESSED_ANOMALY_TYPES.has(type)) {
+    return false;
+  }
   if (["noData", "emptyMetrics", "queryError", "metabaseConfigError", "metabaseStalePublicLink", "notEmpty"].includes(type)) {
     return false;
   }
