@@ -60,6 +60,7 @@ async function loadInitialData() {
   const deferredHistoryUrl = state.route === "/fluctuation-visual"
     ? "/api/batch-history?status=anomaly&limit=1"
     : "/api/batch-history?limit=50";
+  const deferredHistoryOptions = state.route === "/fluctuation-visual" ? { timeoutMs: 15000 } : {};
   if (historyRunId) {
     state.batchHistoryStatus = {
       type: "loading",
@@ -95,7 +96,7 @@ async function loadInitialData() {
     apiGet("/api/summary"),
     apiGet("/api/inventory"),
     apiGet("/api/rules"),
-    historyRunId ? Promise.resolve(null) : apiGet(deferredHistoryUrl),
+    historyRunId ? Promise.resolve(null) : apiGet(deferredHistoryUrl, deferredHistoryOptions),
   ]);
   if (deferred[0].status === "fulfilled") state.summary = deferred[0].value;
   if (deferred[1].status === "fulfilled") state.inventory = deferred[1].value;
