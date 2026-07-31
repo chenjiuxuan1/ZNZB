@@ -249,6 +249,20 @@ test("fluctuation visual does not format count metrics as percent because change
   assert.equal(chart.percent, false);
 });
 
+test("fluctuation visual does not format count metrics as percent because card title has conversion", () => {
+  const chart = fluctuationVisualTest.buildChart({
+    metricLabel: "正审通过 · APP=MEX023",
+    cardTitle: "分app规模&转化",
+    message: "完整日指标「正审通过」从 4 到 0，波动 -100.0%",
+    hydratedSeries: [
+      { date: "2026-07-01", value: 150 },
+      { date: "2026-07-02", value: 0, anomaly: true },
+    ],
+  });
+
+  assert.equal(chart.percent, false);
+});
+
 test("fluctuation visual formats rate metrics as percent", () => {
   const chart = fluctuationVisualTest.buildChart({
     metricLabel: "D7逾期率",
