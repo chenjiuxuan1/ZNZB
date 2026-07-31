@@ -304,6 +304,12 @@ test("fluctuation visual keeps already-percent rate values unchanged", () => {
   assert.equal(fluctuationVisualTest.formatChartValue(28.6, chart.percent, scale), "28.6%");
 });
 
+test("fluctuation visual keeps small decimal axis labels distinct", () => {
+  assert.equal(fluctuationVisualTest.formatChartValue(0.062, false, 1), "0.062");
+  assert.equal(fluctuationVisualTest.formatChartValue(0.125, false, 1), "0.13");
+  assert.equal(fluctuationVisualTest.formatChartValue(12.34, false, 1), "12.3");
+});
+
 test("fluctuation visual does not use pure numeric fallback as metric name", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
     runs: [{
