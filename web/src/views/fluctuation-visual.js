@@ -163,8 +163,7 @@ function getSelectedFluctuationCountry(countries = []) {
 }
 
 function renderFluctuationCountry(country) {
-  const requestedIndex = clampIndex(state.fluctuationVisualSelected?.[country.countryCode], country.anomalies.length);
-  const selectedIndex = chooseDisplayAnomalyIndex(country.anomalies, requestedIndex);
+  const selectedIndex = getDisplayAnomalyIndex(country);
   const selected = country.anomalies[selectedIndex] || country.anomalies[0];
   const chart = buildChart(selected);
   const drawableCount = country.anomalies.filter(hasRealSeries).length;
@@ -404,6 +403,14 @@ function chooseDisplayAnomalyIndex(anomalies = [], requestedIndex = 0) {
   return firstDrawable >= 0 ? firstDrawable : clamped;
 }
 
+function getDisplayAnomalyIndex(country) {
+  const selectedByCountry = state.fluctuationVisualSelected || {};
+  if (Object.prototype.hasOwnProperty.call(selectedByCountry, country.countryCode)) {
+    return clampIndex(selectedByCountry[country.countryCode], country.anomalies.length);
+  }
+  return chooseDisplayAnomalyIndex(country.anomalies, 0);
+}
+
 function hasRealSeries(anomaly) {
   return normalizeSeries(anomaly).length > 0;
 }
@@ -429,8 +436,7 @@ function normalizeSeries(anomaly) {
 function getSelectedModelAnomaly(model) {
   const country = getSelectedFluctuationCountry(model.countries || []);
   if (!country) return null;
-  const requestedIndex = clampIndex(state.fluctuationVisualSelected?.[country.countryCode], country.anomalies.length);
-  const selectedIndex = chooseDisplayAnomalyIndex(country.anomalies, requestedIndex);
+  const selectedIndex = getDisplayAnomalyIndex(country);
   return country.anomalies[selectedIndex] || country.anomalies[0] || null;
 }
 
@@ -527,4 +533,5 @@ export const __test__ = {
   buildChart,
   collectFluctuationAnomalies,
   chooseDisplayAnomalyIndex,
+  getDisplayAnomalyIndex,
 };
