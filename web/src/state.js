@@ -30,6 +30,7 @@ export const state = {
   batchCheckTab: "manual",
   fluctuationVisualSelected: {},
   fluctuationVisualCountryCode: "",
+  fluctuationVisualLoaded: false,
   wattrelCurrentResult: null,
   wattrelCurrentStatus: null,
   wattrelCurrentLoaded: false,

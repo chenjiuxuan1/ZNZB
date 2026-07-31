@@ -58,6 +58,10 @@ export function renderFluctuationVisual(root) {
       renderFluctuationVisual(root);
     });
   });
+
+  if (!state.fluctuationVisualLoaded && state.batchHistoryStatus?.type !== "loading") {
+    void reloadFluctuationHistory(root);
+  }
 }
 
 async function reloadFluctuationHistory(root) {
@@ -68,7 +72,8 @@ async function reloadFluctuationHistory(root) {
   };
   renderFluctuationVisual(root);
   try {
-    state.batchHistory = await apiGet("/api/batch-history?limit=50");
+    state.batchHistory = await apiGet("/api/batch-history?status=anomaly&limit=200");
+    state.fluctuationVisualLoaded = true;
     state.batchHistoryStatus = null;
   } catch (error) {
     state.batchHistoryStatus = {
