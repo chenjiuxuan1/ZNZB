@@ -1,4 +1,7 @@
 import { fetchCompatible } from "./fetch-compatible.mjs";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const COUNTRY_CODES = new Set(["cn", "ine", "ph", "th", "pk", "mx"]);
 const DEFAULT_WATTREL_GATEWAY_URL = "http://127.0.0.1:5678/webhook/wattrel-query";
@@ -143,6 +146,24 @@ function validateReadOnlySql(sql) {
   }
 }
 
+function resolveSrSessionToken(env) {
+  const sessionFile = String(env.SR_SKILLS_SESSION_FILE || join(homedir(), ".config", "sr-skills", "session-data-map-dev.json"));
+  try {
+    const raw = readFileSync(sessionFile, "utf8");
+    const session = JSON.parse(raw);
+    if (!session.sessionToken) return null;
+    const now = Date.now();
+    const expiresAt = session.expiresAt ? Date.parse(session.expiresAt) : 0;
+    if (expiresAt && expiresAt < now) return null;
+    const lastAccessed = session.lastAccessedAt ? Date.parse(session.lastAccessedAt) : 0;
+    const idleLimit = Number(env.SR_SKILLS_SESSION_IDLE_TIMEOUT_SECONDS || 3600) * 1000;
+    if (lastAccessed && now - lastAccessed > idleLimit) return null;
+    return session.sessionToken;
+  } catch {
+    return null;
+  }
+}
+
 export async function proxySrQuery(body = {}, { env = process.env, fetchFn = fetchCompatible } = {}) {
   const znzbCountry = normalizeCountryCode(body.country);
   if (!COUNTRY_CODES.has(znzbCountry)) {
@@ -159,9 +180,9 @@ export async function proxySrQuery(body = {}, { env = process.env, fetchFn = fet
   const sql = String(body.sql || "").trim();
   validateReadOnlySql(sql);
   const limit = Math.max(1, Math.min(500, Number(body.limit ?? 100)));
-  const token = String(env.FUXI_SR_TOKEN || "").trim();
+  const token = String(env.FUXI_SR_TOKEN || "").trim() || resolveSrSessionToken(env);
   if (!token) {
-    const error = new Error("FUXI_SR_TOKEN not configured");
+    const error = new Error("SR query token not available. Set FUXI_SR_TOKEN in .env or run: python3 sr_gateway_client.py sso login");
     error.statusCode = 503;
     throw error;
   }
