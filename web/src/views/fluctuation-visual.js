@@ -47,7 +47,7 @@ export function renderFluctuationVisual(root) {
       renderFluctuationVisual(root);
     });
   });
-  if (!state.fluctuationVisualLoaded && state.batchHistoryStatus?.type !== "loading") {
+  if (!state.fluctuationVisualLoaded && !state.batchHistoryStatus) {
     void reloadFluctuationHistory(root);
   }
   const selectedCountry = getSelectedFluctuationCountry(model.countries || []);
@@ -64,7 +64,7 @@ async function reloadFluctuationHistory(root) {
   };
   renderFluctuationVisual(root);
   try {
-    state.batchHistory = await apiGet("/api/batch-history?status=anomaly&limit=1");
+    state.batchHistory = await apiGet("/api/batch-history?status=anomaly&limit=1", { timeoutMs: 15000 });
     state.fluctuationVisualLoaded = true;
     state.batchHistoryStatus = null;
   } catch (error) {
