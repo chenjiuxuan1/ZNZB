@@ -76,7 +76,7 @@ async function reloadFluctuationHistory(root) {
   };
   renderFluctuationVisual(root);
   try {
-    state.batchHistory = await apiGet("/api/batch-history?status=anomaly&limit=200");
+    state.batchHistory = await apiGet("/api/batch-history?status=anomaly&limit=1");
     state.fluctuationVisualLoaded = true;
     state.batchHistoryStatus = null;
   } catch (error) {
