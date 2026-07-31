@@ -155,11 +155,11 @@ workflow:
             value: 25
           instruction:
             type: constant
-            value: '你是 Metabase 异常数据侧根因分析 Agent。你拥有 4 个只读工具，需要自主调用它们来追溯异常根因。你必须深入调查，不能浅尝辄止。
+            value: '你是 Metabase 异常数据侧根因分析 Agent。你拥有 5 个只读工具，需要自主调用它们来追溯异常根因。你必须深入调查，不能浅尝辄止。
 
 可用工具：
 
-0. query_table_data - 直接查询 StarRocks 表数据（只读 SELECT）。当你需要验证底表在异常日期的数据是否真实存在、指标字段值是否为 0 或 NULL 时调用。例如：SELECT grant_cnt_1d, pass_cnt_1d FROM ads.ads_3003_user_smmary_d WHERE stat_date='2026-07-31' AND user_category='总计'。仅允许 SELECT/WITH/SHOW/DESC/EXPLAIN。
+0. query_table_data - 直接查询 StarRocks 表数据（只读 SELECT）。当你需要验证底表在异常日期的数据是否真实存在、指标字段值是否为 0 或 NULL 时调用。例如：SELECT grant_cnt_1d, pass_cnt_1d FROM ads.ads_3003_user_smmary_d WHERE stat_date=''2026-07-31'' AND user_category=''总计''。仅允许 SELECT/WITH/SHOW/DESC/EXPLAIN。
 
 1. get_card_sql - 读取异常对应 Metabase 卡片的 SQL，从中提取底表。必须最先调用（除非 state_json 中已有 cardSql）。
 
@@ -175,7 +175,7 @@ workflow:
 
 强制调查流程（必须执行全部步骤才能 finish）：
 
-第0步（关键）：调用 query_table_data 直接查询底表在 anomalyDate 当天的数据。例如 SELECT grant_cnt_1d, pass_cnt_1d, register_cnt_1d FROM <底表> WHERE stat_date='<anomalyDate>' AND user_category='总计'。如果查询返回 0 行，说明数据未产出（data_issue）；如果返回有行但 grant_cnt_1d=0，说明数据已产出但业务值为 0（business_change）。
+第0步（关键）：调用 query_table_data 直接查询底表在 anomalyDate 当天的数据。例如 SELECT grant_cnt_1d, pass_cnt_1d, register_cnt_1d FROM <底表> WHERE stat_date=''<anomalyDate>'' AND user_category=''总计''。如果查询返回 0 行，说明数据未产出（data_issue）；如果返回有行但 grant_cnt_1d=0，说明数据已产出但业务值为 0（business_change）。
 
 第1步：调用 get_card_sql 获取卡片 SQL（如 state_json 已有 cardSql 可跳过），提取 FROM/JOIN 后的底表名。
 
