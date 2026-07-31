@@ -260,6 +260,71 @@ test("platform api marks hydrated fluctuation series as percent from card visual
   assert.deepEqual(result.series.map((point) => point.percent), [true, true]);
 });
 
+test("platform api hydrates hourly fluctuation series with dashboard timezone", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboardCount: 1,
+      dashboards: [{
+        countryCode: "PK",
+        countryName: "巴基斯坦",
+        sourcePanelTitle: "每小时监控",
+        uuid: "dash-pk-hourly",
+        url: "https://data.example/dashboard/1053",
+        timezone: "Asia/Karachi",
+        parameters: [],
+        cards: [{
+          title: "进件 - 老客",
+          cardId: 1053,
+          dashcardId: 2053,
+          parameterMappings: [],
+        }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/public-monitor.config.json"),
+    JSON.stringify({
+      rules: [{
+        type: "intradayTimePointChange",
+        dashboardTitle: "每小时监控",
+        cardTitle: "进件 - 老客",
+        dateColumn: "日期",
+        columns: ["0", "1", "2"],
+        timezone: "dashboard",
+      }],
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [
+          { "日期": "2026-07-30", "0": 10, "1": 0, "2": 20 },
+        ];
+      },
+    }),
+  });
+
+  const result = await api.getFluctuationVisualSeries({
+    anomaly: {
+      countryCode: "PK",
+      dashboardUuid: "dash-pk-hourly",
+      cardId: 1053,
+      dashcardId: 2053,
+      type: "intradayTimePointChange",
+      message: "同时间点指标「1」从 99 到 0，波动 -100.0%（Asia/Karachi 01:00，日期 2026-07-30 对比 2026-07-29）",
+    },
+  });
+
+  assert.deepEqual(result.series.map((point) => [point.label, point.value, point.anomaly, point.timezone]), [
+    ["00:00", 10, false, "Asia/Karachi"],
+    ["01:00", 0, true, "Asia/Karachi"],
+    ["02:00", 20, false, "Asia/Karachi"],
+  ]);
+});
+
 test("platform api analyzes and caches a saved Metabase anomaly", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
