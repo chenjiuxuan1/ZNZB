@@ -98,6 +98,9 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/metabase-anomaly-analysis/display-index") {
     return sendJson(response, 200, await api.getMetabaseAnomalyAnalysisDisplayIndex(Object.fromEntries(url.searchParams.entries())));
   }
+  if (method === "GET" && url.pathname === "/api/metabase-anomaly-analyses") {
+    return sendJson(response, 200, await api.getMetabaseAnomalyAnalysesForRun(Object.fromEntries(url.searchParams.entries())));
+  }
   if (method === "GET" && url.pathname === "/api/metabase-anomaly-analysis") {
     return sendJson(response, 200, await api.getMetabaseAnomalyAnalysis(Object.fromEntries(url.searchParams.entries())));
   }

@@ -64,6 +64,10 @@ export function renderBatchCheck(root) {
     });
   });
   bindMetabaseAnalysisRetryButtons(root);
+  const historyRunId = state.routeQuery?.historyRunId;
+  if (historyRunId && state.metabaseRunAnalyses?.[historyRunId] === undefined) {
+    void loadRunAnalyses(root, historyRunId);
+  }
 
   root.querySelector("#batch-country")?.addEventListener("change", (event) => {
     state.selected.countryCode = event.target.value;
@@ -113,9 +117,11 @@ export function renderBatchCheck(root) {
     await reloadBatchHistory(root);
   });
   root.querySelector("#refresh-batch-history")?.addEventListener("click", async () => {
+    setButtonBusy(root.querySelector("#refresh-batch-history"), "刷新中...");
     await reloadBatchHistory(root);
   });
   root.querySelector("#load-batch-history")?.addEventListener("click", async () => {
+    setButtonBusy(root.querySelector("#load-batch-history"), "正在加载...");
     await reloadBatchHistory(root);
   });
   root.querySelector("#save-batch-schedule")?.addEventListener("click", async () => {
@@ -373,6 +379,7 @@ function renderManualBatchCheckPanel({
   selectedCardCount,
   result,
 }) {
+  const running = state.batchCheckStatus?.type === "loading";
   return `
     <section class="panel batch-controls">
       <div class="detail-header compact-header">
@@ -380,7 +387,7 @@ function renderManualBatchCheckPanel({
           <h2 class="panel-title">手动巡检</h2>
           <p class="muted">适合临时验证某个国家或单个看板；健康结果不会发通知，只有异常才发送。</p>
         </div>
-        <button class="primary" id="run-batch-check">开始巡检并发送 TV</button>
+        <button class="primary" id="run-batch-check" ${running ? "disabled" : ""} aria-busy="${running}">${running ? "巡检进行中..." : "开始巡检并发送 TV"}</button>
       </div>
       <div class="notice compact-notice">
         <strong>范围说明</strong>
@@ -469,6 +476,13 @@ async function refreshBatchScheduleProgress() {
   return state.batchScheduleProgress;
 }
 
+function setButtonBusy(button, label) {
+  if (!button) return;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = label;
+}
+
 function startBatchScheduleProgressPolling(root) {
   stopBatchScheduleProgressPolling();
   state.batchScheduleProgressTimer = window.setInterval(async () => {
@@ -512,6 +526,8 @@ function renderBatchSchedulePanel() {
   const schedule = state.batchSchedule || {};
   const enabled = Boolean(schedule.enabled);
   const status = state.batchScheduleStatus;
+  const saving = status?.type === "loading" && /保存/.test(status.title || "");
+  const running = status?.type === "loading" && /试跑/.test(status.title || "");
   return `
     <section class="panel schedule-panel">
       <div class="schedule-title-row">
@@ -520,8 +536,8 @@ function renderBatchSchedulePanel() {
           <p class="muted">按国家配置自动巡检。总开关控制是否到点自动运行，国家开关控制该国家是否参与。</p>
         </div>
         <div class="button-group">
-          <button id="save-batch-schedule" class="secondary">保存配置</button>
-          <button id="run-batch-schedule-now" class="primary">立即运行测试</button>
+          <button id="save-batch-schedule" class="secondary" ${saving || running ? "disabled" : ""} aria-busy="${saving}">${saving ? "保存中..." : "保存配置"}</button>
+          <button id="run-batch-schedule-now" class="primary" ${saving || running ? "disabled" : ""} aria-busy="${running}">${running ? "正在启动..." : "立即运行测试"}</button>
         </div>
       </div>
       ${renderScheduleOverview(schedule)}
@@ -610,6 +626,7 @@ function renderScheduleRunProgress() {
   const total = Number(progress.totalCountries || countries.length || 0);
   const percent = total ? Math.round((completed / total) * 100) : 0;
   const currentLabel = [progress.currentCountryName, progress.currentCountryCode].filter(Boolean).join(" / ");
+  const stages = progress.stages || [];
   return `
     <div class="sub-panel schedule-progress-panel">
       <div class="detail-header compact-header">
@@ -622,7 +639,18 @@ function renderScheduleRunProgress() {
       <div class="progress-track" aria-label="定时巡检测试进度">
         <span style="width:${escapeHtml(percent)}%"></span>
       </div>
-      <div class="schedule-progress-list">
+      <div class="schedule-stage-list" aria-label="巡检阶段">
+        ${stages.map((stage, index) => `
+          <article class="schedule-stage ${escapeHtml(stage.status || "pending")}">
+            <span class="schedule-stage-index">${index + 1}</span>
+            <div><strong>${escapeHtml(stage.label || "-")}</strong><small>${escapeHtml(stage.detail || "等待开始")}</small></div>
+            <span class="badge ${escapeHtml(scheduleProgressBadge(stage.status))}">${escapeHtml(scheduleProgressLabel(stage.status))}</span>
+          </article>
+        `).join("")}
+      </div>
+      <details class="schedule-country-progress-details">
+        <summary>查看国家巡检明细（${escapeHtml(completed)}/${escapeHtml(total)}）</summary>
+        <div class="schedule-progress-list">
         ${countries.map((country) => `
           <article class="schedule-progress-item ${escapeHtml(country.status || "pending")}">
             <div>
@@ -632,7 +660,8 @@ function renderScheduleRunProgress() {
             <span class="badge ${escapeHtml(scheduleProgressBadge(country.status))}">${escapeHtml(scheduleProgressLabel(country.status))}</span>
           </article>
         `).join("")}
-      </div>
+        </div>
+      </details>
     </div>
   `;
 }
@@ -645,6 +674,10 @@ function formatScheduleProgressStatus(progress, currentLabel) {
   }
   if (progress.status === "sending") {
     return "国家巡检已完成，正在聚合汇总并发送通知。";
+  }
+  if (progress.status === "ai_analyzing") {
+    const aiStage = (progress.stages || []).find((item) => item.key === "ai_analysis");
+    return aiStage?.detail || "巡检和通知已完成，正在后台执行 AI 取证。";
   }
   if (progress.status === "success") {
     return `测试运行完成，已完成 ${progress.completedCountries || 0}/${progress.totalCountries || 0} 个国家。`;
@@ -679,6 +712,8 @@ function scheduleProgressLabel(status) {
     pending: "等待",
     running: "运行中",
     sending: "发送中",
+    queued: "已排队",
+    skipped: "已跳过",
     success: "完成",
     partial_failed: "部分失败",
     failed: "失败",
@@ -689,7 +724,7 @@ function scheduleProgressLabel(status) {
 function scheduleProgressBadge(status) {
   if (status === "success") return "ok";
   if (status === "failed" || status === "partial_failed") return "danger";
-  if (status === "running" || status === "sending") return "warn";
+  if (status === "running" || status === "sending" || status === "queued") return "warn";
   return "idle";
 }
 
@@ -699,11 +734,13 @@ function renderBatchHistoryPanel() {
   const history = state.batchHistory || { runs: [] };
   const runs = history.runs || [];
   if (!state.batchHistoryLoaded) {
+    const loading = state.batchHistoryStatus?.type === "loading";
     return `
       <section class="panel schedule-history-panel">
         <div class="detail-header compact-header"><h2 class="panel-title">定时巡检历史</h2></div>
         <p class="muted">历史记录可能较大，按需加载不会影响当前巡检。</p>
-        <button id="load-batch-history" class="primary" type="button">加载最近 3 次巡检记录</button>
+        ${renderBatchHistoryStatus()}
+        <button id="load-batch-history" class="primary" type="button" ${loading ? "disabled" : ""} aria-busy="${loading}">${loading ? "正在加载..." : "加载最近 3 次巡检记录"}</button>
       </section>`;
   }
   return `
@@ -1070,6 +1107,8 @@ function renderHistoryAnomalyTable(anomalies, context = {}) {
           const reason = detail.reason || ruleTypeLabel(anomaly.type);
           const changeLabel = detail.changeValue || ruleTypeLabel(anomaly.type);
           const resultId = `metabase-ai-analysis-${encodeURIComponent(`${context.runId}-${context.countryCode}-${index}`).replace(/%/g, "")}`;
+          const storedAnalysis = state.metabaseRunAnalyses?.[context.runId]?.[`${context.countryCode}:${index}`];
+          const analysesLoading = state.metabaseRunAnalyses?.[context.runId] === null;
           return `
             <article class="anomaly-detail-card">
               <div class="anomaly-detail-card-head">
@@ -1093,15 +1132,43 @@ function renderHistoryAnomalyTable(anomalies, context = {}) {
                 <p>${escapeHtml(anomaly.message || "-")}</p>
               </div>
               <div class="button-group">
-                <button class="secondary" type="button" data-metabase-anomaly-analysis data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode)}" data-anomaly-index="${index}" data-analysis-result-id="${resultId}">AI 分析原因</button>
+                <button class="secondary" type="button" data-metabase-anomaly-analysis data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode)}" data-anomaly-index="${index}" data-analysis-result-id="${resultId}" ${analysesLoading ? "disabled" : ""} aria-busy="${analysesLoading}">${analysesLoading ? "正在读取 AI 结论..." : "AI 分析原因"}</button>
               </div>
-              <div id="${resultId}" class="metabase-anomaly-analysis-result"></div>
+              <div id="${resultId}" class="metabase-anomaly-analysis-result">${analysesLoading ? `<div class="inline-loading"><span></span>正在批量读取本次巡检的 AI 结论...</div>` : storedAnalysis ? renderMetabaseAnomalyAnalysis(storedAnalysis) : ""}</div>
             </article>
           `;
         }).join("")}
       </div>
     </details>
   `;
+}
+
+async function loadRunAnalyses(root, runId, attempt = 0) {
+  state.metabaseRunAnalyses = { ...(state.metabaseRunAnalyses || {}), [runId]: null };
+  renderBatchCheck(root);
+  try {
+    const payload = await apiGet(`/api/metabase-anomaly-analyses?runId=${encodeURIComponent(runId)}`);
+    const byIdentity = Object.fromEntries((payload.analyses || []).map((item) => [`${item.countryCode}:${item.anomalyIndex}`, item]));
+    state.metabaseRunAnalyses = { ...(state.metabaseRunAnalyses || {}), [runId]: byIdentity };
+    renderBatchCheck(root);
+    if (attempt < 36 && (payload.analyses || []).some((item) => item.status === "pending" || item.pending)) {
+      scheduleRunAnalysesReload(root, runId, attempt + 1);
+    }
+  } catch {
+    state.metabaseRunAnalyses = { ...(state.metabaseRunAnalyses || {}), [runId]: {} };
+    renderBatchCheck(root);
+  }
+}
+
+function scheduleRunAnalysesReload(root, runId, attempt) {
+  if (state.metabaseRunAnalysisPolling?.[runId]) return;
+  state.metabaseRunAnalysisPolling = { ...(state.metabaseRunAnalysisPolling || {}), [runId]: true };
+  setTimeout(() => {
+    state.metabaseRunAnalysisPolling = { ...(state.metabaseRunAnalysisPolling || {}), [runId]: false };
+    if (state.routeQuery?.historyRunId === runId) {
+      void loadRunAnalyses(root, runId, attempt);
+    }
+  }, 5_000);
 }
 
 function renderAnomalyDetailMetric(label, value) {
