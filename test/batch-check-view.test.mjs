@@ -236,6 +236,33 @@ test("fluctuation visual chart accepts hydrated series", () => {
   ]);
 });
 
+test("fluctuation visual prefers refreshed hourly data and keeps all 24 hours", () => {
+  const savedSeries = [
+    { date: "2026-08-02", value: 6650.72 },
+    { date: "2026-08-03", value: 0, anomaly: true },
+  ];
+  const hydratedSeries = Array.from({ length: 24 }, (_, hour) => ({
+    date: "2026-08-03",
+    label: `${String(hour).padStart(2, "0")}:00`,
+    value: hour + 1,
+    baselineValue: hour + 2,
+    xType: "hour",
+    anomaly: hour === 2,
+  }));
+
+  const points = fluctuationVisualTest.normalizeSeries({
+    series: savedSeries,
+    hydratedSeries,
+  });
+
+  assert.equal(points.length, 24);
+  assert.equal(points[0].label, "00:00");
+  assert.equal(points.at(-1).label, "23:00");
+  assert.equal(points[2].anomaly, true);
+  assert.equal(points[2].baselineValue, 4);
+  assert.equal(points.every((point) => point.xType === "hour"), true);
+});
+
 test("fluctuation visual does not format count metrics as percent because change text has percent", () => {
   const chart = fluctuationVisualTest.buildChart({
     metricLabel: "注册数",
