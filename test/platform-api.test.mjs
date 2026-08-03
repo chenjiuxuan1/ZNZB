@@ -539,6 +539,58 @@ test("platform api accepts one bounded batch callback for pending patrol anomali
   assert.equal(completed.results[1].analysis.dataSideVerdict, "business_change");
 });
 
+test("dashboard screening callback keeps proven-normal metrics and creates single-metric follow-ups", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyBatchAgentFn: async () => ({ pending: true, jobId: "screen-job-1", provider: "n8n-evidence" }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-dashboard-screening",
+    runs: [{ countryCode: "PH", ok: true, result: { anomalies: [
+      { dashboardUuid: "dash-1", dashboardTitle: "OKR", message: "转化率下降" },
+      { dashboardUuid: "dash-1", dashboardTitle: "OKR", message: "放款量归零" },
+    ] } }],
+  });
+  await api.submitMetabaseInvestigationBatch({
+    stage: "dashboard_screening", batchId: "screen-batch-1", runId: "pending-dashboard-screening",
+    countryCode: "PH", dashboardUuid: "dash-1", snapshotId: "screen-snapshot-1",
+    cases: [{ anomalyIndex: 0 }, { anomalyIndex: 1 }],
+  });
+
+  const completed = await api.completeMetabaseDashboardScreening({
+    runId: "pending-dashboard-screening", countryCode: "PH", dashboardUuid: "dash-1", jobId: "screen-job-1",
+    dashboardSummary: "看板公共证据已核查",
+    verdicts: [
+      { anomalyIndex: 0, screeningVerdict: "verified_normal", summary: "实时值正常", evidence: ["底表值存在"] },
+      { anomalyIndex: 1, screeningVerdict: "suspected_issue", summary: "底表分区缺失", evidence: ["查询无分区"] },
+    ],
+  });
+
+  assert.equal(completed.dashboardSummary, "看板公共证据已核查");
+  assert.deepEqual(completed.followUps.map((item) => item.cases[0].anomalyIndex), [1]);
+  const analyses = await api.getMetabaseAnomalyAnalysesForRun({ runId: "pending-dashboard-screening" });
+  assert.equal(analyses.analyses.find((item) => item.anomalyIndex === 0).analysis.dataSideVerdict, "verified_normal");
+  assert.equal(analyses.analyses.find((item) => item.anomalyIndex === 1).status, "screening_completed");
+});
+
+test("platform prepares one screening request containing every metric on a dashboard", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-dashboard-all-metrics",
+    runs: [{ countryCode: "PH", ok: true, result: { anomalies: Array.from({ length: 7 }, (_, anomalyIndex) => ({
+      dashboardUuid: "dash-many", dashboardTitle: "业务总览", cardTitle: `指标${anomalyIndex}`, message: `指标${anomalyIndex}异常`,
+    })) } }],
+  });
+
+  const prepared = await api.prepareMetabaseInvestigationBatches({ runId: "pending-dashboard-all-metrics" });
+  assert.equal(prepared.batches.length, 1);
+  assert.equal(prepared.batches[0].stage, "dashboard_screening");
+  assert.equal(prepared.batches[0].dashboardUuid, "dash-many");
+  assert.equal(prepared.batches[0].cases.length, 7);
+});
+
 test("platform api creates one source-table evidence snapshot for same-card patrol anomalies", async () => {
   const rootDir = await makeFixture();
   const cardReads = [];
@@ -2600,24 +2652,38 @@ test("AI-first patrol waits for batch verdicts before final notification and his
     metabaseClientFactory: () => ({ async queryDashcardJson() { return [{ "统计日期": "2026-07-05", "注册数": 10 }]; } }),
     metabaseInternalClientFactory: () => ({ getCard: async () => ({ id: 1, dataset_query: { native: { query: "SELECT * FROM ads.loan_d" } } }) }),
     metabaseAnomalyBatchAgentFn: async (batch) => {
-      order.push("batch");
-      await api.completeMetabaseAnomalyBatch({
-        runId: batch.runId, countryCode: batch.countryCode, jobId: "batch-callback", results: batch.cases.map((item) => ({
-          anomalyIndex: item.anomalyIndex,
-          analysis: { summary: "数据侧问题", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send" },
-        })),
-      });
-      return { pending: true, jobId: "batch-callback", provider: "n8n-evidence" };
+      order.push(batch.stage);
+      const jobId = batch.stage === "dashboard_screening" ? "screen-callback" : `deep-callback-${batch.cases[0].anomalyIndex}`;
+      setTimeout(() => {
+        if (batch.stage === "dashboard_screening") {
+          void api.completeMetabaseDashboardScreening({
+            runId: batch.runId, countryCode: batch.countryCode, dashboardUuid: batch.dashboardUuid, jobId,
+            dashboardSummary: "看板初筛完成",
+            verdicts: batch.cases.map((item) => ({ anomalyIndex: item.anomalyIndex, screeningVerdict: "suspected_issue", summary: "需要单指标深挖" })),
+          }).catch((error) => order.push(`screen-error:${error.message}`));
+          return;
+        }
+        void api.completeMetabaseAnomalyBatch({
+          runId: batch.runId, countryCode: batch.countryCode, jobId, results: batch.cases.map((item) => ({
+            anomalyIndex: item.anomalyIndex,
+            analysis: { summary: "数据侧问题", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send" },
+          })),
+        }).catch((error) => order.push(`deep-error:${error.message}`));
+      }, 50);
+      return { pending: true, jobId, provider: "n8n-evidence" };
     },
     notifyTextFn: async () => { order.push("notify"); return { sent: true, status: 200 }; },
   });
   try {
     await api.saveBatchSchedule({ enabled: false, countryConfigs: [{ countryCode: "INE", enabled: true, dashboardUuids: ["dash-1"], notifyChannel: "tv", webhookUrl: "https://tv.example", botId: "bot" }] });
     const result = await api.runBatchScheduleNow(new Date());
-    assert.equal(result.agentTriggerResult.total, 1);
+    assert.equal(result.agentTriggerResult.total, 2);
     assert.equal(result.agentTriggerResult.failed, 0, JSON.stringify(result.agentTriggerResult));
-    assert.deepEqual(order, ["batch", "notify"]);
-    assert.equal((await api.getBatchHistory()).runs.length, 1);
+    assert.deepEqual(order, ["dashboard_screening", "metric_deep_analysis", "notify"]);
+    const history = await api.getBatchHistory();
+    assert.equal(history.runs.length, 1);
+    assert.equal(history.runs[0].runs[0].result.aiAudit[0].dashboardSummary, "看板初筛完成");
+    assert.equal(history.runs[0].runs[0].result.aiAudit[0].screeningVerdict, "suspected_issue");
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;

@@ -131,7 +131,7 @@ workflow:
           label: state_json
           options: []
           placeholder: ''
-          required: true
+          required: false
           type: paragraph
           variable: state_json
           max_length: 50000
@@ -145,11 +145,31 @@ workflow:
           required: false
           type: text-input
           variable: snapshot_id
-        - label: 批次异常 JSON（最多三条）
-          max_length: 50000
+        - label: 看板或单指标异常 JSON
+          max_length: 500000
           required: false
           type: paragraph
           variable: cases_json
+        - label: 分析阶段
+          max_length: 32
+          required: true
+          type: text-input
+          variable: analysis_stage
+        - label: 看板 UUID
+          max_length: 256
+          required: false
+          type: text-input
+          variable: dashboard_uuid
+        - label: 看板初筛总结
+          max_length: 5000
+          required: false
+          type: paragraph
+          variable: dashboard_summary
+        - label: 首轮指标判断 JSON
+          max_length: 10000
+          required: false
+          type: paragraph
+          variable: screening_json
       height: 361
       id: start
       position:
@@ -170,17 +190,23 @@ workflow:
             value: 8
           instruction:
             type: constant
-            value: '你是 Metabase 异常数据侧根因分析 Agent。你一次会收到同一国家、同一底表的 1-3 条异常：cases_json。必须为 cases_json 中每一条 anomalyIndex 分别给出结论，但公共证据只能查询一次并复用；不得把某一指标的结果套用成另一指标的结论。若 batch_id 和 snapshot_id 存在，先且只先调用一次 get_current_anomaly_evidence(runId, countryCode, snapshotId)，再按需要对单个指标补充查询。总工具调用不得超过 6 次，最多迭代 8 次；证据不足必须保守输出 insufficient_evidence，不得重复调用相同工具、参数或盲目递归。
+            value: '你是 Metabase 异常数据侧根因分析 Agent。analysis_stage 只允许 dashboard_screening 或 metric_deep_analysis。
+
+dashboard_screening 表示看板级首轮初筛：cases_json 包含同一个看板的全部异常指标。必须先且只调用一次 get_current_anomaly_evidence(runId, countryCode, snapshotId) 读取看板公共快照，汇总公共证据，并为每个 anomalyIndex 返回唯一 screeningVerdict。只有实时证据明确证明该指标在告警日期和必要维度下实际正常，才能输出 verified_normal。查询失败、空结果、字段或维度不明确、只能证明底表整体正常时，必须输出 needs_deep_analysis；明确指向问题时输出 suspected_issue。不得因为看板整体或其他指标正常而判定当前指标正常。
+
+metric_deep_analysis 表示单指标二次分析：cases_json 必须只有一条。结合 dashboard_summary、screening_json 和公共快照，针对该指标补查必要工具并输出独立最终根因。不得把其他指标的证据直接套用到当前指标。
+
+总工具调用不得超过 6 次，最多迭代 8 次；不得重复调用相同工具和参数，不得盲目递归。证据不足必须保守输出 needs_deep_analysis 或 insufficient_evidence。
 
 你拥有 6 个只读工具，需要基于实时证据准确判断异常根因。调查必须充分，但不得为了凑步骤重复或无差别扩散工具调用。
 
 可用工具：
 
-- get_current_anomaly_evidence - 若 state_json 含 snapshotId，必须先读取本轮原始快照。complete=false 或缺少关键证据时，不能判定正常，继续使用以下实时工具。
+- get_current_anomaly_evidence - 若 snapshot_id 存在，必须先读取本轮原始快照。complete=false 或缺少关键证据时，不能判定正常，继续使用以下实时工具。
 
 0. query_table_data - 直接查询 StarRocks 表数据（只读 SELECT）。当你需要验证底表在异常日期的数据是否真实存在、指标字段值是否为 0 或 NULL 时调用。例如：SELECT grant_cnt_1d, pass_cnt_1d FROM ads.ads_3003_user_smmary_d WHERE stat_date=''2026-07-31'' AND user_category=''总计''。仅允许 SELECT/WITH/SHOW/DESC/EXPLAIN。
 
-1. get_card_sql - 读取异常对应 Metabase 卡片的 SQL，从中提取底表。必须最先调用（除非 state_json 中已有 cardSql）。
+1. get_card_sql - 仅在公共快照缺少当前指标的 Metabase 卡片 SQL 时调用，从中提取底表；已有 cardSql 时不得重复查询。
 
 2. trace_lineage - 查询表的代码血缘，发现上游表和 producer SQL。只有 evidence.quality=producer_sql 时 upstreamTables 才是有效上游。只沿与异常底表最直接、且能提供 producer SQL 的一条生产链继续追溯，最多 2 层。
 
@@ -194,14 +220,14 @@ workflow:
 
 工具调用预算与停止规则：
 
-- 总工具调用预算：最多 8 次。达到关键事实后必须结束；不要为耗尽预算继续探索。
+- 总工具调用预算：最多 6 次。达到关键事实后必须结束；不要为耗尽预算继续探索。
 - 不得对每个 upstreamTable 全量递归、全量查 Wattrel 或全量查 DS。没有 producer_sql 的 relatedTables 只是线索，不继续递归。
 - 任一工具失败、表名/字段/日期无法确定、或预算即将耗尽时，不得猜测；输出 insufficient_evidence，并写清 limitations。
 - 关键证据已经足够时，必须立即输出 finish；不要求调用全部工具。
 
 优先调查流程：
 
-第1步：调用 get_card_sql 获取卡片 SQL（如 state_json 已有 cardSql 可跳过），确认 FROM/JOIN 后与异常指标直接对应的底表、日期字段、指标字段和维度条件。
+第1步：先读取公共快照；仅当公共快照缺少当前指标的 cardSql 时调用 get_card_sql，确认 FROM/JOIN 后与异常指标直接对应的底表、日期字段、指标字段和维度条件。
 
 第2步（关键）：调用 query_table_data 查询这个底表在 anomalyDate 当天的真实值，查询条件必须复用卡片的必要维度。返回 0 行只代表本次查询没有确认数据；不得单独据此判定正常或业务变化。
 
@@ -235,8 +261,12 @@ workflow:
 - batch_id: {{#start.batch_id#}}
 - snapshot_id: {{#start.snapshot_id#}}
 - cases_json: {{#start.cases_json#}}
+- analysis_stage: {{#start.analysis_stage#}}
+- dashboard_uuid: {{#start.dashboard_uuid#}}
+- dashboard_summary: {{#start.dashboard_summary#}}
+- screening_json: {{#start.screening_json#}}
 
-state_json 是 n8n 传入的上下文（可能包含已获取的 Card SQL 证据）。如果 state_json 中已有 cardSql 和 cardTables，可以跳过 get_card_sql 直接调用 trace_lineage。
+state_json 仅为兼容旧调用保留；协议 v4 应以 snapshot_id 对应的公共快照为准。
 
 输出规则：
 - 最终输出必须是一个合法 JSON 对象，第一个字符是 {，最后一个字符是 }。
@@ -245,8 +275,9 @@ state_json 是 n8n 传入的上下文（可能包含已获取的 Card SQL 证据
 - 不得输出重跑、修复、写入等操作指令。
 - 关键证据已满足上述判定规则时可直接 finish；工具失败时必须保守输出 insufficient_evidence。
 
-输出格式（批次模式必须严格返回 cases_json 中每个 anomalyIndex 各一项，不多不少）：
-{"action":"finish","verdicts":[{"anomalyIndex":0,"summary":"根因摘要","evidence":["证据1"],"possibleCauses":["原因1"],"verificationSteps":["步骤1"],"recommendedActions":["建议1"],"confidence":"high|medium|low","limitations":"证据边界","dataSideVerdict":"data_issue|business_change|insufficient_evidence","notificationAction":"send|downgrade|enrich_only","chartVisibility":"show|hide_verified_normal","verificationReason":"仅 hide_verified_normal 时提供本轮查询与时间证据"}]}'
+输出格式必须严格匹配阶段，且 verdicts 必须对 cases_json 中每个 anomalyIndex 各一项，不多不少：
+dashboard_screening：{"action":"finish","dashboardSummary":"看板公共证据总结","verdicts":[{"anomalyIndex":0,"screeningVerdict":"verified_normal|suspected_issue|needs_deep_analysis","summary":"指标初判","evidence":["证据1"],"limitations":"证据边界"}]}
+metric_deep_analysis：{"action":"finish","verdicts":[{"anomalyIndex":0,"summary":"独立根因摘要","evidence":["证据1"],"possibleCauses":["原因1"],"verificationSteps":["步骤1"],"recommendedActions":["建议1"],"confidence":"high|medium|low","limitations":"证据边界","dataSideVerdict":"data_issue|business_change|verified_normal|insufficient_evidence","notificationAction":"send|downgrade|enrich_only","chartVisibility":"show|hide_verified_normal","verificationReason":"verified_normal 时提供本轮查询与时间证据"}]}'
           model:
             type: constant
             value:

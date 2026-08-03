@@ -1,14 +1,14 @@
 # Metabase 异常数据侧取证 Agent
 
-当前推荐并默认部署的是 **n8n 编排 + Dify 决策 + 只读取证网关**：
+当前推荐部署的是 **ZNZB 两阶段限流编排 + n8n 转发 + Dify 决策 + 只读取证网关**：
 
-`ZNZB 异步派单 → n8n 读取 Card SQL → Dify 决策 → n8n 执行受控取证 → Dify 再决策 → 固定内网 callback`。
+`国家巡检与公共证据准备 → 同一看板全部异常指标一次初筛 → 仅可疑/证据不足指标逐条深挖 → 结论全部收敛 → 最终通知与历史落库`。
 
 导入 [n8n-metabase-anomaly-dynamic-evidence-agent.template.json](../n8n-metabase-anomaly-dynamic-evidence-agent.template.json)。其生产 Webhook 路径固定为：
 
 `POST /webhook/metabase-anomaly-dynamic-evidence-agent`
 
-Dify 只返回下一步的 JSON 动作（`trace_lineage`、`check_wattrel`、`check_ds_workflow`、`check_ds_status` 或 `finish`），不会直接访问 ZNZB、StarRocks、DolphinScheduler、Wattrel，也不能执行重跑、修复、写入或权限变更。n8n 只接受已发现的表名，且硬限制为：血缘深度 3、总工具调用 12、Wattrel 检查 3、DS 匹配 3、DS 状态检查 3。完整循环与 Dify 输出契约见 [n8n Dify 动态取证决策环](n8n-dify-decision-loop.md)，Dify 系统提示词见 [Dify 系统提示词](dify-metabase-anomaly-system-prompt.md)。完整循环与 Dify 输出契约见 [n8n Dify 动态取证决策环](n8n-dify-decision-loop.md)。
+Dify ReAct Agent 可调用 6 个只读工具完成 SQL、底表实值、血缘、Wattrel 与 DS 核查，但不能执行重跑、修复、写入或权限变更。每次请求最多 8 次迭代、6 次工具调用；相同工具和参数不得重复。n8n 只负责验证协议、调用 Dify、校验结构化结果并回调 ZNZB，不在 n8n 内创建无界循环。
 
 ## 必填配置与凭证边界
 
@@ -39,21 +39,19 @@ METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=replace-with-long-random-callback-token
 
 入口 token、callback token 和 Card SQL 读取 token 均为必填项。入口 token 只用于平台到 n8n 的派单；callback token 只用于 n8n 读取受保护 Card SQL 并回调平台，二者不能互换。动态模板将 callback 目标写死为 `REPLACE_WITH_DUTY_PLATFORM_INTERNAL_CALLBACK_URL`；它忽略请求中的 `callback.url`，因此不能被用作任意 URL 转发。
 
-在模板中配置：
+在协议 v4 n8n 模板中只需替换：
 
-1. `REPLACE_WITH_DUTY_PLATFORM_HOST` 为 ZNZB 可被 n8n 容器访问的内部主机；`Get Verified Card SQL` 节点填写 `METABASE_ANOMALY_AGENT_CALLBACK_TOKEN`。
-2. `REPLACE_WITH_DUTY_PLATFORM_INTERNAL_CALLBACK_URL` 为上面的固定内网 callback 地址。
-3. `REPLACE_WITH_DIFY_WORKFLOW_RUN_URL` 必须直接填写完整内网地址 `http://172.20.0.234/v1/workflows/run`，不能拼接路径、不能填写公网域名；`REPLACE_WITH_DIFY_API_KEY` 为 Dify `app-` key。
-4. `REPLACE_WITH_N8N_PUBLIC_HOST` 为已发布取证网关的稳定 n8n 主机；保留 `/webhook/warehouse-lineage`（血缘）、`/webhook/wattrel-query`（质量告警）、`/webhook/ds-scheduler`（DS 运行状态）三个路径。血缘网关的 `REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN` 必须替换为共享随机 Bearer token；Wattrel 和 DS scheduler 网关通过 webhook 路径隔离，不需要额外 bearer token。
-5. `REPLACE_WITH_DS_TASK_MATCH_WORKFLOW_ID`：DS 任务匹配子流程的 n8n workflow ID。动态 Agent 通过 `executeWorkflow` 节点直接调用该子流程，传入 producer SQL、国家、告警时间等上下文，而不是通过 HTTP 网关。
-6. `REPLACE_WITH_DS_API_TOKEN`：DolphinScheduler API token，用于 DS scheduler 网关查询任务运行状态。仅用于只读查询，不能用于重跑或修改任务。
-7. 发布动态 Agent 及三个网关（血缘、Wattrel、DS scheduler）。分区核验由 Codex `sr_box` 技能人工只读执行，不在 n8n 自动化流程中。DS 匹配通过 `executeWorkflow` 复用已有子流程，不新建 HTTP 网关。DS 失败重跑工作流**不得**被取证流程调用。
+1. `REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN`：必须与 ZNZB 的 `METABASE_ANOMALY_AGENT_N8N_TOKEN` 相同。
+2. `REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN`：必须与 ZNZB 的 `METABASE_ANOMALY_AGENT_CALLBACK_TOKEN` 相同。
+3. `REPLACE_WITH_DIFY_API_KEY`：Dify 应用“后端服务 API”页面生成的 `app-` key；不是工具提供者 token，也不是 `.env` 变量名。
+
+模板已固定使用内网 Dify 地址 `http://172.20.0.234/v1/workflows/run` 和 ZNZB 容器回调地址 `http://172.19.0.1:28787`。如果部署网络发生变化，需要同时更新模板中的两个回调 URL和 Dify URL，再重新导入发布。Dify 使用已导入的 6 个只读工具完成取证；n8n 不直接持有 DS 或 SR 的写权限。
 
 ## 行为与结果
 
-## AI-first 批量巡检（协议 v3）
+## AI-first 两阶段巡检（协议 v4）
 
-启用前必须先导入并发布仓库中的 v3 n8n JSON、Dify DSL 和 OpenAPI v2.4.0 工具提供者。随后才在 ZNZB `.env` 显式开启：
+启用前必须依次导入并发布仓库中的 OpenAPI v2.4.0 工具提供者、Dify Agent DSL 和协议 v4 n8n JSON。随后才在 ZNZB `.env` 显式开启：
 
 ```dotenv
 METABASE_ANOMALY_BATCH_MODE=1
@@ -61,14 +59,17 @@ METABASE_ANOMALY_BATCH_MODE=1
 
 未设置该开关时仍运行旧流程，避免未完成导入时误派单。开启后，巡检的最终顺序是“国家巡检 → DS 核查 → AI 取证 → 通知 → 历史记录”：平台会先保留一份仅内部可见的待完成巡检，**不会**立即通知，也不会把它写入最终历史。
 
-- 以 `国家 + 底表` 合并公共证据；同组最多 3 条指标，但每条都必须获得独立 `anomalyIndex` 结论。
-- Dify 实际同时运行的批次硬限制为 2；只有某批 callback 已回写（或已超时）后，平台才提交下一批，绝不预投递全部队列。
-- 单个批次最多 8 次 Agent 迭代、6 次工具调用；整个巡检目标 20 分钟，30 分钟后不再提交新批次，剩余项写为“AI 未核验”。
+- 第一阶段按 `国家 + 看板 UUID` 聚合，同一个看板的全部异常指标放入一个 `dashboard_screening` 请求；Dify 必须为每个 `anomalyIndex` 返回且只返回一条初筛结论。
+- 只有被实时证据明确证明正常的指标才能输出 `verified_normal`。查询失败、结果为空、字段/维度不明确或只能证明看板整体正常时，必须进入第二阶段，不能直接消警。
+- 第二阶段将 `suspected_issue` 和 `needs_deep_analysis` 指标拆成单指标 `metric_deep_analysis` 请求，分别给出最终根因，避免把同看板其他指标的证据错误套用。
+- Dify 实际同时运行的请求硬限制为 2；只有某个 callback 已回写（或已超时）后，平台才从内存队列取下一项，绝不预投递全部任务。
+- 单次请求不得超过 512 KiB；超限看板不会投递 Dify，其指标按“AI 未核验”保守处理。
+- 每个请求最多 8 次 Agent 迭代、6 次工具调用；整个巡检目标 20 分钟，30 分钟后不再提交新请求，剩余项写为“AI 未核验”。
 - 只有 `data_issue` / 未核验的异常进入告警通知；`business_change` 和 `hide_verified_normal` 仍留在历史审计，但不播报为数据异常。
 
-新模板中的 n8n 节点只需要替换三个占位符：入口 token、回调 token、Dify `app-` API key。Callback URL 固定为 `/api/metabase-anomaly-analysis/batch-callback`，不得改回单条 `/callback`。
+新模板中的 n8n 节点只需要替换三个占位符：入口 token、回调 token、Dify `app-` API key。看板初筛回调固定为 `/api/metabase-anomaly-analysis/screening-callback`，单指标深挖回调固定为 `/api/metabase-anomaly-analysis/batch-callback`，不得改回旧的单条 `/callback`。
 
-平台创建异步任务后即显示“分析取证中”。任务完成后，n8n 使用同一 `jobId` 回调，写入分析与受限证据。没有 SQL、权限不足、只有 `declared_dependency_only`、分区或 DS 证据不足时，结论必须为 `insufficient_evidence`；原巡检告警不会由本 Agent 自动关闭。
+页面会分别显示“看板初筛”和“指标深挖”进度，并在每条指标结果上展示看板公共总结、指标初筛和最终深挖结论。通知与最终历史只会在所有必要请求完成、失败或超时后生成。没有 SQL、权限不足、只有 `declared_dependency_only`、分区或 DS 证据不足时，最终结论必须为 `insufficient_evidence`；原巡检告警不会因缺少证据而被自动关闭。
 
 分析结果写入 `config/metabase-anomaly-analyses.json`，默认保留最近 7 天；该文件已被 Git 忽略。
 
