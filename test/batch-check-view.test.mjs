@@ -130,6 +130,28 @@ test("history anomaly detail exposes an AI analysis action", () => {
   }), /重新 AI 分析/);
 });
 
+test("dashboard scan details put fluctuation charts in their own anomaly column", () => {
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  state.routeQuery = { historyRunId: "run-fluctuation" };
+  state.batchHistory = { runs: [{
+    id: "run-fluctuation", startedAt: "2026-08-03T00:00:00.000Z", successCount: 1, countryCount: 1,
+    checkedCardCount: 2, anomalyCount: 1, dataQualityAnomalyCount: 0,
+    runs: [{ countryCode: "TH", countryName: "泰国", ok: true, result: {
+      checkedCards: [
+        { countryCode: "TH", countryName: "泰国", dashboardUuid: "dash-alert", dashboardTitle: "核心链路", dashboardUrl: "https://data.example/dashboard/alert", cardTitle: "还款", ok: true },
+        { countryCode: "TH", countryName: "泰国", dashboardUuid: "dash-normal", dashboardTitle: "业务概览", dashboardUrl: "https://data.example/dashboard/normal", cardTitle: "规模", ok: true },
+      ],
+      anomalies: [{ countryCode: "TH", countryName: "泰国", dashboardUuid: "dash-alert", dashboardTitle: "核心链路", dashboardUrl: "https://data.example/dashboard/alert", cardTitle: "还款", type: "completeDayChange", message: "指标从 10 到 20" }],
+    } }],
+  }] };
+
+  renderBatchCheck(root);
+  assert.match(root.innerHTML, /<th>异常概述<\/th>\s*<th>异常波动<\/th>/);
+  assert.equal((root.innerHTML.match(/data-view-dashboard-fluctuations/g) || []).length, 1);
+  assert.match(root.innerHTML, /data-view-dashboard-fluctuations[^>]*>打开<\/button>/);
+  assert.doesNotMatch(root.innerHTML, /查看异常波动/);
+});
+
 test("scheduled run progress renders compact five-stage status and keeps country details collapsible", () => {
   const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
   state.routeQuery = {};
