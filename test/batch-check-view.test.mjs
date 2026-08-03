@@ -292,6 +292,16 @@ test("fluctuation visual formats daily and hourly point comparison percentages",
   assert.match(fluctuationVisualTest.formatComparisonPercent(12, 0), /基准为 0/);
 });
 
+test("fluctuation visual renders a smooth path for multi-day trends", () => {
+  const path = fluctuationVisualTest.buildSmoothPath([
+    { x: 0, y: 10 },
+    { x: 40, y: 30 },
+    { x: 80, y: 20 },
+  ]);
+  assert.match(path, /^M 0\.0 10\.0 C /);
+  assert.equal((path.match(/ C /g) || []).length, 2);
+});
+
 test("history anomaly dashboard link keeps the run, country, and dashboard filter", () => {
   const route = buildDashboardFluctuationRoute({
     runId: "run-7",
