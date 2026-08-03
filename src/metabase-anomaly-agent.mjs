@@ -491,7 +491,7 @@ export function normalizeMetabaseAnomalyAnalysis(value) {
     recommendedActions: textList(source.recommendedActions),
     confidence: ["low", "medium", "high"].includes(source.confidence) ? source.confidence : "low",
     limitations: text(source.limitations, "仅基于巡检记录分析，未直接查询 Metabase、数据仓库或调度系统。"),
-    dataSideVerdict: ["data_issue", "business_change", "insufficient_evidence"].includes(source.dataSideVerdict)
+    dataSideVerdict: ["data_issue", "business_change", "verified_normal", "insufficient_evidence"].includes(source.dataSideVerdict)
       ? source.dataSideVerdict
       : "insufficient_evidence",
     notificationAction: ["send", "downgrade", "enrich_only"].includes(source.notificationAction)
