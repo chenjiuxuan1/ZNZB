@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildInvestigationBatches, getBatchInvestigationLimits } from "../src/metabase-anomaly-batch.mjs";
+import { buildInvestigationBatches, getBatchInvestigationLimits, runBoundedInvestigationQueue } from "../src/metabase-anomaly-batch.mjs";
 
 test("batch investigation groups same source and limits every Dify payload to three cases", () => {
   const batches = buildInvestigationBatches([
@@ -18,4 +18,24 @@ test("batch investigation limits never exceed two Dify workers or three cases", 
     METABASE_ANOMALY_BATCH_CONCURRENCY: "99",
     METABASE_ANOMALY_BATCH_SIZE: "99",
   }), { maxConcurrentBatches: 2, maxCasesPerBatch: 3, timeoutMs: 600000, targetDurationMs: 1200000, deadlineMs: 1800000 });
+});
+
+test("bounded investigation queue never submits a third Dify batch before one callback settles", async () => {
+  const submitted = [];
+  const releases = new Map();
+  const queue = runBoundedInvestigationQueue({
+    batches: [{ batchId: "a" }, { batchId: "b" }, { batchId: "c" }],
+    submit: async (batch) => { submitted.push(batch.batchId); },
+    waitForSettlement: (batch) => new Promise((resolve) => releases.set(batch.batchId, resolve)),
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(submitted, ["a", "b"]);
+  releases.get("a")({ status: "completed" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(submitted, ["a", "b", "c"]);
+  releases.get("b")({ status: "completed" });
+  releases.get("c")({ status: "completed" });
+  const result = await queue;
+  assert.equal(result.completed, 3);
 });
