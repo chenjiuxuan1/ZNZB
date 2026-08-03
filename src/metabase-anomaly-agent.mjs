@@ -412,6 +412,14 @@ export function normalizeMetabaseAnomalyAnalysis(value) {
     notificationAction: ["send", "downgrade", "enrich_only"].includes(source.notificationAction)
       ? source.notificationAction
       : "enrich_only",
+    // Visibility is deliberately independent from the verdict: unknown, pending,
+    // or malformed model output must keep the original anomaly visible.
+    chartVisibility: source.chartVisibility === "hide_verified_normal"
+      ? "hide_verified_normal"
+      : "show",
+    verificationReason: source.chartVisibility === "hide_verified_normal"
+      ? text(source.verificationReason, "")
+      : "",
   };
 }
 

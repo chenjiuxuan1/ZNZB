@@ -23,7 +23,9 @@ const FLUCTUATION_SERIES_CONCURRENCY = 3;
 const FLUCTUATION_SERIES_TIMEOUT_MS = 15_000;
 
 export function renderFluctuationVisual(root) {
-  const model = buildFluctuationVisualModel(state.batchHistory, state.countries?.countries || []);
+  const model = buildFluctuationVisualModel(state.batchHistory, state.countries?.countries || [], {
+    displayIndex: state.fluctuationVisualDisplayIndex,
+  });
   root.innerHTML = `
     <div class="page-header batch-hero">
       <div>
@@ -38,6 +40,7 @@ export function renderFluctuationVisual(root) {
     </div>
 
     ${renderFluctuationStatus()}
+    ${model.hiddenVerifiedNormalCount ? `<div class="sandbox-status success"><strong>已隐藏 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已核验正常点</strong><span>原始告警、查询方式和完整结论仍保留在巡检历史详情中。</span></div>` : ""}
     ${model.run ? renderFluctuationCountries(model) : renderEmptyFluctuationState()}
   `;
 
@@ -50,9 +53,19 @@ export function renderFluctuationVisual(root) {
       renderFluctuationVisual(root);
     });
   });
-  if (!state.fluctuationVisualLoaded && !state.batchHistoryStatus) {
-    void reloadFluctuationHistory(root);
-  }
+  root.querySelectorAll("[data-fluctuation-point]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const countryCode = button.getAttribute("data-country") || "";
+      const index = Number(button.getAttribute("data-index") || 0);
+      state.fluctuationVisualSelected = {
+        ...(state.fluctuationVisualSelected || {}),
+        [countryCode]: index,
+      };
+      renderFluctuationVisual(root);
+    });
+  });
+
+  // History is intentionally user-triggered: this view must not slow app startup.
   const selectedCountry = getSelectedFluctuationCountry(model.countries || []);
   if (selectedCountry) {
     void hydrateVisibleFluctuationSeries(root, selectedCountry);
@@ -67,7 +80,18 @@ async function reloadFluctuationHistory(root) {
   };
   renderFluctuationVisual(root);
   try {
-    state.batchHistory = await apiGet("/api/batch-history?status=anomaly&limit=1", { timeoutMs: 15000 });
+    state.batchHistory = await apiGet("/api/batch-history?status=anomaly&limit=1");
+    state.batchHistoryLoaded = true;
+    const runId = state.batchHistory.runs?.[0]?.id;
+    if (runId) {
+      const index = await apiGet(`/api/metabase-anomaly-analysis/display-index?runId=${encodeURIComponent(runId)}`);
+      state.fluctuationVisualDisplayIndex = Object.fromEntries((index.items || []).map((item) => [
+        `${runId}:${String(item.countryCode || "").toUpperCase()}:${item.anomalyIndex}`,
+        item,
+      ]));
+    } else {
+      state.fluctuationVisualDisplayIndex = {};
+    }
     state.fluctuationVisualLoaded = true;
     state.batchHistoryStatus = null;
   } catch (error) {
@@ -88,7 +112,7 @@ function renderFluctuationStatus() {
         <h2 class="panel-title">异常走势视图</h2>
         <p class="muted">绿色折线来自巡检时保存的真实查询结果，红色表示报警当天的数据。旧历史没有真实序列时不画参考线，避免误判。</p>
       </div>
-      <button id="refresh-fluctuation-history" class="primary" type="button">刷新历史</button>
+      <button id="refresh-fluctuation-history" class="primary" type="button">${state.fluctuationVisualLoaded ? "刷新最新波动图谱" : "加载最新波动图谱"}</button>
     </section>
     ${status ? `
       <div class="sandbox-status ${escapeHtml(status.type)}">
@@ -102,8 +126,8 @@ function renderFluctuationStatus() {
 function renderEmptyFluctuationState() {
   return `
     <section class="panel empty-state">
-      <h2 class="panel-title">暂无巡检历史</h2>
-      <p class="muted">等定时巡检或手动巡检产生历史记录后，这里会按国家生成波动图谱。</p>
+      <h2 class="panel-title">${state.fluctuationVisualLoaded ? "暂无巡检历史" : "波动图谱尚未加载"}</h2>
+      <p class="muted">${state.fluctuationVisualLoaded ? "当前没有可绘制的巡检异常。" : "点击上方按钮读取最新一条异常巡检记录。"}</p>
     </section>
   `;
 }
@@ -329,7 +353,9 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
   const today = options.today || getBeijingDateKey(new Date());
   const todayRuns = (history?.runs || []).filter((item) => isRunUpdatedOnDate(item, today));
   const run = todayRuns.find((item) => collectFluctuationAnomalies(item, countries).length) || todayRuns[0] || null;
-  const anomalies = collectFluctuationAnomalies(run, countries);
+  const allAnomalies = collectFluctuationAnomalies(run, countries);
+  const displayIndex = options.displayIndex || {};
+  const anomalies = allAnomalies.filter((anomaly) => displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`]?.chartVisibility !== "hide_verified_normal");
   const byCountry = new Map();
   for (const anomaly of anomalies) {
     if (!byCountry.has(anomaly.countryCode)) {
@@ -348,6 +374,7 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
     countries: countryModels,
     countryCount: countryModels.length,
     anomalyCount: anomalies.length,
+    hiddenVerifiedNormalCount: allAnomalies.length - anomalies.length,
   };
 }
 
