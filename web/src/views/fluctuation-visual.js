@@ -410,9 +410,10 @@ function isFluctuationAnomaly(anomaly, detail, countryCode = "") {
   if (String(countryCode || "").toUpperCase() === "CN" && CHINA_SUPPRESSED_ANOMALY_TYPES.has(type)) {
     return false;
   }
-  if (["noData", "emptyMetrics", "queryError", "metabaseConfigError", "metabaseStalePublicLink", "notEmpty"].includes(type)) {
+  if (["noData", "emptyMetrics", "queryError", "metabaseConfigError", "metabaseStalePublicLink", "notEmpty", "requiredDatePresent", "intradayTimePointCompleteness", "staleLatestDate"].includes(type)) {
     return false;
   }
+  if (/缺失|没有数据|无数据|no\s*data|empty/i.test(text)) return false;
   return FLUCTUATION_TYPES.has(type) || /波动|变化|降为|到/.test(text);
 }
 
@@ -574,7 +575,7 @@ async function hydrateFluctuationSeries(root, anomaly, options = {}) {
     const result = await apiPost("/api/fluctuation-visual/series", {
       anomaly,
       lookbackDays: 45,
-      maxPoints: 16,
+      maxPoints: 15,
     }, { timeoutMs: FLUCTUATION_SERIES_TIMEOUT_MS });
     state.fluctuationVisualSeries = {
       ...(state.fluctuationVisualSeries || {}),

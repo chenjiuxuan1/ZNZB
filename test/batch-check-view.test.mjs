@@ -432,6 +432,11 @@ test("fluctuation visual excludes China empty and zero-style anomalies", () => {
             cardTitle: "CN empty",
             type: "noData",
             message: "没有数据",
+          }, {
+            dashboardTitle: "CN missing date",
+            cardTitle: "CN missing date",
+            type: "requiredDatePresent",
+            message: "数据缺失：统计日期缺少 2026-07-28",
           }],
         },
       }, {
@@ -442,6 +447,11 @@ test("fluctuation visual excludes China empty and zero-style anomalies", () => {
             cardTitle: "MX zero",
             type: "latestNonZeroToZero",
             message: "指标「注册数」从 100 降为 0（统计日期 2026-07-28 对比 2026-07-27）",
+          }, {
+            dashboardTitle: "MX missing date",
+            cardTitle: "MX missing date",
+            type: "requiredDatePresent",
+            message: "数据缺失：统计日期缺少 2026-07-28",
           }],
         },
       }],
