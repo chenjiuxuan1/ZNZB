@@ -601,7 +601,18 @@ export function createPlatformApi({
       const finalizedRuns = await buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile: resolve("metabaseAnomalyAnalyses") });
       batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", {
         status: queueResult.failed || queueResult.timedOut || queueResult.notSubmitted.length ? "partial_failed" : "success",
-        detail: `看板初筛 ${queueResult.phases.dashboardScreening?.completed || 0}/${queueResult.phases.dashboardScreening?.total || 0}；指标深挖 ${queueResult.phases.metricDeepAnalysis?.completed || 0}/${queueResult.phases.metricDeepAnalysis?.total || 0}`,
+        detail: (() => {
+          const s = queueResult.phases.dashboardScreening || {};
+          const d = queueResult.phases.metricDeepAnalysis || {};
+          const parts = [`看板初筛 ${s.completed || 0}/${s.total || 0}`, `指标深挖 ${d.completed || 0}/${d.total || 0}`];
+          const issues = (s.failed || 0) + (d.failed || 0);
+          const timeouts = (s.timedOut || 0) + (d.timedOut || 0);
+          const skipped = (s.notSubmitted?.length || 0) + (d.notSubmitted?.length || 0);
+          if (issues) parts.push(`失败 ${issues}`);
+          if (timeouts) parts.push(`超时 ${timeouts}`);
+          if (skipped) parts.push(`未投递 ${skipped}`);
+          return parts.join("；");
+        })(),
       });
       batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", { status: "running", detail: "AI 结论已收敛，正在发送最终通知" });
       const notificationSentCount = await sendScheduledAggregateNotifications({ countryRuns: finalizedRuns, countryConfigs, rulesFile: resolve("rules"), notifyTextFn, detailUrl, wattrelSummary, dsSchedulerSummary });
