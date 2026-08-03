@@ -317,6 +317,18 @@ test("fluctuation visual formats daily and hourly point comparison percentages",
   assert.match(fluctuationVisualTest.formatComparisonPercent(12, 0), /基准为 0/);
 });
 
+test("fluctuation visual hides only unavailable change values", () => {
+  assert.equal(fluctuationVisualTest.renderOptionalDetailField("变化", "-"), "");
+  assert.equal(fluctuationVisualTest.renderOptionalDetailField("变化", ""), "");
+  assert.match(fluctuationVisualTest.renderOptionalDetailField("变化", "+26.9"), /\+26\.9/);
+});
+
+test("fluctuation visual does not create a negative axis for non-negative data", () => {
+  assert.deepEqual(fluctuationVisualTest.resolveChartYBounds([0, 3, 8]), { yMin: 0, yMax: 8.96 });
+  assert.ok(fluctuationVisualTest.resolveChartYBounds([100, 200]).yMin > 0);
+  assert.ok(fluctuationVisualTest.resolveChartYBounds([-4, 8]).yMin < 0);
+});
+
 test("fluctuation visual renders a smooth path for multi-day trends", () => {
   const path = fluctuationVisualTest.buildSmoothPath([
     { x: 0, y: 10 },
