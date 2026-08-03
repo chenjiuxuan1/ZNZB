@@ -225,14 +225,14 @@ test("fluctuation visual chart accepts hydrated series", () => {
     metricLabel: "注册数",
     message: "完整日指标「注册数」从 100 到 200",
     hydratedSeries: [
-      { date: "2026-07-01", value: 100 },
-      { date: "2026-07-02", value: 200, anomaly: true },
+      { date: "2026-07-01", value: 100, baselineValue: 90, baselineSampleCount: 14 },
+      { date: "2026-07-02", value: 200, baselineValue: 110, baselineSampleCount: 14, anomaly: true },
     ],
   });
 
-  assert.deepEqual(chart.points.map((point) => [point.label, point.value, point.anomaly]), [
-    ["2026-07-01", 100, false],
-    ["2026-07-02", 200, true],
+  assert.deepEqual(chart.points.map((point) => [point.label, point.value, point.baselineValue, point.baselineSampleCount, point.anomaly]), [
+    ["2026-07-01", 100, 90, 14, false],
+    ["2026-07-02", 200, 110, 14, true],
   ]);
 });
 
