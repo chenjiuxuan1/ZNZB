@@ -2680,7 +2680,10 @@ test("AI-first patrol waits for batch verdicts before final notification and his
     assert.equal(result.agentTriggerResult.total, 2);
     assert.equal(result.agentTriggerResult.failed, 0, JSON.stringify(result.agentTriggerResult));
     assert.deepEqual(order, ["dashboard_screening", "metric_deep_analysis", "notify"]);
-    assert.equal((await api.getBatchHistory()).runs.length, 1);
+    const history = await api.getBatchHistory();
+    assert.equal(history.runs.length, 1);
+    assert.equal(history.runs[0].runs[0].result.aiAudit[0].dashboardSummary, "看板初筛完成");
+    assert.equal(history.runs[0].runs[0].result.aiAudit[0].screeningVerdict, "suspected_issue");
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;

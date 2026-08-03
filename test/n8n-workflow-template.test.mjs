@@ -8,12 +8,14 @@ async function workflow() {
   return JSON.parse(await fs.readFile(workflowFile, "utf8"));
 }
 
-test("batched AI-first evidence workflow accepts only protocol v3 batches of one to three cases", async () => {
+test("two-stage evidence workflow accepts protocol v4 dashboard and metric jobs", async () => {
   const data = await workflow();
   const normalize = data.nodes.find((node) => node.name === "Normalize Batch");
   assert.ok(normalize);
-  assert.match(normalize.parameters.jsCode, /protocolVersion !== 3/);
-  assert.match(normalize.parameters.jsCode, /cases\.length<1 \|\| cases\.length>3/);
+  assert.match(normalize.parameters.jsCode, /protocolVersion !== 4/);
+  assert.match(normalize.parameters.jsCode, /dashboard_screening/);
+  assert.match(normalize.parameters.jsCode, /metric_deep_analysis/);
+  assert.match(normalize.parameters.jsCode, /512 \* 1024/);
   assert.match(normalize.parameters.jsCode, /unique non-negative anomalyIndex/);
 });
 
@@ -21,11 +23,15 @@ test("batched workflow sends one Dify request and one callback for the whole bat
   const data = await workflow();
   assert.equal(data.nodes.length, 7);
   const dify = data.nodes.find((node) => node.name === "Call Dify Batch Agent");
+  const build = data.nodes.find((node) => node.name === "Build Batch Callback");
   const callback = data.nodes.find((node) => node.name === "Callback Batch Platform");
   assert.match(dify.parameters.jsonBody, /batch_id/);
   assert.match(dify.parameters.jsonBody, /snapshot_id/);
   assert.match(dify.parameters.jsonBody, /cases_json/);
-  assert.match(callback.parameters.url, /batch-callback$/);
+  assert.match(dify.parameters.jsonBody, /analysis_stage/);
+  assert.match(build.parameters.jsCode, /screening-callback/);
+  assert.match(build.parameters.jsCode, /batch-callback/);
+  assert.match(callback.parameters.url, /callbackUrl/);
   assert.match(callback.parameters.jsonBody, /\$json/);
 });
 
