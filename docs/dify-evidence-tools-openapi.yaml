@@ -1,13 +1,45 @@
 openapi: 3.0.3
 info:
   title: Metabase 异常数据侧取证工具集
-  version: 2.3.0
+  version: 2.4.0
   description: >-
-    只读取证工具集。Dify Agent 通过这 5 个工具自主追溯 Metabase 异常根因。
+    只读取证工具集。Dify Agent 通过这 6 个工具自主追溯 Metabase 异常根因。
     不修改代码、不触发 DS 重跑。query_table_data 仅允许只读 SELECT。
 servers:
 - url: http://172.20.0.235:28787
 paths:
+  /api/tools/current-anomaly-evidence:
+    post:
+      operationId: get_current_anomaly_evidence
+      summary: 读取本轮异常的原始证据快照
+      description: >-
+        仅读取同一巡检 runId 的短时原始证据快照；complete=false 时不得据此判定正常，
+        必须继续调用既有实时工具。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [runId, countryCode, anomalyIndex, snapshotId]
+              properties:
+                runId: { type: string }
+                countryCode: { type: string, enum: [cn, ine, ph, th, pk, mx] }
+                anomalyIndex: { type: integer, minimum: 0 }
+                snapshotId: { type: string }
+      responses:
+        '200':
+          description: 本轮原始快照或不完整标记
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  complete: { type: boolean }
+                  collectedAt: { type: string }
+                  evidence: { type: object }
+                  missing: { type: array, items: { type: string } }
   /api/tools/metabase-card-sql:
     post:
       operationId: get_card_sql

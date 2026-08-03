@@ -39,27 +39,22 @@ render();
 void loadInitialData();
 
 export async function loadData() {
-  const [summary, countries, inventory, rulesConfig, batchSchedule, batchHistory] = await Promise.all([
+  const [summary, countries, inventory, rulesConfig, batchSchedule] = await Promise.all([
     apiGet("/api/summary"),
     apiGet("/api/countries"),
     apiGet("/api/inventory"),
     apiGet("/api/rules"),
     apiGet("/api/batch-schedule").catch(() => null),
-    apiGet("/api/batch-history?limit=200").catch(() => ({ runs: [] })),
   ]);
   state.summary = summary;
   state.countries = countries;
   state.inventory = inventory;
   state.rulesConfig = rulesConfig;
   applyBatchSchedule(batchSchedule);
-  state.batchHistory = batchHistory;
 }
 
 async function loadInitialData() {
   const historyRunId = state.route === "/batch-check" ? state.routeQuery?.historyRunId : "";
-  const deferredHistoryUrl = state.route === "/fluctuation-visual"
-    ? "/api/batch-history?status=anomaly&limit=1"
-    : "/api/batch-history?limit=50";
   if (historyRunId) {
     state.batchHistoryStatus = {
       type: "loading",
@@ -95,12 +90,11 @@ async function loadInitialData() {
     apiGet("/api/summary"),
     apiGet("/api/inventory"),
     apiGet("/api/rules"),
-    historyRunId ? Promise.resolve(null) : apiGet(deferredHistoryUrl),
+    Promise.resolve(null),
   ]);
   if (deferred[0].status === "fulfilled") state.summary = deferred[0].value;
   if (deferred[1].status === "fulfilled") state.inventory = deferred[1].value;
   if (deferred[2].status === "fulfilled") state.rulesConfig = deferred[2].value;
-  if (deferred[3].status === "fulfilled") state.batchHistory = deferred[3].value;
   render();
 }
 
