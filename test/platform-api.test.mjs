@@ -273,12 +273,15 @@ test("platform api hydrates hourly fluctuation series with dashboard timezone", 
         uuid: "dash-pk-hourly",
         url: "https://data.example/dashboard/1053",
         timezone: "Asia/Karachi",
-        parameters: [],
+        parameters: [{ id: "date-filter", type: "date/all-options", default: "past1days~" }],
         cards: [{
           title: "进件 - 老客",
           cardId: 1053,
           dashcardId: 2053,
-          parameterMappings: [],
+          parameterMappings: [{
+            parameter_id: "date-filter",
+            target: ["dimension", ["template-tag", "date"], { "stage-number": 0 }],
+          }],
         }],
       }],
     }),
@@ -299,7 +302,8 @@ test("platform api hydrates hourly fluctuation series with dashboard timezone", 
   const api = createPlatformApi({
     rootDir,
     metabaseClientFactory: () => ({
-      async queryDashcardJson() {
+      async queryDashcardJson(request) {
+        assert.equal(request.parameters[0].value, "past15days~");
         return [
           { "日期": "2026-07-30", "0": 10, "1": 0, "2": 20 },
         ];

@@ -222,7 +222,9 @@ export function createPlatformApi({
       const matchingRules = (rulesConfig.rules || [])
         .filter((rule) => ruleMatchesCard(rule, dashboard, card))
         .map((rule) => applyDashboardRuleDefaults(applyRuleTypeDefaults(rule, rulesConfig.ruleDefaults || {}), dashboard));
-      const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, body.lookbackDays || 45);
+      const hourlySeries = shouldUseHourlyFluctuationWindow(matchingRules, anomaly, card);
+      const historyLookbackDays = hourlySeries ? 15 : body.lookbackDays || 45;
+      const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, historyLookbackDays);
       const ruleParameters = matchingRules.reduce(
         (parameters, rule) => mergeParameters(parameters, rule.parameters || []),
         [],
@@ -3296,6 +3298,27 @@ function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays =
       value: `past${days}days~`,
     }];
   });
+}
+
+function shouldUseHourlyFluctuationWindow(rules = [], anomaly = {}, card = {}) {
+  const type = String(anomaly.type || "");
+  if (type === "intradayTimePointChange" || type === "intradaySameTimeChange") {
+    return true;
+  }
+  if ((rules || []).some((rule) => (
+    rule.type === "intradayTimePointChange"
+    || rule.type === "intradaySameTimeChange"
+    || Boolean(rule.timeColumn)
+  ))) {
+    return true;
+  }
+  const text = [
+    anomaly.message,
+    anomaly.metricColumn,
+    anomaly.column,
+    card.title,
+  ].filter(Boolean).join(" ");
+  return /小时|同时间点|hour|intraday/i.test(text);
 }
 
 function isPercentSeriesFromCard(card = {}, metricName = "", rule = {}) {
