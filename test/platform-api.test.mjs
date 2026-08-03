@@ -7,6 +7,7 @@ import {
   createPlatformApi,
   flattenInventory,
 } from "../src/platform-api.mjs";
+import { getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
 
 test("Wattrel n8n gateway keeps MySQL column headers for row mapping", async () => {
   const workflow = await fs.readFile(new URL("../n8n-wattrel-query-gateway.json", import.meta.url), "utf8");
@@ -406,6 +407,9 @@ test("platform api queues every anomaly from the same dashboard for independent 
     METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL,
     METABASE_ANOMALY_AGENT_N8N_TOKEN: process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN,
     METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN,
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: process.env.METABASE_ANOMALY_AGENT_N8N_ASYNC,
+    METABASE_ANOMALY_AGENT_ENABLED: process.env.METABASE_ANOMALY_AGENT_ENABLED,
+    METABASE_ANOMALY_AGENT_ENABLED: process.env.METABASE_ANOMALY_AGENT_ENABLED,
   };
   process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL = "https://n8n.example/webhook/agent";
   process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN = "test-token";
@@ -2523,6 +2527,56 @@ test("platform api can manually test saved country schedule before it is due", a
   const history = await api.getBatchHistory();
   assert.equal(history.runs[0].trigger, "manual_test");
   assert.equal(history.runs[0].countryCount, 1);
+});
+
+test("AI-first patrol waits for batch verdicts before final notification and history", async () => {
+  const rootDir = await makeFixture();
+  const previous = {
+    METABASE_ANOMALY_BATCH_MODE: process.env.METABASE_ANOMALY_BATCH_MODE,
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL,
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN,
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN,
+  };
+  Object.assign(process.env, {
+    METABASE_ANOMALY_BATCH_MODE: "1",
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/batch",
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: "token",
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback",
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
+    METABASE_ANOMALY_AGENT_ENABLED: "1",
+  });
+  assert.equal(getMetabaseAnomalyAgentSettings().enabled, true);
+  const order = [];
+  let api;
+  api = createPlatformApi({
+    rootDir,
+    aiFirstMetabasePatrolEnabled: true,
+    metabaseClientFactory: () => ({ async queryDashcardJson() { return [{ "统计日期": "2026-07-05", "注册数": 10 }]; } }),
+    metabaseInternalClientFactory: () => ({ getCard: async () => ({ id: 1, dataset_query: { native: { query: "SELECT * FROM ads.loan_d" } } }) }),
+    metabaseAnomalyBatchAgentFn: async (batch) => {
+      order.push("batch");
+      await api.completeMetabaseAnomalyBatch({
+        runId: batch.runId, countryCode: batch.countryCode, jobId: "batch-callback", results: batch.cases.map((item) => ({
+          anomalyIndex: item.anomalyIndex,
+          analysis: { summary: "数据侧问题", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send" },
+        })),
+      });
+      return { pending: true, jobId: "batch-callback", provider: "n8n-evidence" };
+    },
+    notifyTextFn: async () => { order.push("notify"); return { sent: true, status: 200 }; },
+  });
+  try {
+    await api.saveBatchSchedule({ enabled: false, countryConfigs: [{ countryCode: "INE", enabled: true, dashboardUuids: ["dash-1"], notifyChannel: "tv", webhookUrl: "https://tv.example", botId: "bot" }] });
+    const result = await api.runBatchScheduleNow(new Date());
+    assert.equal(result.agentTriggerResult.total, 1);
+    assert.equal(result.agentTriggerResult.failed, 0, JSON.stringify(result.agentTriggerResult));
+    assert.deepEqual(order, ["batch", "notify"]);
+    assert.equal((await api.getBatchHistory()).runs.length, 1);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
 });
 
 test("scheduled Wattrel history keeps only the latest result for each quality rule", async () => {

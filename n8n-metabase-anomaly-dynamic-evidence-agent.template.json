@@ -1,268 +1,41 @@
 {
-  "name": "Metabase Anomaly Evidence Agent (Simplified)",
+  "name": "Metabase Anomaly Evidence Agent (Batched AI-first)",
   "nodes": [
     {
-      "parameters": {
-        "path": "metabase-anomaly-evidence-agent",
-        "httpMethod": "POST",
-        "responseMode": "responseNode"
-      },
-      "name": "Receive Evidence Job",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ]
+      "parameters": { "path": "metabase-anomaly-evidence-agent", "httpMethod": "POST", "responseMode": "responseNode" },
+      "name": "Receive Evidence Batch", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [0, 0]
     },
     {
-      "parameters": {
-        "jsCode": "const request = $json || {}; const body = request.body && typeof request.body === 'object' ? request.body : request; const header = String(request.headers?.authorization || request.headers?.Authorization || '').replace(/^Bearer\\s+/i, '').trim(); const expected = 'REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN'; const tokenEquals = (left, right) => { const actual = String(left); const configured = String(right); let diff = actual.length ^ configured.length; const length = Math.max(actual.length, configured.length); for (let index = 0; index < length; index += 1) diff |= (actual.charCodeAt(index) || 0) ^ (configured.charCodeAt(index) || 0); return diff === 0; }; if (!header || !tokenEquals(header, expected)) throw new Error('Unauthorized dynamic evidence webhook'); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('request body must be an object'); const allowedFields = new Set(['protocolVersion', 'jobId', 'requestedMode', 'anomaly', 'context', 'callback']); if (Object.keys(body).some(key => !allowedFields.has(key))) throw new Error('request contains unsupported fields'); const rawAnomaly = body.anomaly; const rawContext = body.context; const rawCallback = body.callback; if (body.protocolVersion !== 2 || !rawAnomaly || typeof rawAnomaly !== 'object' || Array.isArray(rawAnomaly) || !rawContext || typeof rawContext !== 'object' || Array.isArray(rawContext) || !rawCallback || typeof rawCallback !== 'object' || Array.isArray(rawCallback)) throw new Error('protocolVersion=2, anomaly, context and callback are required'); const jobId = typeof body.jobId === 'string' ? body.jobId.trim() : ''; const callbackToken = typeof rawCallback.token === 'string' ? rawCallback.token.trim() : ''; if (!/^[A-Za-z0-9._:-]{8,128}$/.test(jobId) || !callbackToken || callbackToken.length > 512) throw new Error('valid jobId and callback.token are required'); const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : ''; const context = { runId: text(rawContext.runId, 128), countryCode: text(rawContext.countryCode, 8).toLowerCase(), anomalyIndex: Number(rawContext.anomalyIndex) }; if (!context.runId || !/^[A-Za-z]{2,3}$/.test(context.countryCode) || !Number.isInteger(context.anomalyIndex) || context.anomalyIndex < 0) throw new Error('runId, countryCode and non-negative anomalyIndex are required'); const anomaly = { dashboardTitle: text(rawAnomaly.dashboardTitle, 256), cardTitle: text(rawAnomaly.cardTitle, 256), dashboardUrl: text(rawAnomaly.dashboardUrl, 2048), type: text(rawAnomaly.type, 64), message: text(rawAnomaly.message, 12000) }; const message = anomaly.message; const rawDates = [...message.matchAll(/(?<!\\d)(20\\d{2}[-/]\\d{1,2}[-/]\\d{1,2})(?!\\d)/g)].map(match => match[1]); const dates = rawDates.map(raw => { const value = raw.replace(/\\//g, '-').replace(/-(\\d)(?=-|$)/g, '-0$1'); const parsed = new Date(value + 'T00:00:00Z'); if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) throw new Error('invalid anomaly date: ' + raw); return value; }); const anomalyDate = dates.at(0) || new Date().toISOString().slice(0,10); const baselineDate = dates.length > 1 ? dates.at(1) : new Date(Date.parse(anomalyDate + 'T00:00:00Z') - 86400000).toISOString().slice(0,10); const callback = { url: 'http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback', token: callbackToken }; const state = { discoveredTables: [], verifiedTables: [], evidence: [], lineage: [], wattrelAlerts: [], dsCandidates: [], dsStatus: [], budget: { maxDepth: 3, maxCalls: 12, maxWattrel: 3, maxDs: 3, maxDsStatus: 3, depth: 0, calls: 0, wattrel: 0, ds: 0, dsStatus: 0 }, anomalyDate, baselineDate }; return [{ json: { jobId, anomaly, context, callback, state } }];"
-      },
-      "name": "Normalize Job",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        220,
-        0
-      ]
+      "parameters": { "jsCode": "const request = $json || {}; const body = request.body && typeof request.body === 'object' ? request.body : request; const token = String(request.headers?.authorization || request.headers?.Authorization || '').replace(/^Bearer\\s+/i, '').trim(); const expected = 'REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN'; const equal = (a,b) => { let d=String(a).length^String(b).length; for(let i=0;i<Math.max(String(a).length,String(b).length);i++) d|=(String(a).charCodeAt(i)||0)^(String(b).charCodeAt(i)||0); return d===0; }; if (!equal(token, expected)) throw new Error('Unauthorized dynamic evidence webhook'); const text=(v,m)=>typeof v==='string'?v.trim().slice(0,m):''; if (!body || typeof body !== 'object' || Array.isArray(body) || body.protocolVersion !== 3) throw new Error('protocolVersion=3 is required'); const jobId=text(body.jobId,128), batchId=text(body.batch?.batchId,128), runId=text(body.batch?.runId,128), countryCode=text(body.batch?.countryCode,8).toLowerCase(), snapshotId=text(body.batch?.snapshotId,128), callbackToken=text(body.callback?.token,512); const cases=Array.isArray(body.batch?.cases)?body.batch.cases:[]; if (!/^[A-Za-z0-9._:-]{8,128}$/.test(jobId) || !batchId || !runId || !/^[a-z]{2,3}$/.test(countryCode) || !snapshotId || !callbackToken || cases.length<1 || cases.length>3) throw new Error('valid batch metadata, callback token and 1-3 cases are required'); const normalized=cases.map(item=>({ anomalyIndex:Number(item?.anomalyIndex), dashboardTitle:text(item?.anomaly?.dashboardTitle,256), cardTitle:text(item?.anomaly?.cardTitle,256), dashboardUrl:text(item?.anomaly?.dashboardUrl,2048), type:text(item?.anomaly?.type,64), message:text(item?.anomaly?.message,12000) })); if(normalized.some(item=>!Number.isInteger(item.anomalyIndex)||item.anomalyIndex<0)||new Set(normalized.map(item=>item.anomalyIndex)).size!==normalized.length) throw new Error('cases require unique non-negative anomalyIndex'); return [{json:{jobId,batch:{batchId,runId,countryCode,snapshotId,cases:normalized},callback:{url:'http://172.19.0.1:28787/api/metabase-anomaly-analysis/batch-callback',token:callbackToken}}}];" },
+      "name": "Normalize Batch", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [220, 0]
     },
     {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { accepted: true, jobId: $json.jobId } }}",
-        "options": {}
-      },
-      "name": "Respond Accepted",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        440,
-        -100
-      ]
+      "parameters": { "respondWith": "json", "responseBody": "={{ { accepted: true, jobId: $json.jobId, batchId: $json.batch.batchId } }}", "options": {} },
+      "name": "Respond Accepted", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [440, -100]
     },
     {
-      "parameters": {
-        "method": "POST",
-        "url": "http://172.19.0.1:28787/api/metabase-anomaly-analysis/card-sql",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { runId: $json.context.runId, countryCode: $json.context.countryCode, anomalyIndex: Number($json.context.anomalyIndex) } }}",
-        "options": {
-          "timeout": 45000
-        }
-      },
-      "name": "Get Card SQL",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        440,
-        100
-      ],
-      "onError": "continueRegularOutput"
+      "parameters": { "method": "POST", "url": "http://172.20.0.234/v1/workflows/run", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Authorization", "value": "=Bearer REPLACE_WITH_DIFY_API_KEY" }, { "name": "Content-Type", "value": "application/json" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { inputs: { run_id: $json.batch.runId, country_code: $json.batch.countryCode, batch_id: $json.batch.batchId, snapshot_id: $json.batch.snapshotId, cases_json: JSON.stringify($json.batch.cases) }, response_mode: 'blocking', user: 'metabase-evidence-' + $json.jobId } }}", "options": { "timeout": 300000 } },
+      "name": "Call Dify Batch Agent", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [440, 100], "onError": "continueRegularOutput"
     },
     {
-      "parameters": {
-        "jsCode": "const norm = $('Normalize Job').first().json;\nconst cardResult = $json || {};\nconst cardSql = cardResult.card?.dataset_query?.native?.query || cardResult.card?.native_query || cardResult.native_query || '';\nconst cardName = cardResult.card?.name || norm.anomaly?.cardTitle || '';\nconst tables = [];\nconst sqlText = typeof cardSql === 'string' ? cardSql : JSON.stringify(cardSql);\nconst matches = sqlText.matchAll(/(?:from|join)\\s+`?([\\w.]+)`?/gi);\nfor (const m of matches) {\n  const t = m[1].replace(/[`\"]/g, '').toLowerCase();\n  if (t.includes('.')) tables.push(t);\n}\nconst state = norm.state || {};\nstate.cardSql = sqlText.slice(0, 20000);\nstate.cardTables = [...new Set(tables)].slice(0, 10);\nstate.discoveredTables = state.cardTables;\nstate.verifiedTables = state.cardTables;\nreturn [{ json: { ...norm, state } }];"
-      },
-      "name": "Seed Card SQL",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        660,
-        100
-      ]
+      "parameters": { "jsCode": "const raw=String($json.data?.outputs?.text||$json.data?.outputs?.result||$json.answer||$json.text||''); const object=text=>{let start=-1,depth=0,q=false,e=false,last; for(let i=0;i<text.length;i++){const c=text[i]; if(q){if(e)e=false;else if(c==='\\\\')e=true;else if(c==='\\\"')q=false;continue;} if(c==='\\\"'){q=true;continue;} if(c==='{'){if(!depth)start=i;depth++;}else if(c==='}'&&depth&&!--depth){try{last=JSON.parse(text.slice(start,i+1));}catch{}}} return last;}; return [{json:{difyText:raw.slice(-12000),decision:object(raw)||{}}}];" },
+      "name": "Parse Dify Batch Response", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [660, 100]
     },
     {
-      "parameters": {
-        "method": "POST",
-        "url": "http://172.20.0.234/v1/workflows/run",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer REPLACE_WITH_DIFY_API_KEY"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { inputs: { run_id: $json.context.runId || '', country_code: $json.context.countryCode || '', anomaly_index: Number($json.context.anomalyIndex), anomaly_message: $json.anomaly.message || '', dashboard_title: $json.anomaly.dashboardTitle || '', card_title: $json.anomaly.cardTitle || '', dashboard_url: $json.anomaly.dashboardUrl || '', state_json: JSON.stringify($json.state) }, response_mode: 'blocking', user: 'metabase-evidence-' + $json.jobId } }}",
-        "options": {
-          "timeout": 300000
-        }
-      },
-      "name": "Call Dify Agent",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        880,
-        100
-      ],
-      "onError": "continueRegularOutput"
+      "parameters": { "jsCode": "const norm=$('Normalize Batch').first().json, parsed=$('Parse Dify Batch Response').first().json, source=norm.batch.cases, verdicts=Array.isArray(parsed.decision?.verdicts)?parsed.decision.verdicts:[]; const text=(v,m,f='')=>typeof v==='string'?v.trim().slice(0,m):f; const list=(v,n,m)=>Array.isArray(v)?v.filter(x=>typeof x==='string').map(x=>x.trim().slice(0,m)).filter(Boolean).slice(0,n):[]; if(verdicts.length!==source.length) throw new Error('Dify must return exactly one verdict for every case'); const seen=new Set(); const results=verdicts.map(raw=>{const anomalyIndex=Number(raw?.anomalyIndex); if(!source.some(x=>x.anomalyIndex===anomalyIndex)||seen.has(anomalyIndex)) throw new Error('Dify returned an invalid or duplicate anomalyIndex'); seen.add(anomalyIndex); return {anomalyIndex,analysis:{summary:text(raw.summary,1200,'Evidence collection finished.'),evidence:list(raw.evidence,5,600),possibleCauses:list(raw.possibleCauses,3,600),verificationSteps:list(raw.verificationSteps,3,600),recommendedActions:list(raw.recommendedActions,3,600),confidence:['low','medium','high'].includes(raw.confidence)?raw.confidence:'low',limitations:text(raw.limitations,1600,parsed.difyText.slice(-500)||'Evidence is bounded.'),dataSideVerdict:['data_issue','business_change','insufficient_evidence'].includes(raw.dataSideVerdict)?raw.dataSideVerdict:'insufficient_evidence',notificationAction:['send','downgrade','enrich_only'].includes(raw.notificationAction)?raw.notificationAction:'enrich_only',chartVisibility:raw.chartVisibility==='hide_verified_normal'?'hide_verified_normal':'show',verificationReason:raw.chartVisibility==='hide_verified_normal'?text(raw.verificationReason,600):''},evidence:{evidenceChain:[]}};}); return [{json:{runId:norm.batch.runId,countryCode:norm.batch.countryCode,jobId:norm.jobId,results}}];" },
+      "name": "Build Batch Callback", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [880, 100]
     },
     {
-      "parameters": {
-        "jsCode": "const base = $json; const raw = String($json.data?.outputs?.text || $json.data?.outputs?.result || $json.data?.outputs?.analysis_json || $json.data?.outputs?.answer || $json.answer || $json.text || ''); const parseLastBalancedObject = text => { let start = -1; let depth = 0; let inString = false; let escaped = false; let last; for (let index = 0; index < text.length; index += 1) { const char = text[index]; if (inString) { if (escaped) escaped = false; else if (char === '\\\\') escaped = true; else if (char === '\"') inString = false; continue; } if (char === '\"') { inString = true; continue; } if (char === '{') { if (depth === 0) start = index; depth += 1; continue; } if (char === '}' && depth > 0) { depth -= 1; if (depth === 0) { try { last = JSON.parse(text.slice(start, index + 1)); } catch {} } } } return depth === 0 ? last : undefined; }; const decision = parseLastBalancedObject(raw) || { action: 'finish', reason: 'Dify response has no trailing JSON' }; return [{ json: { ...base, difyText: raw.slice(-12000), decision } }];"
-      },
-      "name": "Parse Dify Response",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1100,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const norm = $('Normalize Job').first().json;\nconst parsed = $('Parse Dify Response').first().json;\nconst decision = parsed.decision || {};\nconst raw = decision;\nconst text = (value, max, fallback = '') => typeof value === 'string' ? value.trim().slice(0, max) : fallback;\nconst list = (value, maxItems, maxLength) => Array.isArray(value) ? value.filter(item => typeof item === 'string').map(item => item.trim().slice(0, maxLength)).filter(Boolean).slice(0, maxItems) : [];\nconst confidence = ['low', 'medium', 'high'].includes(raw.confidence) ? raw.confidence : 'low';\nconst dataSideVerdict = ['data_issue', 'business_change', 'insufficient_evidence'].includes(raw.dataSideVerdict) ? raw.dataSideVerdict : 'insufficient_evidence';\nconst notificationAction = ['send', 'downgrade', 'enrich_only'].includes(raw.notificationAction) ? raw.notificationAction : 'enrich_only';\nconst chartVisibility = raw.chartVisibility === 'hide_verified_normal' ? 'hide_verified_normal' : 'show';\nconst verificationReason = chartVisibility === 'hide_verified_normal' ? text(raw.verificationReason, 600) : '';\nconst analysis = {\n  summary: text(raw.summary, 1200, 'Evidence collection finished.'),\n  evidence: list(raw.evidence, 5, 600),\n  possibleCauses: list(raw.possibleCauses, 3, 600),\n  verificationSteps: list(raw.verificationSteps, 3, 600),\n  recommendedActions: list(raw.recommendedActions, 3, 600),\n  confidence,\n  limitations: text(raw.limitations, 1600, parsed.difyText?.slice(-500) || 'Evidence is bounded.'),\n  dataSideVerdict,\n  notificationAction,\n  chartVisibility,\n  verificationReason\n};\nreturn [{ json: {\n  jobId: norm.jobId,\n  runId: norm.context.runId,\n  countryCode: norm.context.countryCode,\n  anomalyIndex: Number(norm.context.anomalyIndex),\n  analysis,\n  evidence: { evidenceChain: [] }\n} }];"
-      },
-      "name": "Build Callback",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1320,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json }}",
-        "options": {
-          "timeout": 45000
-        }
-      },
-      "name": "Callback Platform",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1540,
-        100
-      ],
-      "onError": "continueRegularOutput"
+      "parameters": { "method": "POST", "url": "http://172.19.0.1:28787/api/metabase-anomaly-analysis/batch-callback", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }, { "name": "Authorization", "value": "=Bearer REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json }}", "options": { "timeout": 45000 } },
+      "name": "Callback Batch Platform", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1100, 100], "onError": "continueRegularOutput"
     }
   ],
   "connections": {
-    "Receive Evidence Job": {
-      "main": [
-        [
-          {
-            "node": "Normalize Job",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Normalize Job": {
-      "main": [
-        [
-          {
-            "node": "Respond Accepted",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Get Card SQL",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Card SQL": {
-      "main": [
-        [
-          {
-            "node": "Seed Card SQL",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Seed Card SQL": {
-      "main": [
-        [
-          {
-            "node": "Call Dify Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Call Dify Agent": {
-      "main": [
-        [
-          {
-            "node": "Parse Dify Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parse Dify Response": {
-      "main": [
-        [
-          {
-            "node": "Build Callback",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Callback": {
-      "main": [
-        [
-          {
-            "node": "Callback Platform",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Receive Evidence Batch": { "main": [[{ "node": "Normalize Batch", "type": "main", "index": 0 }]] },
+    "Normalize Batch": { "main": [[{ "node": "Respond Accepted", "type": "main", "index": 0 }, { "node": "Call Dify Batch Agent", "type": "main", "index": 0 }]] },
+    "Call Dify Batch Agent": { "main": [[{ "node": "Parse Dify Batch Response", "type": "main", "index": 0 }]] },
+    "Parse Dify Batch Response": { "main": [[{ "node": "Build Batch Callback", "type": "main", "index": 0 }]] },
+    "Build Batch Callback": { "main": [[{ "node": "Callback Batch Platform", "type": "main", "index": 0 }]] }
   },
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "active": false
+  "settings": { "executionOrder": "v1" }, "active": false
 }
