@@ -228,7 +228,8 @@ export function createPlatformApi({
       // Fifteen calendar days gives hourly cards fourteen complete prior days,
       // without deciding the chart axis from an alert message.
       const historyLookbackDays = 15;
-      const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, historyLookbackDays);
+      const anomalyDate = extractAnomalyDate(anomaly.message || "");
+      const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, historyLookbackDays, anomalyDate, body.now);
       const urlParameters = buildFluctuationSeriesUrlParameters(dashboard, card, anomaly.dashboardUrl);
       const ruleParameters = matchingRules.reduce(
         (parameters, rule) => mergeParameters(parameters, rule.parameters || []),
@@ -264,7 +265,7 @@ export function createPlatformApi({
             mergeParameters(buildDefaultCardParameters(dashboard, card), ruleParameters),
             urlParameters,
           ),
-          buildFluctuationSeriesHistoryParameters(dashboard, card, 30),
+          buildFluctuationSeriesHistoryParameters(dashboard, card, 30, anomalyDate, body.now),
         );
         const fallbackRows = await client.queryDashcardJson({ ...request, parameters: fallbackParameters });
         const fallbackSeries = buildFluctuationChartSeries(fallbackRows, ruleForSeries, anomaly, card, body);
@@ -3563,7 +3564,7 @@ function findInventoryCardForAnomaly(inventory = {}, anomaly = {}) {
   return { dashboard: null, card: null };
 }
 
-function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays = 45) {
+function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays = 45, anomalyDate = "", now = Date.now()) {
   const days = clampNumber(lookbackDays, 14, 90, 45);
   const dashboardParameters = new Map((dashboard.parameters || []).map((parameter) => [parameter.id, parameter]));
   return (card.parameterMappings || []).flatMap((mapping) => {
@@ -3575,9 +3576,27 @@ function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays =
       id: parameter.id,
       type: parameter.type,
       target: mapping.target,
-      value: `past${days}days~`,
+      value: buildAnchoredHistoryWindow(days, anomalyDate, now),
     }];
   });
+}
+
+function extractAnomalyDate(message = "") {
+  return String(message || "").match(/\d{4}-\d{2}-\d{2}/)?.[0] || "";
+}
+
+export function buildAnchoredHistoryWindow(days, anomalyDate, now = Date.now()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(anomalyDate || ""))) {
+    return `past${days}days~`;
+  }
+  const target = Date.parse(`${anomalyDate}T00:00:00Z`);
+  const current = new Date(now);
+  const currentUtc = Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate());
+  const daysAgo = Math.floor((currentUtc - target) / 86_400_000);
+  if (!Number.isFinite(daysAgo) || daysAgo < days - 1) {
+    return `past${days}days~`;
+  }
+  return `past${days}days-from-${daysAgo}days`;
 }
 
 function buildFluctuationSeriesUrlParameters(dashboard, card, dashboardUrl) {
