@@ -17,7 +17,7 @@ import { MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
-import { analyzeMetabaseAnomaly, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
+import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
 import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
 import { buildInvestigationBatches } from "./metabase-anomaly-batch.mjs";
 import {
@@ -116,6 +116,7 @@ export function createPlatformApi({
   wattrelQueryFn = null,
   qualityRuleGenerationSubmitFn = null,
   metabaseAnomalyAgentFn = analyzeMetabaseAnomaly,
+  metabaseAnomalyBatchAgentFn = analyzeMetabaseAnomalyBatch,
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
@@ -312,6 +313,54 @@ export function createPlatformApi({
       });
       await writeJsonAtomic(resolve("metabaseAnomalyEvidenceSnapshots"), { updatedAt: new Date().toISOString(), snapshots: snapshots.slice(0, 500) });
       return { runId: normalizedRunId, batches };
+    },
+
+    async submitMetabaseInvestigationBatch(batch = {}) {
+      const runId = String(batch.runId || "").trim();
+      const countryCode = normalizeCountryCode(batch.countryCode);
+      const batchId = String(batch.batchId || "").trim();
+      const snapshotId = String(batch.snapshotId || "").trim();
+      const cases = Array.isArray(batch.cases) ? batch.cases : [];
+      if (!runId || !countryCode || !batchId || !snapshotId || cases.length === 0 || cases.length > 3) {
+        throw badRequest("Invalid Metabase investigation batch", ["批量取证必须包含 runId、国家、批次、快照和 1-3 条异常。"]);
+      }
+      const normalizedCases = [];
+      for (const item of cases) {
+        const anomalyIndex = Number(item?.anomalyIndex);
+        const { anomaly } = await findMetabasePatrolAnomaly({ runId, countryCode, anomalyIndex });
+        if (!anomaly) throw badRequest("Invalid Metabase investigation batch", ["批量取证包含不存在的异常。"]);
+        normalizedCases.push({ ...item, anomalyIndex, anomaly: item.anomaly || compactMetabaseAnomaly(anomaly) });
+      }
+      if (new Set(normalizedCases.map((item) => item.anomalyIndex)).size !== normalizedCases.length) {
+        throw badRequest("Invalid Metabase investigation batch", ["批量取证不能包含重复异常。"]);
+      }
+      const generated = await metabaseAnomalyBatchAgentFn({ ...batch, runId, countryCode, batchId, snapshotId, cases: normalizedCases });
+      if (!generated?.pending || !generated.jobId) {
+        const error = new Error("批量 n8n 取证任务未返回异步任务编号。");
+        error.statusCode = 502;
+        throw error;
+      }
+      const store = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const createdAt = new Date().toISOString();
+      const entries = normalizedCases.map((item) => ({
+        key: `${runId}:${countryCode}:${item.anomalyIndex}`,
+        runId,
+        countryCode,
+        anomalyIndex: item.anomalyIndex,
+        batchId,
+        snapshotId,
+        createdAt,
+        status: "pending",
+        pending: true,
+        jobId: String(generated.jobId),
+        provider: generated.provider || "n8n-evidence",
+        model: generated.model || "n8n-configured-model",
+        observability: generated.observability || { enabled: false, written: false, reason: "n8n 批量任务已受理，等待回调" },
+      }));
+      const keys = new Set(entries.map((item) => item.key));
+      const analyses = keepRecentMetabaseAnalyses([...entries, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
+      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: createdAt, analyses });
+      return { ...generated, batchId, runId, countryCode, cases: normalizedCases };
     },
 
     async getFluctuationVisualSeries(body = {}) {
