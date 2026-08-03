@@ -220,6 +220,23 @@ test("fluctuation visual keeps the manually selected point", () => {
   assert.equal(fluctuationVisualTest.getDisplayAnomalyIndex(country), 0);
 });
 
+test("fluctuation visual limits concurrent dashboard history queries", async () => {
+  let active = 0;
+  let peak = 0;
+  const completed = [];
+
+  await fluctuationVisualTest.runWithConcurrency([1, 2, 3, 4, 5], 3, async (value) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    completed.push(value);
+    active -= 1;
+  });
+
+  assert.equal(peak, 3);
+  assert.deepEqual(completed.sort((left, right) => left - right), [1, 2, 3, 4, 5]);
+});
+
 test("fluctuation visual chart accepts hydrated series", () => {
   const chart = fluctuationVisualTest.buildChart({
     metricLabel: "注册数",
