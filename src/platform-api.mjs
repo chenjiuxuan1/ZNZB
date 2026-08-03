@@ -49,6 +49,7 @@ const FILES = {
   batchSchedule: "config/batch-check-schedule.json",
   batchHistory: "config/batch-check-run-history.json",
   metabaseAnomalyAnalyses: "config/metabase-anomaly-analyses.json",
+  metabaseAnomalyPendingRuns: "config/metabase-anomaly-pending-runs.json",
   metabaseAnomalyEvidenceSnapshots: "config/metabase-anomaly-evidence-snapshots.json",
   wattrel: "config/wattrel.config.json",
   qualityRuleGeneration: "config/quality-rule-generation.config.json",
@@ -89,6 +90,7 @@ const DEFAULT_BATCH_SCHEDULE = {
 };
 const DEFAULT_BATCH_HISTORY = { runs: [] };
 const DEFAULT_METABASE_ANOMALY_ANALYSES = { analyses: [] };
+const DEFAULT_METABASE_ANOMALY_PENDING_RUNS = { runs: [] };
 const DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS = { snapshots: [] };
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BATCH_HISTORY_RUNS = 200;
@@ -122,6 +124,19 @@ export function createPlatformApi({
   const metabaseAnalysisInFlight = new Set();
   let dashboardDiscoveryRunning = false;
   let dashboardDiscoveryProgress = { status: "idle", result: null, error: null, startedAt: null, finishedAt: null };
+  const findMetabasePatrolRun = async (runId) => {
+    const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
+    const completed = (history.runs || []).find((item) => String(item.id || "") === runId);
+    if (completed) return { run: completed, source: "history" };
+    const pending = await readJsonFile(resolve("metabaseAnomalyPendingRuns"), DEFAULT_METABASE_ANOMALY_PENDING_RUNS);
+    const pendingRun = (pending.runs || []).find((item) => String(item.id || "") === runId);
+    return pendingRun ? { run: pendingRun, source: "pending" } : { run: null, source: null };
+  };
+  const findMetabasePatrolAnomaly = async ({ runId, countryCode, anomalyIndex }) => {
+    const { run, source } = await findMetabasePatrolRun(runId);
+    const countryRun = (run?.runs || []).find((item) => normalizeCountryCode(item.countryCode) === countryCode);
+    return { run, countryRun, anomaly: countryRun?.result?.anomalies?.[anomalyIndex] || null, source };
+  };
   const runIntegratedDsCheck = async (schedule) => {
     if (!schedule.includeDsScheduler) {
       return null;
@@ -214,6 +229,24 @@ export function createPlatformApi({
       return filterBatchHistory(history, filters);
     },
 
+    async savePendingMetabasePatrolRun(entry = {}) {
+      const id = String(entry.id || "").trim();
+      if (!id || !Array.isArray(entry.runs)) {
+        throw badRequest("Invalid pending Metabase patrol run", ["待取证巡检必须包含运行 ID 和国家结果。"]);
+      }
+      const store = await readJsonFile(resolve("metabaseAnomalyPendingRuns"), DEFAULT_METABASE_ANOMALY_PENDING_RUNS);
+      const saved = {
+        ...entry,
+        id,
+        status: String(entry.status || "ai_analyzing"),
+        createdAt: entry.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const runs = [saved, ...(store.runs || []).filter((item) => String(item.id || "") !== id)].slice(0, MAX_BATCH_HISTORY_RUNS);
+      await writeJsonAtomic(resolve("metabaseAnomalyPendingRuns"), { updatedAt: saved.updatedAt, runs });
+      return saved;
+    },
+
     async getFluctuationVisualSeries(body = {}) {
       const anomaly = body.anomaly && typeof body.anomaly === "object" ? body.anomaly : body;
       const inventory = await readPlatformInventory(rootDir, resolve("inventory"));
@@ -298,11 +331,8 @@ export function createPlatformApi({
       if (!runId || !countryCode || !Number.isInteger(anomalyIndex) || anomalyIndex < 0) {
         throw badRequest("Invalid Metabase anomaly analysis request", ["请提供巡检记录、国家和异常序号。"]);
       }
-      const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
-      const run = (history.runs || []).find((item) => String(item.id || "") === runId);
-      const countryRun = (run?.runs || []).find((item) => String(item.countryCode || "") === countryCode);
+      const { run, countryRun, anomaly } = await findMetabasePatrolAnomaly({ runId, countryCode, anomalyIndex });
       const anomalies = countryRun?.result?.anomalies || [];
-      const anomaly = anomalies[anomalyIndex];
       if (!anomaly) {
         throw badRequest("Metabase anomaly not found", ["未找到对应的 Metabase 异常，历史记录可能已经清理或变更。"]);
       }
@@ -434,10 +464,8 @@ export function createPlatformApi({
       if (!/^[A-Za-z0-9._:-]{8,128}$/.test(snapshotId)) {
         throw badRequest("Invalid Metabase anomaly evidence snapshot", ["snapshotId 格式不正确。"]);
       }
-      const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
-      const run = (history.runs || []).find((item) => String(item.id || "") === runId);
-      const countryRun = (run?.runs || []).find((item) => normalizeCountryCode(item.countryCode) === countryCode);
-      if (!countryRun?.result?.anomalies?.[anomalyIndex]) {
+      const { anomaly } = await findMetabasePatrolAnomaly({ runId, countryCode, anomalyIndex });
+      if (!anomaly) {
         throw badRequest("Invalid Metabase anomaly evidence snapshot", ["快照必须绑定现有巡检异常。"]);
       }
       const store = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
@@ -455,10 +483,7 @@ export function createPlatformApi({
 
     async getMetabaseAnomalyCardSql(body = {}) {
       const { runId, countryCode, anomalyIndex } = normalizeMetabaseAnalysisIdentity(body);
-      const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
-      const run = (history.runs || []).find((item) => String(item.id || "") === runId);
-      const countryRun = (run?.runs || []).find((item) => normalizeCountryCode(item.countryCode) === countryCode);
-      const anomaly = countryRun?.result?.anomalies?.[anomalyIndex];
+      const { anomaly } = await findMetabasePatrolAnomaly({ runId, countryCode, anomalyIndex });
       if (!anomaly?.cardId) {
         throw badRequest("Metabase anomaly card is unavailable", ["该异常没有可读取的 Card ID。"]);
       }
@@ -490,10 +515,8 @@ export function createPlatformApi({
         // A fast n8n workflow can post its result before analyzeMetabaseAnomaly
         // persists the pending record. Accept only callbacks tied to a retained
         // history anomaly, then let the initiating request merge it by job ID.
-        const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
-        const run = (history.runs || []).find((item) => String(item.id || "") === runId);
-        const countryRun = (run?.runs || []).find((item) => String(item.countryCode || "") === countryCode);
-        if (!countryRun?.result?.anomalies?.[anomalyIndex]) {
+        const { anomaly } = await findMetabasePatrolAnomaly({ runId, countryCode, anomalyIndex });
+        if (!anomaly) {
           const error = new Error("分析任务不存在或历史记录已清理。");
           error.statusCode = 404;
           throw error;
@@ -528,6 +551,33 @@ export function createPlatformApi({
       const analyses = keepRecentMetabaseAnalyses([completed, ...(cache.analyses || []).filter((item) => item.key !== entryKey)]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
       return completed;
+    },
+
+    async completeMetabaseAnomalyBatch(body = {}) {
+      const runId = String(body.runId || "").trim();
+      const countryCode = normalizeCountryCode(body.countryCode);
+      const jobId = String(body.jobId || "").trim();
+      const results = Array.isArray(body.results) ? body.results : [];
+      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 3) {
+        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-3 条结果。"]);
+      }
+      const indexes = results.map((item) => Number(item?.anomalyIndex));
+      if (indexes.some((index) => !Number.isInteger(index) || index < 0) || new Set(indexes).size !== indexes.length) {
+        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调中的异常序号必须唯一且有效。"]);
+      }
+      const completed = [];
+      for (const result of results) {
+        if (!result?.analysis || typeof result.analysis !== "object") {
+          throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调的每条结果必须包含 analysis。"]);
+        }
+        completed.push(await this.completeMetabaseAnomalyAnalysis({
+          ...result,
+          runId,
+          countryCode,
+          jobId,
+        }));
+      }
+      return { success: true, runId, countryCode, jobId, results: completed };
     },
 
     async ingestExternalAlertRun(body = {}) {

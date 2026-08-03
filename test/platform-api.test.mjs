@@ -444,6 +444,51 @@ test("platform api queues every anomaly from the same dashboard for independent 
   }
 });
 
+test("platform api resolves a pending patrol anomaly without exposing it in final history", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseInternalClientFactory: () => ({
+      getCard: async (cardId) => ({ id: cardId, name: "放款", dataset_query: { native: { query: "SELECT * FROM ads.loan_d" } } }),
+    }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-patrol-1",
+    runs: [{
+      countryCode: "INE",
+      countryName: "印尼",
+      ok: true,
+      result: { anomalies: [{ cardId: 88, cardTitle: "放款", dashboardUrl: "https://data.example/public/dashboard/dash-1", message: "指标归零" }] },
+    }],
+  });
+
+  const card = await api.getMetabaseAnomalyCardSql({ runId: "pending-patrol-1", countryCode: "INE", anomalyIndex: 0 });
+  assert.equal(card.card.id, 88);
+  assert.equal((await api.getBatchHistory()).runs.length, 0);
+});
+
+test("platform api accepts one bounded batch callback for pending patrol anomalies", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-patrol-batch",
+    runs: [{ countryCode: "INE", ok: true, result: { anomalies: [{ message: "金额归零" }, { message: "件数归零" }] } }],
+  });
+
+  const completed = await api.completeMetabaseAnomalyBatch({
+    runId: "pending-patrol-batch",
+    countryCode: "INE",
+    jobId: "batch-job-1",
+    results: [
+      { anomalyIndex: 0, analysis: { summary: "金额已核验", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send" } },
+      { anomalyIndex: 1, analysis: { summary: "件数已核验", confidence: "medium", dataSideVerdict: "business_change", notificationAction: "downgrade" } },
+    ],
+  });
+
+  assert.equal(completed.results.length, 2);
+  assert.equal(completed.results[1].analysis.dataSideVerdict, "business_change");
+});
+
 test("platform api stores an async Metabase evidence job and accepts its callback", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
