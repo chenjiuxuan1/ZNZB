@@ -155,9 +155,11 @@ workflow:
             value: 25
           instruction:
             type: constant
-            value: '你是 Metabase 异常数据侧根因分析 Agent。你拥有 5 个只读工具，需要自主调用它们来追溯异常根因。你必须深入调查，不能浅尝辄止。
+            value: '你是 Metabase 异常数据侧根因分析 Agent。你拥有 6 个只读工具，需要自主调用它们来追溯异常根因。你必须深入调查，不能浅尝辄止。
 
 可用工具：
+
+- get_current_anomaly_evidence - 若 state_json 含 snapshotId，必须先读取本轮原始快照。complete=false 或缺少关键证据时，不能判定正常，继续使用以下实时工具。
 
 0. query_table_data - 直接查询 StarRocks 表数据（只读 SELECT）。当你需要验证底表在异常日期的数据是否真实存在、指标字段值是否为 0 或 NULL 时调用。例如：SELECT grant_cnt_1d, pass_cnt_1d FROM ads.ads_3003_user_smmary_d WHERE stat_date=''2026-07-31'' AND user_category=''总计''。仅允许 SELECT/WITH/SHOW/DESC/EXPLAIN。
 
@@ -199,6 +201,7 @@ workflow:
 - Wattrel 质量告警匹配到相关表 -> data_issue（置信度 high）
 - DS 正常运行 + 无质量告警 + 指标变化 -> business_change（置信度 medium）
 - 证据不足（工具失败或未完成调查）-> insufficient_evidence（置信度 low）
+- 只有本轮 query_table_data 已证明异常日期的实际指标正常，且 DS 完成时间晚于检测时间或其他原始证据可证明检测时机误报时，才输出 chartVisibility=hide_verified_normal，并在 verificationReason 中写明查询方式、实际值和时间证据；其他所有情况均输出 chartVisibility=show。
 
 输入字段：
 - run_id: {{#start.run_id#}}
@@ -220,7 +223,7 @@ state_json 是 n8n 传入的上下文（可能包含已获取的 Card SQL 证据
 - 不得在未完成第2-7步调查的情况下输出 finish。如果工具调用失败，可以在 finish 中说明 limitations，但必须尝试调用所有工具。
 
 输出格式：
-{"action":"finish","summary":"根因摘要","evidence":["证据1","证据2"],"possibleCauses":["原因1"],"verificationSteps":["步骤1"],"recommendedActions":["建议1"],"confidence":"high|medium|low","limitations":"证据边界","dataSideVerdict":"data_issue|business_change|insufficient_evidence","notificationAction":"send|downgrade|enrich_only"}'
+{"action":"finish","summary":"根因摘要","evidence":["证据1","证据2"],"possibleCauses":["原因1"],"verificationSteps":["步骤1"],"recommendedActions":["建议1"],"confidence":"high|medium|low","limitations":"证据边界","dataSideVerdict":"data_issue|business_change|insufficient_evidence","notificationAction":"send|downgrade|enrich_only","chartVisibility":"show|hide_verified_normal","verificationReason":"仅 hide_verified_normal 时提供本轮查询与时间证据"}'
           model:
             type: constant
             value:
@@ -328,6 +331,29 @@ state_json 是 n8n 传入的上下文（可能包含已获取的 Card SQL 证据
                 SQL 搜 DS 资源）。用于判断上游 DS 任务是否失败。
               tool_label: check_ds_status
               tool_name: check_ds_status
+              type: api
+            - enabled: true
+              extra:
+                description: 读取当前巡检 runId 的短时原始证据快照。仅当 snapshotId 存在时调用；complete=false 时继续使用实时工具。
+              parameters:
+                runId:
+                  auto: 1
+                  value: null
+                countryCode:
+                  auto: 1
+                  value: null
+                anomalyIndex:
+                  auto: 1
+                  value: null
+                snapshotId:
+                  auto: 1
+                  value: null
+              provider_name: cb8c5409-2ece-4e19-bd5d-babea222bfaa
+              provider_show_name: 数仓代码血缘查询
+              settings: {}
+              tool_description: 读取本轮异常的原始证据快照；不完整时必须回退实时工具。
+              tool_label: get_current_anomaly_evidence
+              tool_name: get_current_anomaly_evidence
               type: api
             - enabled: true
               extra:
