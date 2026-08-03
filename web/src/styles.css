@@ -4804,6 +4804,10 @@ body {
   z-index: 30;
 }
 
+.fluctuation-point-tooltip[hidden] {
+  display: none;
+}
+
 .fluctuation-point-tooltip strong {
   font-size: 13px;
 }
