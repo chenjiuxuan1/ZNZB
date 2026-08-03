@@ -22,11 +22,11 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [runId, countryCode, anomalyIndex, snapshotId]
+              required: [runId, countryCode, snapshotId]
               properties:
                 runId: { type: string }
                 countryCode: { type: string, enum: [cn, ine, ph, th, pk, mx] }
-                anomalyIndex: { type: integer, minimum: 0 }
+                anomalyIndex: { type: integer, minimum: 0, description: 单条兼容模式可选；批量同底表快照不需要此字段 }
                 snapshotId: { type: string }
       responses:
         '200':

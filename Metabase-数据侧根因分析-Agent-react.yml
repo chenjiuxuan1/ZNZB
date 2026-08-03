@@ -103,12 +103,12 @@ workflow:
           type: text-input
           variable: country_code
         - label: 异常序号
-          required: true
+          required: false
           type: number
           variable: anomaly_index
         - label: 异常原文
           max_length: 12000
-          required: true
+          required: false
           type: paragraph
           variable: anomaly_message
         - label: 看板名称
@@ -135,6 +135,21 @@ workflow:
           type: paragraph
           variable: state_json
           max_length: 50000
+        - label: 批次 ID
+          max_length: 128
+          required: false
+          type: text-input
+          variable: batch_id
+        - label: 公共证据快照 ID
+          max_length: 128
+          required: false
+          type: text-input
+          variable: snapshot_id
+        - label: 批次异常 JSON（最多三条）
+          max_length: 50000
+          required: false
+          type: paragraph
+          variable: cases_json
       height: 361
       id: start
       position:
@@ -152,10 +167,12 @@ workflow:
         agent_parameters:
           max_iterations:
             type: constant
-            value: 14
+            value: 8
           instruction:
             type: constant
-            value: '你是 Metabase 异常数据侧根因分析 Agent。你拥有 6 个只读工具，需要基于实时证据准确判断异常根因。调查必须充分，但不得为了凑步骤重复或无差别扩散工具调用。
+            value: '你是 Metabase 异常数据侧根因分析 Agent。你一次会收到同一国家、同一底表的 1-3 条异常：cases_json。必须为 cases_json 中每一条 anomalyIndex 分别给出结论，但公共证据只能查询一次并复用；不得把某一指标的结果套用成另一指标的结论。若 batch_id 和 snapshot_id 存在，先且只先调用一次 get_current_anomaly_evidence(runId, countryCode, snapshotId)，再按需要对单个指标补充查询。总工具调用不得超过 6 次，最多迭代 8 次；证据不足必须保守输出 insufficient_evidence，不得重复调用相同工具、参数或盲目递归。
+
+你拥有 6 个只读工具，需要基于实时证据准确判断异常根因。调查必须充分，但不得为了凑步骤重复或无差别扩散工具调用。
 
 可用工具：
 
@@ -215,6 +232,9 @@ workflow:
 - card_title: {{#start.card_title#}}
 - dashboard_url: {{#start.dashboard_url#}}
 - state_json: {{#start.state_json#}}
+- batch_id: {{#start.batch_id#}}
+- snapshot_id: {{#start.snapshot_id#}}
+- cases_json: {{#start.cases_json#}}
 
 state_json 是 n8n 传入的上下文（可能包含已获取的 Card SQL 证据）。如果 state_json 中已有 cardSql 和 cardTables，可以跳过 get_card_sql 直接调用 trace_lineage。
 
@@ -225,8 +245,8 @@ state_json 是 n8n 传入的上下文（可能包含已获取的 Card SQL 证据
 - 不得输出重跑、修复、写入等操作指令。
 - 关键证据已满足上述判定规则时可直接 finish；工具失败时必须保守输出 insufficient_evidence。
 
-输出格式：
-{"action":"finish","summary":"根因摘要","evidence":["证据1","证据2"],"possibleCauses":["原因1"],"verificationSteps":["步骤1"],"recommendedActions":["建议1"],"confidence":"high|medium|low","limitations":"证据边界","dataSideVerdict":"data_issue|business_change|insufficient_evidence","notificationAction":"send|downgrade|enrich_only","chartVisibility":"show|hide_verified_normal","verificationReason":"仅 hide_verified_normal 时提供本轮查询与时间证据"}'
+输出格式（批次模式必须严格返回 cases_json 中每个 anomalyIndex 各一项，不多不少）：
+{"action":"finish","verdicts":[{"anomalyIndex":0,"summary":"根因摘要","evidence":["证据1"],"possibleCauses":["原因1"],"verificationSteps":["步骤1"],"recommendedActions":["建议1"],"confidence":"high|medium|low","limitations":"证据边界","dataSideVerdict":"data_issue|business_change|insufficient_evidence","notificationAction":"send|downgrade|enrich_only","chartVisibility":"show|hide_verified_normal","verificationReason":"仅 hide_verified_normal 时提供本轮查询与时间证据"}]}'
           model:
             type: constant
             value:
@@ -238,7 +258,7 @@ state_json 是 n8n 传入的上下文（可能包含已获取的 Card SQL 证据
               type: model-selector
           query:
             type: constant
-            value: '{{#start.anomaly_message#}}'
+            value: '{{#start.cases_json#}}'
           tools:
             type: constant
             value:
