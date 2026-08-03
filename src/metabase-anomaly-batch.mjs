@@ -109,7 +109,7 @@ export async function runBoundedInvestigationQueue({
   await Promise.all(Array.from({ length: workerCount }, worker));
   return {
     total: work.length,
-    completed: settled.length,
+    completed: settled.filter((item) => item.result?.status === "completed").length,
     settled,
     failed: settled.filter((item) => item.result?.status === "failed").length,
     timedOut: settled.filter((item) => item.result?.status === "timed_out").length,
