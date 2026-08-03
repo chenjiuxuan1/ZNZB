@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut } from "../api.js";
-import { getDashboards, isDashboardExecutable, setRoute, state } from "../state.js";
+import { getDashboards, isDashboardExecutable, state } from "../state.js";
 import { countryLabel, escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
 
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
@@ -65,12 +65,13 @@ export function renderBatchCheck(root) {
   });
   root.querySelectorAll("[data-view-dashboard-fluctuations]").forEach((button) => {
     button.addEventListener("click", () => {
-      setRoute(buildDashboardFluctuationRoute({
+      const route = buildDashboardFluctuationRoute({
         runId: button.dataset.runId,
         countryCode: button.dataset.countryCode,
         dashboardUrl: button.dataset.dashboardUrl,
         dashboardTitle: button.dataset.dashboardTitle,
-      }));
+      });
+      window.open(`#${route}`, "_blank", "noopener");
     });
   });
   bindMetabaseAnalysisRetryButtons(root);
@@ -1016,13 +1017,13 @@ function renderHistoryCountryDetail(countryRun, runId = "") {
         ${summaryItem("规则异常", result.anomalyCount || 0)}
         ${summaryItem("数据质量异常", result.dataQualityAnomalyCount || 0)}
       </div>
-      ${renderDashboardScanDetails(result) || renderHistoryDashboardSummary(result)}
+      ${renderDashboardScanDetails(result) || renderHistoryDashboardSummary(result, { runId, countryCode: countryRun.countryCode || "" })}
       ${renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary, { runId, countryCode: countryRun.countryCode || "" })}
     </div>
   `;
 }
 
-function renderHistoryDashboardSummary(result) {
+function renderHistoryDashboardSummary(result, context = {}) {
   const dashboards = result.checkedDashboards || [];
   if (!dashboards.length) {
     return "";
@@ -1050,7 +1051,12 @@ function renderHistoryDashboardSummary(result) {
                 <td>${dashboard.dashboardUrl ? `<a class="link-button compact-link" href="${escapeHtml(dashboard.dashboardUrl)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
                 <td>${escapeHtml(dashboard.checkedCardCount || 0)}</td>
                 <td>${escapeHtml(dashboard.failedCardCount || 0)}</td>
-                <td>${escapeHtml(dashboard.anomalyCount || 0)}</td>
+                <td>
+                  <div class="dashboard-anomaly-actions">
+                    <span>${escapeHtml(dashboard.anomalyCount || 0)}</span>
+                    ${Number(dashboard.anomalyCount || 0) > 0 ? `<button class="secondary compact-link" type="button" data-view-dashboard-fluctuations data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode || dashboard.countryCode || "")}" data-dashboard-url="${escapeHtml(dashboard.dashboardUrl || "")}" data-dashboard-title="${escapeHtml(dashboard.dashboardTitle || "")}">查看异常波动</button>` : ""}
+                  </div>
+                </td>
               </tr>
             `).join("")}
           </tbody>
@@ -1103,7 +1109,6 @@ function renderHistoryAnomalyTable(anomalies, context = {}) {
                 <p>${escapeHtml(anomaly.message || "-")}</p>
               </div>
               <div class="button-group">
-                <button class="secondary" type="button" data-view-dashboard-fluctuations data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode)}" data-dashboard-url="${escapeHtml(anomaly.dashboardUrl || "")}" data-dashboard-title="${escapeHtml(anomaly.dashboardTitle || "")}">查看异常波动</button>
                 <button class="secondary" type="button" data-metabase-anomaly-analysis data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode)}" data-anomaly-index="${index}" data-analysis-result-id="${resultId}">AI 分析原因</button>
               </div>
               <div id="${resultId}" class="metabase-anomaly-analysis-result"></div>
