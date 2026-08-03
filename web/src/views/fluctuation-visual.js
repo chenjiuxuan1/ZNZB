@@ -76,7 +76,10 @@ export function renderFluctuationVisual(root) {
   const selectedCountry = getSelectedFluctuationCountry(model.countries || []);
   const requestedRunId = String(query.runId || "");
   const hasRequestedRun = !requestedRunId || (state.batchHistory?.runs || []).some((run) => run.id === requestedRunId);
-  if (!hasRequestedRun && state.fluctuationVisualRequestedRunId !== requestedRunId) {
+  // A link opened from scan details already has a targeted history request in
+  // app startup. Do not race it with a second request here, otherwise the
+  // later response can leave the initial country without a hydration pass.
+  if (!hasRequestedRun && !requestedRunId && state.fluctuationVisualRequestedRunId !== requestedRunId) {
     state.fluctuationVisualRequestedRunId = requestedRunId;
     void reloadFluctuationHistory(root);
   } else if (selectedCountry) {
