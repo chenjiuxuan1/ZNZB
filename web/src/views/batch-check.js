@@ -1054,7 +1054,7 @@ function renderHistoryCountryDetail(countryRun, runId = "") {
         ${summaryItem("规则异常", result.anomalyCount || 0)}
         ${summaryItem("数据质量异常", result.dataQualityAnomalyCount || 0)}
       </div>
-      ${renderDashboardScanDetails(result) || renderHistoryDashboardSummary(result, { runId, countryCode: countryRun.countryCode || "" })}
+      ${renderDashboardScanDetails(result, { runId, countryCode: countryRun.countryCode || "" }) || renderHistoryDashboardSummary(result, { runId, countryCode: countryRun.countryCode || "" })}
       ${renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySummary, { runId, countryCode: countryRun.countryCode || "" })}
     </div>
   `;
@@ -1727,7 +1727,7 @@ function renderBatchResult(result) {
   `;
 }
 
-function renderDashboardScanDetails(result) {
+function renderDashboardScanDetails(result, context = {}) {
   const dashboardRows = buildDashboardScanRows(result);
   if (!dashboardRows.length) {
     return "";
@@ -1757,7 +1757,12 @@ function renderDashboardScanDetails(result) {
                 <td>${row.dashboardUrl ? `<a class="link-button compact-link" href="${escapeHtml(row.dashboardUrl)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
                 <td>${escapeHtml(row.checkedCardCount)}</td>
                 <td>${escapeHtml(row.failedCardCount)}</td>
-                <td>${escapeHtml(row.anomalyCount)}</td>
+                <td>
+                  <div class="dashboard-anomaly-actions">
+                    <span>${escapeHtml(row.anomalyCount)}</span>
+                    ${row.anomalyCount > 0 && context.runId ? `<button class="secondary compact-link" type="button" data-view-dashboard-fluctuations data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode || row.countryCode || "")}" data-dashboard-url="${escapeHtml(row.dashboardUrl || "")}" data-dashboard-title="${escapeHtml(row.dashboardTitle || "")}">查看异常波动</button>` : ""}
+                  </div>
+                </td>
                 <td><span class="badge ${escapeHtml(row.badgeClass)}">${escapeHtml(row.statusText)}</span></td>
                 <td>${escapeHtml(row.issueSummary || "-")}</td>
               </tr>
