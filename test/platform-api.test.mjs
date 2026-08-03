@@ -489,6 +489,33 @@ test("platform api accepts one bounded batch callback for pending patrol anomali
   assert.equal(completed.results[1].analysis.dataSideVerdict, "business_change");
 });
 
+test("platform api creates one source-table evidence snapshot for same-card patrol anomalies", async () => {
+  const rootDir = await makeFixture();
+  const cardReads = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseInternalClientFactory: () => ({
+      getCard: async (cardId) => {
+        cardReads.push(cardId);
+        return { id: cardId, name: "放款", dataset_query: { native: { query: "SELECT grant_cnt, pass_cnt FROM ads.loan_d WHERE stat_date = '2026-08-03'" } } };
+      },
+    }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-patrol-snapshot",
+    runs: [{ countryCode: "INE", ok: true, result: { anomalies: [
+      { cardId: 90, cardTitle: "放款", dashboardUrl: "https://data.example/public/dashboard/dash-1", message: "金额归零" },
+      { cardId: 90, cardTitle: "放款", dashboardUrl: "https://data.example/public/dashboard/dash-1", message: "件数归零" },
+    ] } }],
+  });
+
+  const prepared = await api.prepareMetabaseInvestigationBatches({ runId: "pending-patrol-snapshot" });
+  assert.equal(prepared.batches.length, 1);
+  assert.equal(prepared.batches[0].cases.length, 2);
+  assert.equal(prepared.batches[0].sourceTable, "ads.loan_d");
+  assert.equal(cardReads.length, 1);
+});
+
 test("platform api stores an async Metabase evidence job and accepts its callback", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

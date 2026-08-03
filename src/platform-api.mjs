@@ -19,6 +19,7 @@ import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import { analyzeMetabaseAnomaly, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
 import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
+import { buildInvestigationBatches } from "./metabase-anomaly-batch.mjs";
 import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
@@ -245,6 +246,72 @@ export function createPlatformApi({
       const runs = [saved, ...(store.runs || []).filter((item) => String(item.id || "") !== id)].slice(0, MAX_BATCH_HISTORY_RUNS);
       await writeJsonAtomic(resolve("metabaseAnomalyPendingRuns"), { updatedAt: saved.updatedAt, runs });
       return saved;
+    },
+
+    async prepareMetabaseInvestigationBatches({ runId, wattrelSummary = null, dsSchedulerSummary = null } = {}) {
+      const normalizedRunId = String(runId || "").trim();
+      const { run } = await findMetabasePatrolRun(normalizedRunId);
+      if (!run) throw badRequest("Metabase patrol run not found", ["未找到待取证巡检记录。"]);
+      const cardCache = new Map();
+      const cases = [];
+      for (const countryRun of run.runs || []) {
+        if (!countryRun.ok) continue;
+        const countryCode = normalizeCountryCode(countryRun.countryCode);
+        for (let anomalyIndex = 0; anomalyIndex < (countryRun.result?.anomalies || []).length; anomalyIndex += 1) {
+          const anomaly = countryRun.result.anomalies[anomalyIndex];
+          const cardId = Number(anomaly.cardId);
+          const cardKey = Number.isFinite(cardId) ? `${countryCode}:${cardId}` : `${countryCode}:card:${anomaly.dashboardUuid || anomaly.dashboardTitle || anomaly.cardTitle || anomalyIndex}`;
+          if (!cardCache.has(cardKey)) {
+            let cardSql = "";
+            if (Number.isFinite(cardId)) {
+              const baseUrl = resolveInternalMetabaseApiBaseUrl(getMetabaseBaseUrl(anomaly.dashboardUrl));
+              const card = await metabaseInternalClientFactory(baseUrl).getCard(cardId);
+              cardSql = String(card.dataset_query?.native?.query || card.native_query || "");
+            }
+            const tables = extractQualifiedSqlTables(cardSql);
+            cardCache.set(cardKey, { cardSql, sourceTable: tables[0] || `card:${cardId || anomaly.dashboardUuid || anomalyIndex}`, sourceTables: tables });
+          }
+          const source = cardCache.get(cardKey);
+          cases.push({
+            countryCode,
+            anomalyIndex,
+            sourceTable: source.sourceTable,
+            anomaly: compactMetabaseAnomaly(anomaly),
+            cardSql: source.cardSql,
+            sourceTables: source.sourceTables,
+          });
+        }
+      }
+      const groups = buildInvestigationBatches(cases);
+      const store = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
+      const snapshots = [...(store.snapshots || [])];
+      const batches = groups.map((group) => {
+        const snapshotId = `snapshot-${randomUUID()}`;
+        const snapshot = {
+          snapshotId,
+          runId: normalizedRunId,
+          countryCode: group.countryCode,
+          sourceTable: group.sourceTable,
+          collectedAt: new Date().toISOString(),
+          complete: true,
+          evidence: {
+            cardSql: group.cases[0]?.cardSql || "",
+            sourceTables: group.cases[0]?.sourceTables || [],
+            wattrelSummary,
+            dsSchedulerSummary,
+          },
+          missing: [],
+        };
+        snapshots.unshift(snapshot);
+        return {
+          ...group,
+          batchId: `batch-${randomUUID()}`,
+          snapshotId,
+          cases: group.cases.map(({ cardSql, sourceTables, ...item }) => item),
+        };
+      });
+      await writeJsonAtomic(resolve("metabaseAnomalyEvidenceSnapshots"), { updatedAt: new Date().toISOString(), snapshots: snapshots.slice(0, 500) });
+      return { runId: normalizedRunId, batches };
     },
 
     async getFluctuationVisualSeries(body = {}) {
@@ -3279,6 +3346,29 @@ function normalizeMetabaseAnalysisIdentity(body = {}) {
 
 function normalizeCountryCode(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function extractQualifiedSqlTables(sql) {
+  const tables = [];
+  for (const match of String(sql || "").matchAll(/(?:from|join)\s+`?([\w.]+)`?/gi)) {
+    const table = String(match[1] || "").replace(/[`"]/g, "").toLowerCase();
+    if (table.includes(".")) tables.push(table);
+  }
+  return [...new Set(tables)].slice(0, 10);
+}
+
+function compactMetabaseAnomaly(anomaly = {}) {
+  return {
+    dashboardTitle: anomaly.dashboardTitle || "",
+    dashboardUuid: anomaly.dashboardUuid || "",
+    dashboardUrl: anomaly.dashboardUrl || "",
+    cardTitle: anomaly.cardTitle || "",
+    cardId: anomaly.cardId ?? null,
+    dashcardId: anomaly.dashcardId ?? null,
+    type: anomaly.type || "",
+    message: anomaly.message || "",
+    rule: anomaly.rule || null,
+  };
 }
 
 function getMetabaseBaseUrl(value) {
