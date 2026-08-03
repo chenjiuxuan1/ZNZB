@@ -383,6 +383,67 @@ test("platform api analyzes and caches a saved Metabase anomaly", async () => {
   assert.equal(calls, 2);
 });
 
+test("platform api queues every anomaly from the same dashboard for independent AI analysis", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-run-history.json"),
+    JSON.stringify({ runs: [{
+      id: "run-all-dashboard-anomalies",
+      runs: [{
+        countryCode: "INE",
+        countryName: "印尼",
+        ok: true,
+        result: {
+          anomalies: [
+            { dashboardTitle: "OKR", dashboardUuid: "dash-1", cardTitle: "放款金额", message: "金额归零" },
+            { dashboardTitle: "OKR", dashboardUuid: "dash-1", cardTitle: "放款件数", message: "件数归零" },
+          ],
+        },
+      }],
+    }] }),
+  );
+  const previousEnv = {
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL,
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN,
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN,
+  };
+  process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL = "https://n8n.example/webhook/agent";
+  process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN = "test-token";
+  process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN = "callback-token";
+  const received = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyAgentFn: async ({ anomaly, context }) => {
+      received.push({ anomaly, context });
+      return { analysis: { summary: `${anomaly.cardTitle} 已独立核验`, confidence: "high" } };
+    },
+  });
+
+  try {
+    const result = await api.triggerDashboardGroupedAnalysis("run-all-dashboard-anomalies", [{
+      countryCode: "INE",
+      countryName: "印尼",
+      ok: true,
+      result: {
+        anomalies: [
+          { dashboardTitle: "OKR", dashboardUuid: "dash-1", cardTitle: "放款金额", message: "金额归零" },
+          { dashboardTitle: "OKR", dashboardUuid: "dash-1", cardTitle: "放款件数", message: "件数归零" },
+        ],
+      },
+    }]);
+
+    assert.equal(result.triggered, 2);
+    assert.equal(result.totalAnomalies, 2);
+    assert.deepEqual(received.map(({ anomaly }) => anomaly.cardTitle), ["放款金额", "放款件数"]);
+    assert.ok(received.every(({ context }) => context.sameDashboardAnomalies.length === 2));
+  } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test("platform api stores an async Metabase evidence job and accepts its callback", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

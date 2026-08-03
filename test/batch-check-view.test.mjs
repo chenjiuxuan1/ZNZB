@@ -150,6 +150,16 @@ test("scheduled run progress renders compact five-stage status and keeps country
   assert.match(root.innerHTML, /查看国家巡检明细/);
   assert.match(root.innerHTML, /已提交 1\/1 个异常看板/);
 });
+
+test("scheduled country progress details stay open across polling rerenders", () => {
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  state.routeQuery = {};
+  state.batchCheckTab = "schedule";
+  state.batchScheduleCountryDetailsOpen = true;
+  renderBatchCheck(root);
+
+  assert.match(root.innerHTML, /<details class="schedule-country-progress-details" open>/);
+});
 test("fluctuation visual model groups fluctuation anomalies by country", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
     runs: [{
