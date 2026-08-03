@@ -95,6 +95,9 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis") {
     return sendJson(response, 200, await api.analyzeMetabaseAnomaly(await readBody(request, {})));
   }
+  if (method === "GET" && url.pathname === "/api/metabase-anomaly-analysis/display-index") {
+    return sendJson(response, 200, await api.getMetabaseAnomalyAnalysisDisplayIndex(Object.fromEntries(url.searchParams.entries())));
+  }
   if (method === "GET" && url.pathname === "/api/metabase-anomaly-analysis") {
     return sendJson(response, 200, await api.getMetabaseAnomalyAnalysis(Object.fromEntries(url.searchParams.entries())));
   }
@@ -107,6 +110,11 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     assertMetabaseAgentCallbackAuthorized(request, body);
     return sendJson(response, 200, await api.completeMetabaseAnomalyAnalysis(body));
+  }
+  if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/evidence-snapshot") {
+    const body = await readBody(request, {});
+    assertMetabaseAgentCallbackAuthorized(request, body);
+    return sendJson(response, 200, await api.saveMetabaseAnomalyEvidenceSnapshot(body));
   }
   if (method === "POST" && url.pathname === "/api/tools/warehouse-lineage") {
     const body = await readBody(request, {});
@@ -127,6 +135,9 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/tools/query-table-data") {
     const body = await readBody(request, {});
     return sendJson(response, 200, await proxySrQuery(body));
+  }
+  if (method === "POST" && url.pathname === "/api/tools/current-anomaly-evidence") {
+    return sendJson(response, 200, await api.getMetabaseAnomalyEvidenceSnapshot(await readBody(request, {})));
   }
   if (method === "POST" && url.pathname === "/api/external-alert-runs") {
     return sendJson(response, 200, await api.ingestExternalAlertRun(await readBody(request, {})));
