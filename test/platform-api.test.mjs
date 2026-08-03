@@ -516,6 +516,27 @@ test("platform api creates one source-table evidence snapshot for same-card patr
   assert.equal(cardReads.length, 1);
 });
 
+test("platform api stores one pending analysis record per submitted Dify batch case", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyBatchAgentFn: async () => ({ pending: true, jobId: "batch-job-2", provider: "n8n-evidence" }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-patrol-submit",
+    runs: [{ countryCode: "INE", ok: true, result: { anomalies: [{ message: "金额归零" }, { message: "件数归零" }] } }],
+  });
+
+  const submitted = await api.submitMetabaseInvestigationBatch({
+    batchId: "batch-2", runId: "pending-patrol-submit", countryCode: "INE", snapshotId: "snapshot-2",
+    cases: [{ anomalyIndex: 0 }, { anomalyIndex: 1 }],
+  });
+  assert.equal(submitted.jobId, "batch-job-2");
+  const analyses = await api.getMetabaseAnomalyAnalysesForRun({ runId: "pending-patrol-submit" });
+  assert.equal(analyses.analyses.length, 2);
+  assert.ok(analyses.analyses.every((item) => item.status === "pending" && item.jobId === "batch-job-2"));
+});
+
 test("platform api stores an async Metabase evidence job and accepts its callback", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

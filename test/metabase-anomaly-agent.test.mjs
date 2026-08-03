@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeMetabaseAnomaly, getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
+import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
 
 const env = {
   METABASE_ANOMALY_AGENT_BASE_URL: "https://llm.example/v1",
@@ -97,6 +97,31 @@ test("Metabase anomaly agent accepts an async n8n evidence job without blocking"
 
   assert.equal(result.pending, true);
   assert.equal(result.jobId, "job-1");
+});
+
+test("Metabase anomaly agent sends at most three cases in one protocol v3 batch job", async () => {
+  let payload = null;
+  const result = await analyzeMetabaseAnomalyBatch({
+    env: {
+      METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/metabase-anomaly-evidence-agent",
+      METABASE_ANOMALY_AGENT_N8N_TOKEN: "webhook-token",
+      METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
+      METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",
+    },
+    batch: {
+      batchId: "batch-1", runId: "run-1", countryCode: "INE", snapshotId: "snapshot-1",
+      cases: [{ anomalyIndex: 0 }, { anomalyIndex: 1 }, { anomalyIndex: 2 }],
+    },
+    fetchFn: async (_url, options) => {
+      payload = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ accepted: true, jobId: "batch-job-1" }) };
+    },
+  });
+
+  assert.equal(result.pending, true);
+  assert.equal(payload.protocolVersion, 3);
+  assert.equal(payload.batch.cases.length, 3);
+  assert.equal(payload.callback.url, "http://172.19.0.1:28787/api/metabase-anomaly-analysis/batch-callback");
 });
 
 test("Metabase evidence webhook requires ingress and callback tokens", () => {
