@@ -74,6 +74,9 @@ export function renderBatchCheck(root) {
     });
   });
   bindMetabaseAnalysisRetryButtons(root);
+  root.querySelector(".schedule-country-progress-details")?.addEventListener("toggle", (event) => {
+    state.batchScheduleCountryDetailsOpen = Boolean(event.currentTarget?.open);
+  });
   const historyRunId = state.routeQuery?.historyRunId;
   if (historyRunId && state.metabaseRunAnalyses?.[historyRunId] === undefined) {
     void loadRunAnalyses(root, historyRunId);
@@ -658,7 +661,7 @@ function renderScheduleRunProgress() {
           </article>
         `).join("")}
       </div>
-      <details class="schedule-country-progress-details">
+      <details class="schedule-country-progress-details" ${state.batchScheduleCountryDetailsOpen ? "open" : ""}>
         <summary>查看国家巡检明细（${escapeHtml(completed)}/${escapeHtml(total)}）</summary>
         <div class="schedule-progress-list">
         ${countries.map((country) => `
