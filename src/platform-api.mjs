@@ -226,12 +226,16 @@ export function createPlatformApi({
       // without deciding the chart axis from an alert message.
       const historyLookbackDays = 15;
       const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, historyLookbackDays);
+      const urlParameters = buildFluctuationSeriesUrlParameters(dashboard, card, anomaly.dashboardUrl);
       const ruleParameters = matchingRules.reduce(
         (parameters, rule) => mergeParameters(parameters, rule.parameters || []),
         [],
       );
       const parameters = mergeParameters(
-        mergeParameters(buildDefaultCardParameters(dashboard, card), ruleParameters),
+        mergeParameters(
+          mergeParameters(buildDefaultCardParameters(dashboard, card), ruleParameters),
+          urlParameters,
+        ),
         historyParameters,
       );
       const client = metabaseClientFactory(dashboard);
@@ -3302,6 +3306,32 @@ function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays =
       type: parameter.type,
       target: mapping.target,
       value: `past${days}days~`,
+    }];
+  });
+}
+
+function buildFluctuationSeriesUrlParameters(dashboard, card, dashboardUrl) {
+  if (!dashboardUrl) return [];
+  let searchParams;
+  try {
+    searchParams = new URL(dashboardUrl).searchParams;
+  } catch {
+    return [];
+  }
+
+  const dashboardParameters = new Map((dashboard.parameters || []).map((parameter) => [parameter.id, parameter]));
+  return (card.parameterMappings || []).flatMap((mapping) => {
+    const parameter = dashboardParameters.get(mapping.parameter_id);
+    if (!parameter) return [];
+    const keys = [parameter.name, parameter.id].filter(Boolean);
+    const key = keys.find((candidate) => searchParams.has(candidate));
+    if (!key) return [];
+    const values = searchParams.getAll(key);
+    return [{
+      id: parameter.id,
+      type: parameter.type,
+      target: mapping.target,
+      value: values.length > 1 ? values : values[0] ?? "",
     }];
   });
 }
