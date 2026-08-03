@@ -19,6 +19,9 @@ const CHINA_SUPPRESSED_ANOMALY_TYPES = new Set([
   "notEmpty",
 ]);
 
+const FLUCTUATION_SERIES_CONCURRENCY = 3;
+const FLUCTUATION_SERIES_TIMEOUT_MS = 15_000;
+
 export function renderFluctuationVisual(root) {
   const model = buildFluctuationVisualModel(state.batchHistory, state.countries?.countries || []);
   root.innerHTML = `
@@ -529,12 +532,29 @@ async function hydrateVisibleFluctuationSeries(root, country) {
   if (!pending.length) return;
   state.fluctuationVisualHydratingCountries[countryCode] = true;
   try {
-    for (const anomaly of pending) {
-      await hydrateFluctuationSeries(root, anomaly, { renderLoading: false });
-    }
+    const hydration = runWithConcurrency(
+      pending,
+      FLUCTUATION_SERIES_CONCURRENCY,
+      (anomaly) => hydrateFluctuationSeries(root, anomaly, { renderLoading: false }),
+    );
+    renderFluctuationVisual(root);
+    await hydration;
   } finally {
     state.fluctuationVisualHydratingCountries[countryCode] = false;
   }
+}
+
+async function runWithConcurrency(items, concurrency, worker) {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, Number(concurrency) || 1), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
 }
 
 async function hydrateFluctuationSeries(root, anomaly, options = {}) {
@@ -555,7 +575,7 @@ async function hydrateFluctuationSeries(root, anomaly, options = {}) {
       anomaly,
       lookbackDays: 45,
       maxPoints: 16,
-    });
+    }, { timeoutMs: FLUCTUATION_SERIES_TIMEOUT_MS });
     state.fluctuationVisualSeries = {
       ...(state.fluctuationVisualSeries || {}),
       [key]: {
@@ -565,12 +585,15 @@ async function hydrateFluctuationSeries(root, anomaly, options = {}) {
       },
     };
   } catch (error) {
+    const detail = /timed out/i.test(error.message || "")
+      ? "查询超时（15秒），已跳过该看板，不影响其他图表加载。"
+      : error.payload?.errors?.join("\n") || error.message;
     state.fluctuationVisualSeries = {
       ...(state.fluctuationVisualSeries || {}),
       [key]: {
         type: "error",
         series: [],
-        detail: error.payload?.errors?.join("\n") || error.message,
+        detail,
       },
     };
   }
@@ -659,6 +682,7 @@ export const __test__ = {
   getDisplayAnomalyIndex,
   isPercentMetric,
   normalizeSeries,
+  runWithConcurrency,
   resolvePercentDisplayScale,
   formatChartValue,
 };

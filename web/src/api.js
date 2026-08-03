@@ -6,8 +6,8 @@ export async function apiPut(path, body) {
   return request(path, { method: "PUT", body: JSON.stringify(body) });
 }
 
-export async function apiPost(path, body = {}) {
-  return request(path, { method: "POST", body: JSON.stringify(body) });
+export async function apiPost(path, body = {}, options = {}) {
+  return request(path, { method: "POST", body: JSON.stringify(body), ...options });
 }
 
 async function request(path, options) {
