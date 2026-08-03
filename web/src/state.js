@@ -23,6 +23,8 @@ export const state = {
   batchScheduleProgressTimer: null,
   batchHistory: null,
   batchHistoryLoaded: false,
+  metabaseRunAnalyses: {},
+  metabaseRunAnalysisPolling: {},
   batchHistoryFilters: {
     countryCode: "",
     status: "",
