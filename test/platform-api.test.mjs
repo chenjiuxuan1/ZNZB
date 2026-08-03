@@ -5,8 +5,20 @@ import path from "node:path";
 import test from "node:test";
 import {
   createPlatformApi,
+  buildAnchoredHistoryWindow,
   flattenInventory,
 } from "../src/platform-api.mjs";
+
+test("fluctuation history window ends on a delayed anomaly date", () => {
+  assert.equal(
+    buildAnchoredHistoryWindow(15, "2026-07-18", "2026-08-03T08:00:00.000Z"),
+    "past15days-from-16days",
+  );
+  assert.equal(
+    buildAnchoredHistoryWindow(15, "2026-08-02", "2026-08-03T08:00:00.000Z"),
+    "past15days~",
+  );
+});
 
 test("Wattrel n8n gateway keeps MySQL column headers for row mapping", async () => {
   const workflow = await fs.readFile(new URL("../n8n-wattrel-query-gateway.json", import.meta.url), "utf8");
@@ -178,6 +190,7 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
   });
 
   const result = await api.getFluctuationVisualSeries({
+    now: "2026-07-03T12:00:00.000Z",
     anomaly: {
       countryCode: "MX",
       dashboardUuid: "dash-mx",
