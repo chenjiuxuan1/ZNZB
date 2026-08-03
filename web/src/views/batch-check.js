@@ -115,6 +115,9 @@ export function renderBatchCheck(root) {
   root.querySelector("#refresh-batch-history")?.addEventListener("click", async () => {
     await reloadBatchHistory(root);
   });
+  root.querySelector("#load-batch-history")?.addEventListener("click", async () => {
+    await reloadBatchHistory(root);
+  });
   root.querySelector("#save-batch-schedule")?.addEventListener("click", async () => {
     updateBatchNotifyConfigFromDom(root);
     const payload = buildBatchSchedulePayload(root, {
@@ -447,8 +450,9 @@ async function reloadBatchHistory(root) {
   };
   renderBatchCheck(root);
   try {
-    params.set("limit", "200");
+    params.set("limit", "3");
     state.batchHistory = await apiGet(`/api/batch-history?${params}`);
+    state.batchHistoryLoaded = true;
     state.batchHistoryStatus = null;
   } catch (error) {
     state.batchHistoryStatus = {
@@ -694,6 +698,14 @@ function renderBatchHistoryPanel() {
   const filters = state.batchHistoryFilters || {};
   const history = state.batchHistory || { runs: [] };
   const runs = history.runs || [];
+  if (!state.batchHistoryLoaded) {
+    return `
+      <section class="panel schedule-history-panel">
+        <div class="detail-header compact-header"><h2 class="panel-title">定时巡检历史</h2></div>
+        <p class="muted">历史记录可能较大，按需加载不会影响当前巡检。</p>
+        <button id="load-batch-history" class="primary" type="button">加载最近 3 次巡检记录</button>
+      </section>`;
+  }
   return `
     <section class="panel schedule-history-panel">
       <div class="detail-header compact-header">
@@ -1130,6 +1142,7 @@ export function renderMetabaseAnomalyAnalysis(response) {
     ${renderMetabaseAnalysisList("核查步骤", analysis.verificationSteps)}
     ${renderMetabaseAnalysisList("建议处理", analysis.recommendedActions)}
     ${analysis.dataSideVerdict ? `<p class="muted">数据侧判定：${escapeHtml(analysis.dataSideVerdict)}；通知建议：${escapeHtml(analysis.notificationAction || "enrich_only")}</p>` : ""}
+    ${analysis.chartVisibility === "hide_verified_normal" ? `<div class="sandbox-status success"><strong>AI 已核验正常（不展示于波动图谱）</strong><span>${escapeHtml(analysis.verificationReason || "本轮查询已确认该点不属于当前数据异常。")}</span></div>` : ""}
     <p class="muted">置信度：${escapeHtml(analysis.confidence || "low")}；限制：${escapeHtml(analysis.limitations || "仅基于本次巡检记录分析。")}</p>
     <div class="button-group">
       <button class="secondary" type="button" data-metabase-anomaly-retry data-run-id="${escapeHtml(response.runId || "")}" data-country-code="${escapeHtml(response.countryCode || "")}" data-anomaly-index="${escapeHtml(response.anomalyIndex ?? "")}" data-analysis-result-id="metabase-ai-analysis-${encodeURIComponent(`${response.runId || ""}-${response.countryCode || ""}-${response.anomalyIndex ?? ""}`).replace(/%/g, "")}">重新 AI 分析</button>
