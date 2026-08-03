@@ -691,7 +691,7 @@ function formatScheduleProgressStatus(progress, currentLabel) {
   }
   if (progress.status === "ai_analyzing") {
     const aiStage = (progress.stages || []).find((item) => item.key === "ai_analysis");
-    return aiStage?.detail || "巡检和通知已完成，正在后台执行 AI 取证。";
+    return aiStage?.detail || "国家巡检已完成，正在等待 AI 取证结论；通知和历史记录会在结论收敛后生成。";
   }
   if (progress.status === "success") {
     return `测试运行完成，已完成 ${progress.completedCountries || 0}/${progress.totalCountries || 0} 个国家。`;

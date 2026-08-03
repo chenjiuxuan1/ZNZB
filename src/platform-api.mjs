@@ -19,7 +19,7 @@ import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
 import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
-import { buildInvestigationBatches } from "./metabase-anomaly-batch.mjs";
+import { buildInvestigationBatches, getBatchInvestigationLimits, runBoundedInvestigationQueue } from "./metabase-anomaly-batch.mjs";
 import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
@@ -117,6 +117,7 @@ export function createPlatformApi({
   qualityRuleGenerationSubmitFn = null,
   metabaseAnomalyAgentFn = analyzeMetabaseAnomaly,
   metabaseAnomalyBatchAgentFn = analyzeMetabaseAnomalyBatch,
+  aiFirstMetabasePatrolEnabled = isAiFirstMetabasePatrolEnabled(),
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
@@ -249,6 +250,16 @@ export function createPlatformApi({
       return saved;
     },
 
+    async removePendingMetabasePatrolRun(runId) {
+      const id = String(runId || "").trim();
+      if (!id) return false;
+      const store = await readJsonFile(resolve("metabaseAnomalyPendingRuns"), DEFAULT_METABASE_ANOMALY_PENDING_RUNS);
+      const runs = (store.runs || []).filter((item) => String(item.id || "") !== id);
+      if (runs.length === (store.runs || []).length) return false;
+      await writeJsonAtomic(resolve("metabaseAnomalyPendingRuns"), { updatedAt: new Date().toISOString(), runs });
+      return true;
+    },
+
     async prepareMetabaseInvestigationBatches({ runId, wattrelSummary = null, dsSchedulerSummary = null } = {}) {
       const normalizedRunId = String(runId || "").trim();
       const { run } = await findMetabasePatrolRun(normalizedRunId);
@@ -306,6 +317,7 @@ export function createPlatformApi({
         snapshots.unshift(snapshot);
         return {
           ...group,
+          runId: normalizedRunId,
           batchId: `batch-${randomUUID()}`,
           snapshotId,
           cases: group.cases.map(({ cardSql, sourceTables, ...item }) => item),
@@ -358,9 +370,104 @@ export function createPlatformApi({
         observability: generated.observability || { enabled: false, written: false, reason: "n8n 批量任务已受理，等待回调" },
       }));
       const keys = new Set(entries.map((item) => item.key));
-      const analyses = keepRecentMetabaseAnalyses([...entries, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
+      const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
+      const finalEntries = entries.map((entry) => {
+        const existing = existingByKey.get(entry.key);
+        return existing?.status === "completed" && String(existing.jobId || "") === String(entry.jobId || "") ? existing : entry;
+      });
+      const analyses = keepRecentMetabaseAnalyses([...finalEntries, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: createdAt, analyses });
       return { ...generated, batchId, runId, countryCode, cases: normalizedCases };
+    },
+
+    async waitForMetabaseInvestigationBatch(batch = {}, { deadlineAt = Number.POSITIVE_INFINITY, intervalMs = 2_000 } = {}) {
+      const limits = getBatchInvestigationLimits();
+      const runId = String(batch.runId || "").trim();
+      const countryCode = normalizeCountryCode(batch.countryCode);
+      const indexes = (batch.cases || []).map((item) => Number(item.anomalyIndex));
+      const endAt = Math.min(Date.now() + limits.timeoutMs, deadlineAt);
+      while (Date.now() < endAt) {
+        const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+        const entries = indexes.map((anomalyIndex) => (cache.analyses || []).find((item) => item.key === `${runId}:${countryCode}:${anomalyIndex}`));
+        if (entries.length && entries.every((item) => item && item.status !== "pending")) {
+          return { status: entries.some((item) => item.status === "failed" || item.status === "timed_out") ? "partial_failed" : "completed", entries };
+        }
+        await delay(Math.min(intervalMs, Math.max(1, endAt - Date.now())));
+      }
+      return this.markMetabaseInvestigationBatchTimedOut(batch, { reason: Date.now() >= deadlineAt ? "巡检已达到 30 分钟全局截止" : "等待 Dify 回调超过 10 分钟" });
+    },
+
+    async markMetabaseInvestigationBatchTimedOut(batch = {}, { reason = "AI 未在时限内回写" } = {}) {
+      const runId = String(batch.runId || "").trim();
+      const countryCode = normalizeCountryCode(batch.countryCode);
+      const cases = Array.isArray(batch.cases) ? batch.cases : [];
+      const store = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const now = new Date().toISOString();
+      const keys = new Set(cases.map((item) => `${runId}:${countryCode}:${Number(item.anomalyIndex)}`));
+      const timedOut = cases.map((item) => ({
+        key: `${runId}:${countryCode}:${Number(item.anomalyIndex)}`,
+        runId,
+        countryCode,
+        anomalyIndex: Number(item.anomalyIndex),
+        batchId: String(batch.batchId || ""),
+        snapshotId: String(batch.snapshotId || ""),
+        jobId: String(batch.jobId || ""),
+        createdAt: now,
+        completedAt: now,
+        status: "timed_out",
+        pending: false,
+        provider: "n8n-evidence",
+        model: "n8n-configured-model",
+        analysis: normalizeMetabaseAnomalyAnalysis({
+          summary: "AI 未在巡检时限内完成取证。",
+          confidence: "low",
+          limitations: reason,
+          dataSideVerdict: "insufficient_evidence",
+          notificationAction: "send",
+        }),
+        evidence: {},
+      }));
+      const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
+      const replacements = timedOut.map((item) => {
+        const existing = existingByKey.get(item.key);
+        return existing?.status === "completed" ? existing : { ...existing, ...item };
+      });
+      const analyses = keepRecentMetabaseAnalyses([...replacements, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
+      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: now, analyses });
+      return { status: "timed_out", entries: replacements };
+    },
+
+    async finalizeAiFirstMetabasePatrol({ runId, startedAt, countryRuns, countryConfigs, schedule, detailUrl, wattrelSummary, dsSchedulerSummary, dsSchedulerError, trigger }) {
+      const limits = getBatchInvestigationLimits();
+      const deadlineAt = Date.parse(startedAt) + limits.deadlineMs;
+      await this.savePendingMetabasePatrolRun({ id: runId, startedAt, trigger, schedule, runs: countryRuns, wattrelSummary, dsSchedulerSummary, dsSchedulerError });
+      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", { status: "queued", detail: "等待 AI 取证结论后再发送最终通知" });
+      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", { status: "running", detail: "正在准备同底表公共证据" });
+      let queueResult = { total: 0, completed: 0, settled: [], notSubmitted: [] };
+      if (getMetabaseAnomalyAgentSettings().enabled) {
+        const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
+        queueResult = await runBoundedInvestigationQueue({
+          batches: prepared.batches,
+          limits,
+          deadlineAt,
+          submit: async (batch) => this.submitMetabaseInvestigationBatch(batch),
+          waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
+          onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, event); },
+        });
+        for (const batch of queueResult.notSubmitted || []) {
+          await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 30 分钟全局截止，未再投递 Dify" });
+        }
+      } else {
+        const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
+        for (const batch of prepared.batches) await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "Dify 批量取证未配置，已按保守策略通知" });
+        queueResult = { total: prepared.batches.length, completed: prepared.batches.length, settled: [], notSubmitted: [] };
+      }
+      const finalizedRuns = await buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile: resolve("metabaseAnomalyAnalyses") });
+      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", { status: "success", detail: `AI 取证已收敛：${queueResult.completed}/${queueResult.total} 个批次` });
+      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", { status: "running", detail: "AI 结论已收敛，正在发送最终通知" });
+      const notificationSentCount = await sendScheduledAggregateNotifications({ countryRuns: finalizedRuns, countryConfigs, rulesFile: resolve("rules"), notifyTextFn, detailUrl, wattrelSummary, dsSchedulerSummary });
+      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", { status: "success", detail: notificationSentCount ? `已发送 ${notificationSentCount} 条最终通知` : "无需要通知的数据侧异常" });
+      return { countryRuns: finalizedRuns, notificationSentCount, queueResult };
     },
 
     async getFluctuationVisualSeries(body = {}) {
@@ -560,12 +667,18 @@ export function createPlatformApi({
     },
 
     async getMetabaseAnomalyEvidenceSnapshot(body = {}) {
-      const { runId, countryCode, anomalyIndex } = normalizeMetabaseAnalysisIdentity(body);
+      const runId = String(body.runId || body.historyRunId || "").trim();
+      const countryCode = normalizeCountryCode(body.countryCode);
+      const anomalyIndex = body.anomalyIndex === undefined || body.anomalyIndex === null || body.anomalyIndex === "" ? null : Number(body.anomalyIndex);
+      if (!runId || !countryCode || (anomalyIndex !== null && (!Number.isInteger(anomalyIndex) || anomalyIndex < 0))) {
+        throw badRequest("Invalid Metabase anomaly evidence snapshot identity", ["请提供巡检记录、国家，以及可选的异常序号。"]);
+      }
       const snapshotId = String(body.snapshotId || "").trim();
       if (!snapshotId) return { complete: false, missing: ["snapshotId"] };
       const snapshots = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
       const snapshot = (snapshots.snapshots || []).find((item) => item.snapshotId === snapshotId
-        && item.runId === runId && item.countryCode === countryCode && item.anomalyIndex === anomalyIndex);
+        && item.runId === runId && item.countryCode === countryCode
+        && (anomalyIndex === null || item.anomalyIndex === undefined || item.anomalyIndex === anomalyIndex));
       if (!snapshot) return { complete: false, missing: ["current_snapshot"] };
       const ttlMs = getMetabaseAnomalyAccelerationSettings().snapshotTtlSeconds * 1000;
       if (!snapshot.collectedAt || Date.now() - Date.parse(snapshot.collectedAt) > ttlMs) {
@@ -956,6 +1069,29 @@ export function createPlatformApi({
           status: dsSchedulerError ? "partial_failed" : "success",
           detail: dsSchedulerError ? `DS 调度核查失败：${dsSchedulerError}` : schedule.includeDsScheduler ? "DS 调度核查完成" : "未启用 DS 调度核查",
         });
+        if (aiFirstMetabasePatrolEnabled) {
+          const aiFirst = await this.finalizeAiFirstMetabasePatrol({
+            runId: historyRunId, startedAt, countryRuns, countryConfigs: enabledCountryConfigs, schedule, detailUrl,
+            wattrelSummary, dsSchedulerSummary, dsSchedulerError, trigger: "manual_test",
+          });
+          const finalizedRuns = aiFirst.countryRuns;
+          const failedRuns = finalizedRuns.filter((item) => !item.ok);
+          const lastResult = { ...summarizeCountryScheduleRuns(finalizedRuns, { wattrelSummary }), dsSchedulerSummary, dsSchedulerError };
+          const saved = {
+            ...schedule, lastRunAt: startedAt, nextRunAt,
+            lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
+            lastResult,
+          };
+          await writeJsonAtomic(resolve("batchSchedule"), saved);
+          await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+            trigger: "manual_test", id: historyRunId, startedAt, finishedAt: new Date().toISOString(), nextRunAt, schedule,
+            countryRuns: finalizedRuns, notificationSentCount: aiFirst.notificationSentCount, wattrelSummary, dsSchedulerSummary, dsSchedulerError,
+          }));
+          await this.removePendingMetabasePatrolRun(historyRunId);
+          batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "finished", { status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success", detail: "AI 取证、最终通知和历史记录已完成" });
+          batchScheduleRunProgress = { ...batchScheduleRunProgress, status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success", finishedAt: new Date().toISOString(), result: lastResult, notificationSentCount: aiFirst.notificationSentCount };
+          return { ran: true, schedule: saved, result: lastResult, agentTriggerResult: aiFirst.queueResult };
+        }
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
           status: "running",
           detail: "正在汇总异常并发送通知",
@@ -1676,6 +1812,29 @@ export function createPlatformApi({
           status: dsSchedulerError ? "partial_failed" : "success",
           detail: dsSchedulerError ? `DS 调度核查失败：${dsSchedulerError}` : schedule.includeDsScheduler ? "DS 调度核查完成" : "未启用 DS 调度核查",
         });
+        if (aiFirstMetabasePatrolEnabled) {
+          const aiFirst = await this.finalizeAiFirstMetabasePatrol({
+            runId: historyRunId, startedAt, countryRuns, countryConfigs: enabledCountryConfigs, schedule, detailUrl,
+            wattrelSummary, dsSchedulerSummary, dsSchedulerError, trigger: "schedule",
+          });
+          const finalizedRuns = aiFirst.countryRuns;
+          const failedRuns = finalizedRuns.filter((item) => !item.ok);
+          const lastResult = { ...summarizeCountryScheduleRuns(finalizedRuns, { wattrelSummary }), dsSchedulerSummary, dsSchedulerError };
+          const saved = {
+            ...schedule, lastRunAt: startedAt, nextRunAt,
+            lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
+            lastResult,
+          };
+          await writeJsonAtomic(resolve("batchSchedule"), saved);
+          await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+            trigger: "schedule", id: historyRunId, startedAt, finishedAt: new Date().toISOString(), nextRunAt, schedule,
+            countryRuns: finalizedRuns, notificationSentCount: aiFirst.notificationSentCount, wattrelSummary, dsSchedulerSummary, dsSchedulerError,
+          }));
+          await this.removePendingMetabasePatrolRun(historyRunId);
+          batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "finished", { status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success", detail: "AI 取证、最终通知和历史记录已完成" });
+          batchScheduleRunProgress = { ...batchScheduleRunProgress, status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success", finishedAt: new Date().toISOString(), result: lastResult, notificationSentCount: aiFirst.notificationSentCount };
+          return { ran: true, schedule: saved, result: lastResult, agentTriggerResult: aiFirst.queueResult };
+        }
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
           status: "running",
           detail: "正在汇总异常并发送通知",
@@ -3024,8 +3183,8 @@ function createBatchScheduleRunProgress({ id, trigger, startedAt, countryConfigs
     stages: [
       { key: "country_scan", label: "国家巡检", status: "running", detail: "正在读取 Metabase 并执行规则" },
       { key: "data_check", label: "DS 调度核查", status: "pending", detail: "等待国家巡检完成" },
-      { key: "notification", label: "告警通知", status: "pending", detail: "等待异常汇总" },
-      { key: "ai_analysis", label: "AI 取证队列", status: "pending", detail: "等待巡检历史落库" },
+      { key: "ai_analysis", label: "AI 取证队列", status: "pending", detail: "等待公共证据准备；最多同时 2 个批次、每批最多 3 条指标" },
+      { key: "notification", label: "告警通知", status: "pending", detail: "等待 AI 取证结论收敛" },
       { key: "finished", label: "巡检完成", status: "pending", detail: "等待所有必要阶段完成" },
     ],
   };
@@ -3126,6 +3285,66 @@ function updateBatchScheduleAiProgress(progress, event = {}) {
   return { ...next, status };
 }
 
+function updateBatchScheduleAiBatchProgress(progress, event = {}) {
+  if (!progress) return progress;
+  const current = (progress.stages || []).find((stage) => stage.key === "ai_analysis") || {};
+  const total = Number(event.total || current.batchCount || 0);
+  const completed = Number(event.completed || current.completed || 0);
+  let status = "running";
+  let detail = `AI 裁决批次 ${completed}/${total}，最多同时运行 2 个，每批最多 3 条指标`;
+  if (event.type === "batch_submitted") detail = `已提交 ${Math.min(event.submitted || 0, total)}/${total} 个 AI 裁决批次，正在等待回写`;
+  if (event.type === "batch_settled") detail = `AI 裁决已收敛 ${completed}/${total} 个批次`;
+  if (event.type === "global_deadline") {
+    status = "partial_failed";
+    detail = `已达到 30 分钟截止，${event.notSubmitted?.length || 0} 个批次标记为 AI 未核验`;
+  }
+  return updateBatchScheduleRunProgressStage(progress, "ai_analysis", {
+    status,
+    batchCount: total,
+    completed,
+    detail,
+  });
+}
+
+async function buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile }) {
+  const cache = await readJsonFile(analysesFile, DEFAULT_METABASE_ANOMALY_ANALYSES);
+  const byKey = new Map((cache.analyses || []).filter((item) => item.runId === runId).map((item) => [item.key, item]));
+  return (countryRuns || []).map((countryRun) => {
+    if (!countryRun.ok || !countryRun.result) return countryRun;
+    const countryCode = normalizeCountryCode(countryRun.countryCode);
+    const anomalies = countryRun.result.anomalies || [];
+    const aiAudit = anomalies.map((anomaly, anomalyIndex) => {
+      const entry = byKey.get(`${runId}:${countryCode}:${anomalyIndex}`) || null;
+      const verdict = entry?.analysis?.dataSideVerdict || "insufficient_evidence";
+      const chartVisibility = entry?.analysis?.chartVisibility || "show";
+      const verifiedNormal = chartVisibility === "hide_verified_normal";
+      const businessChange = verdict === "business_change" || entry?.analysis?.notificationAction === "downgrade";
+      const notifiable = !verifiedNormal && !businessChange;
+      return {
+        anomalyIndex,
+        status: entry?.status || "timed_out",
+        verdict,
+        notificationAction: entry?.analysis?.notificationAction || "send",
+        chartVisibility,
+        verificationReason: entry?.analysis?.verificationReason || "",
+        summary: entry?.analysis?.summary || "AI 未核验，请人工确认。",
+        limitations: entry?.analysis?.limitations || "AI 未返回完整结论。",
+        statusLabel: verifiedNormal ? "AI 查数正常" : businessChange ? "AI 核验为业务变化" : entry?.status === "completed" ? "AI 已核验数据侧异常" : "AI 未核验",
+        notifiable,
+      };
+    });
+    const notifiableAnomalies = anomalies.filter((_item, index) => aiAudit[index].notifiable);
+    return {
+      ...countryRun,
+      result: { ...countryRun.result, aiAudit, notifiableAnomalies },
+    };
+  });
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs, rulesFile, notifyTextFn, detailUrl, wattrelSummary = null, dsSchedulerSummary = null }) {
   const successfulRuns = countryRuns.filter((item) => item.ok);
   if (successfulRuns.length === 0) {
@@ -3145,8 +3364,17 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
   let sentMessages = 0;
 
   for (const group of groups) {
+    const notificationRuns = group.countryRuns.map((countryRun) => ({
+      ...countryRun,
+      result: {
+        ...countryRun.result,
+        anomalies: Array.isArray(countryRun.result?.notifiableAnomalies)
+          ? countryRun.result.notifiableAnomalies
+          : countryRun.result?.anomalies || [],
+      },
+    }));
     const result = {
-      ...combineScheduledCountryResults(group.countryRuns),
+      ...combineScheduledCountryResults(notificationRuns),
       wattrelSummary,
     };
     const messages = buildPublicCheckMessages(result, {
@@ -3156,6 +3384,25 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
       wattrelSummary,
       dsScheduleSummary: dsSchedulerSummary,
     });
+    if (messages.length === 0) {
+      const notification = {
+        sent: false,
+        skipped: true,
+        reason: "no data-side anomalies after AI verification",
+        sentMessages: 0,
+        results: [],
+        channel: group.alerts.channel,
+        botId: group.alerts.botId || "",
+        chatId: group.alerts.chatId || "",
+        recipientEmails: group.alerts.recipientEmails || "",
+        mentions: group.alerts.mentions || [],
+        webhookUrl: group.alerts.webhookUrl || "",
+        detailUrl: group.alerts.detailUrl || "",
+        sentAt: new Date().toISOString(),
+      };
+      for (const countryRun of group.countryRuns) countryRun.result.notification = notification;
+      continue;
+    }
     const results = [];
     for (const message of messages) {
       results.push(await notifyTextFn({ ...rules, alerts: group.alerts }, message.body, {
@@ -3395,6 +3642,10 @@ function normalizeMetabaseAnalysisIdentity(body = {}) {
 
 function normalizeCountryCode(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function isAiFirstMetabasePatrolEnabled(env = process.env) {
+  return ["1", "true", "on", "yes"].includes(String(env.METABASE_ANOMALY_BATCH_MODE || "").trim().toLowerCase());
 }
 
 function extractQualifiedSqlTables(sql) {

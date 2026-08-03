@@ -36,6 +36,8 @@ export async function runBoundedInvestigationQueue({
   waitForSettlement,
   limits = getBatchInvestigationLimits(),
   onProgress = null,
+  now = () => Date.now(),
+  deadlineAt = Number.POSITIVE_INFINITY,
 } = {}) {
   if (typeof submit !== "function" || typeof waitForSettlement !== "function") {
     throw new TypeError("submit and waitForSettlement are required");
@@ -43,10 +45,17 @@ export async function runBoundedInvestigationQueue({
   const work = Array.isArray(batches) ? batches : [];
   let cursor = 0;
   const settled = [];
+  const notSubmitted = [];
   const workerCount = Math.min(MAX_CONCURRENT_BATCHES, Math.max(1, Number(limits.maxConcurrentBatches) || 1), work.length || 1);
   const next = () => cursor < work.length ? work[cursor++] : null;
   const worker = async () => {
     for (let batch = next(); batch; batch = next()) {
+      if (now() >= deadlineAt) {
+        notSubmitted.push(batch, ...work.slice(cursor));
+        cursor = work.length;
+        onProgress?.({ type: "global_deadline", notSubmitted, total: work.length });
+        return;
+      }
       onProgress?.({ type: "batch_start", batch, submitted: cursor, total: work.length });
       try {
         await submit(batch);
@@ -68,5 +77,6 @@ export async function runBoundedInvestigationQueue({
     settled,
     failed: settled.filter((item) => item.result?.status === "failed").length,
     timedOut: settled.filter((item) => item.result?.status === "timed_out").length,
+    notSubmitted,
   };
 }

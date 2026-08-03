@@ -39,3 +39,18 @@ test("bounded investigation queue never submits a third Dify batch before one ca
   const result = await queue;
   assert.equal(result.completed, 3);
 });
+
+test("bounded investigation queue never submits queued batches after its global deadline", async () => {
+  let now = 0;
+  const submitted = [];
+  const result = await runBoundedInvestigationQueue({
+    batches: [{ batchId: "a" }, { batchId: "b" }],
+    now: () => now,
+    deadlineAt: 1,
+    submit: async (batch) => { submitted.push(batch.batchId); now = 1; },
+    waitForSettlement: async () => ({ status: "completed" }),
+  });
+
+  assert.deepEqual(submitted, ["a"]);
+  assert.deepEqual(result.notSubmitted.map((batch) => batch.batchId), ["b"]);
+});

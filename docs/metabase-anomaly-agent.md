@@ -51,6 +51,23 @@ METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=replace-with-long-random-callback-token
 
 ## 行为与结果
 
+## AI-first 批量巡检（协议 v3）
+
+启用前必须先导入并发布仓库中的 v3 n8n JSON、Dify DSL 和 OpenAPI v2.4.0 工具提供者。随后才在 ZNZB `.env` 显式开启：
+
+```dotenv
+METABASE_ANOMALY_BATCH_MODE=1
+```
+
+未设置该开关时仍运行旧流程，避免未完成导入时误派单。开启后，巡检的最终顺序是“国家巡检 → DS 核查 → AI 取证 → 通知 → 历史记录”：平台会先保留一份仅内部可见的待完成巡检，**不会**立即通知，也不会把它写入最终历史。
+
+- 以 `国家 + 底表` 合并公共证据；同组最多 3 条指标，但每条都必须获得独立 `anomalyIndex` 结论。
+- Dify 实际同时运行的批次硬限制为 2；只有某批 callback 已回写（或已超时）后，平台才提交下一批，绝不预投递全部队列。
+- 单个批次最多 8 次 Agent 迭代、6 次工具调用；整个巡检目标 20 分钟，30 分钟后不再提交新批次，剩余项写为“AI 未核验”。
+- 只有 `data_issue` / 未核验的异常进入告警通知；`business_change` 和 `hide_verified_normal` 仍留在历史审计，但不播报为数据异常。
+
+新模板中的 n8n 节点只需要替换三个占位符：入口 token、回调 token、Dify `app-` API key。Callback URL 固定为 `/api/metabase-anomaly-analysis/batch-callback`，不得改回单条 `/callback`。
+
 平台创建异步任务后即显示“分析取证中”。任务完成后，n8n 使用同一 `jobId` 回调，写入分析与受限证据。没有 SQL、权限不足、只有 `declared_dependency_only`、分区或 DS 证据不足时，结论必须为 `insufficient_evidence`；原巡检告警不会由本 Agent 自动关闭。
 
 分析结果写入 `config/metabase-anomaly-analyses.json`，默认保留最近 7 天；该文件已被 Git 忽略。
