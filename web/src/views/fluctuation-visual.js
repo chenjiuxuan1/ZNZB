@@ -484,24 +484,30 @@ function hasRealSeries(anomaly) {
 }
 
 function normalizeSeries(anomaly) {
-  const candidate = anomaly.series || anomaly.hydratedSeries || anomaly.history || anomaly.points || anomaly.evidence?.series || anomaly.fluctuation?.history;
+  // Prefer the freshly queried dashboard series over a saved inspection snapshot.
+  const candidate = anomaly.hydratedSeries || anomaly.series || anomaly.history || anomaly.points || anomaly.evidence?.series || anomaly.fluctuation?.history;
   const rawPoints = Array.isArray(candidate) ? candidate : [];
+  const pointLimit = rawPoints.some((point) => point?.xType === "hour") ? 24 : 16;
   return rawPoints
     .map((point, index) => {
       const value = parseNumericValue(point.value ?? point.metric ?? point.y ?? point.currentValue);
       const baselineValue = parseNumericValue(point.baselineValue ?? point.baseline ?? point.average ?? point.avgValue);
       if (!Number.isFinite(value)) return null;
+      const xType = point.xType || "date";
       return {
-        label: String(point.date || point.statDate || point.x || point.label || `D-${rawPoints.length - index - 1}`),
+        label: String(xType === "hour"
+          ? point.label || point.x || point.date || `H-${index}`
+          : point.date || point.statDate || point.x || point.label || `D-${rawPoints.length - index - 1}`),
         value,
         ...(Number.isFinite(baselineValue) ? { baselineValue } : {}),
         baselineSampleCount: Number(point.baselineSampleCount || point.sampleCount || 0),
         percent: /%/.test(String(point.value ?? point.metric ?? "")),
         anomaly: Boolean(point.anomaly || point.isAnomaly || index === rawPoints.length - 1),
+        xType,
       };
     })
     .filter(Boolean)
-    .slice(-16);
+    .slice(-pointLimit);
 }
 
 function getSelectedModelAnomaly(model) {
@@ -517,7 +523,6 @@ async function hydrateVisibleFluctuationSeries(root, country) {
   state.fluctuationVisualHydratingCountries = state.fluctuationVisualHydratingCountries || {};
   if (state.fluctuationVisualHydratingCountries[countryCode]) return;
   const pending = (country.anomalies || []).filter((anomaly) => {
-    if (hasRealSeries(anomaly)) return false;
     const current = state.fluctuationVisualSeries?.[anomaly.seriesKey];
     return !current || current.type === "idle";
   });
@@ -653,6 +658,7 @@ export const __test__ = {
   chooseDisplayAnomalyIndex,
   getDisplayAnomalyIndex,
   isPercentMetric,
+  normalizeSeries,
   resolvePercentDisplayScale,
   formatChartValue,
 };
