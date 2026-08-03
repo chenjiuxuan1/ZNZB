@@ -1387,57 +1387,61 @@ export function createPlatformApi({
         onProgress?.({ type: "skipped", reason: "未配置 Dify Agent" });
         return { triggered: 0, reason: "agent not configured" };
       }
-      const dashboardGroups = new Map();
+      // A dashboard may produce several independent metric/dimension anomalies.
+      // The Agent gets sameDashboardAnomalies as shared context, but every
+      // anomaly still needs its own task, callback cache entry and verdict.
+      const anomalyJobs = [];
+      const dashboardKeys = new Set();
       for (const run of countryRuns) {
         if (!run.ok || !run.result?.anomalies) continue;
         for (let i = 0; i < run.result.anomalies.length; i++) {
           const anomaly = run.result.anomalies[i];
-          const groupKey = `${run.countryCode}:${anomaly.dashboardUuid || anomaly.dashboardTitle || "unknown"}`;
-          if (!dashboardGroups.has(groupKey)) {
-            dashboardGroups.set(groupKey, {
-              countryCode: run.countryCode,
-              anomalyIndex: i,
-              dashboardTitle: anomaly.dashboardTitle || "",
-              cardTitle: anomaly.cardTitle || "",
-              anomalyCount: 0,
-            });
-          }
-          dashboardGroups.get(groupKey).anomalyCount += 1;
+          const dashboardKey = `${run.countryCode}:${anomaly.dashboardUuid || anomaly.dashboardTitle || "unknown"}`;
+          dashboardKeys.add(dashboardKey);
+          anomalyJobs.push({
+            jobKey: `${dashboardKey}:${i}`,
+            dashboardKey,
+            countryCode: run.countryCode,
+            anomalyIndex: i,
+            dashboardTitle: anomaly.dashboardTitle || "",
+            cardTitle: anomaly.cardTitle || "",
+          });
         }
       }
       let triggered = 0;
       const skipped = [];
-      const totalDashboards = dashboardGroups.size;
-      if (!totalDashboards) {
+      const totalAnomalies = anomalyJobs.length;
+      const totalDashboards = dashboardKeys.size;
+      if (!totalAnomalies) {
         onProgress?.({ type: "skipped", reason: "本次没有需要取证的异常看板" });
-        return { triggered: 0, totalDashboards: 0, skipped, acceleration: acceleration.enabled ? { enabled: true, maxConcurrency: acceleration.maxConcurrency } : undefined };
+        return { triggered: 0, totalAnomalies: 0, totalDashboards: 0, skipped, acceleration: acceleration.enabled ? { enabled: true, maxConcurrency: acceleration.maxConcurrency } : undefined };
       }
-      onProgress?.({ type: "queued", totalDashboards });
-      const analyzeGroup = async ([groupKey, group]) => {
-        onProgress?.({ type: "start", groupKey, group, totalDashboards, completed: triggered + skipped.length });
+      onProgress?.({ type: "queued", totalAnomalies, totalDashboards });
+      const analyzeAnomaly = async (job) => {
+        onProgress?.({ type: "start", jobKey: job.jobKey, job, totalAnomalies, totalDashboards, completed: triggered + skipped.length });
         try {
           const analysis = await this.analyzeMetabaseAnomaly({
             runId: historyRunId,
-            countryCode: group.countryCode,
-            anomalyIndex: group.anomalyIndex,
+            countryCode: job.countryCode,
+            anomalyIndex: job.anomalyIndex,
             force: false,
           });
           triggered += 1;
-          onProgress?.({ type: analysis.pending ? "submitted" : "completed", groupKey, group, totalDashboards, completed: triggered + skipped.length });
+          onProgress?.({ type: analysis.pending ? "submitted" : "completed", jobKey: job.jobKey, job, totalAnomalies, totalDashboards, completed: triggered + skipped.length });
         } catch (error) {
-          skipped.push({ groupKey, error: error.message });
-          onProgress?.({ type: "failed", groupKey, group, totalDashboards, completed: triggered + skipped.length, error: error.message });
+          skipped.push({ jobKey: job.jobKey, error: error.message });
+          onProgress?.({ type: "failed", jobKey: job.jobKey, job, totalAnomalies, totalDashboards, completed: triggered + skipped.length, error: error.message });
         }
       };
       if (acceleration.enabled) {
         const queue = createBoundedTaskQueue({ concurrency: acceleration.maxConcurrency });
-        await Promise.all([...dashboardGroups.entries()].map((entry) => queue.add(() => analyzeGroup(entry))));
+        await Promise.all(anomalyJobs.map((job) => queue.add(() => analyzeAnomaly(job))));
       } else {
-        for (const entry of dashboardGroups.entries()) {
-          await analyzeGroup(entry);
+        for (const job of anomalyJobs) {
+          await analyzeAnomaly(job);
         }
       }
-      const result = { triggered, totalDashboards, skipped, acceleration: acceleration.enabled ? { enabled: true, maxConcurrency: acceleration.maxConcurrency } : undefined };
+      const result = { triggered, totalAnomalies, totalDashboards, skipped, acceleration: acceleration.enabled ? { enabled: true, maxConcurrency: acceleration.maxConcurrency } : undefined };
       onProgress?.({ type: "finished", result });
       return result;
     },
@@ -2918,27 +2922,27 @@ function updateBatchScheduleRunProgressStage(progress, key, patch) {
 function updateBatchScheduleAiProgress(progress, event = {}) {
   if (!progress) return progress;
   const current = (progress.stages || []).find((stage) => stage.key === "ai_analysis") || {};
-  const total = Number(event.totalDashboards ?? event.result?.totalDashboards ?? current.totalDashboards ?? 0);
-  const completed = Number(event.completed ?? event.result?.totalDashboards ?? current.completed ?? 0);
-  let stagePatch = { totalDashboards: total, completed };
+  const total = Number(event.totalAnomalies ?? event.result?.totalAnomalies ?? current.totalAnomalies ?? current.totalDashboards ?? 0);
+  const completed = Number(event.completed ?? event.result?.totalAnomalies ?? current.completed ?? 0);
+  let stagePatch = { totalAnomalies: total, totalDashboards: Number(event.totalDashboards ?? event.result?.totalDashboards ?? current.totalDashboards ?? 0), completed };
   let status = "ai_analyzing";
   if (event.type === "skipped") {
     stagePatch = { ...stagePatch, status: "skipped", detail: event.reason || "本次未触发自动 AI 分析" };
     status = progress.finalStatus || "success";
   } else if (event.type === "queued") {
-    stagePatch = { ...stagePatch, status: "queued", detail: `已排队 ${total} 个异常看板，AI 将在后台逐个取证` };
+    stagePatch = { ...stagePatch, status: "queued", detail: `已排队 ${total} 条异常指标，AI 将逐条独立取证` };
   } else if (event.type === "start") {
-    stagePatch = { ...stagePatch, status: "running", detail: `正在提交 ${Math.min(completed + 1, total)}/${total} 个异常看板的 AI 取证` };
+    stagePatch = { ...stagePatch, status: "running", detail: `正在提交 ${Math.min(completed + 1, total)}/${total} 条异常指标的 AI 取证` };
   } else if (event.type === "submitted") {
-    stagePatch = { ...stagePatch, status: "queued", detail: `已提交 ${completed}/${total} 个异常看板，等待 Dify 结论回写` };
+    stagePatch = { ...stagePatch, status: "queued", detail: `已提交 ${completed}/${total} 条异常指标，等待 Dify 结论回写` };
   } else if (event.type === "completed" || event.type === "failed") {
-    stagePatch = { ...stagePatch, status: "running", detail: `已完成 ${completed}/${total} 个异常看板${event.type === "failed" ? "（含失败项）" : ""}` };
+    stagePatch = { ...stagePatch, status: "running", detail: `已完成 ${completed}/${total} 条异常指标${event.type === "failed" ? "（含失败项）" : ""}` };
   } else if (event.type === "finished") {
     const failedCount = Number(event.result?.skipped?.length || 0);
     stagePatch = {
       ...stagePatch,
       status: failedCount ? "partial_failed" : "queued",
-      detail: failedCount ? `已提交 ${event.result?.triggered || 0}/${total} 个 AI 任务，${failedCount} 个提交失败` : `已提交 ${event.result?.triggered || total}/${total} 个 AI 任务，结论将异步回写`,
+      detail: failedCount ? `已提交 ${event.result?.triggered || 0}/${total} 条 AI 任务，${failedCount} 条提交失败` : `已提交 ${event.result?.triggered || total}/${total} 条 AI 任务，结论将异步回写`,
       completed: total,
     };
     status = progress.finalStatus || "success";
