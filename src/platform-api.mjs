@@ -250,6 +250,7 @@ export function createPlatformApi({
         || {};
       const series = buildAnomalyMetricSeries(Array.isArray(rows) ? rows : [], ruleForSeries, anomaly.message || "", {
         maxPoints: Number(body.maxPoints || 16),
+        forceHourlyAxis: hourlySeries,
       });
       const metricName = series.find((point) => point.metric)?.metric || "";
       const seriesPercent = isPercentSeriesFromCard(card, metricName, ruleForSeries);
@@ -3318,6 +3319,9 @@ function shouldUseHourlyFluctuationWindow(rules = [], anomaly = {}, card = {}) {
     anomaly.column,
     card.title,
   ].filter(Boolean).join(" ");
+  if (/(?:[01]?\d|2[0-3]):[0-5]\d/.test(text)) {
+    return true;
+  }
   return /小时|同时间点|hour|intraday/i.test(text);
 }
 
