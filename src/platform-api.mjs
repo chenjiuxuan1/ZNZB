@@ -252,26 +252,29 @@ export function createPlatformApi({
       } else {
         request.dashboardUuid = dashboard.uuid;
       }
-      const rows = await client.queryDashcardJson(request);
+      let rows = await client.queryDashcardJson(request);
       const ruleForSeries = matchingRules.find((rule) => String(rule.type || "") === String(anomaly.type || ""))
         || matchingRules[0]
         || {};
-      const hourlyAxis = detectHourlyAxisFromRows(rows);
-      const seriesRule = hourlyAxis.timeColumn
-        ? { ...ruleForSeries, timeColumn: hourlyAxis.timeColumn }
-        : ruleForSeries;
-      const series = buildAnomalyMetricSeries(Array.isArray(rows) ? rows : [], seriesRule, anomaly.message || "", {
-        maxPoints: Number(body.maxPoints || 16),
-        forceHourlyAxis: hourlyAxis.isHourly,
-      });
-      const metricName = series.find((point) => point.metric)?.metric || "";
-      const seriesPercent = isPercentSeriesFromCard(card, metricName, ruleForSeries);
-      const formattedSeries = series.map((point) => ({
-        ...point,
-        percent: seriesPercent,
-      }));
+      let formattedSeries = buildFluctuationChartSeries(rows, ruleForSeries, anomaly, card, body);
+      // Retry only insufficient history with a wider lookback while retaining URL filters.
+      if (formattedSeries.length < 2 && historyParameters.length) {
+        const fallbackParameters = mergeParameters(
+          mergeParameters(
+            mergeParameters(buildDefaultCardParameters(dashboard, card), ruleParameters),
+            urlParameters,
+          ),
+          buildFluctuationSeriesHistoryParameters(dashboard, card, 30),
+        );
+        const fallbackRows = await client.queryDashcardJson({ ...request, parameters: fallbackParameters });
+        const fallbackSeries = buildFluctuationChartSeries(fallbackRows, ruleForSeries, anomaly, card, body);
+        if (fallbackSeries.length > formattedSeries.length) {
+          rows = fallbackRows;
+          formattedSeries = fallbackSeries;
+        }
+      }
       return {
-        ok: formattedSeries.length > 0,
+        ok: formattedSeries.length >= 2,
         dashboard: {
           countryCode: dashboard.countryCode || dashboard.country?.code || "",
           dashboardUuid: dashboard.uuid || "",
@@ -282,7 +285,9 @@ export function createPlatformApi({
         },
         rowCount: Array.isArray(rows) ? rows.length : 0,
         series: formattedSeries,
-        message: formattedSeries.length ? "" : "已查询看板卡片，但未能从返回数据中匹配到这条告警指标的历史序列。",
+        message: formattedSeries.length >= 2
+          ? ""
+          : `看板查询返回 ${Array.isArray(rows) ? rows.length : 0} 行，但只匹配到 ${formattedSeries.length} 个趋势点；可能是历史日期过滤未映射到该卡片，或告警维度无法与看板返回行匹配。`,
       };
     },
 
@@ -3506,6 +3511,20 @@ function filterBatchHistory(history = DEFAULT_BATCH_HISTORY, filters = {}) {
     total: runs.length,
     runs: runs.slice(0, limit),
   };
+}
+
+function buildFluctuationChartSeries(rows, ruleForSeries = {}, anomaly = {}, card = {}, body = {}) {
+  const hourlyAxis = detectHourlyAxisFromRows(rows);
+  const seriesRule = hourlyAxis.timeColumn
+    ? { ...ruleForSeries, timeColumn: hourlyAxis.timeColumn }
+    : ruleForSeries;
+  const series = buildAnomalyMetricSeries(Array.isArray(rows) ? rows : [], seriesRule, anomaly.message || "", {
+    maxPoints: Number(body.maxPoints || 16),
+    forceHourlyAxis: hourlyAxis.isHourly,
+  });
+  const metricName = series.find((point) => point.metric)?.metric || "";
+  const seriesPercent = isPercentSeriesFromCard(card, metricName, ruleForSeries);
+  return series.map((point) => ({ ...point, percent: seriesPercent }));
 }
 
 function findInventoryCardForAnomaly(inventory = {}, anomaly = {}) {
