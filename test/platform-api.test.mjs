@@ -218,6 +218,39 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
   assert.deepEqual(result.series.map((point) => point.percent), [false, false, false]);
 });
 
+test("platform api recovers a stale dashboard identity from a unique country card", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        return [
+          { "统计日期": "2026-07-01", "注册数": 100 },
+          { "统计日期": "2026-07-02", "注册数": 200 },
+        ];
+      },
+    }),
+  });
+
+  const result = await api.getFluctuationVisualSeries({
+    anomaly: {
+      countryCode: "INE",
+      dashboardUuid: "stale-dashboard-uuid",
+      dashboardUrl: "https://data.example/public/dashboard/stale-dashboard-uuid",
+      dashboardTitle: "OKR",
+      cardTitle: "规模",
+      cardId: 1,
+      dashcardId: 2,
+      type: "completeDayChange",
+      message: "完整日指标「注册数」从 100 到 200（统计日期 2026-07-02 对比 2026-07-01）",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.dashboard.dashboardUuid, "dash-1");
+  assert.equal(result.series.length, 2);
+});
+
 test("platform api marks hydrated fluctuation series as percent from card visualization settings", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
