@@ -10,6 +10,7 @@ const AGENT_MODES = new Set(["summary", "evidence", "recursive_evidence"]);
 export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const enabledValue = String(env.METABASE_ANOMALY_AGENT_ENABLED || "").trim().toLowerCase();
   const n8nWebhookUrl = String(env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL || "").trim();
+  const n8nBatchWebhookUrl = String(env.METABASE_ANOMALY_AGENT_N8N_BATCH_WEBHOOK_URL || "").trim();
   const n8nToken = String(env.METABASE_ANOMALY_AGENT_N8N_TOKEN || "").trim();
   const asyncSetting = String(env.METABASE_ANOMALY_AGENT_N8N_ASYNC || "").trim().toLowerCase();
   // n8n webhooks run evidence jobs by default. Legacy synchronous behavior is
@@ -34,6 +35,7 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
     model,
     transport,
     n8nWebhookUrl,
+    n8nBatchWebhookUrl,
     n8nToken,
     n8nAsync,
     callbackUrl,
@@ -205,7 +207,8 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
   try {
-    const response = await fetchFn(settings.n8nWebhookUrl, {
+    const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+    const response = await fetchFn(batchUrl, {
       method: "POST",
       headers: {
         Accept: "application/json",
