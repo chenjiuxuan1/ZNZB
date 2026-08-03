@@ -229,7 +229,17 @@ export function createPlatformApi({
       // without deciding the chart axis from an alert message.
       const historyLookbackDays = 15;
       const anomalyDate = extractAnomalyDate(anomaly.message || "");
-      const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, historyLookbackDays, anomalyDate, body.now);
+      const ruleForSeries = matchingRules.find((rule) => String(rule.type || "") === String(anomaly.type || ""))
+        || matchingRules[0]
+        || {};
+      const historyParameters = buildFluctuationSeriesHistoryParameters(
+        dashboard,
+        card,
+        historyLookbackDays,
+        anomalyDate,
+        body.now,
+        ruleForSeries,
+      );
       const urlParameters = buildFluctuationSeriesUrlParameters(dashboard, card, anomaly.dashboardUrl);
       const ruleParameters = matchingRules.reduce(
         (parameters, rule) => mergeParameters(parameters, rule.parameters || []),
@@ -254,9 +264,6 @@ export function createPlatformApi({
         request.dashboardUuid = dashboard.uuid;
       }
       let rows = await client.queryDashcardJson(request);
-      const ruleForSeries = matchingRules.find((rule) => String(rule.type || "") === String(anomaly.type || ""))
-        || matchingRules[0]
-        || {};
       let formattedSeries = buildFluctuationChartSeries(rows, ruleForSeries, anomaly, card, body);
       // Retry only insufficient history with a wider lookback while retaining URL filters.
       if (formattedSeries.length < 2 && historyParameters.length) {
@@ -265,7 +272,7 @@ export function createPlatformApi({
             mergeParameters(buildDefaultCardParameters(dashboard, card), ruleParameters),
             urlParameters,
           ),
-          buildFluctuationSeriesHistoryParameters(dashboard, card, 30, anomalyDate, body.now),
+          buildFluctuationSeriesHistoryParameters(dashboard, card, 30, anomalyDate, body.now, ruleForSeries),
         );
         const fallbackRows = await client.queryDashcardJson({ ...request, parameters: fallbackParameters });
         const fallbackSeries = buildFluctuationChartSeries(fallbackRows, ruleForSeries, anomaly, card, body);
@@ -3539,10 +3546,13 @@ function findInventoryCardForAnomaly(inventory = {}, anomaly = {}) {
   const cardId = String(anomaly.cardId ?? "").trim();
   const dashcardId = String(anomaly.dashcardId ?? "").trim();
   const cardTitle = String(anomaly.cardTitle || "").trim();
-  const dashboards = (inventory.dashboards || []).filter((dashboard) => {
+  const countryDashboards = (inventory.dashboards || []).filter((dashboard) => {
     if (countryCode && normalizeCountryCode(dashboard.countryCode || dashboard.country?.code) !== countryCode) {
       return false;
     }
+    return true;
+  });
+  const dashboards = countryDashboards.filter((dashboard) => {
     if (dashboardUuid && String(dashboard.uuid || "") === dashboardUuid) {
       return true;
     }
@@ -3561,17 +3571,43 @@ function findInventoryCardForAnomaly(inventory = {}, anomaly = {}) {
       return { dashboard, card };
     }
   }
+
+  // Discovery can replace a dashboard UUID/URL while an older inspection run
+  // is still being viewed. Fall back only to a unique card inside the country.
+  const idMatches = countryDashboards.flatMap((dashboard) => (dashboard.cards || [])
+    .filter((card) => (cardId && String(card.cardId ?? "") === cardId)
+      || (dashcardId && String(card.dashcardId ?? "") === dashcardId))
+    .map((card) => ({ dashboard, card })));
+  if (idMatches.length === 1) {
+    return idMatches[0];
+  }
+
+  const dashboardTitle = canonicalDashboardTitle(anomaly.dashboardTitle || "");
+  const titleMatches = countryDashboards.flatMap((dashboard) => {
+    const dashboardMatches = dashboardTitle
+      && [dashboard.title, dashboard.sourcePanelTitle].some((title) => canonicalDashboardTitle(title) === dashboardTitle);
+    if (!dashboardMatches || !cardTitle) return [];
+    return (dashboard.cards || [])
+      .filter((card) => String(card.title || "").trim() === cardTitle)
+      .map((card) => ({ dashboard, card }));
+  });
+  if (titleMatches.length === 1) {
+    return titleMatches[0];
+  }
   return { dashboard: null, card: null };
 }
 
-function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays = 45, anomalyDate = "", now = Date.now()) {
+function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays = 45, anomalyDate = "", now = Date.now(), rule = {}) {
   const days = clampNumber(lookbackDays, 14, 90, 45);
   const dashboardParameters = new Map((dashboard.parameters || []).map((parameter) => [parameter.id, parameter]));
-  return (card.parameterMappings || []).flatMap((mapping) => {
+  const dateMappings = (card.parameterMappings || []).filter((mapping) => {
     const parameter = dashboardParameters.get(mapping.parameter_id);
-    if (!parameter?.type?.startsWith("date/")) {
-      return [];
-    }
+    return parameter?.type?.startsWith("date/");
+  });
+  const historyMappingIds = selectHistoryDateMappingIds(dateMappings, dashboardParameters, rule);
+  return dateMappings.flatMap((mapping) => {
+    const parameter = dashboardParameters.get(mapping.parameter_id);
+    if (!historyMappingIds.has(mapping.parameter_id)) return [];
     return [{
       id: parameter.id,
       type: parameter.type,
@@ -3579,6 +3615,34 @@ function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays =
       value: buildAnchoredHistoryWindow(days, anomalyDate, now),
     }];
   });
+}
+
+function selectHistoryDateMappingIds(mappings = [], dashboardParameters = new Map(), rule = {}) {
+  if (mappings.length <= 1) {
+    return new Set(mappings.map((mapping) => mapping.parameter_id));
+  }
+
+  const context = String(rule.context || "");
+  const dateColumn = String(rule.dateColumn || "");
+  const contextual = mappings.filter((mapping) => {
+    const parameter = dashboardParameters.get(mapping.parameter_id);
+    return parameter?.name && context.includes(parameter.name);
+  });
+  if (contextual.length) {
+    return new Set(contextual.map((mapping) => mapping.parameter_id));
+  }
+
+  const columnMatched = mappings.filter((mapping) => {
+    const target = JSON.stringify(mapping.target || []);
+    return dateColumn && target.includes(dateColumn);
+  });
+  if (columnMatched.length) {
+    return new Set(columnMatched.map((mapping) => mapping.parameter_id));
+  }
+
+  // A multi-date card without a clear axis must retain its defaults. Rewriting
+  // every date filter can remove the cohorts needed to calculate delayed metrics.
+  return new Set();
 }
 
 function extractAnomalyDate(message = "") {
