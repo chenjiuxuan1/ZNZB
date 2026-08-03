@@ -392,7 +392,16 @@ export function createPlatformApi({
       const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
       const finalEntries = entries.map((entry) => {
         const existing = existingByKey.get(entry.key);
-        return existing?.status === "completed" && String(existing.jobId || "") === String(entry.jobId || "") ? existing : entry;
+        if (existing?.status === "completed" && String(existing.jobId || "") === String(entry.jobId || "")) return existing;
+        if (stage === "metric_deep_analysis") {
+          return {
+            ...existing,
+            ...entry,
+            dashboardSummary: String(batch.dashboardSummary || existing?.dashboardSummary || ""),
+            screening: batch.screeningVerdict || existing?.screening || null,
+          };
+        }
+        return entry;
       });
       const analyses = keepRecentMetabaseAnalyses([...finalEntries, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: createdAt, analyses });
@@ -548,7 +557,7 @@ export function createPlatformApi({
       const deadlineAt = Date.parse(startedAt) + limits.deadlineMs;
       await this.savePendingMetabasePatrolRun({ id: runId, startedAt, trigger, schedule, runs: countryRuns, wattrelSummary, dsSchedulerSummary, dsSchedulerError });
       batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", { status: "queued", detail: "等待 AI 取证结论后再发送最终通知" });
-      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", { status: "running", detail: "正在准备同底表公共证据" });
+      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", { status: "running", detail: "正在准备看板公共证据" });
       let queueResult = { total: 0, completed: 0, failed: 0, timedOut: 0, settled: [], notSubmitted: [], phases: {} };
       if (getMetabaseAnomalyAgentSettings().enabled) {
         const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
@@ -558,7 +567,7 @@ export function createPlatformApi({
           deadlineAt,
           submit: async (batch) => this.submitMetabaseInvestigationBatch(batch),
           waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
-          onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, event); },
+          onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, phase: "dashboard_screening" }); },
         });
         for (const batch of screeningResult.notSubmitted || []) {
           await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 30 分钟全局截止，未再投递 Dify" });
@@ -590,7 +599,10 @@ export function createPlatformApi({
         queueResult = { total: prepared.batches.length, completed: prepared.batches.length, settled: [], notSubmitted: [] };
       }
       const finalizedRuns = await buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile: resolve("metabaseAnomalyAnalyses") });
-      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", { status: "success", detail: `AI 取证已收敛：${queueResult.completed}/${queueResult.total} 个批次` });
+      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", {
+        status: queueResult.failed || queueResult.timedOut || queueResult.notSubmitted.length ? "partial_failed" : "success",
+        detail: `看板初筛 ${queueResult.phases.dashboardScreening?.completed || 0}/${queueResult.phases.dashboardScreening?.total || 0}；指标深挖 ${queueResult.phases.metricDeepAnalysis?.completed || 0}/${queueResult.phases.metricDeepAnalysis?.total || 0}`,
+      });
       batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", { status: "running", detail: "AI 结论已收敛，正在发送最终通知" });
       const notificationSentCount = await sendScheduledAggregateNotifications({ countryRuns: finalizedRuns, countryConfigs, rulesFile: resolve("rules"), notifyTextFn, detailUrl, wattrelSummary, dsSchedulerSummary });
       batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", { status: "success", detail: notificationSentCount ? `已发送 ${notificationSentCount} 条最终通知` : "无需要通知的数据侧异常" });
@@ -3318,7 +3330,7 @@ function createBatchScheduleRunProgress({ id, trigger, startedAt, countryConfigs
     stages: [
       { key: "country_scan", label: "国家巡检", status: "running", detail: "正在读取 Metabase 并执行规则" },
       { key: "data_check", label: "DS 调度核查", status: "pending", detail: "等待国家巡检完成" },
-      { key: "ai_analysis", label: "AI 取证队列", status: "pending", detail: "等待公共证据准备；最多同时 2 个批次、每批最多 3 条指标" },
+      { key: "ai_analysis", label: "AI 取证队列", status: "pending", detail: "等待看板公共证据；先整板初筛，再仅深挖可疑指标，最多并行 2 个请求" },
       { key: "notification", label: "告警通知", status: "pending", detail: "等待 AI 取证结论收敛" },
       { key: "finished", label: "巡检完成", status: "pending", detail: "等待所有必要阶段完成" },
     ],
@@ -3423,20 +3435,39 @@ function updateBatchScheduleAiProgress(progress, event = {}) {
 function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   if (!progress) return progress;
   const current = (progress.stages || []).find((stage) => stage.key === "ai_analysis") || {};
-  const total = Number(event.total || current.batchCount || 0);
-  const completed = Number(event.completed || current.completed || 0);
+  const screeningPhase = event.phase !== "metric_deep_analysis";
+  const totalKey = screeningPhase ? "screeningTotal" : "deepTotal";
+  const completedKey = screeningPhase ? "screeningCompleted" : "deepCompleted";
+  const total = Number(event.total ?? current[totalKey] ?? 0);
+  const completed = Number(event.completed ?? current[completedKey] ?? 0);
+  const screeningTotal = screeningPhase ? total : Number(current.screeningTotal || 0);
+  const screeningCompleted = screeningPhase ? completed : Number(current.screeningCompleted || 0);
+  const deepTotal = screeningPhase ? Number(current.deepTotal || 0) : total;
+  const deepCompleted = screeningPhase ? Number(current.deepCompleted || 0) : completed;
   let status = "running";
-  let detail = `AI 裁决批次 ${completed}/${total}，最多同时运行 2 个，每批最多 3 条指标`;
-  if (event.type === "batch_submitted") detail = `已提交 ${Math.min(event.submitted || 0, total)}/${total} 个 AI 裁决批次，正在等待回写`;
-  if (event.type === "batch_settled") detail = `AI 裁决已收敛 ${completed}/${total} 个批次`;
+  let detail = screeningPhase
+    ? `看板初筛 ${completed}/${total}，最多同时运行 2 个请求`
+    : `看板初筛 ${screeningCompleted}/${screeningTotal}；指标深度分析 ${completed}/${total}`;
+  if (event.type === "batch_submitted") {
+    detail = screeningPhase
+      ? `看板初筛已提交 ${Math.min(event.submitted || 0, total)}/${total}，等待 Dify 回写`
+      : `看板初筛 ${screeningCompleted}/${screeningTotal}；指标深度分析已提交 ${Math.min(event.submitted || 0, total)}/${total}`;
+  }
+  if (event.type === "batch_settled") {
+    detail = screeningPhase
+      ? `看板初筛 ${completed}/${total}，仅可疑指标进入二次分析`
+      : `看板初筛 ${screeningCompleted}/${screeningTotal}；指标深度分析 ${completed}/${total}`;
+  }
   if (event.type === "global_deadline") {
     status = "partial_failed";
-    detail = `已达到 30 分钟截止，${event.notSubmitted?.length || 0} 个批次标记为 AI 未核验`;
+    detail = `已达到 30 分钟截止，${event.notSubmitted?.length || 0} 个请求标记为 AI 未核验`;
   }
   return updateBatchScheduleRunProgressStage(progress, "ai_analysis", {
     status,
-    batchCount: total,
-    completed,
+    screeningTotal,
+    screeningCompleted,
+    deepTotal,
+    deepCompleted,
     detail,
   });
 }
@@ -3462,6 +3493,9 @@ async function buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile })
         notificationAction: entry?.analysis?.notificationAction || "send",
         chartVisibility,
         verificationReason: entry?.analysis?.verificationReason || "",
+        dashboardSummary: entry?.dashboardSummary || "",
+        screeningVerdict: entry?.screening?.screeningVerdict || "",
+        screeningSummary: entry?.screening?.summary || "",
         summary: entry?.analysis?.summary || "AI 未核验，请人工确认。",
         limitations: entry?.analysis?.limitations || "AI 未返回完整结论。",
         statusLabel: verifiedNormal ? "AI 查数正常" : businessChange ? "AI 核验为业务变化" : entry?.status === "completed" ? "AI 已核验数据侧异常" : "AI 未核验",

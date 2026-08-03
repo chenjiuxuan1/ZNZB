@@ -126,8 +126,10 @@ test("history anomaly detail exposes an AI analysis action", () => {
   assert.match(root.innerHTML, /data-run-id="run-ai"/);
   assert.match(renderMetabaseAnomalyAnalysis({
     runId: "run-ai", countryCode: "PH", anomalyIndex: 0,
+    dashboardSummary: "该看板公共表与调度已完成核查",
+    screening: { screeningVerdict: "suspected_issue", summary: "该指标需要深挖" },
     analysis: { summary: "已完成", confidence: "low", limitations: "测试" },
-  }), /重新 AI 分析/);
+  }), /看板 AI 初筛总结[\s\S]*该看板公共表与调度已完成核查[\s\S]*单指标深挖[\s\S]*重新 AI 分析/);
 });
 
 test("dashboard scan details put fluctuation charts in their own anomaly column", () => {
@@ -163,14 +165,15 @@ test("scheduled run progress renders compact five-stage status and keeps country
       { key: "country_scan", label: "国家巡检", status: "success", detail: "已完成 1/1 个国家巡检" },
       { key: "data_check", label: "DS 调度核查", status: "success", detail: "DS 调度核查完成" },
       { key: "notification", label: "告警通知", status: "success", detail: "已发送 1 条通知" },
-      { key: "ai_analysis", label: "AI 取证队列", status: "queued", detail: "已提交 1/1 个异常看板" },
+      { key: "ai_analysis", label: "AI 取证队列", status: "running", detail: "指标深度分析 1/3", screeningCompleted: 2, screeningTotal: 2, deepCompleted: 1, deepTotal: 3 },
       { key: "finished", label: "巡检完成", status: "success", detail: "巡检和通知已完成" },
     ],
   };
   renderBatchCheck(root);
   assert.match(root.innerHTML, /AI 取证队列/);
   assert.match(root.innerHTML, /查看国家巡检明细/);
-  assert.match(root.innerHTML, /已提交 1\/1 个异常看板/);
+  assert.match(root.innerHTML, /看板初筛 2\/2/);
+  assert.match(root.innerHTML, /指标深挖 1\/3/);
 });
 
 test("scheduled country progress details stay open across polling rerenders", () => {

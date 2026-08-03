@@ -638,9 +638,12 @@ function renderScheduleRunProgress() {
   const countries = progress.countries || [];
   const completed = Number(progress.completedCountries || 0);
   const total = Number(progress.totalCountries || countries.length || 0);
-  const percent = total ? Math.round((completed / total) * 100) : 0;
+  const countryPercent = total ? (completed / total) * 100 : 0;
   const currentLabel = [progress.currentCountryName, progress.currentCountryCode].filter(Boolean).join(" / ");
   const stages = progress.stages || [];
+  const finishedStages = stages.filter((stage) => ["success", "skipped", "partial_failed"].includes(stage.status)).length;
+  const runningStage = stages.some((stage) => ["running", "queued"].includes(stage.status)) ? 0.5 : 0;
+  const percent = stages.length ? Math.round(((finishedStages + runningStage) / stages.length) * 100) : Math.round(countryPercent);
   return `
     <div class="sub-panel schedule-progress-panel">
       <div class="detail-header compact-header">
@@ -657,7 +660,7 @@ function renderScheduleRunProgress() {
         ${stages.map((stage, index) => `
           <article class="schedule-stage ${escapeHtml(stage.status || "pending")}">
             <span class="schedule-stage-index">${index + 1}</span>
-            <div><strong>${escapeHtml(stage.label || "-")}</strong><small>${escapeHtml(stage.detail || "等待开始")}</small></div>
+            <div><strong>${escapeHtml(stage.label || "-")}</strong><small>${escapeHtml(stage.detail || "等待开始")}</small>${stage.key === "ai_analysis" ? renderAiStageCounters(stage) : ""}</div>
             <span class="badge ${escapeHtml(scheduleProgressBadge(stage.status))}">${escapeHtml(scheduleProgressLabel(stage.status))}</span>
           </article>
         `).join("")}
@@ -678,6 +681,13 @@ function renderScheduleRunProgress() {
       </details>
     </div>
   `;
+}
+
+function renderAiStageCounters(stage = {}) {
+  const hasScreening = Number(stage.screeningTotal || 0) > 0;
+  const hasDeep = Number(stage.deepTotal || 0) > 0;
+  if (!hasScreening && !hasDeep) return "";
+  return `<span class="schedule-ai-counters">${hasScreening ? `<em>看板初筛 ${escapeHtml(stage.screeningCompleted || 0)}/${escapeHtml(stage.screeningTotal || 0)}</em>` : ""}${hasDeep ? `<em>指标深挖 ${escapeHtml(stage.deepCompleted || 0)}/${escapeHtml(stage.deepTotal || 0)}</em>` : ""}</span>`;
 }
 
 function formatScheduleProgressStatus(progress, currentLabel) {
@@ -1225,9 +1235,12 @@ export function renderMetabaseAnomalyAnalysis(response) {
     return `<div class="sandbox-status info"><strong>数据侧取证进行中</strong><span>任务 ${escapeHtml(response.jobId || "-")} 已提交；完成后可查看 StarRocks、血缘和 DS 的核查结论。</span></div>`;
   }
   const analysis = response?.analysis || {};
+  const screening = response?.screening || {};
   return `
+    ${response?.dashboardSummary ? `<div class="sandbox-status neutral"><strong>看板 AI 初筛总结</strong><span>${escapeHtml(response.dashboardSummary)}</span></div>` : ""}
+    ${screening.screeningVerdict ? `<div class="sandbox-status info"><strong>单指标初筛：${escapeHtml(formatScreeningVerdict(screening.screeningVerdict))}</strong><span>${escapeHtml(screening.summary || "该指标已完成首轮判断。")}</span></div>` : ""}
     <div class="sandbox-status info">
-      <strong>AI 原因分析${response.cached ? "（缓存）" : ""}</strong>
+      <strong>${screening.screeningVerdict === "verified_normal" ? "AI 查数核验" : "单指标深挖"}${response.cached ? "（缓存）" : ""}</strong>
       <span>${escapeHtml(analysis.summary || "-")}</span>
     </div>
     ${renderMetabaseAnalysisList("可能原因", analysis.possibleCauses)}
@@ -1240,6 +1253,12 @@ export function renderMetabaseAnomalyAnalysis(response) {
       <button class="secondary" type="button" data-metabase-anomaly-retry data-run-id="${escapeHtml(response.runId || "")}" data-country-code="${escapeHtml(response.countryCode || "")}" data-anomaly-index="${escapeHtml(response.anomalyIndex ?? "")}" data-analysis-result-id="metabase-ai-analysis-${encodeURIComponent(`${response.runId || ""}-${response.countryCode || ""}-${response.anomalyIndex ?? ""}`).replace(/%/g, "")}">重新 AI 分析</button>
     </div>
   `;
+}
+
+function formatScreeningVerdict(verdict) {
+  if (verdict === "verified_normal") return "实时证据已证明正常";
+  if (verdict === "suspected_issue") return "发现可疑问题，已进入深挖";
+  return "证据不足，已进入深挖";
 }
 
 function renderMetabaseAnalysisList(label, items) {

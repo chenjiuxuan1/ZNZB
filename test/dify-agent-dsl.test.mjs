@@ -12,9 +12,13 @@ test("Dify Agent DSL bounds batched investigation and requires one verdict per m
 
   assert.match(dsl, /max_iterations:\s*\n\s+type: constant\s*\n\s+value: 8/);
   assert.match(dsl, /cases_json/);
+  assert.match(dsl, /dashboard_screening/);
+  assert.match(dsl, /metric_deep_analysis/);
+  assert.match(dsl, /screeningVerdict/);
+  assert.match(dsl, /只有实时证据明确证明/);
   assert.match(dsl, /总工具调用不得超过 6 次/);
   assert.match(dsl, /每个 anomalyIndex 各一项，不多不少/);
-  assert.match(dsl, /总工具调用预算：最多 8 次/);
+  assert.match(dsl, /总工具调用预算：最多 6 次/);
   assert.match(dsl, /不得对每个 upstreamTable 全量递归/);
   assert.match(dsl, /关键证据已经足够时，必须立即输出 finish/);
   assert.doesNotMatch(dsl, /不得在未完成第2-7步调查的情况下输出 finish/);

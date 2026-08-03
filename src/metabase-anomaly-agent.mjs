@@ -93,18 +93,21 @@ export async function analyzeMetabaseAnomaly({ anomaly, context = {}, env = proc
 export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.env, fetchFn = fetchCompatible } = {}) {
   const settings = getMetabaseAnomalyAgentSettings(env);
   const cases = Array.isArray(batch.cases) ? batch.cases : [];
+  const stage = batch.stage === "metric_deep_analysis" ? "metric_deep_analysis" : "dashboard_screening";
   if (!settings.enabled || settings.transport !== "n8n" || !settings.n8nAsync) {
     const error = new Error("批量 Metabase 异常分析需要已配置的异步 n8n Agent。");
     error.statusCode = 503;
     throw error;
   }
-  if (!batch.batchId || !batch.runId || !batch.countryCode || !batch.snapshotId || cases.length === 0 || cases.length > 3) {
-    const error = new Error("批量 Metabase 异常分析必须包含批次 ID、巡检 ID、国家、快照和 1-3 条异常。");
+  if (!batch.batchId || !batch.runId || !batch.countryCode || !batch.snapshotId || cases.length === 0
+    || (stage === "metric_deep_analysis" && cases.length !== 1)
+    || Buffer.byteLength(JSON.stringify({ ...batch, stage, cases }), "utf8") > 512 * 1024) {
+    const error = new Error("Metabase 两阶段分析必须包含有效标识；看板初筛包含全部指标，单指标深挖只能包含一条，且请求不得超过 512 KiB。");
     error.statusCode = 400;
     throw error;
   }
   const jobId = String(batch.jobId || randomUUID());
-  const request = requestN8nAgentBatch({ settings, batch: { ...batch, cases }, fetchFn, jobId });
+  const request = requestN8nAgentBatch({ settings, batch: { ...batch, stage, cases }, fetchFn, jobId });
   const settled = request.then((value) => ({ value }), (error) => ({ error }));
   const first = await Promise.race([
     settled,
@@ -210,18 +213,23 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
         Authorization: `Bearer ${settings.n8nToken}`,
       },
       body: JSON.stringify({
-        protocolVersion: 3,
+        protocolVersion: 4,
         jobId,
-        batch: {
+        job: {
+          stage: batch.stage,
           batchId: String(batch.batchId),
           runId: String(batch.runId),
           countryCode: String(batch.countryCode).toUpperCase(),
           snapshotId: String(batch.snapshotId),
+          dashboardUuid: String(batch.dashboardUuid || ""),
+          dashboardTitle: String(batch.dashboardTitle || ""),
+          dashboardSummary: String(batch.dashboardSummary || ""),
+          screeningVerdict: batch.screeningVerdict || null,
           sourceTable: String(batch.sourceTable || ""),
-          cases: batch.cases.slice(0, 3),
+          cases: batch.cases,
         },
         callback: {
-          url: resolveBatchCallbackUrl(settings.callbackUrl),
+          url: resolveBatchCallbackUrl(settings.callbackUrl, batch.stage),
           token: settings.callbackToken || null,
         },
       }),
@@ -239,9 +247,9 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
   }
 }
 
-function resolveBatchCallbackUrl(callbackUrl) {
+function resolveBatchCallbackUrl(callbackUrl, stage) {
   const value = String(callbackUrl || "").replace(/\/+$/, "");
-  return value.replace(/\/callback$/, "/batch-callback");
+  return value.replace(/\/callback$/, stage === "dashboard_screening" ? "/screening-callback" : "/batch-callback");
 }
 
 function normalizeRequestedMode(value, fallback) {
