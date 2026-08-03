@@ -659,10 +659,11 @@ function evaluateBuiltIns(config, dashboard, card, result, options = {}) {
     for (const message of zeroDrops) {
       anomalies.push(buildAnomaly(dashboard, card, "latestNonZeroToZero", message, null, {
         series: buildAnomalyMetricSeries(result.rows, {
+          ...intradayRule,
           dateColumn: intradayRule?.dateColumn,
           metricColumnFallback: metricColumns,
           timezone,
-        }, message),
+        }, message, { forceHourlyAxis: Boolean(intradayRule) }),
       }));
     }
   }
@@ -1957,6 +1958,7 @@ export function buildAnomalyMetricSeries(rows = [], rule = {}, message = "", opt
     dimensionFilters,
     metricFromMessage,
     maxPoints: options.maxPoints || 16,
+    forceHourlyAxis: Boolean(options.forceHourlyAxis),
   });
   if (hourlySeries.length) {
     return hourlySeries;
@@ -2011,8 +2013,9 @@ function buildHourlyAnomalyMetricSeries(rows, {
   dimensionFilters = [],
   metricFromMessage = "",
   maxPoints = 16,
+  forceHourlyAxis = false,
 } = {}) {
-  const shouldUseHourlyAxis = isIntradayRuleType(rule.type) || Boolean(rule.timeColumn) || metricColumns.some(isHourlyMetricColumn);
+  const shouldUseHourlyAxis = forceHourlyAxis || isIntradayRuleType(rule.type) || Boolean(rule.timeColumn) || metricColumns.some(isHourlyMetricColumn);
   if (!shouldUseHourlyAxis) {
     return [];
   }
@@ -2243,9 +2246,6 @@ function extractLastDateFromText(message = "") {
 }
 
 function resolveTargetHourFromMessage(message = "", metricFromMessage = "") {
-  if (isHourlyMetricColumn(metricFromMessage)) {
-    return Number(String(metricFromMessage).trim());
-  }
   const text = String(message || "");
   const timeMatch = text.match(/(?:^|[^\d])([01]?\d|2[0-3]):([0-5]\d)(?:[^\d]|$)/);
   if (timeMatch) {
