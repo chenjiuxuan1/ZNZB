@@ -21,6 +21,7 @@ export const state = {
   batchScheduleError: "",
   batchScheduleProgress: null,
   batchScheduleProgressTimer: null,
+  batchScheduleCountryDetailsOpen: false,
   batchHistory: null,
   batchHistoryLoaded: false,
   metabaseRunAnalyses: {},
