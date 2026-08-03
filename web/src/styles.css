@@ -4451,7 +4451,7 @@ body {
 }
 
 .fluctuation-country-focus .fluctuation-country-card {
-  min-height: 600px;
+  min-height: 0;
 }
 
 .fluctuation-country-head {
@@ -4470,6 +4470,99 @@ body {
 }
 
 .fluctuation-chart-wrap {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fluctuation-row-list {
+  display: grid;
+  gap: 12px;
+}
+
+.fluctuation-row {
+  align-items: stretch;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 0.78fr) minmax(420px, 1.22fr);
+  min-width: 0;
+  padding: 12px;
+}
+
+.fluctuation-row-meta {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.fluctuation-row-index {
+  align-items: center;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  color: #c2410c;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 28px;
+  justify-content: center;
+  min-width: 28px;
+  padding: 0 8px;
+}
+
+.fluctuation-row-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fluctuation-row-title h3 {
+  font-size: 16px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fluctuation-row-title p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fluctuation-row-detail {
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fluctuation-row-detail div {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+}
+
+.fluctuation-row-detail span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fluctuation-row-detail strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.fluctuation-row-chart {
   display: grid;
   gap: 8px;
   min-width: 0;
@@ -4516,16 +4609,36 @@ body {
   stroke-width: 3;
 }
 
+.fluctuation-line-chart .baseline-line {
+  fill: none;
+  stroke: #2563eb;
+  stroke-dasharray: 6 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
 .fluctuation-line-chart .normal-dot {
   fill: #10b981;
   stroke: #ffffff;
   stroke-width: 1.5;
 }
 
+.fluctuation-line-chart .baseline-dot {
+  fill: #60a5fa;
+  stroke: #ffffff;
+  stroke-width: 1.4;
+}
+
 .fluctuation-line-chart .anomaly-dot {
   fill: #dc2626;
   stroke: #ffffff;
   stroke-width: 2;
+}
+
+.fluctuation-line-chart .chart-legend text {
+  fill: #475467;
+  font-size: 10px;
 }
 
 .fluctuation-chart-caption {
@@ -4656,6 +4769,14 @@ body {
   }
 
   .fluctuation-visual-body {
+    grid-template-columns: 1fr;
+  }
+
+  .fluctuation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .fluctuation-row-detail {
     grid-template-columns: 1fr;
   }
 

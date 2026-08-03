@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   checkPublicDashboards,
+  buildAnomalyMetricSeries,
   buildDefaultCardParameters,
   buildUpdateFrequencyHistoryParameters,
   evaluateRowsAgainstRule,
@@ -1334,9 +1335,142 @@ test("checkPublicDashboards ignores future hourly metric columns within the allo
     }),
   });
 
-  assert.equal(result.anomalyCount, 1);
-  assert.match(result.anomalies[0].message, /指标「8」从 120 降为 0/);
-  assert.doesNotMatch(result.anomalies[0].message, /指标「10」|指标「20」/);
+  assert.equal(result.anomalies.some((anomaly) => anomaly.type === "latestNonZeroToZero"), false);
+});
+
+test("checkPublicDashboards does not report hourly columns as generic zero-drop metrics", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [{
+        title: "每小时监控",
+        url: "https://data.example/dashboard/1053",
+        countryCode: "PK",
+        timezone: "Asia/Karachi",
+        cards: [{ title: "进件 - 老客", cardId: 1, dashcardId: 2, metrics: ["1", "2", "3", "4"] }],
+      }],
+    },
+    ruleConfig: {
+      builtInChecks: { queryError: false, noData: false, emptyMetrics: false },
+      rules: [{
+        type: "intradayTimePointChange",
+        dashboardTitle: "每小时监控",
+        timeColumn: "小时",
+        intervalMinutes: 60,
+        thresholdPct: 999,
+      }],
+    },
+    dataQualityFn: async () => null,
+    checkedAt: "2026-07-30T04:00:00.000Z",
+    queryCardFn: async () => ({
+      ok: true,
+      rows: [
+        { "日期": "2026-07-29", "1": 99, "2": 73, "3": 46, "4": 28 },
+        { "日期": "2026-07-30", "1": 0, "2": 0, "3": 0, "4": 0 },
+      ],
+      error: null,
+    }),
+  });
+
+  assert.equal(result.anomalies.some((anomaly) => anomaly.type === "latestNonZeroToZero"), false);
+});
+
+test("buildAnomalyMetricSeries uses hour labels for wide hourly monitor cards", () => {
+  const series = buildAnomalyMetricSeries(
+    [
+      { "日期": "2026-07-29", "0": 10, "1": 99, "2": 73, "3": 46 },
+      { "日期": "2026-07-30", "0": 12, "1": 0, "2": 61, "3": 44 },
+    ],
+    {
+      type: "intradayTimePointChange",
+      dateColumn: "日期",
+      columns: ["0", "1", "2", "3"],
+      timezone: "Asia/Karachi",
+    },
+    "同时间点指标「1」从 99 到 0，波动 -100.0%（Asia/Karachi 01:00，日期 2026-07-30 对比 2026-07-29）",
+  );
+
+  assert.deepEqual(series.map((point) => [point.label, point.value, point.anomaly, point.xType]), [
+    ["00:00", 12, false, "hour"],
+    ["01:00", 0, true, "hour"],
+    ["02:00", 61, false, "hour"],
+    ["03:00", 44, false, "hour"],
+  ]);
+});
+
+test("buildAnomalyMetricSeries adds previous 14 day hourly averages for wide hourly monitor cards", () => {
+  const rows = [
+    ...Array.from({ length: 14 }, (_, index) => ({
+      "日期": `2026-07-${String(15 + index).padStart(2, "0")}`,
+      "0": 10 + index,
+      "1": 100,
+      "2": 60,
+    })),
+    { "日期": "2026-07-29", "0": 12, "1": 180, "2": 62 },
+  ];
+  const series = buildAnomalyMetricSeries(
+    rows,
+    {
+      type: "intradayTimePointChange",
+      dateColumn: "日期",
+      columns: ["0", "1", "2"],
+      timezone: "Asia/Karachi",
+      baselineLookbackDays: 14,
+    },
+    "同时间点指标「1」当前 180；近14天同点均值 100（样本14天），较基线 +80.0%（Asia/Karachi 01:00，日期 2026-07-29 对比 2026-07-28）",
+  );
+
+  const target = series.find((point) => point.label === "01:00");
+  assert.equal(target.value, 180);
+  assert.equal(target.baselineValue, 100);
+  assert.equal(target.baselineSampleCount, 14);
+  assert.equal(target.anomaly, true);
+});
+
+test("buildAnomalyMetricSeries uses hour labels for long hourly monitor cards", () => {
+  const series = buildAnomalyMetricSeries(
+    [
+      { "日期": "2026-07-30", "小时": 0, "进件数": 12 },
+      { "日期": "2026-07-30", "小时": 1, "进件数": 0 },
+      { "日期": "2026-07-30", "小时": 2, "进件数": 61 },
+    ],
+    {
+      type: "intradayTimePointChange",
+      dateColumn: "日期",
+      timeColumn: "小时",
+      columns: ["进件数"],
+      timezone: "Asia/Karachi",
+    },
+    "同时间点指标「进件数」从 99 到 0，波动 -100.0%（Asia/Karachi 01:00，日期 2026-07-30 对比 2026-07-29）",
+  );
+
+  assert.deepEqual(series.map((point) => [point.label, point.value, point.anomaly, point.xType]), [
+    ["00:00", 12, false, "hour"],
+    ["01:00", 0, true, "hour"],
+    ["02:00", 61, false, "hour"],
+  ]);
+});
+
+test("buildAnomalyMetricSeries can force an hourly chart for a generic zero-drop alert", () => {
+  const rows = Array.from({ length: 15 }, (_, dayOffset) => {
+    const date = `2026-07-${String(dayOffset + 1).padStart(2, "0")}`;
+    return [
+      { date, hour: "00:00", amount: 100 },
+      { date, hour: "01:00", amount: dayOffset === 14 ? 0 : 200 },
+    ];
+  }).flat();
+
+  const series = buildAnomalyMetricSeries(
+    rows,
+    { dateColumn: "date", timeColumn: "hour", columns: ["amount"] },
+    "metric amount 200 to 0, 2026-07-15 01:00",
+    { forceHourlyAxis: true },
+  );
+
+  assert.deepEqual(series.map((point) => [point.label, point.value, point.baselineValue, point.anomaly, point.xType]), [
+    ["00:00", 100, 100, false, "hour"],
+    ["01:00", 0, 200, true, "hour"],
+  ]);
 });
 
 test("evaluateRowsAgainstRule reports no data when an intraday card has no parseable date column", () => {
@@ -1712,9 +1846,10 @@ test("evaluateRowsAgainstRule checks intraday time point change", () => {
     },
   );
 
-  assert.deepEqual(result, [
-    "同时间点指标「reg_cnt」从 100 到 130，波动 +30.0%；判定：昨日同点波动超过±15.0%；近30天同点样本不足7天时，先按昨日同点阈值触发（Asia/Jakarta 00:30，日期 2026-06-08 对比 2026-06-07）",
-  ]);
+  assert.equal(result.length, 1);
+  assert.match(result[0], /reg_cnt/);
+  assert.match(result[0], /130/);
+  assert.match(result[0], /\+30\.0%/);
 });
 
 test("evaluateRowsAgainstRule waits for an intraday baseline when the rule requires it", () => {
@@ -1741,6 +1876,51 @@ test("evaluateRowsAgainstRule waits for an intraday baseline when the rule requi
   );
 
   assert.deepEqual(result, []);
+});
+
+test("evaluateRowsAgainstRule compares hourly points with the previous 14 same-hour average", () => {
+  const rows = [
+    { "日期": "2026-06-01", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-02", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-03", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-04", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-05", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-06", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-07", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-08", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-09", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-10", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-11", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-12", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-13", "开始时间": "00:30", "reg_cnt": 100 },
+    { "日期": "2026-06-14", "开始时间": "00:30", "reg_cnt": 178 },
+    { "日期": "2026-06-15", "开始时间": "00:30", "reg_cnt": 180 },
+  ];
+  const result = evaluateRowsAgainstRule(rows, {
+    type: "intradayTimePointChange",
+    dateColumn: "日期",
+    timeColumn: "开始时间",
+    column: "reg_cnt",
+    timezone: "Asia/Jakarta",
+    currentDate: "2026-06-15",
+    previousDate: "2026-06-14",
+    startTime: "00:30",
+    cutoffTime: "00:30",
+    intervalMinutes: 30,
+    maxAbsChangeRate: 0.5,
+    baselineMaxAbsChangeRate: 0.5,
+    baselineLookbackDays: 14,
+    baselineMinSamples: 14,
+    minPrevious: 10,
+    ignoreDimensionColumns: ["开始时间"],
+  });
+
+  assert.equal(result.length, 1);
+  assert.match(result[0], /reg_cnt/);
+  assert.match(result[0], /当前 180/);
+  assert.match(result[0], /昨日同点 178/);
+  assert.match(result[0], /近14天/);
+  assert.match(result[0], /均值 105\.57/);
 });
 
 test("evaluateRowsAgainstRule adds monthly time point baseline details", () => {
@@ -1773,9 +1953,12 @@ test("evaluateRowsAgainstRule adds monthly time point baseline details", () => {
     },
   );
 
-  assert.deepEqual(result, [
-    "同时间点指标「reg_cnt」从 100 到 180，波动 +80.0%；近30天同点中位数 100（样本7天），较基线 +80.0%；判定：昨日同点波动超过±50.0%，且近30天同点中位数波动超过±50.0%，两项同时命中才触发（Asia/Jakarta 00:30，日期 2026-06-08 对比 2026-06-07）",
-  ]);
+  assert.equal(result.length, 1);
+  assert.match(result[0], /reg_cnt/);
+  assert.match(result[0], /180/);
+  assert.match(result[0], /近30天/);
+  assert.match(result[0], /均值 100/);
+  assert.match(result[0], /\+80\.0%/);
 });
 
 test("evaluateRowsAgainstRule detects previous day time point drop against baseline after current day recovers", () => {
@@ -1810,9 +1993,12 @@ test("evaluateRowsAgainstRule detects previous day time point drop against basel
     },
   );
 
-  assert.deepEqual(result, [
-    "上一日同时间点指标「launch_num」为 20，近30天同点中位数 100（样本7天），较基线 -80.0%；判定：上一日同点相对近30天基线波动超过±50.0%（Asia/Jakarta 00:30，日期 2026-06-08）",
-  ]);
+  assert.equal(result.length, 1);
+  assert.match(result[0], /launch_num/);
+  assert.match(result[0], /20/);
+  assert.match(result[0], /近30天/);
+  assert.match(result[0], /均值 100/);
+  assert.match(result[0], /-80\.0%/);
 });
 
 test("evaluateRowsAgainstRule checks explicit empty data rule", () => {

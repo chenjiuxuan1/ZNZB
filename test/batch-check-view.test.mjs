@@ -220,20 +220,64 @@ test("fluctuation visual keeps the manually selected point", () => {
   assert.equal(fluctuationVisualTest.getDisplayAnomalyIndex(country), 0);
 });
 
+test("fluctuation visual limits concurrent dashboard history queries", async () => {
+  let active = 0;
+  let peak = 0;
+  const completed = [];
+
+  await fluctuationVisualTest.runWithConcurrency([1, 2, 3, 4, 5], 3, async (value) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    completed.push(value);
+    active -= 1;
+  });
+
+  assert.equal(peak, 3);
+  assert.deepEqual(completed.sort((left, right) => left - right), [1, 2, 3, 4, 5]);
+});
+
 test("fluctuation visual chart accepts hydrated series", () => {
   const chart = fluctuationVisualTest.buildChart({
     metricLabel: "注册数",
     message: "完整日指标「注册数」从 100 到 200",
     hydratedSeries: [
-      { date: "2026-07-01", value: 100 },
-      { date: "2026-07-02", value: 200, anomaly: true },
+      { date: "2026-07-01", value: 100, baselineValue: 90, baselineSampleCount: 14 },
+      { date: "2026-07-02", value: 200, baselineValue: 110, baselineSampleCount: 14, anomaly: true },
     ],
   });
 
-  assert.deepEqual(chart.points.map((point) => [point.label, point.value, point.anomaly]), [
-    ["2026-07-01", 100, false],
-    ["2026-07-02", 200, true],
+  assert.deepEqual(chart.points.map((point) => [point.label, point.value, point.baselineValue, point.baselineSampleCount, point.anomaly]), [
+    ["2026-07-01", 100, 90, 14, false],
+    ["2026-07-02", 200, 110, 14, true],
   ]);
+});
+
+test("fluctuation visual prefers refreshed hourly data and keeps all 24 hours", () => {
+  const savedSeries = [
+    { date: "2026-08-02", value: 6650.72 },
+    { date: "2026-08-03", value: 0, anomaly: true },
+  ];
+  const hydratedSeries = Array.from({ length: 24 }, (_, hour) => ({
+    date: "2026-08-03",
+    label: `${String(hour).padStart(2, "0")}:00`,
+    value: hour + 1,
+    baselineValue: hour + 2,
+    xType: "hour",
+    anomaly: hour === 2,
+  }));
+
+  const points = fluctuationVisualTest.normalizeSeries({
+    series: savedSeries,
+    hydratedSeries,
+  });
+
+  assert.equal(points.length, 24);
+  assert.equal(points[0].label, "00:00");
+  assert.equal(points.at(-1).label, "23:00");
+  assert.equal(points[2].anomaly, true);
+  assert.equal(points[2].baselineValue, 4);
+  assert.equal(points.every((point) => point.xType === "hour"), true);
 });
 
 test("fluctuation visual does not format count metrics as percent because change text has percent", () => {

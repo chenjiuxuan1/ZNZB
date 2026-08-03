@@ -652,16 +652,18 @@ function evaluateBuiltIns(config, dashboard, card, result, options = {}) {
         timezone,
         now: options.checkedAt,
         allowedDelayMinutes: intradayRule?.allowedDelayMinutes ?? intradayRule?.dataDelayMinutes,
+        skipHourlyMetricColumns: Boolean(intradayRule),
         skipFutureHourlyMetricColumns: Boolean(intradayRule),
       },
     );
     for (const message of zeroDrops) {
       anomalies.push(buildAnomaly(dashboard, card, "latestNonZeroToZero", message, null, {
         series: buildAnomalyMetricSeries(result.rows, {
+          ...intradayRule,
           dateColumn: intradayRule?.dateColumn,
           metricColumnFallback: metricColumns,
           timezone,
-        }, message),
+        }, message, { forceHourlyAxis: Boolean(intradayRule) }),
       }));
     }
   }
@@ -998,6 +1000,9 @@ function checkLatestNonZeroToZero(rows, metricColumns, options = {}) {
       continue;
     }
     for (const column of metricColumns) {
+      if (options.skipHourlyMetricColumns && isHourlyMetricColumn(column)) {
+        continue;
+      }
       if (isFutureHourlyMetricColumn(column, item.latest, dateColumn, options)) {
         continue;
       }
@@ -1023,11 +1028,11 @@ function isFutureHourlyMetricColumn(column, latestRow, dateColumn, options = {})
     return false;
   }
 
-  const hour = Number(String(column).trim());
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+  if (!isHourlyMetricColumn(column)) {
     return false;
   }
 
+  const hour = Number(String(column).trim());
   const latestDate = normalizeDateKey(latestRow?.[dateColumn]);
   const localNow = getZonedNow(resolveNow({ now: options.now }), options.timezone || "Asia/Jakarta");
   if (latestDate !== localNow.dateKey) {
@@ -1036,6 +1041,14 @@ function isFutureHourlyMetricColumn(column, latestRow, dateColumn, options = {})
 
   const allowedDelayMinutes = Number(options.allowedDelayMinutes) || 0;
   return hour * 60 > localNow.hour * 60 + localNow.minute - allowedDelayMinutes;
+}
+
+function isHourlyMetricColumn(column) {
+  const hour = Number(String(column).trim());
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    return false;
+  }
+  return true;
 }
 
 function hasFrequentHistoricalZeros(rows, column, options = {}) {
@@ -1495,8 +1508,8 @@ function checkIntradayTimePointChange(rows, rule) {
   const expectedTimes = buildExpectedTimePointMinutes(rule, localNow);
   const maxAbsChangeRate = rule.maxAbsChangeRate ?? 0.15;
   const baselineMaxAbsChangeRate = rule.baselineMaxAbsChangeRate ?? maxAbsChangeRate;
-  const baselineLookbackDays = rule.baselineLookbackDays ?? 30;
-  const baselineMinSamples = rule.baselineMinSamples ?? 7;
+  const baselineLookbackDays = rule.baselineLookbackDays ?? 14;
+  const baselineMinSamples = rule.baselineMinSamples ?? 14;
   const minPrevious = rule.minPrevious ?? 1;
   const scanPreviousDateAgainstBaseline = rule.scanPreviousDateAgainstBaseline === true;
   const series = buildIntradaySeries(
@@ -1515,62 +1528,74 @@ function checkIntradayTimePointChange(rows, rule) {
     for (const time of expectedTimes) {
       const currentValues = sumRowsAtTime(currentRows, timeColumn, numericColumns, time);
       const previousValues = sumRowsAtTime(previousRows, timeColumn, numericColumns, time);
-      if (!currentValues || !previousValues) {
+      if (!currentValues) {
         continue;
       }
 
       for (const column of numericColumns) {
         const current = currentValues[column];
-        const previous = previousValues[column];
-        if (!Number.isFinite(current) || !Number.isFinite(previous) || Math.abs(previous) < minPrevious) {
+        const previous = previousValues?.[column];
+        if (!Number.isFinite(current)) {
           continue;
         }
 
-        const changeRate = (current - previous) / Math.abs(previous);
-        if (Math.abs(changeRate) > maxAbsChangeRate) {
-          const baseline = resolveTimePointBaseline({
-            item,
-            column,
-            time,
-            timeColumn,
-            currentDate,
-            previousDate,
-            lookbackDays: baselineLookbackDays,
-            minSamples: baselineMinSamples,
-            rule,
-          });
-          const hasBaseline = baseline && Number.isFinite(baseline.median) && baseline.sampleCount >= baselineMinSamples;
-          if (rule.requireBaseline === true && !hasBaseline) {
-            continue;
-          }
-          const baselineChangeRate = hasBaseline && Math.abs(baseline.median) >= minPrevious
-            ? (current - baseline.median) / Math.abs(baseline.median)
-            : Number.NaN;
-          if (hasBaseline && Number.isFinite(baselineChangeRate) && Math.abs(baselineChangeRate) <= baselineMaxAbsChangeRate) {
-            continue;
-          }
-
-          const baselineText = hasBaseline && Number.isFinite(baselineChangeRate)
-            ? `；近${baseline.lookbackDays}天同点中位数 ${formatNumber(baseline.median)}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(baselineChangeRate)}`
-            : "";
-          const triggerText = formatIntradayTimePointTriggerText({
-            maxAbsChangeRate,
-            baselineMaxAbsChangeRate,
-            baselineLookbackDays,
-            baselineMinSamples,
-            hasBaseline,
-          });
-          messages.push({
-            absChangeRate: Math.max(Math.abs(changeRate), Number.isFinite(baselineChangeRate) ? Math.abs(baselineChangeRate) : 0),
-            message:
-              `同时间点指标「${column}」从 ${formatNumber(previous)} 到 ${formatNumber(current)}，波动 ${formatSignedPercent(
-                changeRate,
-              )}${baselineText}${triggerText}` +
-              `（${timezone} ${formatHourLabel(time / 60)}，${dateColumn} ${currentDate} 对比 ${previousDate}${formatDimensionText(
-                item,
-              )}）`,
-          });
+        const baseline = resolveTimePointBaseline({
+          item,
+          column,
+          time,
+          timeColumn,
+          currentDate,
+          previousDate,
+          lookbackDays: baselineLookbackDays,
+          minSamples: baselineMinSamples,
+          rule,
+        });
+        const baselineValue = baseline?.average;
+        const hasBaseline = baseline && Number.isFinite(baselineValue) && baseline.sampleCount >= baselineMinSamples;
+        if (rule.requireBaseline === true && !hasBaseline) {
+          continue;
         }
+
+        const baselineChangeRate = hasBaseline && Math.abs(baselineValue) >= minPrevious
+          ? (current - baselineValue) / Math.abs(baselineValue)
+          : Number.NaN;
+        const previousChangeRate = Number.isFinite(previous) && Math.abs(previous) >= minPrevious
+          ? (current - previous) / Math.abs(previous)
+          : Number.NaN;
+        const baselineTriggered = hasBaseline
+          && Number.isFinite(baselineChangeRate)
+          && Math.abs(baselineChangeRate) > baselineMaxAbsChangeRate;
+        const previousTriggered = !hasBaseline
+          && Number.isFinite(previousChangeRate)
+          && Math.abs(previousChangeRate) > maxAbsChangeRate;
+        if (!baselineTriggered && !previousTriggered) {
+          continue;
+        }
+
+        const baselineText = hasBaseline && Number.isFinite(baselineChangeRate)
+          ? `；近${baseline.lookbackDays}天同点均值 ${formatNumber(baselineValue)}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(baselineChangeRate)}`
+          : "";
+        const previousText = Number.isFinite(previousChangeRate)
+          ? `；昨日同点 ${formatNumber(previous)}，较昨日 ${formatSignedPercent(previousChangeRate)}`
+          : "";
+        const triggerText = formatIntradayTimePointTriggerText({
+          maxAbsChangeRate,
+          baselineMaxAbsChangeRate,
+          baselineLookbackDays,
+          baselineMinSamples,
+          hasBaseline,
+        });
+        messages.push({
+          absChangeRate: Math.max(
+            Number.isFinite(previousChangeRate) ? Math.abs(previousChangeRate) : 0,
+            Number.isFinite(baselineChangeRate) ? Math.abs(baselineChangeRate) : 0,
+          ),
+          message:
+            `同时间点指标「${column}」当前 ${formatNumber(current)}${previousText}${baselineText}${triggerText}` +
+            `（${timezone} ${formatHourLabel(time / 60)}，${dateColumn} ${currentDate} 对比 ${previousDate}${formatDimensionText(
+              item,
+            )}）`,
+        });
       }
     }
 
@@ -1601,12 +1626,13 @@ function checkIntradayTimePointChange(rows, rule) {
           minSamples: baselineMinSamples,
           rule,
         });
-        const hasBaseline = baseline && Number.isFinite(baseline.median) && baseline.sampleCount >= baselineMinSamples;
-        if (!hasBaseline || Math.abs(baseline.median) < minPrevious) {
+        const baselineValue = baseline?.average;
+        const hasBaseline = baseline && Number.isFinite(baselineValue) && baseline.sampleCount >= baselineMinSamples;
+        if (!hasBaseline || Math.abs(baselineValue) < minPrevious) {
           continue;
         }
 
-        const baselineChangeRate = (previous - baseline.median) / Math.abs(baseline.median);
+        const baselineChangeRate = (previous - baselineValue) / Math.abs(baselineValue);
         if (Math.abs(baselineChangeRate) <= baselineMaxAbsChangeRate) {
           continue;
         }
@@ -1614,8 +1640,8 @@ function checkIntradayTimePointChange(rows, rule) {
         messages.push({
           absChangeRate: Math.abs(baselineChangeRate),
           message:
-            `上一日同时间点指标「${column}」为 ${formatNumber(previous)}，近${baseline.lookbackDays}天同点中位数 ${formatNumber(
-              baseline.median,
+            `上一日同时间点指标「${column}」为 ${formatNumber(previous)}，近${baseline.lookbackDays}天同点均值 ${formatNumber(
+              baselineValue,
             )}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(
               baselineChangeRate,
             )}；判定：上一日同点相对近${baselineLookbackDays}天基线波动超过${formatSignedThreshold(
@@ -1644,9 +1670,9 @@ function formatIntradayTimePointTriggerText({
 }) {
   const yesterdayThreshold = formatSignedThreshold(maxAbsChangeRate);
   if (hasBaseline) {
-    return `；判定：昨日同点波动超过${yesterdayThreshold}，且近${baselineLookbackDays}天同点中位数波动超过${formatSignedThreshold(
+    return `；判定：相对近${baselineLookbackDays}天同点均值波动超过${formatSignedThreshold(
       baselineMaxAbsChangeRate,
-    )}，两项同时命中才触发`;
+    )}`;
   }
 
   return `；判定：昨日同点波动超过${yesterdayThreshold}；近${baselineLookbackDays}天同点样本不足${baselineMinSamples}天时，先按昨日同点阈值触发`;
@@ -1676,6 +1702,7 @@ function resolveTimePointBaseline({ item, column, time, timeColumn, currentDate,
   if (cached && Number(cached.sampleCount || 0) >= minSamples && Number.isFinite(Number(cached.median))) {
     return {
       ...cached,
+      average: Number.isFinite(Number(cached.average)) ? Number(cached.average) : Number(cached.median),
       median: Number(cached.median),
       sampleCount: Number(cached.sampleCount),
       lookbackDays: Number(cached.lookbackDays || lookbackDays),
@@ -1718,6 +1745,7 @@ function resolveTimePointBaseline({ item, column, time, timeColumn, currentDate,
     baselineEndDate,
     lookbackDays,
     sampleCount: samples.length,
+    average: average(samples),
     median: median(samples),
     updatedAt: new Date().toISOString(),
   };
@@ -1751,6 +1779,14 @@ function median(values) {
 
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function average(values) {
+  const finite = values.filter(Number.isFinite);
+  if (!finite.length) {
+    return Number.NaN;
+  }
+  return finite.reduce((sum, value) => sum + value, 0) / finite.length;
 }
 
 function pickLatestRow(rows, explicitDateColumn) {
@@ -1904,15 +1940,29 @@ export function buildAnomalyMetricSeries(rows = [], rule = {}, message = "", opt
   }
 
   const metricFromMessage = extractMetricColumnFromAnomalyMessage(message);
-  const metricColumns = metricFromMessage && rows.some((row) => row && metricFromMessage in row)
+  const selectedNumericColumns = selectNumericColumns(rows, rule);
+  const metricColumns = metricFromMessage && !isHourlyMetricColumn(metricFromMessage) && rows.some((row) => row && metricFromMessage in row)
     ? [metricFromMessage]
-    : selectNumericColumns(rows, rule);
+    : selectedNumericColumns;
   if (!metricColumns.length) {
     return [];
   }
 
   const targetColumn = metricColumns[0];
   const dimensionFilters = extractDimensionFiltersFromAnomalyMessage(message);
+  const hourlySeries = buildHourlyAnomalyMetricSeries(rows, {
+    dateColumn,
+    metricColumns,
+    rule,
+    message,
+    dimensionFilters,
+    metricFromMessage,
+    maxPoints: options.maxPoints || 16,
+    forceHourlyAxis: Boolean(options.forceHourlyAxis),
+  });
+  if (hourlySeries.length) {
+    return hourlySeries;
+  }
   const dailySeries = buildDailySeries(
     rows,
     dateColumn,
@@ -1953,6 +2003,187 @@ export function buildAnomalyMetricSeries(rows = [], rule = {}, message = "", opt
       };
     })
     .filter(Boolean);
+}
+
+function buildHourlyAnomalyMetricSeries(rows, {
+  dateColumn,
+  metricColumns,
+  rule = {},
+  message = "",
+  dimensionFilters = [],
+  metricFromMessage = "",
+  maxPoints = 16,
+  forceHourlyAxis = false,
+} = {}) {
+  const shouldUseHourlyAxis = forceHourlyAxis || isIntradayRuleType(rule.type) || Boolean(rule.timeColumn) || metricColumns.some(isHourlyMetricColumn);
+  if (!shouldUseHourlyAxis) {
+    return [];
+  }
+  const resolvedTimeColumn = resolveIntradayTimeColumn(rows, rule.timeColumn);
+  const timeColumn = rows.some((row) => row && resolvedTimeColumn in row) ? resolvedTimeColumn : "";
+  const targetDate = extractLastDateFromText(message);
+  const targetValue = extractCurrentValueFromAnomalyMessage(message);
+  const targetHour = resolveTargetHourFromMessage(message, metricFromMessage);
+  const baselineLookbackDays = Number(rule.baselineLookbackDays || 14);
+
+  if (timeColumn) {
+    const targetColumn = metricFromMessage && !isHourlyMetricColumn(metricFromMessage) && rows.some((row) => row && metricFromMessage in row)
+      ? metricFromMessage
+      : metricColumns.find((column) => !isHourlyMetricColumn(column)) || metricColumns[0];
+    if (!targetColumn) return [];
+    const groups = buildIntradaySeries(
+      rows,
+      dateColumn,
+      timeColumn,
+      [targetColumn],
+      rule.dimensionColumns,
+      rule.ignoreDimensionColumns,
+    );
+    const selected = selectHourlySeriesGroup(groups, { targetDate, targetColumn, targetValue, dimensionFilters });
+    if (!selected) return [];
+    const dates = [...selected.rowsByDate.keys()].sort();
+    const selectedDate = targetDate && selected.rowsByDate.has(targetDate) ? targetDate : dates.at(-1);
+    const selectedRows = (selected.rowsByDate.get(selectedDate) || [])
+      .map((row) => ({
+        row,
+        minutes: parseScheduleMinutes(row[timeColumn]),
+      }))
+      .filter((item) => Number.isFinite(item.minutes))
+      .sort((left, right) => left.minutes - right.minutes);
+    if (!selectedRows.length) return [];
+    const anomalyMinutes = Number.isFinite(targetHour) ? Math.round(targetHour * 60) : selectedRows.at(-1)?.minutes;
+    return selectedRows
+      .map(({ row, minutes }) => {
+        const value = toNumber(row[targetColumn]);
+        if (!Number.isFinite(value)) return null;
+        const baseline = averageLongHourlyValues(selected, {
+          targetDate: selectedDate,
+          timeColumn,
+          targetColumn,
+          minutes,
+          lookbackDays: baselineLookbackDays,
+        });
+        const label = formatHourLabel(minutes / 60);
+        return {
+          date: selectedDate,
+          label,
+          value,
+          baselineValue: baseline.average,
+          baselineSampleCount: baseline.sampleCount,
+          metric: targetColumn,
+          anomaly: minutes === anomalyMinutes,
+          xType: "hour",
+          timezone: rule.timezone || "",
+        };
+      })
+      .filter(Boolean);
+  }
+
+  const hourlyColumns = metricColumns.filter(isHourlyMetricColumn).sort((left, right) => Number(left) - Number(right));
+  if (!hourlyColumns.length) {
+    return [];
+  }
+
+  const groups = buildDailySeries(
+    rows,
+    dateColumn,
+    hourlyColumns,
+    rule.dimensionColumns,
+    rule.ignoreDimensionColumns,
+  );
+  const selected = selectHourlySeriesGroup(groups, {
+    targetDate,
+    targetColumn: Number.isFinite(targetHour) ? String(Math.floor(targetHour)) : hourlyColumns[0],
+    targetValue,
+    dimensionFilters,
+  });
+  if (!selected) return [];
+  const dates = [...selected.rowsByDate.keys()].sort();
+  const selectedDate = targetDate && selected.rowsByDate.has(targetDate) ? targetDate : dates.at(-1);
+  const row = selected.rowsByDate.get(selectedDate);
+  if (!row) return [];
+  const anomalyColumn = Number.isFinite(targetHour) ? String(Math.floor(targetHour)) : hourlyColumns.find((column) => Number.isFinite(toNumber(row[column])));
+  return hourlyColumns
+    .map((column) => {
+      const value = toNumber(row[column]);
+      if (!Number.isFinite(value)) return null;
+      const hour = Number(column);
+      const baseline = averageWideHourlyValues(selected, {
+        targetDate: selectedDate,
+        column,
+        lookbackDays: baselineLookbackDays,
+      });
+      return {
+        date: selectedDate,
+        label: formatHourLabel(hour),
+        value,
+        baselineValue: baseline.average,
+        baselineSampleCount: baseline.sampleCount,
+        metric: metricFromMessage && !isHourlyMetricColumn(metricFromMessage) ? metricFromMessage : column,
+        anomaly: column === anomalyColumn,
+        xType: "hour",
+        timezone: rule.timezone || "",
+      };
+    })
+    .filter(Boolean);
+}
+
+function averageLongHourlyValues(group, { targetDate, timeColumn, targetColumn, minutes, lookbackDays }) {
+  const startDate = addDays(targetDate, -lookbackDays);
+  const endDate = addDays(targetDate, -1);
+  const values = [];
+  for (const [dateKey, rows] of group.rowsByDate.entries()) {
+    if (dateKey < startDate || dateKey > endDate) continue;
+    const matched = sumRowsAtTime(rows, timeColumn, [targetColumn], minutes);
+    const value = matched ? matched[targetColumn] : Number.NaN;
+    if (Number.isFinite(value)) values.push(value);
+  }
+  return { average: average(values), sampleCount: values.length };
+}
+
+function averageWideHourlyValues(group, { targetDate, column, lookbackDays }) {
+  const startDate = addDays(targetDate, -lookbackDays);
+  const endDate = addDays(targetDate, -1);
+  const values = [];
+  for (const [dateKey, row] of group.rowsByDate.entries()) {
+    if (dateKey < startDate || dateKey > endDate) continue;
+    const value = toNumber(row?.[column]);
+    if (Number.isFinite(value)) values.push(value);
+  }
+  return { average: average(values), sampleCount: values.length };
+}
+
+function selectHourlySeriesGroup(seriesGroups = [], { targetDate, targetColumn, targetValue, dimensionFilters = [] } = {}) {
+  const dimensionMatched = seriesGroups.filter((group) => dimensionsMatch(group.dimensionValues, dimensionFilters));
+  const candidates = dimensionMatched.length ? dimensionMatched : seriesGroups;
+  if (!candidates.length) return null;
+
+  if (targetDate && targetColumn && Number.isFinite(targetValue)) {
+    const exact = candidates.find((group) => {
+      const rowsOrRow = group.rowsByDate.get(targetDate);
+      if (Array.isArray(rowsOrRow)) {
+        return rowsOrRow.some((row) => toNumber(row?.[targetColumn]) === targetValue);
+      }
+      return toNumber(rowsOrRow?.[targetColumn]) === targetValue;
+    });
+    if (exact) return exact;
+  }
+
+  if (targetDate) {
+    const withDate = candidates.find((group) => group.rowsByDate.has(targetDate));
+    if (withDate) return withDate;
+  }
+
+  return candidates.find((group) => group.rowsByDate.size > 0) || null;
+}
+
+function isIntradayRuleType(type = "") {
+  return [
+    "intradayProgress",
+    "intradaySameTimeChange",
+    "intradayTimePointCompleteness",
+    "intradayTimePointChange",
+  ].includes(String(type || ""));
 }
 
 function selectAnomalySeriesGroup(seriesGroups = [], { targetColumn, targetDate, targetValue, dimensionFilters = [] } = {}) {
@@ -2012,6 +2243,17 @@ function extractDimensionFiltersFromAnomalyMessage(message = "") {
 function extractLastDateFromText(message = "") {
   const matches = [...String(message || "").matchAll(/[0-9]{4}-[0-9]{2}-[0-9]{2}/g)].map((match) => match[0]);
   return matches[0] || "";
+}
+
+function resolveTargetHourFromMessage(message = "", metricFromMessage = "") {
+  const text = String(message || "");
+  const timeMatch = text.match(/(?:^|[^\d])([01]?\d|2[0-3]):([0-5]\d)(?:[^\d]|$)/);
+  if (timeMatch) {
+    return Number(timeMatch[1]) + Number(timeMatch[2]) / 60;
+  }
+  const hourMatch = text.match(/(?:小时|hour|点)\s*[:=：]?\s*([01]?\d|2[0-3])(?:[^\d]|$)/i)
+    || text.match(/(?:^|[^\d])([01]?\d|2[0-3])\s*(?:点|时|小时|hour)(?:[^\d]|$)/i);
+  return hourMatch ? Number(hourMatch[1]) : Number.NaN;
 }
 
 function extractCurrentValueFromAnomalyMessage(message = "") {
