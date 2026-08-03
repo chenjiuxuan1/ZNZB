@@ -409,7 +409,7 @@ function renderChartHitTarget(point, chart, percentScale, options = {}) {
     `${options.comparisonLabel || "较前一天"}：${comparison}`,
   ].join("\n");
   const y = Number(options.y ?? point.y);
-  return `<circle class="fluctuation-point-hit-area" cx="${point.x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" data-tooltip="${escapeHtml(tooltip)}" tabindex="0" role="img" aria-label="${escapeHtml(tooltip)}"><title>${escapeHtml(tooltip)}</title></circle>`;
+  return `<circle class="fluctuation-point-hit-area" cx="${point.x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" data-tooltip="${escapeHtml(tooltip)}" tabindex="0" role="img" aria-label="${escapeHtml(tooltip)}"></circle>`;
 }
 
 function formatComparisonPercent(value, referenceValue) {
@@ -425,6 +425,10 @@ function bindFluctuationChartTooltips(root) {
   tooltip.className = "fluctuation-point-tooltip";
   tooltip.hidden = true;
   root.append(tooltip);
+  const hideTooltip = () => {
+    tooltip.hidden = true;
+    tooltip.replaceChildren();
+  };
   const moveTooltip = (event) => {
     const padding = 14;
     const maxX = window.innerWidth - tooltip.offsetWidth - padding;
@@ -445,9 +449,10 @@ function bindFluctuationChartTooltips(root) {
   root.querySelectorAll(".fluctuation-point-hit-area").forEach((point) => {
     point.addEventListener("pointerenter", showTooltip);
     point.addEventListener("pointermove", moveTooltip);
-    point.addEventListener("pointerleave", () => { tooltip.hidden = true; });
+    point.addEventListener("pointerleave", hideTooltip);
+    point.addEventListener("pointercancel", hideTooltip);
     point.addEventListener("focus", showTooltip);
-    point.addEventListener("blur", () => { tooltip.hidden = true; });
+    point.addEventListener("blur", hideTooltip);
   });
 }
 
