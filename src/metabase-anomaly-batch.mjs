@@ -3,6 +3,7 @@ const MAX_CASES_PER_BATCH = 3;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const TARGET_DURATION_MS = 20 * 60 * 1000;
 const DEADLINE_MS = 30 * 60 * 1000;
+export const MAX_DASHBOARD_SCREENING_BYTES = 512 * 1024;
 
 export function getBatchInvestigationLimits() {
   return {
@@ -28,6 +29,41 @@ export function buildInvestigationBatches(cases = {}, { maxCasesPerBatch = MAX_C
     (batches[batchIndex] ||= { groupKey, sourceTable: item.sourceTable, countryCode: item.countryCode, cases: [] }).cases.push(item);
     return batches;
   }, []));
+}
+
+export function buildDashboardScreeningJobs(cases = []) {
+  const groups = new Map();
+  for (const item of Array.isArray(cases) ? cases : []) {
+    const countryCode = String(item.countryCode || "").trim().toUpperCase();
+    const dashboardUuid = String(item.dashboardUuid || item.anomaly?.dashboardUuid || "").trim();
+    const anomalyIndex = Number(item.anomalyIndex);
+    if (!countryCode || !dashboardUuid || !Number.isInteger(anomalyIndex) || anomalyIndex < 0) continue;
+    const groupKey = `${countryCode}:${dashboardUuid}`;
+    const group = groups.get(groupKey) || {
+      stage: "dashboard_screening",
+      groupKey,
+      countryCode,
+      dashboardUuid,
+      dashboardTitle: String(item.dashboardTitle || item.anomaly?.dashboardTitle || "").trim(),
+      cases: [],
+    };
+    group.cases.push({ ...item, countryCode, dashboardUuid, anomalyIndex });
+    groups.set(groupKey, group);
+  }
+  return [...groups.values()];
+}
+
+export function buildMetricDeepAnalysisJobs(screeningJob = {}, verdicts = []) {
+  const byIndex = new Map((Array.isArray(verdicts) ? verdicts : []).map((item) => [Number(item?.anomalyIndex), item]));
+  return (screeningJob.cases || [])
+    .filter((item) => byIndex.get(Number(item.anomalyIndex))?.screeningVerdict !== "verified_normal")
+    .map((item) => ({
+      ...screeningJob,
+      stage: "metric_deep_analysis",
+      groupKey: `${screeningJob.groupKey || `${screeningJob.countryCode}:${screeningJob.dashboardUuid}`}:${item.anomalyIndex}`,
+      cases: [item],
+      screeningVerdict: byIndex.get(Number(item.anomalyIndex)) || null,
+    }));
 }
 
 export async function runBoundedInvestigationQueue({

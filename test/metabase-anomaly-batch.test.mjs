@@ -1,6 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildInvestigationBatches, getBatchInvestigationLimits, runBoundedInvestigationQueue } from "../src/metabase-anomaly-batch.mjs";
+import {
+  buildDashboardScreeningJobs,
+  buildInvestigationBatches,
+  buildMetricDeepAnalysisJobs,
+  getBatchInvestigationLimits,
+  runBoundedInvestigationQueue,
+} from "../src/metabase-anomaly-batch.mjs";
+
+test("groups every anomaly from one dashboard into one screening job", () => {
+  const jobs = buildDashboardScreeningJobs([
+    { countryCode: "PH", dashboardUuid: "dash-1", dashboardTitle: "OKR", anomalyIndex: 0 },
+    { countryCode: "PH", dashboardUuid: "dash-1", dashboardTitle: "OKR", anomalyIndex: 1 },
+    { countryCode: "PH", dashboardUuid: "dash-2", dashboardTitle: "资产", anomalyIndex: 2 },
+  ]);
+
+  assert.deepEqual(jobs.map((job) => job.cases.map((item) => item.anomalyIndex)), [[0, 1], [2]]);
+  assert.equal(jobs[0].stage, "dashboard_screening");
+  assert.equal(jobs[0].dashboardUuid, "dash-1");
+});
+
+test("creates one deep-analysis job for every metric not proven normal", () => {
+  const [screening] = buildDashboardScreeningJobs([
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 0 },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 1 },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 2 },
+  ]);
+  const jobs = buildMetricDeepAnalysisJobs(screening, [
+    { anomalyIndex: 0, screeningVerdict: "verified_normal" },
+    { anomalyIndex: 1, screeningVerdict: "suspected_issue" },
+    { anomalyIndex: 2, screeningVerdict: "needs_deep_analysis" },
+  ]);
+
+  assert.deepEqual(jobs.map((job) => job.cases[0].anomalyIndex), [1, 2]);
+  assert.ok(jobs.every((job) => job.stage === "metric_deep_analysis" && job.cases.length === 1));
+});
 
 test("batch investigation groups same source and limits every Dify payload to three cases", () => {
   const batches = buildInvestigationBatches([
