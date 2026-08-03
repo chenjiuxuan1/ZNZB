@@ -90,6 +90,45 @@ export async function analyzeMetabaseAnomaly({ anomaly, context = {}, env = proc
   };
 }
 
+export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.env, fetchFn = fetchCompatible } = {}) {
+  const settings = getMetabaseAnomalyAgentSettings(env);
+  const cases = Array.isArray(batch.cases) ? batch.cases : [];
+  if (!settings.enabled || settings.transport !== "n8n" || !settings.n8nAsync) {
+    const error = new Error("批量 Metabase 异常分析需要已配置的异步 n8n Agent。");
+    error.statusCode = 503;
+    throw error;
+  }
+  if (!batch.batchId || !batch.runId || !batch.countryCode || !batch.snapshotId || cases.length === 0 || cases.length > 3) {
+    const error = new Error("批量 Metabase 异常分析必须包含批次 ID、巡检 ID、国家、快照和 1-3 条异常。");
+    error.statusCode = 400;
+    throw error;
+  }
+  const jobId = String(batch.jobId || randomUUID());
+  const request = requestN8nAgentBatch({ settings, batch: { ...batch, cases }, fetchFn, jobId });
+  const settled = request.then((value) => ({ value }), (error) => ({ error }));
+  const first = await Promise.race([
+    settled,
+    delay(N8N_ASYNC_ACCEPT_WAIT_MS).then(() => null),
+  ]);
+  if (!first) {
+    void settled.then(({ error }) => {
+      if (error) console.error(`[metabase-anomaly-agent] n8n batch dispatch failed for ${jobId}: ${error.message}`);
+    });
+    return { ...pendingN8nEvidenceJob({ jobId }), batchId: String(batch.batchId) };
+  }
+  if (first.error) throw first.error;
+  const payload = first.value.payload || {};
+  if (!(payload.accepted === true || payload.status === "pending" || payload.jobId)) {
+    const error = new Error("n8n 未受理批量 Metabase 异常分析任务。");
+    error.statusCode = 502;
+    throw error;
+  }
+  return {
+    ...pendingN8nEvidenceJob({ jobId: String(payload.jobId || payload.executionId || jobId) }),
+    batchId: String(batch.batchId),
+  };
+}
+
 async function callN8nAgent({ settings, anomaly, context, fetchFn }) {
   // The platform may supply an ID so callbacks and the pending cache always
   // refer to the same job, even when a user retries quickly.
@@ -157,6 +196,52 @@ async function requestN8nAgent({ settings, anomaly, context, fetchFn, jobId }) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await fetchFn(settings.n8nWebhookUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.n8nToken}`,
+      },
+      body: JSON.stringify({
+        protocolVersion: 3,
+        jobId,
+        batch: {
+          batchId: String(batch.batchId),
+          runId: String(batch.runId),
+          countryCode: String(batch.countryCode).toUpperCase(),
+          snapshotId: String(batch.snapshotId),
+          sourceTable: String(batch.sourceTable || ""),
+          cases: batch.cases.slice(0, 3),
+        },
+        callback: {
+          url: resolveBatchCallbackUrl(settings.callbackUrl),
+          token: settings.callbackToken || null,
+        },
+      }),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.success === false) {
+      const error = new Error(payload?.error?.message || payload?.error || `n8n 批量 Agent 请求失败（HTTP ${response.status}）`);
+      error.statusCode = 502;
+      throw error;
+    }
+    return { payload };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function resolveBatchCallbackUrl(callbackUrl) {
+  const value = String(callbackUrl || "").replace(/\/+$/, "");
+  return value.replace(/\/callback$/, "/batch-callback");
 }
 
 function normalizeRequestedMode(value, fallback) {

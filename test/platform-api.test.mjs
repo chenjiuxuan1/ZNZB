@@ -8,6 +8,7 @@ import {
   buildAnchoredHistoryWindow,
   flattenInventory,
 } from "../src/platform-api.mjs";
+import { getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
 
 test("fluctuation history window ends on a delayed anomaly date", () => {
   assert.equal(
@@ -452,6 +453,9 @@ test("platform api queues every anomaly from the same dashboard for independent 
     METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL,
     METABASE_ANOMALY_AGENT_N8N_TOKEN: process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN,
     METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN,
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: process.env.METABASE_ANOMALY_AGENT_N8N_ASYNC,
+    METABASE_ANOMALY_AGENT_ENABLED: process.env.METABASE_ANOMALY_AGENT_ENABLED,
+    METABASE_ANOMALY_AGENT_ENABLED: process.env.METABASE_ANOMALY_AGENT_ENABLED,
   };
   process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL = "https://n8n.example/webhook/agent";
   process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN = "test-token";
@@ -488,6 +492,99 @@ test("platform api queues every anomaly from the same dashboard for independent 
       else process.env[key] = value;
     }
   }
+});
+
+test("platform api resolves a pending patrol anomaly without exposing it in final history", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseInternalClientFactory: () => ({
+      getCard: async (cardId) => ({ id: cardId, name: "放款", dataset_query: { native: { query: "SELECT * FROM ads.loan_d" } } }),
+    }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-patrol-1",
+    runs: [{
+      countryCode: "INE",
+      countryName: "印尼",
+      ok: true,
+      result: { anomalies: [{ cardId: 88, cardTitle: "放款", dashboardUrl: "https://data.example/public/dashboard/dash-1", message: "指标归零" }] },
+    }],
+  });
+
+  const card = await api.getMetabaseAnomalyCardSql({ runId: "pending-patrol-1", countryCode: "INE", anomalyIndex: 0 });
+  assert.equal(card.card.id, 88);
+  assert.equal((await api.getBatchHistory()).runs.length, 0);
+});
+
+test("platform api accepts one bounded batch callback for pending patrol anomalies", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-patrol-batch",
+    runs: [{ countryCode: "INE", ok: true, result: { anomalies: [{ message: "金额归零" }, { message: "件数归零" }] } }],
+  });
+
+  const completed = await api.completeMetabaseAnomalyBatch({
+    runId: "pending-patrol-batch",
+    countryCode: "INE",
+    jobId: "batch-job-1",
+    results: [
+      { anomalyIndex: 0, analysis: { summary: "金额已核验", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send" } },
+      { anomalyIndex: 1, analysis: { summary: "件数已核验", confidence: "medium", dataSideVerdict: "business_change", notificationAction: "downgrade" } },
+    ],
+  });
+
+  assert.equal(completed.results.length, 2);
+  assert.equal(completed.results[1].analysis.dataSideVerdict, "business_change");
+});
+
+test("platform api creates one source-table evidence snapshot for same-card patrol anomalies", async () => {
+  const rootDir = await makeFixture();
+  const cardReads = [];
+  const api = createPlatformApi({
+    rootDir,
+    metabaseInternalClientFactory: () => ({
+      getCard: async (cardId) => {
+        cardReads.push(cardId);
+        return { id: cardId, name: "放款", dataset_query: { native: { query: "SELECT grant_cnt, pass_cnt FROM ads.loan_d WHERE stat_date = '2026-08-03'" } } };
+      },
+    }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-patrol-snapshot",
+    runs: [{ countryCode: "INE", ok: true, result: { anomalies: [
+      { cardId: 90, cardTitle: "放款", dashboardUrl: "https://data.example/public/dashboard/dash-1", message: "金额归零" },
+      { cardId: 90, cardTitle: "放款", dashboardUrl: "https://data.example/public/dashboard/dash-1", message: "件数归零" },
+    ] } }],
+  });
+
+  const prepared = await api.prepareMetabaseInvestigationBatches({ runId: "pending-patrol-snapshot" });
+  assert.equal(prepared.batches.length, 1);
+  assert.equal(prepared.batches[0].cases.length, 2);
+  assert.equal(prepared.batches[0].sourceTable, "ads.loan_d");
+  assert.equal(cardReads.length, 1);
+});
+
+test("platform api stores one pending analysis record per submitted Dify batch case", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyBatchAgentFn: async () => ({ pending: true, jobId: "batch-job-2", provider: "n8n-evidence" }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-patrol-submit",
+    runs: [{ countryCode: "INE", ok: true, result: { anomalies: [{ message: "金额归零" }, { message: "件数归零" }] } }],
+  });
+
+  const submitted = await api.submitMetabaseInvestigationBatch({
+    batchId: "batch-2", runId: "pending-patrol-submit", countryCode: "INE", snapshotId: "snapshot-2",
+    cases: [{ anomalyIndex: 0 }, { anomalyIndex: 1 }],
+  });
+  assert.equal(submitted.jobId, "batch-job-2");
+  const analyses = await api.getMetabaseAnomalyAnalysesForRun({ runId: "pending-patrol-submit" });
+  assert.equal(analyses.analyses.length, 2);
+  assert.ok(analyses.analyses.every((item) => item.status === "pending" && item.jobId === "batch-job-2"));
 });
 
 test("platform api stores an async Metabase evidence job and accepts its callback", async () => {
@@ -2476,6 +2573,56 @@ test("platform api can manually test saved country schedule before it is due", a
   const history = await api.getBatchHistory();
   assert.equal(history.runs[0].trigger, "manual_test");
   assert.equal(history.runs[0].countryCount, 1);
+});
+
+test("AI-first patrol waits for batch verdicts before final notification and history", async () => {
+  const rootDir = await makeFixture();
+  const previous = {
+    METABASE_ANOMALY_BATCH_MODE: process.env.METABASE_ANOMALY_BATCH_MODE,
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL,
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN,
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN,
+  };
+  Object.assign(process.env, {
+    METABASE_ANOMALY_BATCH_MODE: "1",
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/batch",
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: "token",
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback",
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
+    METABASE_ANOMALY_AGENT_ENABLED: "1",
+  });
+  assert.equal(getMetabaseAnomalyAgentSettings().enabled, true);
+  const order = [];
+  let api;
+  api = createPlatformApi({
+    rootDir,
+    aiFirstMetabasePatrolEnabled: true,
+    metabaseClientFactory: () => ({ async queryDashcardJson() { return [{ "统计日期": "2026-07-05", "注册数": 10 }]; } }),
+    metabaseInternalClientFactory: () => ({ getCard: async () => ({ id: 1, dataset_query: { native: { query: "SELECT * FROM ads.loan_d" } } }) }),
+    metabaseAnomalyBatchAgentFn: async (batch) => {
+      order.push("batch");
+      await api.completeMetabaseAnomalyBatch({
+        runId: batch.runId, countryCode: batch.countryCode, jobId: "batch-callback", results: batch.cases.map((item) => ({
+          anomalyIndex: item.anomalyIndex,
+          analysis: { summary: "数据侧问题", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send" },
+        })),
+      });
+      return { pending: true, jobId: "batch-callback", provider: "n8n-evidence" };
+    },
+    notifyTextFn: async () => { order.push("notify"); return { sent: true, status: 200 }; },
+  });
+  try {
+    await api.saveBatchSchedule({ enabled: false, countryConfigs: [{ countryCode: "INE", enabled: true, dashboardUuids: ["dash-1"], notifyChannel: "tv", webhookUrl: "https://tv.example", botId: "bot" }] });
+    const result = await api.runBatchScheduleNow(new Date());
+    assert.equal(result.agentTriggerResult.total, 1);
+    assert.equal(result.agentTriggerResult.failed, 0, JSON.stringify(result.agentTriggerResult));
+    assert.deepEqual(order, ["batch", "notify"]);
+    assert.equal((await api.getBatchHistory()).runs.length, 1);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
 });
 
 test("scheduled Wattrel history keeps only the latest result for each quality rule", async () => {
