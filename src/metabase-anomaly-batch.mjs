@@ -29,3 +29,44 @@ export function buildInvestigationBatches(cases = {}, { maxCasesPerBatch = MAX_C
     return batches;
   }, []));
 }
+
+export async function runBoundedInvestigationQueue({
+  batches = [],
+  submit,
+  waitForSettlement,
+  limits = getBatchInvestigationLimits(),
+  onProgress = null,
+} = {}) {
+  if (typeof submit !== "function" || typeof waitForSettlement !== "function") {
+    throw new TypeError("submit and waitForSettlement are required");
+  }
+  const work = Array.isArray(batches) ? batches : [];
+  let cursor = 0;
+  const settled = [];
+  const workerCount = Math.min(MAX_CONCURRENT_BATCHES, Math.max(1, Number(limits.maxConcurrentBatches) || 1), work.length || 1);
+  const next = () => cursor < work.length ? work[cursor++] : null;
+  const worker = async () => {
+    for (let batch = next(); batch; batch = next()) {
+      onProgress?.({ type: "batch_start", batch, submitted: cursor, total: work.length });
+      try {
+        await submit(batch);
+        onProgress?.({ type: "batch_submitted", batch, submitted: cursor, total: work.length });
+        const result = await waitForSettlement(batch);
+        settled.push({ batch, result: result || { status: "completed" } });
+        onProgress?.({ type: "batch_settled", batch, result, completed: settled.length, total: work.length });
+      } catch (error) {
+        const result = { status: "failed", error: error.message };
+        settled.push({ batch, result });
+        onProgress?.({ type: "batch_settled", batch, result, completed: settled.length, total: work.length });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return {
+    total: work.length,
+    completed: settled.length,
+    settled,
+    failed: settled.filter((item) => item.result?.status === "failed").length,
+    timedOut: settled.filter((item) => item.result?.status === "timed_out").length,
+  };
+}
