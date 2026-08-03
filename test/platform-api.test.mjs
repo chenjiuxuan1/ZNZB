@@ -124,6 +124,11 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
           name: "统计日期",
           type: "date/all-options",
           default: "past30days~",
+        }, {
+          id: "app-param",
+          name: "app",
+          type: "category",
+          default: "all-apps",
         }],
         cards: [{
           title: "规模",
@@ -137,6 +142,9 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
           parameterMappings: [{
             parameter_id: "date-param",
             target: ["dimension", ["template-tag", "stat_date"], { "stage-number": 0 }],
+          }, {
+            parameter_id: "app-param",
+            target: ["dimension", ["template-tag", "app"], { "stage-number": 0 }],
           }],
         }],
       }],
@@ -173,7 +181,7 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
     anomaly: {
       countryCode: "MX",
       dashboardUuid: "dash-mx",
-      dashboardUrl: "https://data.example/public/dashboard/dash-mx",
+      dashboardUrl: "https://data.example/public/dashboard/dash-mx?app=MEX023&%E7%BB%9F%E8%AE%A1%E6%97%A5%E6%9C%9F=past90days~",
       dashboardTitle: "OKR",
       cardTitle: "规模",
       cardId: 11,
@@ -186,7 +194,9 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
   assert.equal(calls.length, 1);
   assert.equal(calls[0].dashboardUuid, "dash-mx");
   assert.equal(calls[0].cardId, 11);
-  assert.equal(calls[0].parameters[0].value, "past15days~");
+  const parametersById = new Map(calls[0].parameters.map((parameter) => [parameter.id, parameter.value]));
+  assert.equal(parametersById.get("date-param"), "past15days~");
+  assert.equal(parametersById.get("app-param"), "MEX023");
   assert.deepEqual(result.series.map((point) => [point.date, point.value, point.anomaly]), [
     ["2026-07-01", 100, false],
     ["2026-07-02", 110, false],
