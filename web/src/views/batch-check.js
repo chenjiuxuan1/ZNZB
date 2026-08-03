@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut } from "../api.js";
-import { getDashboards, isDashboardExecutable, state } from "../state.js";
+import { getDashboards, isDashboardExecutable, setRoute, state } from "../state.js";
 import { countryLabel, escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
 
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
@@ -61,6 +61,16 @@ export function renderBatchCheck(root) {
     button.addEventListener("click", async () => {
       const result = root.querySelector(`#${button.dataset.analysisResultId}`);
       void startMetabaseAnomalyAnalysis({ button, result });
+    });
+  });
+  root.querySelectorAll("[data-view-dashboard-fluctuations]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setRoute(buildDashboardFluctuationRoute({
+        runId: button.dataset.runId,
+        countryCode: button.dataset.countryCode,
+        dashboardUrl: button.dataset.dashboardUrl,
+        dashboardTitle: button.dataset.dashboardTitle,
+      }));
     });
   });
   bindMetabaseAnalysisRetryButtons(root);
@@ -1132,6 +1142,7 @@ function renderHistoryAnomalyTable(anomalies, context = {}) {
                 <p>${escapeHtml(anomaly.message || "-")}</p>
               </div>
               <div class="button-group">
+                <button class="secondary" type="button" data-view-dashboard-fluctuations data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode)}" data-dashboard-url="${escapeHtml(anomaly.dashboardUrl || "")}" data-dashboard-title="${escapeHtml(anomaly.dashboardTitle || "")}">查看异常波动</button>
                 <button class="secondary" type="button" data-metabase-anomaly-analysis data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode)}" data-anomaly-index="${index}" data-analysis-result-id="${resultId}" ${analysesLoading ? "disabled" : ""} aria-busy="${analysesLoading}">${analysesLoading ? "正在读取 AI 结论..." : "AI 分析原因"}</button>
               </div>
               <div id="${resultId}" class="metabase-anomaly-analysis-result">${analysesLoading ? `<div class="inline-loading"><span></span>正在批量读取本次巡检的 AI 结论...</div>` : storedAnalysis ? renderMetabaseAnomalyAnalysis(storedAnalysis) : ""}</div>
@@ -1169,6 +1180,15 @@ function scheduleRunAnalysesReload(root, runId, attempt) {
       void loadRunAnalyses(root, runId, attempt);
     }
   }, 5_000);
+}
+
+export function buildDashboardFluctuationRoute({ runId = "", countryCode = "", dashboardUrl = "", dashboardTitle = "" } = {}) {
+  const query = new URLSearchParams();
+  if (runId) query.set("runId", runId);
+  if (countryCode) query.set("countryCode", countryCode);
+  if (dashboardUrl) query.set("dashboardUrl", dashboardUrl);
+  if (dashboardTitle) query.set("dashboardTitle", dashboardTitle);
+  return `/fluctuation-visual?${query.toString()}`;
 }
 
 function renderAnomalyDetailMetric(label, value) {

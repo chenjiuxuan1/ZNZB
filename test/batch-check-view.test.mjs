@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 globalThis.window = { location: { hash: "" } };
 const {
   buildBatchScheduleCountryConfig,
+  buildDashboardFluctuationRoute,
   parseAnomalyMessage,
   renderBatchCheck,
   renderMetabaseAnomalyAnalysis,
@@ -274,6 +275,29 @@ test("fluctuation visual chart accepts hydrated series", () => {
   ]);
 });
 
+test("fluctuation visual formats daily and hourly point comparison percentages", () => {
+  assert.equal(fluctuationVisualTest.formatComparisonPercent(120, 100), "+20%");
+  assert.equal(fluctuationVisualTest.formatComparisonPercent(75, 100), "-25%");
+  assert.equal(fluctuationVisualTest.formatComparisonPercent(0, 0), "0.0%");
+  assert.match(fluctuationVisualTest.formatComparisonPercent(12, 0), /基准为 0/);
+});
+
+test("history anomaly dashboard link keeps the run, country, and dashboard filter", () => {
+  const route = buildDashboardFluctuationRoute({
+    runId: "run-7",
+    countryCode: "MX",
+    dashboardUrl: "https://data.example/dashboard/42?app=MEX023",
+    dashboardTitle: "转化漏斗",
+  });
+  const [, queryString] = route.split("?");
+  const query = new URLSearchParams(queryString);
+  assert.equal(route.startsWith("/fluctuation-visual?"), true);
+  assert.equal(query.get("runId"), "run-7");
+  assert.equal(query.get("countryCode"), "MX");
+  assert.equal(query.get("dashboardUrl"), "https://data.example/dashboard/42?app=MEX023");
+  assert.equal(query.get("dashboardTitle"), "转化漏斗");
+});
+
 test("fluctuation visual prefers refreshed hourly data and keeps all 24 hours", () => {
   const savedSeries = [
     { date: "2026-08-02", value: 6650.72 },
@@ -453,6 +477,11 @@ test("fluctuation visual excludes China empty and zero-style anomalies", () => {
             cardTitle: "CN empty",
             type: "noData",
             message: "没有数据",
+          }, {
+            dashboardTitle: "CN missing date",
+            cardTitle: "CN missing date",
+            type: "requiredDatePresent",
+            message: "数据缺失：统计日期缺少 2026-07-28",
           }],
         },
       }, {
@@ -463,6 +492,11 @@ test("fluctuation visual excludes China empty and zero-style anomalies", () => {
             cardTitle: "MX zero",
             type: "latestNonZeroToZero",
             message: "指标「注册数」从 100 降为 0（统计日期 2026-07-28 对比 2026-07-27）",
+          }, {
+            dashboardTitle: "MX missing date",
+            cardTitle: "MX missing date",
+            type: "requiredDatePresent",
+            message: "数据缺失：统计日期缺少 2026-07-28",
           }],
         },
       }],
