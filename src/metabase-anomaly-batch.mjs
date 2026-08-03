@@ -100,6 +100,7 @@ export async function runBoundedInvestigationQueue({
         settled.push({ batch, result: result || { status: "completed" } });
         onProgress?.({ type: "batch_settled", batch, result, completed: settled.length, total: work.length });
       } catch (error) {
+        console.error(`[batch-investigation] batch ${batch.batchId || batch.groupKey || "?"} (stage=${batch.stage || "?"}) FAILED: ${error.message}`);
         const result = { status: "failed", error: error.message };
         settled.push({ batch, result });
         onProgress?.({ type: "batch_settled", batch, result, completed: settled.length, total: work.length });
