@@ -186,7 +186,7 @@ test("platform api hydrates fluctuation series from saved dashboard card", async
   assert.equal(calls.length, 1);
   assert.equal(calls[0].dashboardUuid, "dash-mx");
   assert.equal(calls[0].cardId, 11);
-  assert.equal(calls[0].parameters[0].value, "past45days~");
+  assert.equal(calls[0].parameters[0].value, "past15days~");
   assert.deepEqual(result.series.map((point) => [point.date, point.value, point.anomaly]), [
     ["2026-07-01", 100, false],
     ["2026-07-02", 110, false],
@@ -317,7 +317,7 @@ test("platform api hydrates hourly fluctuation series with dashboard timezone", 
       dashboardUuid: "dash-pk-hourly",
       cardId: 1053,
       dashcardId: 2053,
-      type: "intradayTimePointChange",
+      type: "latestNonZeroToZero",
       message: "同时间点指标「1」从 99 到 0，波动 -100.0%（Asia/Karachi 01:00，日期 2026-07-30 对比 2026-07-29）",
     },
   });

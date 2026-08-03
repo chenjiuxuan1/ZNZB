@@ -222,8 +222,9 @@ export function createPlatformApi({
       const matchingRules = (rulesConfig.rules || [])
         .filter((rule) => ruleMatchesCard(rule, dashboard, card))
         .map((rule) => applyDashboardRuleDefaults(applyRuleTypeDefaults(rule, rulesConfig.ruleDefaults || {}), dashboard));
-      const hourlySeries = shouldUseHourlyFluctuationWindow(matchingRules, anomaly, card);
-      const historyLookbackDays = hourlySeries ? 15 : body.lookbackDays || 45;
+      // Fifteen calendar days gives hourly cards fourteen complete prior days,
+      // without deciding the chart axis from an alert message.
+      const historyLookbackDays = 15;
       const historyParameters = buildFluctuationSeriesHistoryParameters(dashboard, card, historyLookbackDays);
       const ruleParameters = matchingRules.reduce(
         (parameters, rule) => mergeParameters(parameters, rule.parameters || []),
@@ -248,9 +249,13 @@ export function createPlatformApi({
       const ruleForSeries = matchingRules.find((rule) => String(rule.type || "") === String(anomaly.type || ""))
         || matchingRules[0]
         || {};
-      const series = buildAnomalyMetricSeries(Array.isArray(rows) ? rows : [], ruleForSeries, anomaly.message || "", {
+      const hourlyAxis = detectHourlyAxisFromRows(rows);
+      const seriesRule = hourlyAxis.timeColumn
+        ? { ...ruleForSeries, timeColumn: hourlyAxis.timeColumn }
+        : ruleForSeries;
+      const series = buildAnomalyMetricSeries(Array.isArray(rows) ? rows : [], seriesRule, anomaly.message || "", {
         maxPoints: Number(body.maxPoints || 16),
-        forceHourlyAxis: hourlySeries,
+        forceHourlyAxis: hourlyAxis.isHourly,
       });
       const metricName = series.find((point) => point.metric)?.metric || "";
       const seriesPercent = isPercentSeriesFromCard(card, metricName, ruleForSeries);
@@ -3299,6 +3304,33 @@ function buildFluctuationSeriesHistoryParameters(dashboard, card, lookbackDays =
       value: `past${days}days~`,
     }];
   });
+}
+
+function detectHourlyAxisFromRows(rows = []) {
+  const safeRows = Array.isArray(rows) ? rows.filter((row) => row && typeof row === "object") : [];
+  if (!safeRows.length) return { isHourly: false, timeColumn: "" };
+
+  const columns = [...new Set(safeRows.flatMap((row) => Object.keys(row)))];
+  const wideHourColumnCount = columns.filter((column) => {
+    const hour = Number(String(column).trim());
+    return Number.isInteger(hour) && hour >= 0 && hour <= 23;
+  }).length;
+  if (wideHourColumnCount >= 2) {
+    return { isHourly: true, timeColumn: "" };
+  }
+
+  for (const column of columns) {
+    const clockValues = new Set(
+      safeRows
+        .map((row) => String(row[column] ?? "").trim())
+        .filter((value) => /^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(value)),
+    );
+    if (clockValues.size >= 2) {
+      return { isHourly: true, timeColumn: column };
+    }
+  }
+
+  return { isHourly: false, timeColumn: "" };
 }
 
 function shouldUseHourlyFluctuationWindow(rules = [], anomaly = {}, card = {}) {
