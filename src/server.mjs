@@ -114,6 +114,11 @@ async function handleApi(request, response, url) {
     assertMetabaseAgentCallbackAuthorized(request, body);
     return sendJson(response, 200, await api.completeMetabaseAnomalyAnalysis(body));
   }
+  if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/batch-callback") {
+    const body = await readBody(request, {});
+    assertMetabaseAgentCallbackAuthorized(request, body);
+    return sendJson(response, 200, await api.completeMetabaseAnomalyBatch(body));
+  }
   if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/evidence-snapshot") {
     const body = await readBody(request, {});
     assertMetabaseAgentCallbackAuthorized(request, body);
