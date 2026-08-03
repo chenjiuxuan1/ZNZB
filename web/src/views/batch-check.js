@@ -1081,6 +1081,7 @@ function renderHistoryDashboardSummary(result, context = {}) {
               <th>检查卡片</th>
               <th>查询失败</th>
               <th>异常数量</th>
+              <th>异常波动</th>
             </tr>
           </thead>
           <tbody>
@@ -1091,12 +1092,8 @@ function renderHistoryDashboardSummary(result, context = {}) {
                 <td>${dashboard.dashboardUrl ? `<a class="link-button compact-link" href="${escapeHtml(dashboard.dashboardUrl)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
                 <td>${escapeHtml(dashboard.checkedCardCount || 0)}</td>
                 <td>${escapeHtml(dashboard.failedCardCount || 0)}</td>
-                <td>
-                  <div class="dashboard-anomaly-actions">
-                    <span>${escapeHtml(dashboard.anomalyCount || 0)}</span>
-                    ${Number(dashboard.anomalyCount || 0) > 0 ? `<button class="secondary compact-link" type="button" data-view-dashboard-fluctuations data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode || dashboard.countryCode || "")}" data-dashboard-url="${escapeHtml(dashboard.dashboardUrl || "")}" data-dashboard-title="${escapeHtml(dashboard.dashboardTitle || "")}">查看异常波动</button>` : ""}
-                  </div>
-                </td>
+                <td>${escapeHtml(dashboard.anomalyCount || 0)}</td>
+                <td>${Number(dashboard.anomalyCount || 0) > 0 && context.runId ? `<button class="link-button compact-link" type="button" data-view-dashboard-fluctuations data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode || dashboard.countryCode || "")}" data-dashboard-url="${escapeHtml(dashboard.dashboardUrl || "")}" data-dashboard-title="${escapeHtml(dashboard.dashboardTitle || "")}">打开</button>` : ""}</td>
               </tr>
             `).join("")}
           </tbody>
@@ -1750,6 +1747,7 @@ function renderDashboardScanDetails(result, context = {}) {
               <th>异常数量</th>
               <th>状态</th>
               <th>异常概述</th>
+              <th>异常波动</th>
             </tr>
           </thead>
           <tbody>
@@ -1760,14 +1758,10 @@ function renderDashboardScanDetails(result, context = {}) {
                 <td>${row.dashboardUrl ? `<a class="link-button compact-link" href="${escapeHtml(row.dashboardUrl)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
                 <td>${escapeHtml(row.checkedCardCount)}</td>
                 <td>${escapeHtml(row.failedCardCount)}</td>
-                <td>
-                  <div class="dashboard-anomaly-actions">
-                    <span>${escapeHtml(row.anomalyCount)}</span>
-                    ${row.anomalyCount > 0 && context.runId ? `<button class="secondary compact-link" type="button" data-view-dashboard-fluctuations data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode || row.countryCode || "")}" data-dashboard-url="${escapeHtml(row.dashboardUrl || "")}" data-dashboard-title="${escapeHtml(row.dashboardTitle || "")}">查看异常波动</button>` : ""}
-                  </div>
-                </td>
+                <td>${escapeHtml(row.anomalyCount)}</td>
                 <td><span class="badge ${escapeHtml(row.badgeClass)}">${escapeHtml(row.statusText)}</span></td>
                 <td>${escapeHtml(row.issueSummary || "-")}</td>
+                <td>${row.anomalyCount > 0 && context.runId ? `<button class="link-button compact-link" type="button" data-view-dashboard-fluctuations data-run-id="${escapeHtml(context.runId)}" data-country-code="${escapeHtml(context.countryCode || row.countryCode || "")}" data-dashboard-url="${escapeHtml(row.dashboardUrl || "")}" data-dashboard-title="${escapeHtml(row.dashboardTitle || "")}">打开</button>` : ""}</td>
               </tr>
             `).join("")}
           </tbody>
