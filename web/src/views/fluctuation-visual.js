@@ -294,7 +294,7 @@ function renderDetailField(label, value) {
 }
 
 function renderLineChart(chart) {
-  if (!chart.points.length) {
+  if (chart.points.length < 2) {
     return `<div class="fluctuation-chart-empty">已读到这条异常，正在尝试按保存的看板 URL 回查最近历史数据；如果无法匹配，会在下方显示原因。</div>`;
   }
   const width = 560;
@@ -323,9 +323,9 @@ function renderLineChart(chart) {
   const baselineCoords = coords.filter((point) => Number.isFinite(point.baselineValue) && Number.isFinite(point.baselineY));
   const normalCoords = coords.filter((point) => !point.anomaly);
   const anomalyPoint = coords.find((point) => point.anomaly) || coords[coords.length - 1];
-  const path = normalCoords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
-  const fullPath = coords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
-  const baselinePath = baselineCoords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.baselineY.toFixed(1)}`).join(" ");
+  const path = buildSmoothPath(normalCoords);
+  const fullPath = buildSmoothPath(coords);
+  const baselinePath = buildSmoothPath(baselineCoords, "baselineY");
   const yTicks = buildTicks(yMin, yMax, 4);
   const percentScale = resolvePercentDisplayScale(chart);
 
@@ -374,6 +374,27 @@ function renderLineChart(chart) {
       <text class="x-label" x="${width - pad.right}" y="${height - 10}" text-anchor="end">${escapeHtml((hasBaselineLine ? coords.at(-1) : anomalyPoint)?.label || "")}</text>
     </svg>
   `;
+}
+
+function buildSmoothPath(points = [], yKey = "y") {
+  if (!points.length) return "";
+  if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${Number(points[0][yKey]).toFixed(1)}`;
+  const tension = 0.18;
+  let path = `M ${points[0].x.toFixed(1)} ${Number(points[0][yKey]).toFixed(1)}`;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const previous = points[index - 1] || points[index];
+    const current = points[index];
+    const next = points[index + 1];
+    const after = points[index + 2] || next;
+    const currentY = Number(current[yKey]);
+    const nextY = Number(next[yKey]);
+    const control1X = current.x + (next.x - previous.x) * tension;
+    const control1Y = currentY + (nextY - Number(previous[yKey])) * tension;
+    const control2X = next.x - (after.x - current.x) * tension;
+    const control2Y = nextY - (Number(after[yKey]) - currentY) * tension;
+    path += ` C ${control1X.toFixed(1)} ${control1Y.toFixed(1)} ${control2X.toFixed(1)} ${control2Y.toFixed(1)} ${next.x.toFixed(1)} ${nextY.toFixed(1)}`;
+  }
+  return path;
 }
 
 function renderChartHitTarget(point, chart, percentScale, options = {}) {
@@ -602,7 +623,7 @@ function getDisplayAnomalyIndex(country) {
 }
 
 function hasRealSeries(anomaly) {
-  return normalizeSeries(anomaly).length > 0;
+  return normalizeSeries(anomaly).length >= 2;
 }
 
 function normalizeSeries(anomaly) {
@@ -698,9 +719,9 @@ async function hydrateFluctuationSeries(root, anomaly, options = {}) {
     state.fluctuationVisualSeries = {
       ...(state.fluctuationVisualSeries || {}),
       [key]: {
-        type: result.series?.length ? "loaded" : "error",
+        type: result.series?.length >= 2 ? "loaded" : "error",
         series: result.series || [],
-        detail: result.message || "",
+        detail: result.message || `看板查询仅返回 ${result.series?.length || 0} 个可用点，无法绘制趋势。`,
       },
     };
   } catch (error) {
@@ -805,5 +826,6 @@ export const __test__ = {
   resolvePercentDisplayScale,
   formatChartValue,
   formatComparisonPercent,
+  buildSmoothPath,
   matchesDashboardFilter,
 };
