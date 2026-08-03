@@ -1451,6 +1451,28 @@ test("buildAnomalyMetricSeries uses hour labels for long hourly monitor cards", 
   ]);
 });
 
+test("buildAnomalyMetricSeries can force an hourly chart for a generic zero-drop alert", () => {
+  const rows = Array.from({ length: 15 }, (_, dayOffset) => {
+    const date = `2026-07-${String(dayOffset + 1).padStart(2, "0")}`;
+    return [
+      { date, hour: "00:00", amount: 100 },
+      { date, hour: "01:00", amount: dayOffset === 14 ? 0 : 200 },
+    ];
+  }).flat();
+
+  const series = buildAnomalyMetricSeries(
+    rows,
+    { dateColumn: "date", timeColumn: "hour", columns: ["amount"] },
+    "metric amount 200 to 0, 2026-07-15 01:00",
+    { forceHourlyAxis: true },
+  );
+
+  assert.deepEqual(series.map((point) => [point.label, point.value, point.baselineValue, point.anomaly, point.xType]), [
+    ["00:00", 100, 100, false, "hour"],
+    ["01:00", 0, 200, true, "hour"],
+  ]);
+});
+
 test("evaluateRowsAgainstRule reports no data when an intraday card has no parseable date column", () => {
   const result = evaluateRowsAgainstRule(
     [{ "放款金额": 100 }],
