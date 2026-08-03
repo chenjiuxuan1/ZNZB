@@ -259,8 +259,11 @@ function renderLineChart(chart) {
   const pad = { top: 22, right: 24, bottom: 34, left: 52 };
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
-  const minValue = Math.min(...chart.points.map((point) => point.value));
-  const maxValue = Math.max(...chart.points.map((point) => point.value));
+  const chartValues = chart.points
+    .flatMap((point) => [point.value, point.baselineValue])
+    .filter(Number.isFinite);
+  const minValue = Math.min(...chartValues);
+  const maxValue = Math.max(...chartValues);
   const span = maxValue - minValue || Math.max(1, Math.abs(maxValue || 1));
   const yMin = minValue - span * 0.12;
   const yMax = maxValue + span * 0.12;
@@ -268,12 +271,18 @@ function renderLineChart(chart) {
   const coords = chart.points.map((point, index) => {
     const x = pad.left + (chart.points.length === 1 ? plotWidth : (index / (chart.points.length - 1)) * plotWidth);
     const y = pad.top + ((yMax - point.value) / (yMax - yMin || 1)) * plotHeight;
-    return { ...point, x, y };
+    const baselineY = Number.isFinite(point.baselineValue)
+      ? pad.top + ((yMax - point.baselineValue) / (yMax - yMin || 1)) * plotHeight
+      : Number.NaN;
+    return { ...point, x, y, baselineY };
   });
+  const hasBaselineLine = coords.some((point) => Number.isFinite(point.baselineValue) && Number.isFinite(point.baselineY));
+  const baselineCoords = coords.filter((point) => Number.isFinite(point.baselineValue) && Number.isFinite(point.baselineY));
   const normalCoords = coords.filter((point) => !point.anomaly);
   const anomalyPoint = coords.find((point) => point.anomaly) || coords[coords.length - 1];
   const path = normalCoords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
   const fullPath = coords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const baselinePath = baselineCoords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.baselineY.toFixed(1)}`).join(" ");
   const yTicks = buildTicks(yMin, yMax, 4);
   const percentScale = resolvePercentDisplayScale(chart);
 
@@ -287,15 +296,28 @@ function renderLineChart(chart) {
           <text class="axis-label" x="${pad.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${escapeHtml(formatChartValue(tick, chart.percent, percentScale))}</text>
         `;
       }).join("")}
-      <path class="full-line" d="${fullPath}"></path>
-      ${path ? `<path class="normal-line" d="${path}"></path>` : ""}
+      ${hasBaselineLine ? `<path class="baseline-line" d="${baselinePath}"></path>` : `<path class="full-line" d="${fullPath}"></path>`}
+      <path class="normal-line" d="${hasBaselineLine ? fullPath : path}"></path>
+      ${hasBaselineLine ? baselineCoords.map((point) => `
+        <circle class="baseline-dot" cx="${point.x.toFixed(1)}" cy="${point.baselineY.toFixed(1)}" r="3.2">
+          <title>${escapeHtml(point.label || "")} 14天同小时均值 ${escapeHtml(formatChartValue(point.baselineValue, chart.percent, percentScale))}</title>
+        </circle>
+      `).join("") : ""}
       ${coords.map((point) => `
         <circle class="${point.anomaly ? "anomaly-dot" : "normal-dot"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.anomaly ? 5.8 : 3.8}">
-          <title>${escapeHtml(point.label || "")} ${escapeHtml(formatChartValue(point.value, chart.percent, percentScale))}</title>
+          <title>${escapeHtml(point.label || "")} 当天 ${escapeHtml(formatChartValue(point.value, chart.percent, percentScale))}</title>
         </circle>
       `).join("")}
+      ${hasBaselineLine ? `
+        <g class="chart-legend" transform="translate(${pad.left}, 18)">
+          <line class="normal-line" x1="0" y1="0" x2="20" y2="0"></line>
+          <text x="26" y="4">当天24小时</text>
+          <line class="baseline-line" x1="112" y1="0" x2="132" y2="0"></line>
+          <text x="138" y="4">前14天同小时均值</text>
+        </g>
+      ` : ""}
       <text class="x-label" x="${pad.left}" y="${height - 10}">${escapeHtml(coords[0]?.label || "")}</text>
-      <text class="x-label" x="${width - pad.right}" y="${height - 10}" text-anchor="end">${escapeHtml(anomalyPoint?.label || "")}</text>
+      <text class="x-label" x="${width - pad.right}" y="${height - 10}" text-anchor="end">${escapeHtml((hasBaselineLine ? coords.at(-1) : anomalyPoint)?.label || "")}</text>
     </svg>
   `;
 }
@@ -467,10 +489,13 @@ function normalizeSeries(anomaly) {
   return rawPoints
     .map((point, index) => {
       const value = parseNumericValue(point.value ?? point.metric ?? point.y ?? point.currentValue);
+      const baselineValue = parseNumericValue(point.baselineValue ?? point.baseline ?? point.average ?? point.avgValue);
       if (!Number.isFinite(value)) return null;
       return {
         label: String(point.date || point.statDate || point.x || point.label || `D-${rawPoints.length - index - 1}`),
         value,
+        ...(Number.isFinite(baselineValue) ? { baselineValue } : {}),
+        baselineSampleCount: Number(point.baselineSampleCount || point.sampleCount || 0),
         percent: /%/.test(String(point.value ?? point.metric ?? "")),
         anomaly: Boolean(point.anomaly || point.isAnomaly || index === rawPoints.length - 1),
       };
@@ -580,7 +605,10 @@ function buildTicks(minValue, maxValue, count) {
 
 function resolvePercentDisplayScale(chart = {}) {
   if (!chart.percent) return 1;
-  const values = (chart.points || []).map((point) => Math.abs(Number(point.value))).filter(Number.isFinite);
+  const values = (chart.points || [])
+    .flatMap((point) => [point.value, point.baselineValue])
+    .map((value) => Math.abs(Number(value)))
+    .filter(Number.isFinite);
   if (!values.length) return 1;
   return Math.max(...values) <= 1 ? 100 : 1;
 }

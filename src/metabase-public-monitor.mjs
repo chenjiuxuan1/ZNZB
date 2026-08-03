@@ -1507,8 +1507,8 @@ function checkIntradayTimePointChange(rows, rule) {
   const expectedTimes = buildExpectedTimePointMinutes(rule, localNow);
   const maxAbsChangeRate = rule.maxAbsChangeRate ?? 0.15;
   const baselineMaxAbsChangeRate = rule.baselineMaxAbsChangeRate ?? maxAbsChangeRate;
-  const baselineLookbackDays = rule.baselineLookbackDays ?? 30;
-  const baselineMinSamples = rule.baselineMinSamples ?? 7;
+  const baselineLookbackDays = rule.baselineLookbackDays ?? 14;
+  const baselineMinSamples = rule.baselineMinSamples ?? 14;
   const minPrevious = rule.minPrevious ?? 1;
   const scanPreviousDateAgainstBaseline = rule.scanPreviousDateAgainstBaseline === true;
   const series = buildIntradaySeries(
@@ -1527,62 +1527,74 @@ function checkIntradayTimePointChange(rows, rule) {
     for (const time of expectedTimes) {
       const currentValues = sumRowsAtTime(currentRows, timeColumn, numericColumns, time);
       const previousValues = sumRowsAtTime(previousRows, timeColumn, numericColumns, time);
-      if (!currentValues || !previousValues) {
+      if (!currentValues) {
         continue;
       }
 
       for (const column of numericColumns) {
         const current = currentValues[column];
-        const previous = previousValues[column];
-        if (!Number.isFinite(current) || !Number.isFinite(previous) || Math.abs(previous) < minPrevious) {
+        const previous = previousValues?.[column];
+        if (!Number.isFinite(current)) {
           continue;
         }
 
-        const changeRate = (current - previous) / Math.abs(previous);
-        if (Math.abs(changeRate) > maxAbsChangeRate) {
-          const baseline = resolveTimePointBaseline({
-            item,
-            column,
-            time,
-            timeColumn,
-            currentDate,
-            previousDate,
-            lookbackDays: baselineLookbackDays,
-            minSamples: baselineMinSamples,
-            rule,
-          });
-          const hasBaseline = baseline && Number.isFinite(baseline.median) && baseline.sampleCount >= baselineMinSamples;
-          if (rule.requireBaseline === true && !hasBaseline) {
-            continue;
-          }
-          const baselineChangeRate = hasBaseline && Math.abs(baseline.median) >= minPrevious
-            ? (current - baseline.median) / Math.abs(baseline.median)
-            : Number.NaN;
-          if (hasBaseline && Number.isFinite(baselineChangeRate) && Math.abs(baselineChangeRate) <= baselineMaxAbsChangeRate) {
-            continue;
-          }
-
-          const baselineText = hasBaseline && Number.isFinite(baselineChangeRate)
-            ? `；近${baseline.lookbackDays}天同点中位数 ${formatNumber(baseline.median)}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(baselineChangeRate)}`
-            : "";
-          const triggerText = formatIntradayTimePointTriggerText({
-            maxAbsChangeRate,
-            baselineMaxAbsChangeRate,
-            baselineLookbackDays,
-            baselineMinSamples,
-            hasBaseline,
-          });
-          messages.push({
-            absChangeRate: Math.max(Math.abs(changeRate), Number.isFinite(baselineChangeRate) ? Math.abs(baselineChangeRate) : 0),
-            message:
-              `同时间点指标「${column}」从 ${formatNumber(previous)} 到 ${formatNumber(current)}，波动 ${formatSignedPercent(
-                changeRate,
-              )}${baselineText}${triggerText}` +
-              `（${timezone} ${formatHourLabel(time / 60)}，${dateColumn} ${currentDate} 对比 ${previousDate}${formatDimensionText(
-                item,
-              )}）`,
-          });
+        const baseline = resolveTimePointBaseline({
+          item,
+          column,
+          time,
+          timeColumn,
+          currentDate,
+          previousDate,
+          lookbackDays: baselineLookbackDays,
+          minSamples: baselineMinSamples,
+          rule,
+        });
+        const baselineValue = baseline?.average;
+        const hasBaseline = baseline && Number.isFinite(baselineValue) && baseline.sampleCount >= baselineMinSamples;
+        if (rule.requireBaseline === true && !hasBaseline) {
+          continue;
         }
+
+        const baselineChangeRate = hasBaseline && Math.abs(baselineValue) >= minPrevious
+          ? (current - baselineValue) / Math.abs(baselineValue)
+          : Number.NaN;
+        const previousChangeRate = Number.isFinite(previous) && Math.abs(previous) >= minPrevious
+          ? (current - previous) / Math.abs(previous)
+          : Number.NaN;
+        const baselineTriggered = hasBaseline
+          && Number.isFinite(baselineChangeRate)
+          && Math.abs(baselineChangeRate) > baselineMaxAbsChangeRate;
+        const previousTriggered = !hasBaseline
+          && Number.isFinite(previousChangeRate)
+          && Math.abs(previousChangeRate) > maxAbsChangeRate;
+        if (!baselineTriggered && !previousTriggered) {
+          continue;
+        }
+
+        const baselineText = hasBaseline && Number.isFinite(baselineChangeRate)
+          ? `；近${baseline.lookbackDays}天同点均值 ${formatNumber(baselineValue)}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(baselineChangeRate)}`
+          : "";
+        const previousText = Number.isFinite(previousChangeRate)
+          ? `；昨日同点 ${formatNumber(previous)}，较昨日 ${formatSignedPercent(previousChangeRate)}`
+          : "";
+        const triggerText = formatIntradayTimePointTriggerText({
+          maxAbsChangeRate,
+          baselineMaxAbsChangeRate,
+          baselineLookbackDays,
+          baselineMinSamples,
+          hasBaseline,
+        });
+        messages.push({
+          absChangeRate: Math.max(
+            Number.isFinite(previousChangeRate) ? Math.abs(previousChangeRate) : 0,
+            Number.isFinite(baselineChangeRate) ? Math.abs(baselineChangeRate) : 0,
+          ),
+          message:
+            `同时间点指标「${column}」当前 ${formatNumber(current)}${previousText}${baselineText}${triggerText}` +
+            `（${timezone} ${formatHourLabel(time / 60)}，${dateColumn} ${currentDate} 对比 ${previousDate}${formatDimensionText(
+              item,
+            )}）`,
+        });
       }
     }
 
@@ -1613,12 +1625,13 @@ function checkIntradayTimePointChange(rows, rule) {
           minSamples: baselineMinSamples,
           rule,
         });
-        const hasBaseline = baseline && Number.isFinite(baseline.median) && baseline.sampleCount >= baselineMinSamples;
-        if (!hasBaseline || Math.abs(baseline.median) < minPrevious) {
+        const baselineValue = baseline?.average;
+        const hasBaseline = baseline && Number.isFinite(baselineValue) && baseline.sampleCount >= baselineMinSamples;
+        if (!hasBaseline || Math.abs(baselineValue) < minPrevious) {
           continue;
         }
 
-        const baselineChangeRate = (previous - baseline.median) / Math.abs(baseline.median);
+        const baselineChangeRate = (previous - baselineValue) / Math.abs(baselineValue);
         if (Math.abs(baselineChangeRate) <= baselineMaxAbsChangeRate) {
           continue;
         }
@@ -1626,8 +1639,8 @@ function checkIntradayTimePointChange(rows, rule) {
         messages.push({
           absChangeRate: Math.abs(baselineChangeRate),
           message:
-            `上一日同时间点指标「${column}」为 ${formatNumber(previous)}，近${baseline.lookbackDays}天同点中位数 ${formatNumber(
-              baseline.median,
+            `上一日同时间点指标「${column}」为 ${formatNumber(previous)}，近${baseline.lookbackDays}天同点均值 ${formatNumber(
+              baselineValue,
             )}（样本${baseline.sampleCount}天），较基线 ${formatSignedPercent(
               baselineChangeRate,
             )}；判定：上一日同点相对近${baselineLookbackDays}天基线波动超过${formatSignedThreshold(
@@ -1656,9 +1669,9 @@ function formatIntradayTimePointTriggerText({
 }) {
   const yesterdayThreshold = formatSignedThreshold(maxAbsChangeRate);
   if (hasBaseline) {
-    return `；判定：昨日同点波动超过${yesterdayThreshold}，且近${baselineLookbackDays}天同点中位数波动超过${formatSignedThreshold(
+    return `；判定：相对近${baselineLookbackDays}天同点均值波动超过${formatSignedThreshold(
       baselineMaxAbsChangeRate,
-    )}，两项同时命中才触发`;
+    )}`;
   }
 
   return `；判定：昨日同点波动超过${yesterdayThreshold}；近${baselineLookbackDays}天同点样本不足${baselineMinSamples}天时，先按昨日同点阈值触发`;
@@ -1688,6 +1701,7 @@ function resolveTimePointBaseline({ item, column, time, timeColumn, currentDate,
   if (cached && Number(cached.sampleCount || 0) >= minSamples && Number.isFinite(Number(cached.median))) {
     return {
       ...cached,
+      average: Number.isFinite(Number(cached.average)) ? Number(cached.average) : Number(cached.median),
       median: Number(cached.median),
       sampleCount: Number(cached.sampleCount),
       lookbackDays: Number(cached.lookbackDays || lookbackDays),
@@ -1730,6 +1744,7 @@ function resolveTimePointBaseline({ item, column, time, timeColumn, currentDate,
     baselineEndDate,
     lookbackDays,
     sampleCount: samples.length,
+    average: average(samples),
     median: median(samples),
     updatedAt: new Date().toISOString(),
   };
@@ -1763,6 +1778,14 @@ function median(values) {
 
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function average(values) {
+  const finite = values.filter(Number.isFinite);
+  if (!finite.length) {
+    return Number.NaN;
+  }
+  return finite.reduce((sum, value) => sum + value, 0) / finite.length;
 }
 
 function pickLatestRow(rows, explicitDateColumn) {
@@ -1998,6 +2021,7 @@ function buildHourlyAnomalyMetricSeries(rows, {
   const targetDate = extractLastDateFromText(message);
   const targetValue = extractCurrentValueFromAnomalyMessage(message);
   const targetHour = resolveTargetHourFromMessage(message, metricFromMessage);
+  const baselineLookbackDays = Number(rule.baselineLookbackDays || 14);
 
   if (timeColumn) {
     const targetColumn = metricFromMessage && !isHourlyMetricColumn(metricFromMessage) && rows.some((row) => row && metricFromMessage in row)
@@ -2022,19 +2046,27 @@ function buildHourlyAnomalyMetricSeries(rows, {
         minutes: parseScheduleMinutes(row[timeColumn]),
       }))
       .filter((item) => Number.isFinite(item.minutes))
-      .sort((left, right) => left.minutes - right.minutes)
-      .slice(-maxPoints);
+      .sort((left, right) => left.minutes - right.minutes);
     if (!selectedRows.length) return [];
     const anomalyMinutes = Number.isFinite(targetHour) ? Math.round(targetHour * 60) : selectedRows.at(-1)?.minutes;
     return selectedRows
       .map(({ row, minutes }) => {
         const value = toNumber(row[targetColumn]);
         if (!Number.isFinite(value)) return null;
+        const baseline = averageLongHourlyValues(selected, {
+          targetDate: selectedDate,
+          timeColumn,
+          targetColumn,
+          minutes,
+          lookbackDays: baselineLookbackDays,
+        });
         const label = formatHourLabel(minutes / 60);
         return {
           date: selectedDate,
           label,
           value,
+          baselineValue: baseline.average,
+          baselineSampleCount: baseline.sampleCount,
           metric: targetColumn,
           anomaly: minutes === anomalyMinutes,
           xType: "hour",
@@ -2069,15 +2101,21 @@ function buildHourlyAnomalyMetricSeries(rows, {
   if (!row) return [];
   const anomalyColumn = Number.isFinite(targetHour) ? String(Math.floor(targetHour)) : hourlyColumns.find((column) => Number.isFinite(toNumber(row[column])));
   return hourlyColumns
-    .slice(-maxPoints)
     .map((column) => {
       const value = toNumber(row[column]);
       if (!Number.isFinite(value)) return null;
       const hour = Number(column);
+      const baseline = averageWideHourlyValues(selected, {
+        targetDate: selectedDate,
+        column,
+        lookbackDays: baselineLookbackDays,
+      });
       return {
         date: selectedDate,
         label: formatHourLabel(hour),
         value,
+        baselineValue: baseline.average,
+        baselineSampleCount: baseline.sampleCount,
         metric: metricFromMessage && !isHourlyMetricColumn(metricFromMessage) ? metricFromMessage : column,
         anomaly: column === anomalyColumn,
         xType: "hour",
@@ -2085,6 +2123,31 @@ function buildHourlyAnomalyMetricSeries(rows, {
       };
     })
     .filter(Boolean);
+}
+
+function averageLongHourlyValues(group, { targetDate, timeColumn, targetColumn, minutes, lookbackDays }) {
+  const startDate = addDays(targetDate, -lookbackDays);
+  const endDate = addDays(targetDate, -1);
+  const values = [];
+  for (const [dateKey, rows] of group.rowsByDate.entries()) {
+    if (dateKey < startDate || dateKey > endDate) continue;
+    const matched = sumRowsAtTime(rows, timeColumn, [targetColumn], minutes);
+    const value = matched ? matched[targetColumn] : Number.NaN;
+    if (Number.isFinite(value)) values.push(value);
+  }
+  return { average: average(values), sampleCount: values.length };
+}
+
+function averageWideHourlyValues(group, { targetDate, column, lookbackDays }) {
+  const startDate = addDays(targetDate, -lookbackDays);
+  const endDate = addDays(targetDate, -1);
+  const values = [];
+  for (const [dateKey, row] of group.rowsByDate.entries()) {
+    if (dateKey < startDate || dateKey > endDate) continue;
+    const value = toNumber(row?.[column]);
+    if (Number.isFinite(value)) values.push(value);
+  }
+  return { average: average(values), sampleCount: values.length };
 }
 
 function selectHourlySeriesGroup(seriesGroups = [], { targetDate, targetColumn, targetValue, dimensionFilters = [] } = {}) {
