@@ -1598,6 +1598,18 @@ a.dashboard-row {
   width: 62px;
 }
 
+.dashboard-anomaly-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.dashboard-anomaly-actions .compact-link {
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
 .compact-link {
   min-height: 0;
   padding: 5px 8px;

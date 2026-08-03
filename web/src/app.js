@@ -54,7 +54,9 @@ export async function loadData() {
 }
 
 async function loadInitialData() {
-  const historyRunId = state.route === "/batch-check" ? state.routeQuery?.historyRunId : "";
+  const historyRunId = ["/batch-check", "/fluctuation-visual"].includes(state.route)
+    ? (state.routeQuery?.historyRunId || state.routeQuery?.runId || "")
+    : "";
   if (historyRunId) {
     state.batchHistoryStatus = {
       type: "loading",
