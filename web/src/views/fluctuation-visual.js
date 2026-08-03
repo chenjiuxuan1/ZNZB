@@ -23,8 +23,14 @@ const FLUCTUATION_SERIES_CONCURRENCY = 3;
 const FLUCTUATION_SERIES_TIMEOUT_MS = 15_000;
 
 export function renderFluctuationVisual(root) {
+  const query = state.routeQuery || {};
+  const requestedCountryCode = String(query.countryCode || "").toUpperCase();
+  if (requestedCountryCode) state.fluctuationVisualCountryCode = requestedCountryCode;
   const model = buildFluctuationVisualModel(state.batchHistory, state.countries?.countries || [], {
     displayIndex: state.fluctuationVisualDisplayIndex,
+    runId: query.runId,
+    dashboardUrl: query.dashboardUrl,
+    dashboardTitle: query.dashboardTitle,
   });
   root.innerHTML = `
     <div class="page-header batch-hero">
@@ -64,10 +70,16 @@ export function renderFluctuationVisual(root) {
       renderFluctuationVisual(root);
     });
   });
+  bindFluctuationChartTooltips(root);
 
   // History is intentionally user-triggered: this view must not slow app startup.
   const selectedCountry = getSelectedFluctuationCountry(model.countries || []);
-  if (selectedCountry) {
+  const requestedRunId = String(query.runId || "");
+  const hasRequestedRun = !requestedRunId || (state.batchHistory?.runs || []).some((run) => run.id === requestedRunId);
+  if (!hasRequestedRun && state.fluctuationVisualRequestedRunId !== requestedRunId) {
+    state.fluctuationVisualRequestedRunId = requestedRunId;
+    void reloadFluctuationHistory(root);
+  } else if (selectedCountry) {
     void hydrateVisibleFluctuationSeries(root, selectedCountry);
   }
 }
@@ -80,7 +92,11 @@ async function reloadFluctuationHistory(root) {
   };
   renderFluctuationVisual(root);
   try {
-    state.batchHistory = await apiGet("/api/batch-history?status=anomaly&limit=1");
+    const requestedRunId = String(state.routeQuery?.runId || "");
+    const historyUrl = requestedRunId
+      ? `/api/batch-history?runId=${encodeURIComponent(requestedRunId)}`
+      : "/api/batch-history?status=anomaly&limit=1";
+    state.batchHistory = await apiGet(historyUrl);
     state.batchHistoryLoaded = true;
     const runId = state.batchHistory.runs?.[0]?.id;
     if (runId) {
@@ -335,6 +351,17 @@ function renderLineChart(chart) {
           <title>${escapeHtml(point.label || "")} 当天 ${escapeHtml(formatChartValue(point.value, chart.percent, percentScale))}</title>
         </circle>
       `).join("")}
+      ${hasBaselineLine ? baselineCoords.map((point) => renderChartHitTarget(point, chart, percentScale, {
+        value: point.baselineValue,
+        y: point.baselineY,
+        label: "前14天同小时均值",
+        comparisonValue: point.value,
+        comparisonLabel: "与当天同小时对比",
+      })).join("") : ""}
+      ${coords.map((point, index) => renderChartHitTarget(point, chart, percentScale, {
+        comparisonValue: hasBaselineLine ? point.baselineValue : coords[index - 1]?.value,
+        comparisonLabel: hasBaselineLine ? "较前14天同小时均值" : "较前一天",
+      })).join("")}
       ${hasBaselineLine ? `
         <g class="chart-legend" transform="translate(${pad.left}, 18)">
           <line class="normal-line" x1="0" y1="0" x2="20" y2="0"></line>
@@ -349,11 +376,68 @@ function renderLineChart(chart) {
   `;
 }
 
+function renderChartHitTarget(point, chart, percentScale, options = {}) {
+  const value = Number(options.value ?? point.value);
+  const comparisonValue = Number(options.comparisonValue);
+  const comparison = Number.isFinite(comparisonValue)
+    ? formatComparisonPercent(value, comparisonValue)
+    : "-";
+  const tooltip = [
+    point.label || "-",
+    `${options.label || "当前数据"}：${formatChartValue(value, chart.percent, percentScale)}`,
+    `${options.comparisonLabel || "较前一天"}：${comparison}`,
+  ].join("\n");
+  const y = Number(options.y ?? point.y);
+  return `<circle class="fluctuation-point-hit-area" cx="${point.x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" data-tooltip="${escapeHtml(tooltip)}" tabindex="0" role="img" aria-label="${escapeHtml(tooltip)}"><title>${escapeHtml(tooltip)}</title></circle>`;
+}
+
+function formatComparisonPercent(value, referenceValue) {
+  if (!Number.isFinite(value) || !Number.isFinite(referenceValue)) return "-";
+  if (referenceValue === 0) return value === 0 ? "0.0%" : "基准为 0，无法计算";
+  const change = ((value - referenceValue) / Math.abs(referenceValue)) * 100;
+  return `${change >= 0 ? "+" : ""}${formatCompactNumber(change)}%`;
+}
+
+function bindFluctuationChartTooltips(root) {
+  root.querySelector(".fluctuation-point-tooltip")?.remove();
+  const tooltip = document.createElement("div");
+  tooltip.className = "fluctuation-point-tooltip";
+  tooltip.hidden = true;
+  root.append(tooltip);
+  const moveTooltip = (event) => {
+    const padding = 14;
+    const maxX = window.innerWidth - tooltip.offsetWidth - padding;
+    const maxY = window.innerHeight - tooltip.offsetHeight - padding;
+    tooltip.style.left = `${Math.max(padding, Math.min(event.clientX + 14, maxX))}px`;
+    tooltip.style.top = `${Math.max(padding, Math.min(event.clientY + 14, maxY))}px`;
+  };
+  const showTooltip = (event) => {
+    const lines = String(event.currentTarget.dataset.tooltip || "").split("\n");
+    tooltip.replaceChildren(...lines.map((line, index) => {
+      const item = document.createElement(index === 0 ? "strong" : "span");
+      item.textContent = line;
+      return item;
+    }));
+    tooltip.hidden = false;
+    moveTooltip(event);
+  };
+  root.querySelectorAll(".fluctuation-point-hit-area").forEach((point) => {
+    point.addEventListener("pointerenter", showTooltip);
+    point.addEventListener("pointermove", moveTooltip);
+    point.addEventListener("pointerleave", () => { tooltip.hidden = true; });
+    point.addEventListener("focus", showTooltip);
+    point.addEventListener("blur", () => { tooltip.hidden = true; });
+  });
+}
+
 function buildFluctuationVisualModel(history, countries = [], options = {}) {
   const today = options.today || getBeijingDateKey(new Date());
   const todayRuns = (history?.runs || []).filter((item) => isRunUpdatedOnDate(item, today));
-  const run = todayRuns.find((item) => collectFluctuationAnomalies(item, countries).length) || todayRuns[0] || null;
-  const allAnomalies = collectFluctuationAnomalies(run, countries);
+  const requestedRunId = String(options.runId || "");
+  const requestedRun = (history?.runs || []).find((item) => item.id === requestedRunId);
+  const run = requestedRun || todayRuns.find((item) => collectFluctuationAnomalies(item, countries).length) || todayRuns[0] || null;
+  const allAnomalies = collectFluctuationAnomalies(run, countries)
+    .filter((anomaly) => matchesDashboardFilter(anomaly, options));
   const displayIndex = options.displayIndex || {};
   const anomalies = allAnomalies.filter((anomaly) => displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`]?.chartVisibility !== "hide_verified_normal");
   const byCountry = new Map();
@@ -376,6 +460,13 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
     anomalyCount: anomalies.length,
     hiddenVerifiedNormalCount: allAnomalies.length - anomalies.length,
   };
+}
+
+function matchesDashboardFilter(anomaly, options = {}) {
+  const dashboardUrl = String(options.dashboardUrl || "");
+  const dashboardTitle = String(options.dashboardTitle || "");
+  if (dashboardUrl) return String(anomaly.dashboardUrl || "") === dashboardUrl;
+  return !dashboardTitle || String(anomaly.dashboardTitle || "") === dashboardTitle;
 }
 
 function isRunUpdatedOnDate(run = {}, dateKey) {
@@ -713,4 +804,6 @@ export const __test__ = {
   runWithConcurrency,
   resolvePercentDisplayScale,
   formatChartValue,
+  formatComparisonPercent,
+  matchesDashboardFilter,
 };

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 globalThis.window = { location: { hash: "" } };
 const {
   buildBatchScheduleCountryConfig,
+  buildDashboardFluctuationRoute,
   parseAnomalyMessage,
   renderBatchCheck,
   renderMetabaseAnomalyAnalysis,
@@ -251,6 +252,29 @@ test("fluctuation visual chart accepts hydrated series", () => {
     ["2026-07-01", 100, 90, 14, false],
     ["2026-07-02", 200, 110, 14, true],
   ]);
+});
+
+test("fluctuation visual formats daily and hourly point comparison percentages", () => {
+  assert.equal(fluctuationVisualTest.formatComparisonPercent(120, 100), "+20%");
+  assert.equal(fluctuationVisualTest.formatComparisonPercent(75, 100), "-25%");
+  assert.equal(fluctuationVisualTest.formatComparisonPercent(0, 0), "0.0%");
+  assert.match(fluctuationVisualTest.formatComparisonPercent(12, 0), /基准为 0/);
+});
+
+test("history anomaly dashboard link keeps the run, country, and dashboard filter", () => {
+  const route = buildDashboardFluctuationRoute({
+    runId: "run-7",
+    countryCode: "MX",
+    dashboardUrl: "https://data.example/dashboard/42?app=MEX023",
+    dashboardTitle: "转化漏斗",
+  });
+  const [, queryString] = route.split("?");
+  const query = new URLSearchParams(queryString);
+  assert.equal(route.startsWith("/fluctuation-visual?"), true);
+  assert.equal(query.get("runId"), "run-7");
+  assert.equal(query.get("countryCode"), "MX");
+  assert.equal(query.get("dashboardUrl"), "https://data.example/dashboard/42?app=MEX023");
+  assert.equal(query.get("dashboardTitle"), "转化漏斗");
 });
 
 test("fluctuation visual prefers refreshed hourly data and keeps all 24 hours", () => {
