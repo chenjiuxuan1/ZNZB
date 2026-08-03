@@ -596,7 +596,7 @@ export function createPlatformApi({
       } else {
         const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
         for (const batch of prepared.batches) await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "Dify 批量取证未配置，已按保守策略通知" });
-        queueResult = { total: prepared.batches.length, completed: prepared.batches.length, settled: [], notSubmitted: [] };
+        queueResult = { total: prepared.batches.length, completed: 0, failed: 0, timedOut: prepared.batches.length, settled: [], notSubmitted: [], phases: { dashboardScreening: { total: prepared.batches.length, completed: 0, failed: 0, timedOut: prepared.batches.length, notSubmitted: [] }, metricDeepAnalysis: { total: 0, completed: 0, failed: 0, timedOut: 0, notSubmitted: [] } } };
       }
       const finalizedRuns = await buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile: resolve("metabaseAnomalyAnalyses") });
       batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", {
