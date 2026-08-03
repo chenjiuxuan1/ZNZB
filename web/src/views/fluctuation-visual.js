@@ -226,7 +226,7 @@ function renderFluctuationRow(anomaly, index) {
         <div class="fluctuation-row-detail">
           <div>${renderDetailField("当前值", anomaly.detail.currentValue || "-")}</div>
           <div>${renderDetailField("基准值", anomaly.detail.baselineValue || "-")}</div>
-          <div>${renderDetailField("变化", anomaly.detail.changeValue || "-")}</div>
+          ${renderOptionalDetailField("变化", anomaly.detail.changeValue)}
           <div>${renderDetailField("时间", anomaly.detail.timeText || "-")}</div>
         </div>
       </div>
@@ -282,7 +282,7 @@ function renderFluctuationCountry(country) {
       <div class="fluctuation-selected-detail">
         <div>${renderDetailField("当前值", selected.detail.currentValue || "-")}</div>
         <div>${renderDetailField("基准值", selected.detail.baselineValue || "-")}</div>
-        <div>${renderDetailField("变化", selected.detail.changeValue || "-")}</div>
+          ${renderOptionalDetailField("变化", selected.detail.changeValue)}
         <div>${renderDetailField("时间", selected.detail.timeText || "-")}</div>
       </div>
     </article>
@@ -293,23 +293,24 @@ function renderDetailField(label, value) {
   return `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
 }
 
+function renderOptionalDetailField(label, value) {
+  const text = String(value ?? "").trim();
+  return text && text !== "-" ? `<div>${renderDetailField(label, text)}</div>` : "";
+}
+
 function renderLineChart(chart) {
   if (chart.points.length < 2) {
     return `<div class="fluctuation-chart-empty">已读到这条异常，正在尝试按保存的看板 URL 回查最近历史数据；如果无法匹配，会在下方显示原因。</div>`;
   }
-  const width = 560;
-  const height = 260;
-  const pad = { top: 22, right: 24, bottom: 34, left: 52 };
+  const width = 640;
+  const height = 340;
+  const pad = { top: 28, right: 30, bottom: 42, left: 76 };
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
   const chartValues = chart.points
     .flatMap((point) => [point.value, point.baselineValue])
     .filter(Number.isFinite);
-  const minValue = Math.min(...chartValues);
-  const maxValue = Math.max(...chartValues);
-  const span = maxValue - minValue || Math.max(1, Math.abs(maxValue || 1));
-  const yMin = minValue - span * 0.12;
-  const yMax = maxValue + span * 0.12;
+  const { yMin, yMax } = resolveChartYBounds(chartValues);
 
   const coords = chart.points.map((point, index) => {
     const x = pad.left + (chart.points.length === 1 ? plotWidth : (index / (chart.points.length - 1)) * plotWidth);
@@ -342,14 +343,10 @@ function renderLineChart(chart) {
       ${hasBaselineLine ? `<path class="baseline-line" d="${baselinePath}"></path>` : `<path class="full-line" d="${fullPath}"></path>`}
       <path class="normal-line" d="${hasBaselineLine ? fullPath : path}"></path>
       ${hasBaselineLine ? baselineCoords.map((point) => `
-        <circle class="baseline-dot" cx="${point.x.toFixed(1)}" cy="${point.baselineY.toFixed(1)}" r="3.2">
-          <title>${escapeHtml(point.label || "")} 14天同小时均值 ${escapeHtml(formatChartValue(point.baselineValue, chart.percent, percentScale))}</title>
-        </circle>
+        <circle class="baseline-dot" cx="${point.x.toFixed(1)}" cy="${point.baselineY.toFixed(1)}" r="3.2"></circle>
       `).join("") : ""}
       ${coords.map((point) => `
-        <circle class="${point.anomaly ? "anomaly-dot" : "normal-dot"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.anomaly ? 5.8 : 3.8}">
-          <title>${escapeHtml(point.label || "")} 当天 ${escapeHtml(formatChartValue(point.value, chart.percent, percentScale))}</title>
-        </circle>
+        <circle class="${point.anomaly ? "anomaly-dot" : "normal-dot"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.anomaly ? 5.8 : 3.8}"></circle>
       `).join("")}
       ${hasBaselineLine ? baselineCoords.map((point) => renderChartHitTarget(point, chart, percentScale, {
         value: point.baselineValue,
@@ -374,6 +371,17 @@ function renderLineChart(chart) {
       <text class="x-label" x="${width - pad.right}" y="${height - 10}" text-anchor="end">${escapeHtml((hasBaselineLine ? coords.at(-1) : anomalyPoint)?.label || "")}</text>
     </svg>
   `;
+}
+
+function resolveChartYBounds(values = []) {
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const span = maxValue - minValue || Math.max(1, Math.abs(maxValue || 1));
+  const paddedMin = minValue - span * 0.12;
+  return {
+    yMin: minValue >= 0 && paddedMin < 0 ? 0 : paddedMin,
+    yMax: maxValue + span * 0.12,
+  };
 }
 
 function buildSmoothPath(points = [], yKey = "y") {
@@ -453,6 +461,14 @@ function bindFluctuationChartTooltips(root) {
     point.addEventListener("pointercancel", hideTooltip);
     point.addEventListener("focus", showTooltip);
     point.addEventListener("blur", hideTooltip);
+  });
+  root.querySelectorAll(".fluctuation-line-chart").forEach((chart) => {
+    chart.addEventListener("pointerleave", hideTooltip);
+    chart.addEventListener("pointermove", (event) => {
+      if (!event.target.closest?.(".fluctuation-point-hit-area")) {
+        hideTooltip();
+      }
+    });
   });
 }
 
@@ -832,5 +848,7 @@ export const __test__ = {
   formatChartValue,
   formatComparisonPercent,
   buildSmoothPath,
+  resolveChartYBounds,
+  renderOptionalDetailField,
   matchesDashboardFilter,
 };
