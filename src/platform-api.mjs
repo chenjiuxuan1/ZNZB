@@ -406,6 +406,13 @@ export function createPlatformApi({
       return { runId, items };
     },
 
+    async getMetabaseAnomalyAnalysesForRun(filters = {}) {
+      const runId = String(filters.runId || "").trim();
+      if (!runId) throw badRequest("Invalid Metabase anomaly analyses request", ["请提供巡检记录。"]);
+      const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      return { runId, analyses: (cache.analyses || []).filter((item) => String(item.runId || "") === runId) };
+    },
+
     async getMetabaseAnomalyEvidenceSnapshot(body = {}) {
       const { runId, countryCode, anomalyIndex } = normalizeMetabaseAnalysisIdentity(body);
       const snapshotId = String(body.snapshotId || "").trim();
@@ -779,6 +786,14 @@ export function createPlatformApi({
         } catch (error) {
           dsSchedulerError = error.message;
         }
+        batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "data_check", {
+          status: dsSchedulerError ? "partial_failed" : "success",
+          detail: dsSchedulerError ? `DS 调度核查失败：${dsSchedulerError}` : schedule.includeDsScheduler ? "DS 调度核查完成" : "未启用 DS 调度核查",
+        });
+        batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
+          status: "running",
+          detail: "正在汇总异常并发送通知",
+        });
         batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "sending", currentCountryCode: "", currentCountryName: "" };
         const notificationSentCount = await sendScheduledAggregateNotifications({
           countryRuns,
@@ -802,9 +817,14 @@ export function createPlatformApi({
           lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
           lastResult,
         };
+        batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
+          status: "success",
+          detail: notificationSentCount ? `已发送 ${notificationSentCount} 条通知` : "无异常通知，已跳过发送",
+        });
         batchScheduleRunProgress = {
           ...batchScheduleRunProgress,
-          status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success",
+          status: "ai_analyzing",
+          finalStatus: failedRuns.length || dsSchedulerError ? "partial_failed" : "success",
           finishedAt: new Date().toISOString(),
           result: saved.lastResult,
           notificationSentCount,
@@ -823,7 +843,9 @@ export function createPlatformApi({
           dsSchedulerSummary,
           dsSchedulerError,
         }));
-        const agentTriggerResult = await this.dispatchDashboardGroupedAnalysis(historyRunId, countryRuns);
+        const agentTriggerResult = await this.dispatchDashboardGroupedAnalysis(historyRunId, countryRuns, (event) => {
+          batchScheduleRunProgress = updateBatchScheduleAiProgress(batchScheduleRunProgress, event);
+        });
         return { ran: true, schedule: saved, result: saved.lastResult, agentTriggerResult };
       } catch (error) {
         batchScheduleRunProgress = {
@@ -1353,14 +1375,16 @@ export function createPlatformApi({
       };
     },
 
-    async triggerDashboardGroupedAnalysis(historyRunId, countryRuns) {
+    async triggerDashboardGroupedAnalysis(historyRunId, countryRuns, onProgress = null) {
       const settings = getMetabaseAnomalyAgentSettings();
       const acceleration = getMetabaseAnomalyAccelerationSettings();
       const autoTrigger = String(process.env.METABASE_ANOMALY_AGENT_AUTO_TRIGGER || "1").trim().toLowerCase();
       if (autoTrigger === "0" || autoTrigger === "false" || autoTrigger === "off" || autoTrigger === "no") {
+        onProgress?.({ type: "skipped", reason: "已关闭自动 AI 分析" });
         return { triggered: 0, reason: "auto-trigger disabled" };
       }
       if (!settings.enabled) {
+        onProgress?.({ type: "skipped", reason: "未配置 Dify Agent" });
         return { triggered: 0, reason: "agent not configured" };
       }
       const dashboardGroups = new Map();
@@ -1383,17 +1407,26 @@ export function createPlatformApi({
       }
       let triggered = 0;
       const skipped = [];
+      const totalDashboards = dashboardGroups.size;
+      if (!totalDashboards) {
+        onProgress?.({ type: "skipped", reason: "本次没有需要取证的异常看板" });
+        return { triggered: 0, totalDashboards: 0, skipped, acceleration: acceleration.enabled ? { enabled: true, maxConcurrency: acceleration.maxConcurrency } : undefined };
+      }
+      onProgress?.({ type: "queued", totalDashboards });
       const analyzeGroup = async ([groupKey, group]) => {
+        onProgress?.({ type: "start", groupKey, group, totalDashboards, completed: triggered + skipped.length });
         try {
-          await this.analyzeMetabaseAnomaly({
+          const analysis = await this.analyzeMetabaseAnomaly({
             runId: historyRunId,
             countryCode: group.countryCode,
             anomalyIndex: group.anomalyIndex,
             force: false,
           });
           triggered += 1;
+          onProgress?.({ type: analysis.pending ? "submitted" : "completed", groupKey, group, totalDashboards, completed: triggered + skipped.length });
         } catch (error) {
           skipped.push({ groupKey, error: error.message });
+          onProgress?.({ type: "failed", groupKey, group, totalDashboards, completed: triggered + skipped.length, error: error.message });
         }
       };
       if (acceleration.enabled) {
@@ -1404,18 +1437,21 @@ export function createPlatformApi({
           await analyzeGroup(entry);
         }
       }
-      return { triggered, totalDashboards: dashboardGroups.size, skipped, acceleration: acceleration.enabled ? { enabled: true, maxConcurrency: acceleration.maxConcurrency } : undefined };
+      const result = { triggered, totalDashboards, skipped, acceleration: acceleration.enabled ? { enabled: true, maxConcurrency: acceleration.maxConcurrency } : undefined };
+      onProgress?.({ type: "finished", result });
+      return result;
     },
 
-    dispatchDashboardGroupedAnalysis(historyRunId, countryRuns) {
+    dispatchDashboardGroupedAnalysis(historyRunId, countryRuns, onProgress = null) {
       const acceleration = getMetabaseAnomalyAccelerationSettings();
       if (!acceleration.enabled) {
-        return this.triggerDashboardGroupedAnalysis(historyRunId, countryRuns);
+        return this.triggerDashboardGroupedAnalysis(historyRunId, countryRuns, onProgress);
       }
       // A patrol has already persisted its history and notifications at this point.
       // Do not hold its completion state hostage to long-running Agent evidence jobs.
-      void this.triggerDashboardGroupedAnalysis(historyRunId, countryRuns).catch((error) => {
+      void this.triggerDashboardGroupedAnalysis(historyRunId, countryRuns, onProgress).catch((error) => {
         console.error(`[metabase-anomaly-acceleration] batch ${historyRunId} dispatch failed: ${error.message}`);
+        onProgress?.({ type: "failed", error: error.message });
       });
       return {
         queued: true,
@@ -1466,6 +1502,14 @@ export function createPlatformApi({
         } catch (error) {
           dsSchedulerError = error.message;
         }
+        batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "data_check", {
+          status: dsSchedulerError ? "partial_failed" : "success",
+          detail: dsSchedulerError ? `DS 调度核查失败：${dsSchedulerError}` : schedule.includeDsScheduler ? "DS 调度核查完成" : "未启用 DS 调度核查",
+        });
+        batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
+          status: "running",
+          detail: "正在汇总异常并发送通知",
+        });
         batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "sending", currentCountryCode: "", currentCountryName: "" };
         const notificationSentCount = await sendScheduledAggregateNotifications({
           countryRuns,
@@ -1489,9 +1533,14 @@ export function createPlatformApi({
           lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
           lastResult,
         };
+        batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
+          status: "success",
+          detail: notificationSentCount ? `已发送 ${notificationSentCount} 条通知` : "无异常通知，已跳过发送",
+        });
         batchScheduleRunProgress = {
           ...batchScheduleRunProgress,
-          status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success",
+          status: "ai_analyzing",
+          finalStatus: failedRuns.length || dsSchedulerError ? "partial_failed" : "success",
           finishedAt: new Date().toISOString(),
           result: saved.lastResult,
           notificationSentCount,
@@ -1510,7 +1559,9 @@ export function createPlatformApi({
           dsSchedulerSummary,
           dsSchedulerError,
         }));
-        const agentTriggerResult = await this.dispatchDashboardGroupedAnalysis(historyRunId, countryRuns);
+        const agentTriggerResult = await this.dispatchDashboardGroupedAnalysis(historyRunId, countryRuns, (event) => {
+          batchScheduleRunProgress = updateBatchScheduleAiProgress(batchScheduleRunProgress, event);
+        });
         return { ran: true, schedule: saved, result: saved.lastResult, agentTriggerResult };
       } catch (error) {
         batchScheduleRunProgress = {
@@ -2800,6 +2851,13 @@ function createBatchScheduleRunProgress({ id, trigger, startedAt, countryConfigs
     currentCountryCode: "",
     currentCountryName: "",
     countries,
+    stages: [
+      { key: "country_scan", label: "国家巡检", status: "running", detail: "正在读取 Metabase 并执行规则" },
+      { key: "data_check", label: "DS 调度核查", status: "pending", detail: "等待国家巡检完成" },
+      { key: "notification", label: "告警通知", status: "pending", detail: "等待异常汇总" },
+      { key: "ai_analysis", label: "AI 取证队列", status: "pending", detail: "等待巡检历史落库" },
+      { key: "finished", label: "巡检完成", status: "pending", detail: "等待所有必要阶段完成" },
+    ],
   };
 }
 
@@ -2832,7 +2890,7 @@ function updateBatchScheduleRunProgress(progress, event) {
   });
   const completedCountries = countries.filter((item) => ["success", "failed"].includes(item.status)).length;
   const runningCountry = countries.find((item) => item.status === "running");
-  return {
+  const next = {
     ...progress,
     status: "running",
     countries,
@@ -2840,6 +2898,62 @@ function updateBatchScheduleRunProgress(progress, event) {
     currentCountryCode: runningCountry?.countryCode || (event.type === "start" ? countryCode : ""),
     currentCountryName: runningCountry?.countryName || (event.type === "start" ? event.countryConfig.countryName || "" : ""),
   };
+  if (completedCountries === Number(progress.totalCountries || countries.length)) {
+    return updateBatchScheduleRunProgressStage(next, "country_scan", {
+      status: countries.some((item) => item.status === "failed") ? "partial_failed" : "success",
+      detail: `已完成 ${completedCountries}/${progress.totalCountries || countries.length} 个国家巡检`,
+    });
+  }
+  return next;
+}
+
+function updateBatchScheduleRunProgressStage(progress, key, patch) {
+  if (!progress) return progress;
+  return {
+    ...progress,
+    stages: (progress.stages || []).map((stage) => stage.key === key ? { ...stage, ...patch } : stage),
+  };
+}
+
+function updateBatchScheduleAiProgress(progress, event = {}) {
+  if (!progress) return progress;
+  const current = (progress.stages || []).find((stage) => stage.key === "ai_analysis") || {};
+  const total = Number(event.totalDashboards ?? event.result?.totalDashboards ?? current.totalDashboards ?? 0);
+  const completed = Number(event.completed ?? event.result?.totalDashboards ?? current.completed ?? 0);
+  let stagePatch = { totalDashboards: total, completed };
+  let status = "ai_analyzing";
+  if (event.type === "skipped") {
+    stagePatch = { ...stagePatch, status: "skipped", detail: event.reason || "本次未触发自动 AI 分析" };
+    status = progress.finalStatus || "success";
+  } else if (event.type === "queued") {
+    stagePatch = { ...stagePatch, status: "queued", detail: `已排队 ${total} 个异常看板，AI 将在后台逐个取证` };
+  } else if (event.type === "start") {
+    stagePatch = { ...stagePatch, status: "running", detail: `正在提交 ${Math.min(completed + 1, total)}/${total} 个异常看板的 AI 取证` };
+  } else if (event.type === "submitted") {
+    stagePatch = { ...stagePatch, status: "queued", detail: `已提交 ${completed}/${total} 个异常看板，等待 Dify 结论回写` };
+  } else if (event.type === "completed" || event.type === "failed") {
+    stagePatch = { ...stagePatch, status: "running", detail: `已完成 ${completed}/${total} 个异常看板${event.type === "failed" ? "（含失败项）" : ""}` };
+  } else if (event.type === "finished") {
+    const failedCount = Number(event.result?.skipped?.length || 0);
+    stagePatch = {
+      ...stagePatch,
+      status: failedCount ? "partial_failed" : "queued",
+      detail: failedCount ? `已提交 ${event.result?.triggered || 0}/${total} 个 AI 任务，${failedCount} 个提交失败` : `已提交 ${event.result?.triggered || total}/${total} 个 AI 任务，结论将异步回写`,
+      completed: total,
+    };
+    status = progress.finalStatus || "success";
+  } else {
+    stagePatch = { ...stagePatch, status: "failed", detail: event.error || "AI 取证调度失败" };
+    status = progress.finalStatus || "partial_failed";
+  }
+  let next = updateBatchScheduleRunProgressStage(progress, "ai_analysis", stagePatch);
+  if (status !== "ai_analyzing") {
+    next = updateBatchScheduleRunProgressStage(next, "finished", {
+      status: status === "success" ? "success" : "partial_failed",
+      detail: status === "success" ? "巡检和通知已完成，AI 结论会在回写后展示" : "巡检已完成，存在需要关注的失败项",
+    });
+  }
+  return { ...next, status };
 }
 
 async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs, rulesFile, notifyTextFn, detailUrl, wattrelSummary = null, dsSchedulerSummary = null }) {

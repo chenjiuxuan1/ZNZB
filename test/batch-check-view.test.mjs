@@ -122,12 +122,33 @@ test("history anomaly detail exposes an AI analysis action", () => {
     runs: [{ countryCode: "PH", countryName: "菲律宾", ok: true, result: { checkedCardCount: 1, dashboardCount: 1, anomalyCount: 1, anomalies: [{ dashboardTitle: "OKR", cardTitle: "转化", type: "latestNonZeroToZero", message: "指标从 10 降为 0" }] } }],
   }] };
   renderBatchCheck(root);
-  assert.match(root.innerHTML, /AI 分析原因/);
+  assert.match(root.innerHTML, /正在读取 AI 结论|AI 分析原因/);
   assert.match(root.innerHTML, /data-run-id="run-ai"/);
   assert.match(renderMetabaseAnomalyAnalysis({
     runId: "run-ai", countryCode: "PH", anomalyIndex: 0,
     analysis: { summary: "已完成", confidence: "low", limitations: "测试" },
   }), /重新 AI 分析/);
+});
+
+test("scheduled run progress renders compact five-stage status and keeps country details collapsible", () => {
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  state.routeQuery = {};
+  state.batchCheckTab = "schedule";
+  state.batchSchedule = { enabled: true, countryConfigs: [], includeDsScheduler: true };
+  state.batchScheduleProgress = {
+    status: "ai_analyzing", totalCountries: 1, completedCountries: 1, countries: [{ countryCode: "PH", countryName: "菲律宾", status: "success", checkedCardCount: 2, anomalyCount: 1 }],
+    stages: [
+      { key: "country_scan", label: "国家巡检", status: "success", detail: "已完成 1/1 个国家巡检" },
+      { key: "data_check", label: "DS 调度核查", status: "success", detail: "DS 调度核查完成" },
+      { key: "notification", label: "告警通知", status: "success", detail: "已发送 1 条通知" },
+      { key: "ai_analysis", label: "AI 取证队列", status: "queued", detail: "已提交 1/1 个异常看板" },
+      { key: "finished", label: "巡检完成", status: "success", detail: "巡检和通知已完成" },
+    ],
+  };
+  renderBatchCheck(root);
+  assert.match(root.innerHTML, /AI 取证队列/);
+  assert.match(root.innerHTML, /查看国家巡检明细/);
+  assert.match(root.innerHTML, /已提交 1\/1 个异常看板/);
 });
 test("fluctuation visual model groups fluctuation anomalies by country", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
