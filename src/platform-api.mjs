@@ -17,7 +17,8 @@ import { MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
-import { analyzeMetabaseAnomaly, normalizeMetabaseAnomalyAnalysis } from "./metabase-anomaly-agent.mjs";
+import { analyzeMetabaseAnomaly, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
+import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
 import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
@@ -48,6 +49,7 @@ const FILES = {
   batchSchedule: "config/batch-check-schedule.json",
   batchHistory: "config/batch-check-run-history.json",
   metabaseAnomalyAnalyses: "config/metabase-anomaly-analyses.json",
+  metabaseAnomalyEvidenceSnapshots: "config/metabase-anomaly-evidence-snapshots.json",
   wattrel: "config/wattrel.config.json",
   qualityRuleGeneration: "config/quality-rule-generation.config.json",
   dsScheduler: "config/ds-scheduler.config.json",
@@ -87,6 +89,7 @@ const DEFAULT_BATCH_SCHEDULE = {
 };
 const DEFAULT_BATCH_HISTORY = { runs: [] };
 const DEFAULT_METABASE_ANOMALY_ANALYSES = { analyses: [] };
+const DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS = { snapshots: [] };
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BATCH_HISTORY_RUNS = 200;
 const METABASE_ANALYSIS_PENDING_TIMEOUT_MS = 10 * 60 * 1000;
@@ -378,6 +381,64 @@ export function createPlatformApi({
         throw error;
       }
       return entry;
+    },
+
+    async getMetabaseAnomalyAnalysisDisplayIndex(filters = {}) {
+      const runId = String(filters.runId || filters.historyRunId || "").trim();
+      if (!runId) {
+        throw badRequest("Invalid Metabase anomaly display index request", ["请提供巡检记录。"]);
+      }
+      const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const items = (cache.analyses || [])
+        .filter((item) => String(item.runId || "") === runId && item.status === "completed")
+        .map((item) => ({
+          countryCode: item.countryCode,
+          anomalyIndex: item.anomalyIndex,
+          verificationStatus: "completed",
+          chartVisibility: item.analysis?.chartVisibility === "hide_verified_normal" ? "hide_verified_normal" : "show",
+          verificationReason: item.analysis?.chartVisibility === "hide_verified_normal" ? item.analysis?.verificationReason || "" : "",
+        }));
+      return { runId, items };
+    },
+
+    async getMetabaseAnomalyEvidenceSnapshot(body = {}) {
+      const { runId, countryCode, anomalyIndex } = normalizeMetabaseAnalysisIdentity(body);
+      const snapshotId = String(body.snapshotId || "").trim();
+      if (!snapshotId) return { complete: false, missing: ["snapshotId"] };
+      const snapshots = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
+      const snapshot = (snapshots.snapshots || []).find((item) => item.snapshotId === snapshotId
+        && item.runId === runId && item.countryCode === countryCode && item.anomalyIndex === anomalyIndex);
+      if (!snapshot) return { complete: false, missing: ["current_snapshot"] };
+      const ttlMs = getMetabaseAnomalyAccelerationSettings().snapshotTtlSeconds * 1000;
+      if (!snapshot.collectedAt || Date.now() - Date.parse(snapshot.collectedAt) > ttlMs) {
+        return { complete: false, missing: ["fresh_snapshot"] };
+      }
+      return { complete: Boolean(snapshot.complete), snapshotId, collectedAt: snapshot.collectedAt, evidence: snapshot.evidence || {}, missing: snapshot.missing || [] };
+    },
+
+    async saveMetabaseAnomalyEvidenceSnapshot(body = {}) {
+      const { runId, countryCode, anomalyIndex } = normalizeMetabaseAnalysisIdentity(body);
+      const snapshotId = String(body.snapshotId || "").trim();
+      if (!/^[A-Za-z0-9._:-]{8,128}$/.test(snapshotId)) {
+        throw badRequest("Invalid Metabase anomaly evidence snapshot", ["snapshotId 格式不正确。"]);
+      }
+      const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
+      const run = (history.runs || []).find((item) => String(item.id || "") === runId);
+      const countryRun = (run?.runs || []).find((item) => normalizeCountryCode(item.countryCode) === countryCode);
+      if (!countryRun?.result?.anomalies?.[anomalyIndex]) {
+        throw badRequest("Invalid Metabase anomaly evidence snapshot", ["快照必须绑定现有巡检异常。"]);
+      }
+      const store = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
+      const snapshot = {
+        snapshotId, runId, countryCode, anomalyIndex,
+        collectedAt: new Date().toISOString(),
+        complete: body.complete === true,
+        evidence: body.evidence && typeof body.evidence === "object" ? body.evidence : {},
+        missing: Array.isArray(body.missing) ? body.missing.filter((item) => typeof item === "string").slice(0, 20) : [],
+      };
+      const snapshots = [snapshot, ...(store.snapshots || []).filter((item) => item.snapshotId !== snapshotId)].slice(0, 500);
+      await writeJsonAtomic(resolve("metabaseAnomalyEvidenceSnapshots"), { updatedAt: snapshot.collectedAt, snapshots });
+      return { success: true, snapshotId, complete: snapshot.complete };
     },
 
     async getMetabaseAnomalyCardSql(body = {}) {
@@ -757,7 +818,8 @@ export function createPlatformApi({
           dsSchedulerSummary,
           dsSchedulerError,
         }));
-        return { ran: true, schedule: saved, result: saved.lastResult };
+        const agentTriggerResult = await this.dispatchDashboardGroupedAnalysis(historyRunId, countryRuns);
+        return { ran: true, schedule: saved, result: saved.lastResult, agentTriggerResult };
       } catch (error) {
         batchScheduleRunProgress = {
           ...(batchScheduleRunProgress || {}),
@@ -1286,6 +1348,76 @@ export function createPlatformApi({
       };
     },
 
+    async triggerDashboardGroupedAnalysis(historyRunId, countryRuns) {
+      const settings = getMetabaseAnomalyAgentSettings();
+      const acceleration = getMetabaseAnomalyAccelerationSettings();
+      const autoTrigger = String(process.env.METABASE_ANOMALY_AGENT_AUTO_TRIGGER || "1").trim().toLowerCase();
+      if (autoTrigger === "0" || autoTrigger === "false" || autoTrigger === "off" || autoTrigger === "no") {
+        return { triggered: 0, reason: "auto-trigger disabled" };
+      }
+      if (!settings.enabled) {
+        return { triggered: 0, reason: "agent not configured" };
+      }
+      const dashboardGroups = new Map();
+      for (const run of countryRuns) {
+        if (!run.ok || !run.result?.anomalies) continue;
+        for (let i = 0; i < run.result.anomalies.length; i++) {
+          const anomaly = run.result.anomalies[i];
+          const groupKey = `${run.countryCode}:${anomaly.dashboardUuid || anomaly.dashboardTitle || "unknown"}`;
+          if (!dashboardGroups.has(groupKey)) {
+            dashboardGroups.set(groupKey, {
+              countryCode: run.countryCode,
+              anomalyIndex: i,
+              dashboardTitle: anomaly.dashboardTitle || "",
+              cardTitle: anomaly.cardTitle || "",
+              anomalyCount: 0,
+            });
+          }
+          dashboardGroups.get(groupKey).anomalyCount += 1;
+        }
+      }
+      let triggered = 0;
+      const skipped = [];
+      const analyzeGroup = async ([groupKey, group]) => {
+        try {
+          await this.analyzeMetabaseAnomaly({
+            runId: historyRunId,
+            countryCode: group.countryCode,
+            anomalyIndex: group.anomalyIndex,
+            force: false,
+          });
+          triggered += 1;
+        } catch (error) {
+          skipped.push({ groupKey, error: error.message });
+        }
+      };
+      if (acceleration.enabled) {
+        const queue = createBoundedTaskQueue({ concurrency: acceleration.maxConcurrency });
+        await Promise.all([...dashboardGroups.entries()].map((entry) => queue.add(() => analyzeGroup(entry))));
+      } else {
+        for (const entry of dashboardGroups.entries()) {
+          await analyzeGroup(entry);
+        }
+      }
+      return { triggered, totalDashboards: dashboardGroups.size, skipped, acceleration: acceleration.enabled ? { enabled: true, maxConcurrency: acceleration.maxConcurrency } : undefined };
+    },
+
+    dispatchDashboardGroupedAnalysis(historyRunId, countryRuns) {
+      const acceleration = getMetabaseAnomalyAccelerationSettings();
+      if (!acceleration.enabled) {
+        return this.triggerDashboardGroupedAnalysis(historyRunId, countryRuns);
+      }
+      // A patrol has already persisted its history and notifications at this point.
+      // Do not hold its completion state hostage to long-running Agent evidence jobs.
+      void this.triggerDashboardGroupedAnalysis(historyRunId, countryRuns).catch((error) => {
+        console.error(`[metabase-anomaly-acceleration] batch ${historyRunId} dispatch failed: ${error.message}`);
+      });
+      return {
+        queued: true,
+        acceleration: { enabled: true, maxConcurrency: acceleration.maxConcurrency },
+      };
+    },
+
     async runDueBatchSchedule(now = new Date()) {
       const schedule = await this.getBatchSchedule();
       if (!schedule.enabled) {
@@ -1373,7 +1505,8 @@ export function createPlatformApi({
           dsSchedulerSummary,
           dsSchedulerError,
         }));
-        return { ran: true, schedule: saved, result: saved.lastResult };
+        const agentTriggerResult = await this.dispatchDashboardGroupedAnalysis(historyRunId, countryRuns);
+        return { ran: true, schedule: saved, result: saved.lastResult, agentTriggerResult };
       } catch (error) {
         batchScheduleRunProgress = {
           ...(batchScheduleRunProgress || {}),

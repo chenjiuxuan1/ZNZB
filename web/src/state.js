@@ -22,6 +22,7 @@ export const state = {
   batchScheduleProgress: null,
   batchScheduleProgressTimer: null,
   batchHistory: null,
+  batchHistoryLoaded: false,
   batchHistoryFilters: {
     countryCode: "",
     status: "",
@@ -31,6 +32,7 @@ export const state = {
   fluctuationVisualSelected: {},
   fluctuationVisualCountryCode: "",
   fluctuationVisualLoaded: false,
+  fluctuationVisualDisplayIndex: {},
   fluctuationVisualSeries: {},
   wattrelCurrentResult: null,
   wattrelCurrentStatus: null,
