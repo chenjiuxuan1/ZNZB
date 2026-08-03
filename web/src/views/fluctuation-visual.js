@@ -19,6 +19,9 @@ const CHINA_SUPPRESSED_ANOMALY_TYPES = new Set([
   "notEmpty",
 ]);
 
+const FLUCTUATION_SERIES_CONCURRENCY = 3;
+const FLUCTUATION_SERIES_TIMEOUT_MS = 15_000;
+
 export function renderFluctuationVisual(root) {
   const model = buildFluctuationVisualModel(state.batchHistory, state.countries?.countries || [], {
     displayIndex: state.fluctuationVisualDisplayIndex,
@@ -63,9 +66,9 @@ export function renderFluctuationVisual(root) {
   });
 
   // History is intentionally user-triggered: this view must not slow app startup.
-  const selected = getSelectedModelAnomaly(model);
-  if (selected && !hasRealSeries(selected)) {
-    void hydrateFluctuationSeries(root, selected);
+  const selectedCountry = getSelectedFluctuationCountry(model.countries || []);
+  if (selectedCountry) {
+    void hydrateVisibleFluctuationSeries(root, selectedCountry);
   }
 }
 
@@ -159,7 +162,7 @@ function renderFluctuationCountries(model) {
       </div>
     </section>
     <div class="fluctuation-country-focus">
-      ${renderFluctuationCountry(selectedCountry)}
+      ${renderFluctuationCountryRows(selectedCountry)}
     </div>
   `;
 }
@@ -172,6 +175,52 @@ function getSelectedFluctuationCountry(countries = []) {
     state.fluctuationVisualCountryCode = fallback.countryCode;
   }
   return fallback;
+}
+
+function renderFluctuationCountryRows(country) {
+  const drawableCount = country.anomalies.filter(hasRealSeries).length;
+  return `
+    <article class="panel fluctuation-country-card">
+      <div class="fluctuation-country-head">
+        <div>
+          <h2 class="panel-title">${escapeHtml(country.countryName || country.countryCode || "-")}</h2>
+          <p class="muted">${escapeHtml(country.countryCode || "-")} · ${escapeHtml(country.anomalies.length)} 个波动指标${drawableCount < country.anomalies.length ? `，${escapeHtml(drawableCount)} 个已保存真实序列` : ""}</p>
+        </div>
+        <span class="badge warn">${escapeHtml(country.anomalies.length)} 点</span>
+      </div>
+      <div class="fluctuation-row-list">
+        ${country.anomalies.map((anomaly, index) => renderFluctuationRow(anomaly, index)).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderFluctuationRow(anomaly, index) {
+  const chart = buildChart(anomaly);
+  const seriesState = state.fluctuationVisualSeries?.[anomaly.seriesKey];
+  return `
+    <section class="fluctuation-row">
+      <div class="fluctuation-row-meta">
+        <span class="fluctuation-row-index">${escapeHtml(index + 1)}</span>
+        <div class="fluctuation-row-title">
+          <h3>${escapeHtml(anomaly.metricLabel)}</h3>
+          <p>${escapeHtml(anomaly.dashboardTitle || "-")}</p>
+          <p>${escapeHtml(anomaly.cardTitle || "-")}</p>
+        </div>
+        <div class="fluctuation-row-detail">
+          <div>${renderDetailField("当前值", anomaly.detail.currentValue || "-")}</div>
+          <div>${renderDetailField("基准值", anomaly.detail.baselineValue || "-")}</div>
+          <div>${renderDetailField("变化", anomaly.detail.changeValue || "-")}</div>
+          <div>${renderDetailField("时间", anomaly.detail.timeText || "-")}</div>
+        </div>
+      </div>
+      <div class="fluctuation-row-chart">
+        ${renderLineChart(chart)}
+        ${seriesState?.type === "loading" ? `<div class="fluctuation-chart-note">正在按看板 URL 拉取最近历史数据...</div>` : ""}
+        ${seriesState?.type === "error" ? `<div class="fluctuation-chart-note error">${escapeHtml(seriesState.detail || "历史数据拉取失败")}</div>` : ""}
+      </div>
+    </section>
+  `;
 }
 
 function renderFluctuationCountry(country) {
@@ -237,8 +286,11 @@ function renderLineChart(chart) {
   const pad = { top: 22, right: 24, bottom: 34, left: 52 };
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
-  const minValue = Math.min(...chart.points.map((point) => point.value));
-  const maxValue = Math.max(...chart.points.map((point) => point.value));
+  const chartValues = chart.points
+    .flatMap((point) => [point.value, point.baselineValue])
+    .filter(Number.isFinite);
+  const minValue = Math.min(...chartValues);
+  const maxValue = Math.max(...chartValues);
   const span = maxValue - minValue || Math.max(1, Math.abs(maxValue || 1));
   const yMin = minValue - span * 0.12;
   const yMax = maxValue + span * 0.12;
@@ -246,12 +298,18 @@ function renderLineChart(chart) {
   const coords = chart.points.map((point, index) => {
     const x = pad.left + (chart.points.length === 1 ? plotWidth : (index / (chart.points.length - 1)) * plotWidth);
     const y = pad.top + ((yMax - point.value) / (yMax - yMin || 1)) * plotHeight;
-    return { ...point, x, y };
+    const baselineY = Number.isFinite(point.baselineValue)
+      ? pad.top + ((yMax - point.baselineValue) / (yMax - yMin || 1)) * plotHeight
+      : Number.NaN;
+    return { ...point, x, y, baselineY };
   });
+  const hasBaselineLine = coords.some((point) => Number.isFinite(point.baselineValue) && Number.isFinite(point.baselineY));
+  const baselineCoords = coords.filter((point) => Number.isFinite(point.baselineValue) && Number.isFinite(point.baselineY));
   const normalCoords = coords.filter((point) => !point.anomaly);
   const anomalyPoint = coords.find((point) => point.anomaly) || coords[coords.length - 1];
   const path = normalCoords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
   const fullPath = coords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const baselinePath = baselineCoords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.baselineY.toFixed(1)}`).join(" ");
   const yTicks = buildTicks(yMin, yMax, 4);
   const percentScale = resolvePercentDisplayScale(chart);
 
@@ -265,15 +323,28 @@ function renderLineChart(chart) {
           <text class="axis-label" x="${pad.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${escapeHtml(formatChartValue(tick, chart.percent, percentScale))}</text>
         `;
       }).join("")}
-      <path class="full-line" d="${fullPath}"></path>
-      ${path ? `<path class="normal-line" d="${path}"></path>` : ""}
+      ${hasBaselineLine ? `<path class="baseline-line" d="${baselinePath}"></path>` : `<path class="full-line" d="${fullPath}"></path>`}
+      <path class="normal-line" d="${hasBaselineLine ? fullPath : path}"></path>
+      ${hasBaselineLine ? baselineCoords.map((point) => `
+        <circle class="baseline-dot" cx="${point.x.toFixed(1)}" cy="${point.baselineY.toFixed(1)}" r="3.2">
+          <title>${escapeHtml(point.label || "")} 14天同小时均值 ${escapeHtml(formatChartValue(point.baselineValue, chart.percent, percentScale))}</title>
+        </circle>
+      `).join("") : ""}
       ${coords.map((point) => `
         <circle class="${point.anomaly ? "anomaly-dot" : "normal-dot"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.anomaly ? 5.8 : 3.8}">
-          <title>${escapeHtml(point.label || "")} ${escapeHtml(formatChartValue(point.value, chart.percent, percentScale))}</title>
+          <title>${escapeHtml(point.label || "")} 当天 ${escapeHtml(formatChartValue(point.value, chart.percent, percentScale))}</title>
         </circle>
       `).join("")}
+      ${hasBaselineLine ? `
+        <g class="chart-legend" transform="translate(${pad.left}, 18)">
+          <line class="normal-line" x1="0" y1="0" x2="20" y2="0"></line>
+          <text x="26" y="4">当天24小时</text>
+          <line class="baseline-line" x1="112" y1="0" x2="132" y2="0"></line>
+          <text x="138" y="4">前14天同小时均值</text>
+        </g>
+      ` : ""}
       <text class="x-label" x="${pad.left}" y="${height - 10}">${escapeHtml(coords[0]?.label || "")}</text>
-      <text class="x-label" x="${width - pad.right}" y="${height - 10}" text-anchor="end">${escapeHtml(anomalyPoint?.label || "")}</text>
+      <text class="x-label" x="${width - pad.right}" y="${height - 10}" text-anchor="end">${escapeHtml((hasBaselineLine ? coords.at(-1) : anomalyPoint)?.label || "")}</text>
     </svg>
   `;
 }
@@ -443,21 +514,30 @@ function hasRealSeries(anomaly) {
 }
 
 function normalizeSeries(anomaly) {
-  const candidate = anomaly.series || anomaly.hydratedSeries || anomaly.history || anomaly.points || anomaly.evidence?.series || anomaly.fluctuation?.history;
+  // Prefer the freshly queried dashboard series over a saved inspection snapshot.
+  const candidate = anomaly.hydratedSeries || anomaly.series || anomaly.history || anomaly.points || anomaly.evidence?.series || anomaly.fluctuation?.history;
   const rawPoints = Array.isArray(candidate) ? candidate : [];
+  const pointLimit = rawPoints.some((point) => point?.xType === "hour") ? 24 : 16;
   return rawPoints
     .map((point, index) => {
       const value = parseNumericValue(point.value ?? point.metric ?? point.y ?? point.currentValue);
+      const baselineValue = parseNumericValue(point.baselineValue ?? point.baseline ?? point.average ?? point.avgValue);
       if (!Number.isFinite(value)) return null;
+      const xType = point.xType || "date";
       return {
-        label: String(point.date || point.statDate || point.x || point.label || `D-${rawPoints.length - index - 1}`),
+        label: String(xType === "hour"
+          ? point.label || point.x || point.date || `H-${index}`
+          : point.date || point.statDate || point.x || point.label || `D-${rawPoints.length - index - 1}`),
         value,
+        ...(Number.isFinite(baselineValue) ? { baselineValue } : {}),
+        baselineSampleCount: Number(point.baselineSampleCount || point.sampleCount || 0),
         percent: /%/.test(String(point.value ?? point.metric ?? "")),
         anomaly: Boolean(point.anomaly || point.isAnomaly || index === rawPoints.length - 1),
+        xType,
       };
     })
     .filter(Boolean)
-    .slice(-16);
+    .slice(-pointLimit);
 }
 
 function getSelectedModelAnomaly(model) {
@@ -467,7 +547,44 @@ function getSelectedModelAnomaly(model) {
   return country.anomalies[selectedIndex] || country.anomalies[0] || null;
 }
 
-async function hydrateFluctuationSeries(root, anomaly) {
+async function hydrateVisibleFluctuationSeries(root, country) {
+  const countryCode = country.countryCode || "";
+  if (!countryCode) return;
+  state.fluctuationVisualHydratingCountries = state.fluctuationVisualHydratingCountries || {};
+  if (state.fluctuationVisualHydratingCountries[countryCode]) return;
+  const pending = (country.anomalies || []).filter((anomaly) => {
+    const current = state.fluctuationVisualSeries?.[anomaly.seriesKey];
+    return !current || current.type === "idle";
+  });
+  if (!pending.length) return;
+  state.fluctuationVisualHydratingCountries[countryCode] = true;
+  try {
+    const hydration = runWithConcurrency(
+      pending,
+      FLUCTUATION_SERIES_CONCURRENCY,
+      (anomaly) => hydrateFluctuationSeries(root, anomaly, { renderLoading: false }),
+    );
+    renderFluctuationVisual(root);
+    await hydration;
+  } finally {
+    state.fluctuationVisualHydratingCountries[countryCode] = false;
+  }
+}
+
+async function runWithConcurrency(items, concurrency, worker) {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, Number(concurrency) || 1), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
+async function hydrateFluctuationSeries(root, anomaly, options = {}) {
   const key = anomaly.seriesKey || buildSeriesKey(anomaly.runId, anomaly.countryCode, anomaly.anomalyIndex, anomaly);
   const current = state.fluctuationVisualSeries?.[key];
   if (current?.type === "loading" || current?.type === "loaded" || current?.type === "error") {
@@ -477,13 +594,15 @@ async function hydrateFluctuationSeries(root, anomaly) {
     ...(state.fluctuationVisualSeries || {}),
     [key]: { type: "loading", series: [] },
   };
-  renderFluctuationVisual(root);
+  if (options.renderLoading !== false) {
+    renderFluctuationVisual(root);
+  }
   try {
     const result = await apiPost("/api/fluctuation-visual/series", {
       anomaly,
       lookbackDays: 45,
       maxPoints: 16,
-    });
+    }, { timeoutMs: FLUCTUATION_SERIES_TIMEOUT_MS });
     state.fluctuationVisualSeries = {
       ...(state.fluctuationVisualSeries || {}),
       [key]: {
@@ -493,12 +612,15 @@ async function hydrateFluctuationSeries(root, anomaly) {
       },
     };
   } catch (error) {
+    const detail = /timed out/i.test(error.message || "")
+      ? "查询超时（15秒），已跳过该看板，不影响其他图表加载。"
+      : error.payload?.errors?.join("\n") || error.message;
     state.fluctuationVisualSeries = {
       ...(state.fluctuationVisualSeries || {}),
       [key]: {
         type: "error",
         series: [],
-        detail: error.payload?.errors?.join("\n") || error.message,
+        detail,
       },
     };
   }
@@ -538,7 +660,10 @@ function buildTicks(minValue, maxValue, count) {
 
 function resolvePercentDisplayScale(chart = {}) {
   if (!chart.percent) return 1;
-  const values = (chart.points || []).map((point) => Math.abs(Number(point.value))).filter(Number.isFinite);
+  const values = (chart.points || [])
+    .flatMap((point) => [point.value, point.baselineValue])
+    .map((value) => Math.abs(Number(value)))
+    .filter(Number.isFinite);
   if (!values.length) return 1;
   return Math.max(...values) <= 1 ? 100 : 1;
 }
@@ -583,6 +708,8 @@ export const __test__ = {
   chooseDisplayAnomalyIndex,
   getDisplayAnomalyIndex,
   isPercentMetric,
+  normalizeSeries,
+  runWithConcurrency,
   resolvePercentDisplayScale,
   formatChartValue,
 };
