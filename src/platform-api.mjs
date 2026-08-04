@@ -368,10 +368,10 @@ export function createPlatformApi({
       const snapshotId = String(batch.snapshotId || "").trim();
       const cases = Array.isArray(batch.cases) ? batch.cases : [];
       const stage = batch.stage === "metric_deep_analysis" ? "metric_deep_analysis" : "dashboard_screening";
-      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 3));
+      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 10));
       const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, cases }), "utf8");
       if (!runId || !countryCode || !batchId || !snapshotId || invalidCaseCount || payloadBytes > MAX_DASHBOARD_SCREENING_BYTES) {
-        throw badRequest("Invalid Metabase investigation batch", ["取证任务必须包含有效标识；看板初筛需包含全部指标，单指标深挖只能包含 1-3 条，且请求不得超过 512 KiB。"]);
+        throw badRequest("Invalid Metabase investigation batch", ["取证任务必须包含有效标识；看板初筛需包含全部指标，单指标深挖只能包含 1-10 条，且请求不得超过 512 KiB。"]);
       }
       const normalizedCases = [];
       for (const item of cases) {
@@ -517,7 +517,7 @@ export function createPlatformApi({
           byTable.get(groupKey).items.push({ ...item, countryCode: screeningBatch.countryCode, screeningVerdict: screening });
         }
       }
-      const MAX_DEEP_BATCH = 3;
+      const MAX_DEEP_BATCH = 10;
       const batches = [];
       for (const [groupKey, group] of byTable) {
         for (let i = 0; i < group.items.length; i += MAX_DEEP_BATCH) {
@@ -990,8 +990,8 @@ export function createPlatformApi({
       const countryCode = normalizeCountryCode(body.countryCode);
       const jobId = String(body.jobId || "").trim();
       const results = Array.isArray(body.results) ? body.results : [];
-      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 3) {
-        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-3 条结果。"]);
+      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 10) {
+        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-10 条结果。"]);
       }
       const indexes = results.map((item) => Number(item?.anomalyIndex));
       if (indexes.some((index) => !Number.isInteger(index) || index < 0) || new Set(indexes).size !== indexes.length) {
