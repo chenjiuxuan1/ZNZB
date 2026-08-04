@@ -347,10 +347,10 @@ export function createPlatformApi({
       const snapshotId = String(batch.snapshotId || "").trim();
       const cases = Array.isArray(batch.cases) ? batch.cases : [];
       const stage = batch.stage === "metric_deep_analysis" ? "metric_deep_analysis" : "dashboard_screening";
-      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 15));
+      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 3));
       const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, cases }), "utf8");
       if (!runId || !countryCode || !batchId || !snapshotId || invalidCaseCount || payloadBytes > MAX_DASHBOARD_SCREENING_BYTES) {
-        throw badRequest("Invalid Metabase investigation batch", ["取证任务必须包含有效标识；看板初筛需包含全部指标，单指标深挖只能包含一条，且请求不得超过 512 KiB。"]);
+        throw badRequest("Invalid Metabase investigation batch", ["取证任务必须包含有效标识；看板初筛需包含全部指标，单指标深挖只能包含 1-3 条，且请求不得超过 512 KiB。"]);
       }
       const normalizedCases = [];
       for (const item of cases) {
@@ -496,7 +496,7 @@ export function createPlatformApi({
           byTable.get(groupKey).items.push({ ...item, countryCode: screeningBatch.countryCode, screeningVerdict: screening });
         }
       }
-      const MAX_DEEP_BATCH = 15;
+      const MAX_DEEP_BATCH = 3;
       const batches = [];
       for (const [groupKey, group] of byTable) {
         for (let i = 0; i < group.items.length; i += MAX_DEEP_BATCH) {
@@ -533,7 +533,7 @@ export function createPlatformApi({
         }
         await delay(Math.min(intervalMs, Math.max(1, endAt - Date.now())));
       }
-      return this.markMetabaseInvestigationBatchTimedOut(batch, { reason: Date.now() >= deadlineAt ? "巡检已达到 30 分钟全局截止" : "等待 Dify 回调超过 10 分钟" });
+      return this.markMetabaseInvestigationBatchTimedOut(batch, { reason: Date.now() >= deadlineAt ? "巡检已达到 45 分钟全局截止" : "等待 Dify 回调超过 10 分钟" });
     },
 
     async markMetabaseInvestigationBatchTimedOut(batch = {}, { reason = "AI 未在时限内回写" } = {}) {
@@ -594,7 +594,7 @@ export function createPlatformApi({
           onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, phase: "dashboard_screening" }); },
         });
         for (const batch of screeningResult.notSubmitted || []) {
-          await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 30 分钟全局截止，未再投递 Dify" });
+          await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 45 分钟全局截止，未再投递 Dify" });
         }
         const deepBatches = await this.prepareMetricDeepAnalysisBatches({ runId, screeningBatches: prepared.batches });
         const deepResult = await runBoundedInvestigationQueue({
@@ -606,7 +606,7 @@ export function createPlatformApi({
           onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, phase: "metric_deep_analysis" }); },
         });
         for (const batch of deepResult.notSubmitted || []) {
-          await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 30 分钟全局截止，未再投递单指标深度分析" });
+          await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 45 分钟全局截止，未再投递单指标深度分析" });
         }
         queueResult = {
           total: screeningResult.total + deepResult.total,
@@ -969,7 +969,7 @@ export function createPlatformApi({
       const countryCode = normalizeCountryCode(body.countryCode);
       const jobId = String(body.jobId || "").trim();
       const results = Array.isArray(body.results) ? body.results : [];
-      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 15) {
+      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 3) {
         throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-3 条结果。"]);
       }
       const indexes = results.map((item) => Number(item?.anomalyIndex));
@@ -3495,7 +3495,7 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   }
   if (event.type === "global_deadline") {
     status = "partial_failed";
-    detail = `已达到 30 分钟截止，${event.notSubmitted?.length || 0} 个请求标记为 AI 未核验`;
+    detail = `已达到 45 分钟截止，${event.notSubmitted?.length || 0} 个请求标记为 AI 未核验`;
   }
   return updateBatchScheduleRunProgressStage(progress, "ai_analysis", {
     status,
