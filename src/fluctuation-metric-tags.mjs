@@ -2,6 +2,7 @@ import http from "node:http";
 import https from "node:https";
 
 const DEFAULT_TAG = "二级";
+const DEFAULT_TAG_GATEWAY_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/fluctuation-metric-tags";
 const TAG_VALUES = new Set(["一级", "二级", "三级"]);
 const FLUCTUATION_TYPES = new Set([
   "completeDayChange",
@@ -96,7 +97,9 @@ export function createFluctuationMetricTagStore({ env = process.env, requestFn =
 }
 
 function getTagGatewayConfig(env = {}) {
-  const webhookUrl = String(env.FLUCTUATION_TAG_GATEWAY_WEBHOOK_URL || "").trim();
+  // Match the deployed Wattrel gateway convention: the application reaches its
+  // co-located n8n instance through localhost, while deployments may override it.
+  const webhookUrl = String(env.FLUCTUATION_TAG_GATEWAY_WEBHOOK_URL || DEFAULT_TAG_GATEWAY_WEBHOOK_URL).trim();
   return {
     enabled: Boolean(webhookUrl),
     webhookUrl,
