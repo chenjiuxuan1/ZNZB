@@ -20,20 +20,24 @@ test("groups every anomaly from one dashboard into one screening job", () => {
   assert.equal(jobs[0].dashboardUuid, "dash-1");
 });
 
-test("creates one deep-analysis job for every metric not proven normal", () => {
+test("batches non-verified metrics by source table into deep-analysis jobs", () => {
   const [screening] = buildDashboardScreeningJobs([
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 0 },
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 1 },
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 2 },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 0, sourceTable: "ads.loan_d" },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 1, sourceTable: "ads.loan_d" },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 2, sourceTable: "ads.loan_d" },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 3, sourceTable: "ads.loan_d" },
   ]);
   const jobs = buildMetricDeepAnalysisJobs(screening, [
     { anomalyIndex: 0, screeningVerdict: "verified_normal" },
     { anomalyIndex: 1, screeningVerdict: "suspected_issue" },
     { anomalyIndex: 2, screeningVerdict: "needs_deep_analysis" },
+    { anomalyIndex: 3, screeningVerdict: "needs_deep_analysis" },
   ]);
 
-  assert.deepEqual(jobs.map((job) => job.cases[0].anomalyIndex), [1, 2]);
-  assert.ok(jobs.every((job) => job.stage === "metric_deep_analysis" && job.cases.length === 1));
+  // 3 non-verified (1,2,3) from same table -> 1 batch of 3
+  assert.equal(jobs.length, 1);
+  assert.deepEqual(jobs[0].cases.map((c) => c.anomalyIndex), [1, 2, 3]);
+  assert.equal(jobs[0].stage, "metric_deep_analysis");
 });
 
 test("batch investigation groups same source and limits every Dify payload to three cases", () => {
