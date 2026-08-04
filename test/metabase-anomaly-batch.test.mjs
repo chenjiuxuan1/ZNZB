@@ -47,31 +47,32 @@ test("batch investigation groups same source and limits every Dify payload to th
   assert.deepEqual(batches.map((batch) => batch.cases.map((item) => item.anomalyIndex)), [[0, 1, 2], [3]]);
 });
 
-test("batch investigation limits never exceed two Dify workers or three cases", () => {
+test("batch investigation limits never exceed three Dify workers or three cases", () => {
   assert.deepEqual(getBatchInvestigationLimits({
     METABASE_ANOMALY_BATCH_CONCURRENCY: "99",
     METABASE_ANOMALY_BATCH_SIZE: "99",
-  }), { maxConcurrentBatches: 2, maxCasesPerBatch: 3, timeoutMs: 600000, targetDurationMs: 1200000, deadlineMs: 1800000 });
+  }), { maxConcurrentBatches: 3, maxCasesPerBatch: 3, timeoutMs: 360000, targetDurationMs: 1200000, deadlineMs: 2700000 });
 });
 
-test("bounded investigation queue never submits a third Dify batch before one callback settles", async () => {
+test("bounded investigation queue never submits a fourth Dify batch before one callback settles", async () => {
   const submitted = [];
   const releases = new Map();
   const queue = runBoundedInvestigationQueue({
-    batches: [{ batchId: "a" }, { batchId: "b" }, { batchId: "c" }],
+    batches: [{ batchId: "a" }, { batchId: "b" }, { batchId: "c" }, { batchId: "d" }],
     submit: async (batch) => { submitted.push(batch.batchId); },
     waitForSettlement: (batch) => new Promise((resolve) => releases.set(batch.batchId, resolve)),
   });
 
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b"]);
+  assert.deepEqual(submitted, ["a", "b", "c"]);
   releases.get("a")({ status: "completed" });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b", "c"]);
+  assert.deepEqual(submitted, ["a", "b", "c", "d"]);
   releases.get("b")({ status: "completed" });
   releases.get("c")({ status: "completed" });
+  releases.get("d")({ status: "completed" });
   const result = await queue;
-  assert.equal(result.completed, 3);
+  assert.equal(result.completed, 4);
 });
 
 test("bounded investigation queue never submits queued batches after its global deadline", async () => {
