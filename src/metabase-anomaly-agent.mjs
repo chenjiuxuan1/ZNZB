@@ -108,7 +108,7 @@ export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.en
   if (!batch.countryCode) validationErrors.push("countryCode missing");
   if (!batch.snapshotId) validationErrors.push("snapshotId missing");
   if (cases.length === 0) validationErrors.push("cases empty");
-  if (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 15)) validationErrors.push(`deep_analysis requires exactly 1 case, got ${cases.length}`);
+  if (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 3)) validationErrors.push(`deep_analysis requires 1-3 cases, got ${cases.length}`);
   if (payloadBytes > 512 * 1024) validationErrors.push(`payload ${payloadBytes} bytes exceeds 512 KiB`);
   if (validationErrors.length > 0) {
     const detail = `stage=${stage}, countryCode=${batch.countryCode || "(empty)"}, batchId=${String(batch.batchId || "").slice(0, 20)}, runId=${String(batch.runId || "").slice(0, 20)}, snapshotId=${String(batch.snapshotId || "").slice(0, 20)}, cases=${cases.length}, payloadBytes=${payloadBytes}`;

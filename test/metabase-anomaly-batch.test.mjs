@@ -51,14 +51,14 @@ test("batch investigation groups same source and limits every Dify payload to th
   assert.deepEqual(batches.map((batch) => batch.cases.map((item) => item.anomalyIndex)), [[0, 1, 2], [3]]);
 });
 
-test("batch investigation limits never exceed three Dify workers or three cases", () => {
+test("batch investigation limits never exceed two Dify workers or three cases", () => {
   assert.deepEqual(getBatchInvestigationLimits({
     METABASE_ANOMALY_BATCH_CONCURRENCY: "99",
     METABASE_ANOMALY_BATCH_SIZE: "99",
-  }), { maxConcurrentBatches: 3, maxCasesPerBatch: 3, timeoutMs: 360000, targetDurationMs: 1200000, deadlineMs: 2700000 });
+  }), { maxConcurrentBatches: 2, maxCasesPerBatch: 3, timeoutMs: 360000, targetDurationMs: 1200000, deadlineMs: 2700000 });
 });
 
-test("bounded investigation queue never submits a fourth Dify batch before one callback settles", async () => {
+test("bounded investigation queue never submits a third Dify batch before one callback settles", async () => {
   const submitted = [];
   const releases = new Map();
   const queue = runBoundedInvestigationQueue({
@@ -68,11 +68,13 @@ test("bounded investigation queue never submits a fourth Dify batch before one c
   });
 
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b", "c"]);
+  assert.deepEqual(submitted, ["a", "b"]);
   releases.get("a")({ status: "completed" });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b", "c", "d"]);
+  assert.deepEqual(submitted, ["a", "b", "c"]);
   releases.get("b")({ status: "completed" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(submitted, ["a", "b", "c", "d"]);
   releases.get("c")({ status: "completed" });
   releases.get("d")({ status: "completed" });
   const result = await queue;
