@@ -641,8 +641,15 @@ function normalizeTagText(value) {
 }
 
 function normalizeTagDimension(value) {
-  const values = String(value || "").split(/[，,]/).map(normalizeTagText).filter(Boolean);
+  const values = String(value || "").split(/[，,]/)
+    .map(normalizeTagText)
+    .filter((item) => item && !isTemporalTagDimension(item));
   return [...new Set(values)].sort().join("，") || "无维度";
+}
+
+function isTemporalTagDimension(value) {
+  const name = normalizeTagText(String(value).split("=", 1)[0]).toLowerCase();
+  return /日期|时间|小时|date|time|hour|stat_date|timezone/.test(name);
 }
 
 function isFluctuationAnomaly(anomaly, detail, countryCode = "") {
