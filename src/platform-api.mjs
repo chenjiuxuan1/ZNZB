@@ -45,6 +45,10 @@ import {
   validateRulesConfig,
   validateSandboxRequest,
 } from "./platform-validation.mjs";
+import {
+  collectFluctuationMetricTagIdentities,
+  createFluctuationMetricTagStore,
+} from "./fluctuation-metric-tags.mjs";
 
 const FILES = {
   countries: "config/countries.config.json",
@@ -123,6 +127,7 @@ export function createPlatformApi({
   qualityRuleGenerationSubmitFn = null,
   metabaseAnomalyAgentFn = analyzeMetabaseAnomaly,
   metabaseAnomalyBatchAgentFn = analyzeMetabaseAnomalyBatch,
+  fluctuationMetricTagStore = createFluctuationMetricTagStore(),
   aiFirstMetabasePatrolEnabled = isAiFirstMetabasePatrolEnabled(),
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
@@ -133,6 +138,14 @@ export function createPlatformApi({
   const metabaseAnalysisInFlight = new Set();
   let dashboardDiscoveryRunning = false;
   let dashboardDiscoveryProgress = { status: "idle", result: null, error: null, startedAt: null, finishedAt: null };
+  const appendHistoryEntry = async (entry) => {
+    await appendBatchHistoryRun(resolve("batchHistory"), entry);
+    try {
+      await fluctuationMetricTagStore.ensureIdentities(collectFluctuationMetricTagIdentities(entry));
+    } catch (error) {
+      console.error(`[fluctuation-metric-tags] sync failed for ${entry.id || "history"}: ${error.message}`);
+    }
+  };
   const findMetabasePatrolRun = async (runId) => {
     const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
     const completed = (history.runs || []).find((item) => String(item.id || "") === runId);
@@ -236,6 +249,14 @@ export function createPlatformApi({
     async getBatchHistory(filters = {}) {
       const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
       return filterBatchHistory(history, filters);
+    },
+
+    async getFluctuationMetricTags(body = {}) {
+      return fluctuationMetricTagStore.getTags(body.items || []);
+    },
+
+    async updateFluctuationMetricTag(body = {}) {
+      return fluctuationMetricTagStore.updateTag(body.identity || {}, String(body.tag || ""));
     },
 
     async savePendingMetabasePatrolRun(entry = {}) {
@@ -1020,7 +1041,7 @@ export function createPlatformApi({
       });
       entry.source = source;
       entry.title = String(body.title || externalSourceTitle(source));
-      await appendBatchHistoryRun(resolve("batchHistory"), entry);
+      await appendHistoryEntry(entry);
       return {
         ok: true,
         id: historyRunId,
@@ -1230,7 +1251,7 @@ export function createPlatformApi({
             lastResult,
           };
           await writeJsonAtomic(resolve("batchSchedule"), saved);
-          await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+          await appendHistoryEntry(buildBatchHistoryEntry({
             trigger: "manual_test", id: historyRunId, startedAt, finishedAt: new Date().toISOString(), nextRunAt, schedule,
             countryRuns: finalizedRuns, notificationSentCount: aiFirst.notificationSentCount, wattrelSummary, dsSchedulerSummary, dsSchedulerError,
           }));
@@ -1279,7 +1300,7 @@ export function createPlatformApi({
           notificationSentCount,
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
-        await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+        await appendHistoryEntry(buildBatchHistoryEntry({
           trigger: "manual_test",
           id: historyRunId,
           startedAt,
@@ -1311,7 +1332,7 @@ export function createPlatformApi({
           lastResult: null,
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
-        await appendBatchHistoryRun(resolve("batchHistory"), {
+        await appendHistoryEntry({
           id: historyRunId,
           trigger: "manual_test",
           startedAt,
@@ -1740,7 +1761,7 @@ export function createPlatformApi({
           };
         }
       };
-      return checkPublicDashboards({
+      const result = await checkPublicDashboards({
         inventory: filteredInventory,
         ruleConfig: {
           ...ruleConfig,
@@ -1754,6 +1775,15 @@ export function createPlatformApi({
         observationCacheFile: resolve("observationCache"),
         queryCardFn,
       });
+      // Persist default tags as soon as a scan finds a drawable fluctuation.
+      // History persistence repeats this safely, but manual checks do not always
+      // create a history record and must still initialize their tag rows.
+      try {
+        await fluctuationMetricTagStore.ensureIdentities(collectFluctuationMetricTagIdentities(buildTagSyncRun(result)));
+      } catch (error) {
+        console.error(`[fluctuation-metric-tags] scan sync failed: ${error.message}`);
+      }
+      return result;
     },
 
     async runBatchCheckAndNotify(body = {}) {
@@ -1973,7 +2003,7 @@ export function createPlatformApi({
             lastResult,
           };
           await writeJsonAtomic(resolve("batchSchedule"), saved);
-          await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+          await appendHistoryEntry(buildBatchHistoryEntry({
             trigger: "schedule", id: historyRunId, startedAt, finishedAt: new Date().toISOString(), nextRunAt, schedule,
             countryRuns: finalizedRuns, notificationSentCount: aiFirst.notificationSentCount, wattrelSummary, dsSchedulerSummary, dsSchedulerError,
           }));
@@ -2022,7 +2052,7 @@ export function createPlatformApi({
           notificationSentCount,
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
-        await appendBatchHistoryRun(resolve("batchHistory"), buildBatchHistoryEntry({
+        await appendHistoryEntry(buildBatchHistoryEntry({
           trigger: "schedule",
           id: historyRunId,
           startedAt,
@@ -2054,7 +2084,7 @@ export function createPlatformApi({
           lastResult: null,
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
-        await appendBatchHistoryRun(resolve("batchHistory"), {
+        await appendHistoryEntry({
           id: historyRunId,
           trigger: "schedule",
           startedAt,
@@ -2674,6 +2704,22 @@ function summarizeBatchScheduleRun(result = {}) {
         }
       : null,
   };
+}
+
+function buildTagSyncRun(result = {}) {
+  const byCountry = new Map();
+  for (const anomaly of result.anomalies || []) {
+    const countryCode = normalizeCountryCode(anomaly.countryCode);
+    if (!countryCode) continue;
+    const country = byCountry.get(countryCode) || {
+      countryCode,
+      countryName: anomaly.countryName || countryDisplayName(countryCode),
+      result: { anomalies: [] },
+    };
+    country.result.anomalies.push(anomaly);
+    byCountry.set(countryCode, country);
+  }
+  return { runs: [...byCountry.values()] };
 }
 
 function normalizeExternalSource(value) {

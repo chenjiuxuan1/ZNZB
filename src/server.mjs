@@ -92,6 +92,12 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/fluctuation-visual/series") {
     return sendJson(response, 200, await api.getFluctuationVisualSeries(await readBody(request, {})));
   }
+  if (method === "POST" && url.pathname === "/api/fluctuation-metric-tags/lookup") {
+    return sendJson(response, 200, await api.getFluctuationMetricTags(await readBody(request, {})));
+  }
+  if (method === "PUT" && url.pathname === "/api/fluctuation-metric-tags") {
+    return sendJson(response, 200, await api.updateFluctuationMetricTag(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis") {
     return sendJson(response, 200, await api.analyzeMetabaseAnomaly(await readBody(request, {})));
   }

@@ -4712,6 +4712,26 @@ body {
   min-width: 0;
 }
 
+.fluctuation-metric-tag {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 8px;
+  justify-self: end;
+}
+
+.fluctuation-metric-tag select {
+  background: #fff;
+  border: 1px solid #d8e0eb;
+  border-radius: 6px;
+  color: #344054;
+  font-size: 13px;
+  min-height: 30px;
+  padding: 4px 26px 4px 8px;
+}
+
 .fluctuation-line-chart {
   background: #f8fafc;
   border: 1px solid #dce3ee;
