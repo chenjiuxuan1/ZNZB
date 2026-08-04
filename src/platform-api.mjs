@@ -2678,14 +2678,6 @@ function normalizeScheduleTime(value) {
   return new Date(timestamp).toISOString();
 }
 
-function clampNumber(value, min, max, fallback) {
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue)) {
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, Math.round(numberValue)));
-}
-
 function normalizeCountryScheduleConfigs(inputConfigs, previousSchedule, countries) {
   const previousConfigs = new Map((previousSchedule.countryConfigs || []).map((item) => [item.countryCode, item]));
   const incomingConfigs = new Map((inputConfigs || []).map((item) => [String(item.countryCode || "").trim(), item]));
@@ -4915,4 +4907,241 @@ function badRequest(message, errors) {
   error.statusCode = 400;
   error.errors = errors;
   return error;
+}
+
+// ---------------------------------------------------------------------------
+// Metabase AI-first single-stage anomaly analysis
+// ---------------------------------------------------------------------------
+
+const DATA_SIDE_VERDICTS = new Set([
+  "data_issue",
+  "business_change",
+  "verified_normal",
+  "insufficient_evidence",
+]);
+
+const NOTIFICATION_ACTIONS = new Set([
+  "send",
+  "downgrade",
+  "enrich_only",
+]);
+
+const CHART_VISIBILITIES = new Set([
+  "show",
+  "hide_verified_normal",
+]);
+
+export function prepareMetabaseInvestigationBatches(cases) {
+  return buildDashboardAnalysisJobs(cases);
+}
+
+export async function completeMetabaseAnomalyBatch({ rootDir = process.cwd(), batchId, results }) {
+  if (!batchId) {
+    throw badRequest("batchId is required", ["batchId 不能为空。"]);
+  }
+  if (!Array.isArray(results)) {
+    throw badRequest("results must be an array", ["results 必须是数组。"]);
+  }
+  if (results.length > 30) {
+    throw badRequest("单个 batch 结果不能超过 30 条", ["单个 batch 结果不能超过 30 条。"]);
+  }
+
+  const filePath = path.join(rootDir, FILES.anomalyAnalyses);
+  const cache = await readJsonFile(filePath, {
+    analyzedAt: null,
+    verdicts: {},
+    batches: [],
+  });
+
+  const verdicts = { ...cache.verdicts };
+  for (const result of results) {
+    const normalized = normalizeDashboardAnalysisVerdict(result);
+    verdicts[String(normalized.anomalyIndex)] = normalized;
+  }
+
+  const batches = [...cache.batches];
+  const existingIndex = batches.findIndex((item) => item.batchId === batchId);
+  const batchRecord = {
+    batchId,
+    status: "completed",
+    completedAt: new Date().toISOString(),
+    resultCount: results.length,
+  };
+  if (existingIndex >= 0) {
+    batches[existingIndex] = batchRecord;
+  } else {
+    batches.push(batchRecord);
+  }
+
+  const next = {
+    ...cache,
+    analyzedAt: new Date().toISOString(),
+    verdicts,
+    batches,
+  };
+  await writeJsonAtomic(filePath, next);
+  return { ok: true, batchId, processed: results.length };
+}
+
+export async function completeMetabaseAnomalyAnalysis({ rootDir = process.cwd(), analysis }) {
+  const normalized = normalizeDashboardAnalysisVerdict(analysis);
+  const filePath = path.join(rootDir, FILES.anomalyAnalyses);
+  const cache = await readJsonFile(filePath, {
+    analyzedAt: null,
+    verdicts: {},
+    batches: [],
+  });
+
+  const next = {
+    ...cache,
+    analyzedAt: new Date().toISOString(),
+    verdicts: {
+      ...cache.verdicts,
+      [String(normalized.anomalyIndex)]: normalized,
+    },
+  };
+  await writeJsonAtomic(filePath, next);
+  return { ok: true, anomalyIndex: normalized.anomalyIndex };
+}
+
+export function normalizeDashboardAnalysisVerdict(verdict) {
+  const base = {
+    anomalyIndex: Number(verdict?.anomalyIndex ?? -1),
+    dataSideVerdict: "insufficient_evidence",
+    notificationAction: "enrich_only",
+    chartVisibility: "show",
+    summary: "",
+    possibleCauses: [],
+    verificationSteps: [],
+    recommendedActions: [],
+    confidence: 0,
+    limitations: [],
+    verificationReason: "",
+  };
+
+  if (!verdict || typeof verdict !== "object") {
+    return base;
+  }
+
+  const dataSideVerdict = String(verdict.dataSideVerdict || "").trim();
+  if (DATA_SIDE_VERDICTS.has(dataSideVerdict)) {
+    base.dataSideVerdict = dataSideVerdict;
+  }
+
+  const notificationAction = String(verdict.notificationAction || "").trim();
+  if (NOTIFICATION_ACTIONS.has(notificationAction)) {
+    base.notificationAction = notificationAction;
+  }
+
+  const chartVisibility = String(verdict.chartVisibility || "").trim();
+  if (CHART_VISIBILITIES.has(chartVisibility)) {
+    base.chartVisibility = chartVisibility;
+  }
+
+  base.summary = String(verdict.summary || "").trim();
+  base.verificationReason = String(verdict.verificationReason || verdict.reason || "").trim();
+  base.possibleCauses = normalizeStringArray(verdict.possibleCauses);
+  base.verificationSteps = normalizeStringArray(verdict.verificationSteps);
+  base.recommendedActions = normalizeStringArray(verdict.recommendedActions);
+  base.limitations = normalizeStringArray(verdict.limitations);
+  base.confidence = clampNumber(verdict.confidence, 0, 1, 0);
+
+  return base;
+}
+
+export async function finalizeAiFirstMetabasePatrol(options = {}) {
+  const rootDir = options.rootDir || process.cwd();
+  const cases = options.cases || [];
+  const agentEnabled = options.agentEnabled ?? String(process.env.METABASE_ANOMALY_AGENT_ENABLED || "1") === "1";
+  const requestFn = options.requestFn || analyzeMetabaseAnomalyBatch;
+  const filePath = path.join(rootDir, FILES.anomalyAnalyses);
+
+  const batches = prepareMetabaseInvestigationBatches(cases);
+  const startedAt = new Date().toISOString();
+
+  if (!agentEnabled) {
+    const cache = await readJsonFile(filePath, { verdicts: {}, batches: [] });
+    const timedOutBatches = batches.map((batch) => ({
+      batchId: batch.id,
+      status: "timed_out",
+      timedOutAt: startedAt,
+      reason: "METABASE_ANOMALY_AGENT_ENABLED=0",
+    }));
+    const next = {
+      ...cache,
+      analyzedAt: startedAt,
+      batches: [...cache.batches, ...timedOutBatches],
+    };
+    await writeJsonAtomic(filePath, next);
+    return {
+      ok: true,
+      phases: { analysis: { submitted: 0, completed: 0, timedOut: batches.length, errors: 0 } },
+      agentEnabled: false,
+      batches: timedOutBatches,
+    };
+  }
+
+  const batchStatuses = new Map(batches.map((batch) => [batch.id, { batch, status: "pending" }]));
+
+  const stats = await runBoundedInvestigationQueue(batches, {
+    concurrency: options.concurrency,
+    timeoutMs: options.timeoutMs,
+    async execute(batch) {
+      await requestFn(batch);
+      batchStatuses.get(batch.id).status = "submitted";
+    },
+    async onTimeout(batch) {
+      batchStatuses.get(batch.id).status = "timed_out";
+      const cache = await readJsonFile(filePath, { verdicts: {}, batches: [] });
+      await writeJsonAtomic(filePath, {
+        ...cache,
+        batches: [
+          ...cache.batches,
+          {
+            batchId: batch.id,
+            status: "timed_out",
+            timedOutAt: new Date().toISOString(),
+            reason: "global timeout",
+          },
+        ],
+      });
+    },
+    async onError(batch, error) {
+      batchStatuses.get(batch.id).status = "error";
+      batchStatuses.get(batch.id).error = error.message;
+    },
+  });
+
+  return {
+    ok: true,
+    phases: {
+      analysis: {
+        submitted: [...batchStatuses.values()].filter((item) => item.status === "submitted").length,
+        completed: stats.completed,
+        timedOut: stats.timedOut,
+        errors: stats.errors,
+      },
+    },
+    agentEnabled: true,
+    batchStatuses: Object.fromEntries([...batchStatuses.entries()].map(([id, item]) => [id, item.status])),
+    stats,
+  };
+}
+
+function normalizeStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== undefined && item !== null).map(String);
+  }
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  return [String(value)];
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, number));
 }
