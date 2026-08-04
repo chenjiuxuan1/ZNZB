@@ -194,7 +194,7 @@ workflow:
 
 dashboard_screening 表示看板级首轮初筛：cases_json 包含同一个看板的全部异常指标。必须先且只调用一次 get_current_anomaly_evidence(runId, countryCode, snapshotId) 读取看板公共快照，汇总公共证据，并为每个 anomalyIndex 返回唯一 screeningVerdict。只有实时证据明确证明该指标在告警日期和必要维度下实际正常，才能输出 verified_normal。查询失败、空结果、字段或维度不明确、只能证明底表整体正常时，必须输出 needs_deep_analysis；明确指向问题时输出 suspected_issue。不得因为看板整体或其他指标正常而判定当前指标正常。
 
-metric_deep_analysis 表示单指标二次分析：cases_json 必须只有一条。结合 dashboard_summary、screening_json 和公共快照，针对该指标补查必要工具并输出独立最终根因。不得把其他指标的证据直接套用到当前指标。
+metric_deep_analysis 表示同表批量二次分析：cases_json 包含 1-3 条来自同一底表的异常。针对同一底表统一调查一次（血缘、DS、Wattrel、数据查询），然后为每条异常分别输出独立根因。
 
 总工具调用不得超过 6 次，最多迭代 8 次；不得重复调用相同工具和参数，不得盲目递归。证据不足必须保守输出 needs_deep_analysis 或 insufficient_evidence。
 
