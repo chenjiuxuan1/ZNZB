@@ -362,7 +362,7 @@ export function createPlatformApi({
       if (new Set(normalizedCases.map((item) => item.anomalyIndex)).size !== normalizedCases.length) {
         throw badRequest("Invalid Metabase investigation batch", ["批量取证不能包含重复异常。"]);
       }
-      const generated = await metabaseAnomalyBatchAgentFn({ ...batch, runId, countryCode, batchId, snapshotId, cases: normalizedCases });
+      const generated = await metabaseAnomalyBatchAgentFn({ batch: { ...batch, runId, countryCode, batchId, snapshotId, cases: normalizedCases } });
       if (!generated?.pending || !generated.jobId) {
         const error = new Error("批量 n8n 取证任务未返回异步任务编号。");
         error.statusCode = 502;

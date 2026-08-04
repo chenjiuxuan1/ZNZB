@@ -2651,7 +2651,7 @@ test("AI-first patrol waits for batch verdicts before final notification and his
     aiFirstMetabasePatrolEnabled: true,
     metabaseClientFactory: () => ({ async queryDashcardJson() { return [{ "统计日期": "2026-07-05", "注册数": 10 }]; } }),
     metabaseInternalClientFactory: () => ({ getCard: async () => ({ id: 1, dataset_query: { native: { query: "SELECT * FROM ads.loan_d" } } }) }),
-    metabaseAnomalyBatchAgentFn: async (batch) => {
+    metabaseAnomalyBatchAgentFn: async ({ batch }) => {
       order.push(batch.stage);
       const jobId = batch.stage === "dashboard_screening" ? "screen-callback" : `deep-callback-${batch.cases[0].anomalyIndex}`;
       setTimeout(() => {
