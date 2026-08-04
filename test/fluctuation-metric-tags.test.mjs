@@ -27,7 +27,7 @@ test("hourly anomaly points share one stable fluctuation metric tag identity", (
   assert.equal(identities[0].dimension_name, "APP=TH001");
 });
 
-test("tag store creates the warning_rule table and preserves the default tag on insert", async () => {
+test("tag store delegates table initialization, lookup, and tag update to the n8n gateway", async () => {
   const calls = [];
   const identity = buildFluctuationMetricTagIdentity({
     type: "completeDayChange",
@@ -38,11 +38,11 @@ test("tag store creates the warning_rule table and preserves the default tag on 
     message: "完整日指标「通过数」(用户类型=新客) 从 10 到 20",
   });
   const store = createFluctuationMetricTagStore({
-    env: { FLUCTUATION_TAG_DB_HOST: "db", FLUCTUATION_TAG_DB_USER: "writer" },
-    queryFn: async (sql) => {
-      calls.push(sql);
-      if (/^SELECT/i.test(sql.trim())) return [{ ...identity, tag: "三级" }];
-      return [];
+    env: { FLUCTUATION_TAG_GATEWAY_WEBHOOK_URL: "https://n8n.example/webhook/fluctuation-metric-tags" },
+    requestFn: async (payload) => {
+      calls.push(payload);
+      if (payload.action === "lookup") return { success: true, tags: { [metricTagKey(identity)]: "三级" } };
+      return { success: true, inserted: payload.items?.length || 0 };
     },
   });
 
@@ -50,8 +50,8 @@ test("tag store creates the warning_rule table and preserves the default tag on 
   const tags = await store.getTags([identity]);
   await store.updateTag(identity, "一级");
 
-  assert.match(calls[0], /CREATE TABLE IF NOT EXISTS warning_rule\.fluctuation_metric_tags/);
-  assert.match(calls[1], /INSERT INTO warning_rule\.fluctuation_metric_tags/);
+  assert.deepEqual(calls.map((item) => item.action), ["ensure", "lookup", "update"]);
+  assert.equal(calls[0].items.length, 1);
   assert.equal(tags.tags[metricTagKey(identity)], "三级");
-  assert.match(calls.at(-1), /UPDATE warning_rule\.fluctuation_metric_tags SET tag/);
+  assert.equal(calls.at(-1).tag, "一级");
 });

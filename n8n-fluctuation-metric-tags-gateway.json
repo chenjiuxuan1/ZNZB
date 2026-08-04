@@ -1,0 +1,136 @@
+{
+  "name": "fluctuation-metric-tags-gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fluctuation-metric-tags",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "fluctuation-tags-webhook",
+      "name": "Receive Fluctuation Tag Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-760, 0],
+      "webhookId": "replace-with-your-webhook-id"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body && typeof $json.body === 'object' ? $json.body : $json;\nconst expectedToken = String($vars?.FLUCTUATION_TAG_GATEWAY_TOKEN || '');\nconst suppliedToken = String($json.headers?.authorization || $json.headers?.Authorization || '').replace(/^Bearer\\s+/i, '').trim();\nif (expectedToken && suppliedToken !== expectedToken) throw new Error('Unauthorized fluctuation tag request');\nconst actions = new Set(['ensure', 'lookup', 'update']);\nconst tags = new Set(['一级', '二级', '三级']);\nconst text = (value, max, fallback = '') => String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max) || fallback;\nconst quote = (value) => '\\'' + String(value ?? '').replace(/\\\\/g, String.fromCharCode(92, 92)).replace(/'/g, String.fromCharCode(92, 39)) + '\\'';\nconst normalize = (value = {}) => ({\n  country_name: text(value.country_name, 32, '未知国家'),\n  dashboard_name: text(value.dashboard_name, 128, '未命名看板'),\n  card_name: text(value.card_name, 128, '未命名卡片'),\n  metric_name: text(value.metric_name, 128, '未命名指标'),\n  dimension_name: text(value.dimension_name, 128, '无维度'),\n  time_granularity: text(value.time_granularity, 8, 'day'),\n  dashboard_url: text(value.dashboard_url, 255),\n});\nconst key = (item) => [item.country_name, item.dashboard_name, item.card_name, item.metric_name, item.dimension_name, item.time_granularity].join('\\u001f');\nconst action = String(raw.action || '').trim();\nif (!actions.has(action)) throw new Error('action must be ensure, lookup, or update');\nconst inputItems = Array.isArray(raw.items) ? raw.items : [];\nconst items = [...new Map(inputItems.map(normalize).map((item) => [key(item), item])).values()];\nconst tableSql = `CREATE TABLE IF NOT EXISTS warning_rule.fluctuation_metric_tags (country_name CHAR(32) NOT NULL, dashboard_name CHAR(128) NOT NULL, card_name CHAR(128) NOT NULL, metric_name CHAR(128) NOT NULL, dimension_name CHAR(128) NOT NULL, time_granularity CHAR(8) NOT NULL, dashboard_url CHAR(255) NOT NULL DEFAULT '', tag CHAR(2) NOT NULL DEFAULT '二级', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (country_name, dashboard_name, card_name, metric_name, dimension_name, time_granularity)) DEFAULT CHARSET=utf8mb4`;\nlet query = 'SELECT 0 AS affectedRows';\nif (action === 'ensure') {\n  if (items.length > 0) {\n    const values = items.map((item) => `(${[item.country_name, item.dashboard_name, item.card_name, item.metric_name, item.dimension_name, item.time_granularity, item.dashboard_url].map(quote).join(', ')}, '二级')`).join(', ');\n    query = `INSERT INTO warning_rule.fluctuation_metric_tags (country_name, dashboard_name, card_name, metric_name, dimension_name, time_granularity, dashboard_url, tag) VALUES ${values} ON DUPLICATE KEY UPDATE dashboard_url = dashboard_url`;\n  }\n} else if (action === 'lookup') {\n  if (items.length > 0) {\n    const tuples = items.map((item) => `(${[item.country_name, item.dashboard_name, item.card_name, item.metric_name, item.dimension_name, item.time_granularity].map(quote).join(', ')})`).join(', ');\n    query = `SELECT country_name, dashboard_name, card_name, metric_name, dimension_name, time_granularity, tag FROM warning_rule.fluctuation_metric_tags WHERE (country_name, dashboard_name, card_name, metric_name, dimension_name, time_granularity) IN (${tuples})`;\n  }\n} else {\n  const identity = normalize(raw.identity);\n  const tag = String(raw.tag || '').trim();\n  if (!tags.has(tag)) throw new Error('tag must be 一级, 二级, or 三级');\n  const values = [identity.country_name, identity.dashboard_name, identity.card_name, identity.metric_name, identity.dimension_name, identity.time_granularity, identity.dashboard_url, tag].map(quote).join(', ');\n  query = `INSERT INTO warning_rule.fluctuation_metric_tags (country_name, dashboard_name, card_name, metric_name, dimension_name, time_granularity, dashboard_url, tag) VALUES (${values}) ON DUPLICATE KEY UPDATE tag = VALUES(tag), updated_at = CURRENT_TIMESTAMP`;\n}\nreturn [{ json: { action, items, query, tableSql } }];"
+      },
+      "id": "fluctuation-tags-normalize",
+      "name": "Normalize Tag Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{$('Normalize Tag Request').first().json.tableSql}}",
+        "options": {}
+      },
+      "id": "fluctuation-tags-create-table",
+      "name": "Create warning_rule Tag Table",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [-280, 0],
+      "credentials": {
+        "mySql": {
+          "id": "replace-with-warning-rule-mysql-credential-id",
+          "name": "warning_rule MySQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{$('Normalize Tag Request').first().json.action}}", "rightValue": "ensure", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{$('Normalize Tag Request').first().json.action}}", "rightValue": "lookup", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{$('Normalize Tag Request').first().json.action}}", "rightValue": "update", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" } }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fluctuation-tags-switch",
+      "name": "Route Tag Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [-40, 0]
+    },
+    {
+      "parameters": { "operation": "executeQuery", "query": "={{$('Normalize Tag Request').first().json.query}}", "options": {} },
+      "id": "fluctuation-tags-ensure",
+      "name": "Insert Default Tags",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [180, -160],
+      "credentials": { "mySql": { "id": "replace-with-warning-rule-mysql-credential-id", "name": "warning_rule MySQL" } }
+    },
+    {
+      "parameters": { "operation": "executeQuery", "query": "={{$('Normalize Tag Request').first().json.query}}", "options": {} },
+      "id": "fluctuation-tags-lookup",
+      "name": "Lookup Tags",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [180, 0],
+      "credentials": { "mySql": { "id": "replace-with-warning-rule-mysql-credential-id", "name": "warning_rule MySQL" } }
+    },
+    {
+      "parameters": { "operation": "executeQuery", "query": "={{$('Normalize Tag Request').first().json.query}}", "options": {} },
+      "id": "fluctuation-tags-update",
+      "name": "Update Tag",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [180, 160],
+      "credentials": { "mySql": { "id": "replace-with-warning-rule-mysql-credential-id", "name": "warning_rule MySQL" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map((item) => item.json).filter((row) => row && row.country_name);\nconst key = (row) => [row.country_name, row.dashboard_name, row.card_name, row.metric_name, row.dimension_name, row.time_granularity].join('\\u001f');\nconst tags = Object.fromEntries(rows.map((row) => [key(row), ['一级', '二级', '三级'].includes(row.tag) ? row.tag : '二级']));\nreturn [{ json: { success: true, tags } }];"
+      },
+      "id": "fluctuation-tags-lookup-response",
+      "name": "Build Lookup Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $('Normalize Tag Request').first().json;\nconst result = $input.first()?.json || {};\nreturn [{ json: { success: true, action: request.action, inserted: request.action === 'ensure' ? Number(result.affectedRows || request.items.length || 0) : undefined } }];"
+      },
+      "id": "fluctuation-tags-write-response",
+      "name": "Build Write Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, -160]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{$json}}", "options": {} },
+      "id": "fluctuation-tags-respond",
+      "name": "Respond Fluctuation Tag Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [660, 0]
+    }
+  ],
+  "connections": {
+    "Receive Fluctuation Tag Request": { "main": [[{ "node": "Normalize Tag Request", "type": "main", "index": 0 }]] },
+    "Normalize Tag Request": { "main": [[{ "node": "Create warning_rule Tag Table", "type": "main", "index": 0 }]] },
+    "Create warning_rule Tag Table": { "main": [[{ "node": "Route Tag Action", "type": "main", "index": 0 }]] },
+    "Route Tag Action": { "main": [[{ "node": "Insert Default Tags", "type": "main", "index": 0 }], [{ "node": "Lookup Tags", "type": "main", "index": 0 }], [{ "node": "Update Tag", "type": "main", "index": 0 }]] },
+    "Insert Default Tags": { "main": [[{ "node": "Build Write Response", "type": "main", "index": 0 }]] },
+    "Update Tag": { "main": [[{ "node": "Build Write Response", "type": "main", "index": 0 }]] },
+    "Lookup Tags": { "main": [[{ "node": "Build Lookup Response", "type": "main", "index": 0 }]] },
+    "Build Write Response": { "main": [[{ "node": "Respond Fluctuation Tag Request", "type": "main", "index": 0 }]] },
+    "Build Lookup Response": { "main": [[{ "node": "Respond Fluctuation Tag Request", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "replace-after-import",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "replace-after-import",
+  "tags": []
+}
