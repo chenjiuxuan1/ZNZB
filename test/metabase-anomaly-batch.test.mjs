@@ -40,22 +40,18 @@ test("batches non-verified metrics by source table into deep-analysis jobs", () 
   assert.equal(jobs[0].stage, "metric_deep_analysis");
 });
 
-test("batch investigation groups same source and limits every Dify payload to three cases", () => {
-  const batches = buildInvestigationBatches([
-    { countryCode: "INE", sourceTable: "ads.loan_d", anomalyIndex: 0 },
-    { countryCode: "INE", sourceTable: "ads.loan_d", anomalyIndex: 1 },
-    { countryCode: "INE", sourceTable: "ads.loan_d", anomalyIndex: 2 },
-    { countryCode: "INE", sourceTable: "ads.loan_d", anomalyIndex: 3 },
-  ]);
+test("batch investigation groups same source and limits every Dify payload to ten cases", () => {
+  const items = Array.from({ length: 12 }, (_, i) => ({ countryCode: "INE", sourceTable: "ads.loan_d", anomalyIndex: i }));
+  const batches = buildInvestigationBatches(items);
 
-  assert.deepEqual(batches.map((batch) => batch.cases.map((item) => item.anomalyIndex)), [[0, 1, 2], [3]]);
+  assert.deepEqual(batches.map((batch) => batch.cases.map((item) => item.anomalyIndex)), [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [10, 11]]);
 });
 
-test("batch investigation limits never exceed two Dify workers or three cases", () => {
+test("batch investigation limits never exceed two Dify workers or ten cases", () => {
   assert.deepEqual(getBatchInvestigationLimits({
     METABASE_ANOMALY_BATCH_CONCURRENCY: "99",
     METABASE_ANOMALY_BATCH_SIZE: "99",
-  }), { maxConcurrentBatches: 2, maxCasesPerBatch: 3, timeoutMs: 360000, targetDurationMs: 1200000, deadlineMs: 2700000 });
+  }), { maxConcurrentBatches: 2, maxCasesPerBatch: 10, timeoutMs: 360000, targetDurationMs: 1200000, deadlineMs: 2700000 });
 });
 
 test("bounded investigation queue never submits a third Dify batch before one callback settles", async () => {
