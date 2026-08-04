@@ -1,0 +1,147 @@
+{
+  "name": "Metabase Anomaly Dynamic Evidence Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "metabase-anomaly-agent",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-entry",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "metabase-anomaly-agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Batch\n// Stage is always dashboard_analysis in single-stage mode.\nconst input = $input.first().json;\nconst cases = Array.isArray(input.cases) ? input.cases : [];\nconst batchId = input.batchId || 'unknown';\nconst dashboardUuid = input.dashboardUuid || '';\nconst dashboardTitle = input.dashboardTitle || '';\n\nif (cases.length === 0) {\n  throw new Error('cases array is empty');\n}\nif (cases.length > 30) {\n  throw new Error('cases exceed single batch limit of 30');\n}\n\nconst normalizedCases = cases.map((item, index) => ({\n  anomalyIndex: typeof item.anomalyIndex === 'number' ? item.anomalyIndex : index,\n  dashboardUuid: item.dashboardUuid || dashboardUuid,\n  dashboardTitle: item.dashboardTitle || dashboardTitle,\n  metricName: item.metricName || item.cardTitle || '',\n  ruleType: item.ruleType || '',\n  messages: Array.isArray(item.messages) ? item.messages : [],\n  evidence: item.evidence || {},\n  sampleRows: Array.isArray(item.sampleRows) ? item.sampleRows : [],\n  columns: Array.isArray(item.columns) ? item.columns : [],\n}));\n\nreturn [{\n  json: {\n    batchId,\n    dashboardUuid,\n    dashboardTitle,\n    cases: normalizedCases,\n  }\n}];"
+      },
+      "id": "normalize-batch",
+      "name": "Normalize Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Batch Callback Payload\nconst input = $input.first().json;\nconst baseUrl = input.callbackUrl || $getWorkflowStaticData('global').callbackBaseUrl;\nconst callbackUrl = `${baseUrl.replace(/\\/$/, '')}/api/metabase-anomaly-analysis/batch-callback`;\n\nconst difyCases = input.cases.map((c) => ({\n  anomalyIndex: c.anomalyIndex,\n  metricName: c.metricName,\n  messages: c.messages,\n  evidence: c.evidence,\n  sampleRows: c.sampleRows.slice(0, 20),\n  columns: c.columns,\n}));\n\nreturn [{\n  json: {\n    batchId: input.batchId,\n    dashboardUuid: input.dashboardUuid,\n    dashboardTitle: input.dashboardTitle,\n    cases: difyCases,\n    callbackUrl,\n  }\n}];"
+      },
+      "id": "build-callback",
+      "name": "Build Batch Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dify.ai/v1/chat-messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{$json}}",
+        "options": {}
+      },
+      "id": "call-dify",
+      "name": "Call Dify Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Dify response and extract verdicts\nconst input = $input.first().json;\nconst answer = input.answer || '{}';\nlet parsed = {};\ntry {\n  parsed = JSON.parse(answer);\n} catch (error) {\n  // Try stripping markdown fences\n  const cleaned = answer.replace(/^```(?:json)?\\s*/, '').replace(/\\s*```$/, '');\n  parsed = JSON.parse(cleaned);\n}\n\nconst verdicts = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];\nconst batchId = $getWorkflowStaticData('global').currentBatchId || 'unknown';\n\nreturn [{\n  json: {\n    batchId,\n    results: verdicts\n  }\n}];"
+      },
+      "id": "parse-verdicts",
+      "name": "Parse Verdicts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{$json}}",
+        "options": {}
+      },
+      "id": "callback",
+      "name": "Callback Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Batch": {
+      "main": [
+        [
+          {
+            "node": "Build Batch Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Batch Callback": {
+      "main": [
+        [
+          {
+            "node": "Call Dify Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Dify Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Verdicts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Verdicts": {
+      "main": [
+        [
+          {
+            "node": "Callback Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "global": {
+      "callbackBaseUrl": "http://localhost:8787"
+    }
+  },
+  "tags": []
+}

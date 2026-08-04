@@ -22,7 +22,7 @@ async function makeFixture() {
     JSON.stringify({
       alerts: { channel: "tv", webhookUrl: "${TV_ALERT_WEBHOOK_URL}" },
       rules: [
-        { type: "requiredDatePresent", dashboardTitle: "OKR", cardTitles: ["规模"], dateColumn: "统计日期" },
+        { type: "requiredDatePresent", dashboardTitle: "OKR", cardTitles: ["规模"], dateColumn: "统计日期", requiredDate: "2026-07-06" },
       ],
     }),
   );
