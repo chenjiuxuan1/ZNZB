@@ -1,8 +1,8 @@
 const MAX_CONCURRENT_BATCHES = 2;
 const MAX_CASES_PER_BATCH = 3;
-const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_TIMEOUT_MS = 6 * 60 * 1000;
 const TARGET_DURATION_MS = 20 * 60 * 1000;
-const DEADLINE_MS = 30 * 60 * 1000;
+const DEADLINE_MS = 45 * 60 * 1000;
 export const MAX_DASHBOARD_SCREENING_BYTES = 512 * 1024;
 
 export function getBatchInvestigationLimits() {
@@ -53,17 +53,31 @@ export function buildDashboardScreeningJobs(cases = []) {
   return [...groups.values()];
 }
 
-export function buildMetricDeepAnalysisJobs(screeningJob = {}, verdicts = []) {
+export function buildMetricDeepAnalysisJobs(screeningJob = {}, verdicts = [], { maxCasesPerBatch = MAX_CASES_PER_BATCH } = {}) {
   const byIndex = new Map((Array.isArray(verdicts) ? verdicts : []).map((item) => [Number(item?.anomalyIndex), item]));
-  return (screeningJob.cases || [])
+  const nonVerified = (screeningJob.cases || [])
     .filter((item) => byIndex.get(Number(item.anomalyIndex))?.screeningVerdict !== "verified_normal")
-    .map((item) => ({
-      ...screeningJob,
-      stage: "metric_deep_analysis",
-      groupKey: `${screeningJob.groupKey || `${screeningJob.countryCode}:${screeningJob.dashboardUuid}`}:${item.anomalyIndex}`,
-      cases: [item],
-      screeningVerdict: byIndex.get(Number(item.anomalyIndex)) || null,
-    }));
+    .map((item) => ({ ...item, _screeningVerdict: byIndex.get(Number(item.anomalyIndex)) || null }));
+  const byTable = new Map();
+  for (const item of nonVerified) {
+    const table = String(item.sourceTable || screeningJob.sourceTable || "").trim().toLowerCase() || "unknown";
+    if (!byTable.has(table)) byTable.set(table, []);
+    byTable.get(table).push(item);
+  }
+  const jobs = [];
+  for (const [table, items] of byTable) {
+    for (let i = 0; i < items.length; i += maxCasesPerBatch) {
+      const batchCases = items.slice(i, i + maxCasesPerBatch).map(({ _screeningVerdict, ...rest }) => ({ ...rest, screeningVerdict: _screeningVerdict }));
+      jobs.push({
+        ...screeningJob,
+        stage: "metric_deep_analysis",
+        groupKey: `${screeningJob.groupKey || `${screeningJob.countryCode}:${screeningJob.dashboardUuid}`}:deep:${table}:${Math.floor(i / maxCasesPerBatch)}`,
+        sourceTable: table,
+        cases: batchCases,
+      });
+    }
+  }
+  return jobs;
 }
 
 export async function runBoundedInvestigationQueue({
@@ -100,6 +114,7 @@ export async function runBoundedInvestigationQueue({
         settled.push({ batch, result: result || { status: "completed" } });
         onProgress?.({ type: "batch_settled", batch, result, completed: settled.length, total: work.length });
       } catch (error) {
+        console.error(`[batch-investigation] batch ${batch.batchId || batch.groupKey || "?"} (stage=${batch.stage || "?"}) FAILED: ${error.message}`);
         const result = { status: "failed", error: error.message };
         settled.push({ batch, result });
         onProgress?.({ type: "batch_settled", batch, result, completed: settled.length, total: work.length });
@@ -109,7 +124,7 @@ export async function runBoundedInvestigationQueue({
   await Promise.all(Array.from({ length: workerCount }, worker));
   return {
     total: work.length,
-    completed: settled.length,
+    completed: settled.filter((item) => item.result?.status === "completed").length,
     settled,
     failed: settled.filter((item) => item.result?.status === "failed").length,
     timedOut: settled.filter((item) => item.result?.status === "timed_out").length,

@@ -35,12 +35,13 @@ test("batched workflow sends one Dify request and one callback for the whole bat
   assert.match(callback.parameters.jsonBody, /\$json/);
 });
 
-test("batched workflow rejects malformed Dify results instead of silently notifying", async () => {
+test("batched workflow tolerates incomplete Dify results with conservative defaults", async () => {
   const data = await workflow();
   const build = data.nodes.find((node) => node.name === "Build Batch Callback");
-  assert.match(build.parameters.jsCode, /exactly one verdict for every case/);
-  assert.match(build.parameters.jsCode, /invalid or duplicate anomalyIndex/);
+  assert.match(build.parameters.jsCode, /verdictByIndex/);
+  assert.match(build.parameters.jsCode, /needs_deep_analysis/);
   assert.match(build.parameters.jsCode, /insufficient_evidence/);
+  assert.match(build.parameters.jsCode, /Dify 未返回该指标/);
 });
 
 test("workflow stays token-placeholder-only and no longer repeats card SQL reads", async () => {
