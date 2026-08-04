@@ -21,6 +21,12 @@ export function renderBatchCheck(root) {
     ? "history"
     : state.batchCheckTab || "manual";
 
+  if (activeTab === "schedule") {
+    void ensureBatchScheduleProgressPolling(root);
+  } else {
+    stopBatchScheduleProgressPolling();
+  }
+
   root.innerHTML = `
     <div class="page-header batch-hero">
       <div>
@@ -499,41 +505,77 @@ function setButtonBusy(button, label) {
 
 function startBatchScheduleProgressPolling(root) {
   stopBatchScheduleProgressPolling();
-  state.batchScheduleProgressTimer = window.setInterval(async () => {
-    try {
-      const progress = await refreshBatchScheduleProgress();
-      renderBatchCheck(root);
-      if (["success", "partial_failed", "failed"].includes(progress.status)) {
-        stopBatchScheduleProgressPolling();
-        state.batchSchedule = await apiGet("/api/batch-schedule");
-        await reloadBatchHistory(root);
-        if (progress.status === "failed") {
-          state.batchScheduleStatus = {
-            type: "error",
-            title: "定时巡检测试失败",
-            detail: progress.error || "运行失败",
-          };
-        } else {
-          const summary = progress.result || {};
-          state.batchScheduleStatus = {
-            type: summary.failedCount > 0 ? "error" : "success",
-            title: summary.failedCount > 0 ? "定时巡检测试完成，部分国家失败" : "定时巡检测试完成",
-            detail: `国家 ${summary.countryCount || 0} 个，成功 ${summary.successCount || 0} 个，失败 ${summary.failedCount || 0} 个；检查 ${summary.checkedCardCount || 0} 张卡片，异常 ${summary.anomalyCount || 0} 条。`,
-          };
-        }
-        renderBatchCheck(root);
-      }
-    } catch {
-      stopBatchScheduleProgressPolling();
-    }
-  }, 2000);
+  void pollBatchScheduleProgress(root);
 }
 
 function stopBatchScheduleProgressPolling() {
+  state.batchScheduleProgressPollVersion += 1;
   if (state.batchScheduleProgressTimer) {
-    window.clearInterval(state.batchScheduleProgressTimer);
+    window.clearTimeout(state.batchScheduleProgressTimer);
     state.batchScheduleProgressTimer = null;
   }
+}
+
+async function ensureBatchScheduleProgressPolling(root) {
+  if (!isScheduleProgressViewOpen() || state.batchScheduleProgressInFlight || state.batchScheduleProgressTimer) return;
+  await pollBatchScheduleProgress(root);
+}
+
+async function pollBatchScheduleProgress(root) {
+  if (!isScheduleProgressViewOpen() || state.batchScheduleProgressInFlight) return;
+  const version = state.batchScheduleProgressPollVersion;
+  state.batchScheduleProgressInFlight = true;
+  try {
+    const progress = await refreshBatchScheduleProgress();
+    if (version !== state.batchScheduleProgressPollVersion || !isScheduleProgressViewOpen()) return;
+    renderBatchCheck(root);
+    if (isFinishedScheduleProgress(progress)) {
+      stopBatchScheduleProgressPolling();
+      state.batchSchedule = await apiGet("/api/batch-schedule");
+      await reloadBatchHistory(root);
+      if (progress.status === "failed") {
+        state.batchScheduleStatus = {
+          type: "error",
+          title: "定时巡检测试失败",
+          detail: progress.error || "运行失败",
+        };
+      } else {
+        const summary = progress.result || {};
+        state.batchScheduleStatus = {
+          type: summary.failedCount > 0 ? "error" : "success",
+          title: summary.failedCount > 0 ? "定时巡检测试完成，部分国家失败" : "定时巡检测试完成",
+          detail: `国家 ${summary.countryCount || 0} 个，成功 ${summary.successCount || 0} 个，失败 ${summary.failedCount || 0} 个；检查 ${summary.checkedCardCount || 0} 张卡片，异常 ${summary.anomalyCount || 0} 条。`,
+        };
+      }
+      renderBatchCheck(root);
+      return;
+    }
+  } catch {
+    // Keep the last visible progress and retry. A transient API failure must not
+    // leave a live patrol page permanently frozen.
+  } finally {
+    state.batchScheduleProgressInFlight = false;
+  }
+  if (version !== state.batchScheduleProgressPollVersion || !shouldContinueScheduleProgressPolling()) return;
+  state.batchScheduleProgressTimer = window.setTimeout(() => {
+    state.batchScheduleProgressTimer = null;
+    void pollBatchScheduleProgress(root);
+  }, 2000);
+}
+
+function isScheduleProgressViewOpen() {
+  return state.route === "/batch-check" && state.batchCheckTab === "schedule" && !state.routeQuery?.historyRunId;
+}
+
+function isFinishedScheduleProgress(progress = {}) {
+  return ["success", "partial_failed", "failed"].includes(progress.status);
+}
+
+function shouldContinueScheduleProgressPolling() {
+  return isScheduleProgressViewOpen() && (
+    ["running", "sending", "ai_analyzing", "queued"].includes(state.batchScheduleProgress?.status)
+    || state.batchScheduleStatus?.type === "loading"
+  );
 }
 
 function renderBatchSchedulePanel() {
