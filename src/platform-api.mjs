@@ -347,7 +347,7 @@ export function createPlatformApi({
       const snapshotId = String(batch.snapshotId || "").trim();
       const cases = Array.isArray(batch.cases) ? batch.cases : [];
       const stage = batch.stage === "metric_deep_analysis" ? "metric_deep_analysis" : "dashboard_screening";
-      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 3));
+      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 15));
       const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, cases }), "utf8");
       if (!runId || !countryCode || !batchId || !snapshotId || invalidCaseCount || payloadBytes > MAX_DASHBOARD_SCREENING_BYTES) {
         throw badRequest("Invalid Metabase investigation batch", ["取证任务必须包含有效标识；看板初筛需包含全部指标，单指标深挖只能包含一条，且请求不得超过 512 KiB。"]);
@@ -479,21 +479,44 @@ export function createPlatformApi({
     async prepareMetricDeepAnalysisBatches({ runId, screeningBatches = [] } = {}) {
       const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
       const byKey = new Map((cache.analyses || []).filter((item) => item.runId === runId).map((item) => [item.key, item]));
-      return screeningBatches.flatMap((screeningBatch) => {
-        const verdicts = (screeningBatch.cases || []).map((item) => byKey.get(`${runId}:${screeningBatch.countryCode}:${Number(item.anomalyIndex)}`)?.screening || {
-          anomalyIndex: Number(item.anomalyIndex),
-          screeningVerdict: "needs_deep_analysis",
-          summary: "首轮未取得完整结论，转单指标深度分析。",
-          evidence: [],
-          limitations: "看板初筛失败、超时或返回格式不完整。",
-        });
-        const dashboardSummary = (screeningBatch.cases || []).map((item) => byKey.get(`${runId}:${screeningBatch.countryCode}:${Number(item.anomalyIndex)}`)?.dashboardSummary).find(Boolean) || "";
-        return buildMetricDeepAnalysisJobs({ ...screeningBatch, dashboardSummary }, verdicts).map((job) => ({
-          ...job,
-          runId,
-          batchId: `deep-${randomUUID()}`,
-        }));
-      });
+      const byTable = new Map();
+      for (const screeningBatch of screeningBatches) {
+        for (const item of (screeningBatch.cases || [])) {
+          const screening = byKey.get(`${runId}:${screeningBatch.countryCode}:${Number(item.anomalyIndex)}`)?.screening || {
+            anomalyIndex: Number(item.anomalyIndex),
+            screeningVerdict: "needs_deep_analysis",
+            summary: "首轮未取得完整结论，转单指标深度分析。",
+            evidence: [],
+            limitations: "看板初筛失败、超时或返回格式不完整。",
+          };
+          if (screening.screeningVerdict === "verified_normal") continue;
+          const table = String(item.sourceTable || screeningBatch.sourceTable || "").trim().toLowerCase() || "unknown";
+          const groupKey = `${screeningBatch.countryCode}:${table}`;
+          if (!byTable.has(groupKey)) byTable.set(groupKey, { countryCode: screeningBatch.countryCode, sourceTable: table, snapshotId: screeningBatch.snapshotId, dashboardSummary: byKey.get(`${runId}:${screeningBatch.countryCode}:${Number(item.anomalyIndex)}`)?.dashboardSummary || "", items: [] });
+          byTable.get(groupKey).items.push({ ...item, countryCode: screeningBatch.countryCode, screeningVerdict: screening });
+        }
+      }
+      const MAX_DEEP_BATCH = 15;
+      const batches = [];
+      for (const [groupKey, group] of byTable) {
+        for (let i = 0; i < group.items.length; i += MAX_DEEP_BATCH) {
+          const batchCases = group.items.slice(i, i + MAX_DEEP_BATCH);
+          batches.push({
+            stage: "metric_deep_analysis",
+            groupKey: `${groupKey}:deep:${Math.floor(i / MAX_DEEP_BATCH)}`,
+            countryCode: group.countryCode,
+            sourceTable: group.sourceTable,
+            dashboardUuid: "",
+            dashboardTitle: "",
+            snapshotId: group.snapshotId,
+            dashboardSummary: group.dashboardSummary,
+            runId,
+            batchId: `deep-${randomUUID()}`,
+            cases: batchCases,
+          });
+        }
+      }
+      return batches;
     },
 
     async waitForMetabaseInvestigationBatch(batch = {}, { deadlineAt = Number.POSITIVE_INFINITY, intervalMs = 2_000 } = {}) {
@@ -946,7 +969,7 @@ export function createPlatformApi({
       const countryCode = normalizeCountryCode(body.countryCode);
       const jobId = String(body.jobId || "").trim();
       const results = Array.isArray(body.results) ? body.results : [];
-      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 3) {
+      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 15) {
         throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-3 条结果。"]);
       }
       const indexes = results.map((item) => Number(item?.anomalyIndex));

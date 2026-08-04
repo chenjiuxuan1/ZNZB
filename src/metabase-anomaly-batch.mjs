@@ -15,7 +15,7 @@ export function getBatchInvestigationLimits() {
   };
 }
 
-export function buildInvestigationBatches(cases = {}, { maxCasesPerBatch = MAX_CASES_PER_BATCH } = {}) {
+export function buildInvestigationBatches(cases = {}, { maxCasesPerBatch = 15 } = {}) {
   const groups = new Map();
   for (const item of Array.isArray(cases) ? cases : []) {
     const countryCode = String(item.countryCode || "").trim().toUpperCase();
@@ -53,7 +53,7 @@ export function buildDashboardScreeningJobs(cases = []) {
   return [...groups.values()];
 }
 
-export function buildMetricDeepAnalysisJobs(screeningJob = {}, verdicts = [], { maxCasesPerBatch = MAX_CASES_PER_BATCH } = {}) {
+export function buildMetricDeepAnalysisJobs(screeningJob = {}, verdicts = [], { maxCasesPerBatch = 15 } = {}) {
   const byIndex = new Map((Array.isArray(verdicts) ? verdicts : []).map((item) => [Number(item?.anomalyIndex), item]));
   const nonVerified = (screeningJob.cases || [])
     .filter((item) => byIndex.get(Number(item.anomalyIndex))?.screeningVerdict !== "verified_normal")
