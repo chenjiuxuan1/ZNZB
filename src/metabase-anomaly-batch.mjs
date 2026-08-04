@@ -53,17 +53,31 @@ export function buildDashboardScreeningJobs(cases = []) {
   return [...groups.values()];
 }
 
-export function buildMetricDeepAnalysisJobs(screeningJob = {}, verdicts = []) {
+export function buildMetricDeepAnalysisJobs(screeningJob = {}, verdicts = [], { maxCasesPerBatch = MAX_CASES_PER_BATCH } = {}) {
   const byIndex = new Map((Array.isArray(verdicts) ? verdicts : []).map((item) => [Number(item?.anomalyIndex), item]));
-  return (screeningJob.cases || [])
+  const nonVerified = (screeningJob.cases || [])
     .filter((item) => byIndex.get(Number(item.anomalyIndex))?.screeningVerdict !== "verified_normal")
-    .map((item) => ({
-      ...screeningJob,
-      stage: "metric_deep_analysis",
-      groupKey: `${screeningJob.groupKey || `${screeningJob.countryCode}:${screeningJob.dashboardUuid}`}:${item.anomalyIndex}`,
-      cases: [item],
-      screeningVerdict: byIndex.get(Number(item.anomalyIndex)) || null,
-    }));
+    .map((item) => ({ ...item, _screeningVerdict: byIndex.get(Number(item.anomalyIndex)) || null }));
+  const byTable = new Map();
+  for (const item of nonVerified) {
+    const table = String(item.sourceTable || screeningJob.sourceTable || "").trim().toLowerCase() || "unknown";
+    if (!byTable.has(table)) byTable.set(table, []);
+    byTable.get(table).push(item);
+  }
+  const jobs = [];
+  for (const [table, items] of byTable) {
+    for (let i = 0; i < items.length; i += maxCasesPerBatch) {
+      const batchCases = items.slice(i, i + maxCasesPerBatch).map(({ _screeningVerdict, ...rest }) => ({ ...rest, screeningVerdict: _screeningVerdict }));
+      jobs.push({
+        ...screeningJob,
+        stage: "metric_deep_analysis",
+        groupKey: `${screeningJob.groupKey || `${screeningJob.countryCode}:${screeningJob.dashboardUuid}`}:deep:${table}:${Math.floor(i / maxCasesPerBatch)}`,
+        sourceTable: table,
+        cases: batchCases,
+      });
+    }
+  }
+  return jobs;
 }
 
 export async function runBoundedInvestigationQueue({

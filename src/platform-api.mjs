@@ -347,7 +347,7 @@ export function createPlatformApi({
       const snapshotId = String(batch.snapshotId || "").trim();
       const cases = Array.isArray(batch.cases) ? batch.cases : [];
       const stage = batch.stage === "metric_deep_analysis" ? "metric_deep_analysis" : "dashboard_screening";
-      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && cases.length !== 1);
+      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 3));
       const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, cases }), "utf8");
       if (!runId || !countryCode || !batchId || !snapshotId || invalidCaseCount || payloadBytes > MAX_DASHBOARD_SCREENING_BYTES) {
         throw badRequest("Invalid Metabase investigation batch", ["取证任务必须包含有效标识；看板初筛需包含全部指标，单指标深挖只能包含一条，且请求不得超过 512 KiB。"]);
@@ -387,6 +387,7 @@ export function createPlatformApi({
         provider: generated.provider || "n8n-evidence",
         model: generated.model || "n8n-configured-model",
         observability: generated.observability || { enabled: false, written: false, reason: "n8n 批量任务已受理，等待回调" },
+        screening: item.screeningVerdict || null,
       }));
       const keys = new Set(entries.map((item) => item.key));
       const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
@@ -398,7 +399,7 @@ export function createPlatformApi({
             ...existing,
             ...entry,
             dashboardSummary: String(batch.dashboardSummary || existing?.dashboardSummary || ""),
-            screening: batch.screeningVerdict || existing?.screening || null,
+            screening: entry.screening || existing?.screening || null,
           };
         }
         return entry;
