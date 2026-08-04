@@ -21,6 +21,8 @@ export const state = {
   batchScheduleError: "",
   batchScheduleProgress: null,
   batchScheduleProgressTimer: null,
+  batchScheduleProgressPollVersion: 0,
+  batchScheduleProgressInFlight: false,
   batchScheduleCountryDetailsOpen: false,
   batchHistory: null,
   batchHistoryLoaded: false,
