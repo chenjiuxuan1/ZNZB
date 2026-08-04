@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "../api.js";
+import { apiGet, apiPost, apiPut } from "../api.js";
 import { state } from "../state.js";
 import { escapeHtml } from "../view-utils.js";
 import { parseAnomalyMessage } from "./batch-check.js";
@@ -46,6 +46,7 @@ export function renderFluctuationVisual(root) {
     </div>
 
     ${renderFluctuationStatus()}
+    ${state.fluctuationMetricTagError ? `<div class="sandbox-status error"><strong>标签保存失败</strong><span>${escapeHtml(state.fluctuationMetricTagError)}</span></div>` : ""}
     ${model.hiddenVerifiedNormalCount ? `<div class="sandbox-status success"><strong>已隐藏 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已核验正常点</strong><span>原始告警、查询方式和完整结论仍保留在巡检历史详情中。</span></div>` : ""}
     ${model.run ? renderFluctuationCountries(model) : renderEmptyFluctuationState()}
   `;
@@ -70,6 +71,11 @@ export function renderFluctuationVisual(root) {
       renderFluctuationVisual(root);
     });
   });
+  root.querySelectorAll("[data-fluctuation-tag]").forEach((select) => {
+    select.addEventListener("change", () => {
+      void updateFluctuationMetricTag(root, select.dataset.tagKey || "", select.value);
+    });
+  });
   bindFluctuationChartTooltips(root);
 
   // History is intentionally user-triggered: this view must not slow app startup.
@@ -85,6 +91,7 @@ export function renderFluctuationVisual(root) {
   } else if (selectedCountry) {
     void hydrateVisibleFluctuationSeries(root, selectedCountry);
   }
+  void loadFluctuationMetricTags(root, model);
 }
 
 async function reloadFluctuationHistory(root) {
@@ -217,6 +224,7 @@ function renderFluctuationCountryRows(country) {
 function renderFluctuationRow(anomaly, index) {
   const chart = buildChart(anomaly);
   const seriesState = state.fluctuationVisualSeries?.[anomaly.seriesKey];
+  const tag = state.fluctuationMetricTags?.[anomaly.tagKey] || "二级";
   return `
     <section class="fluctuation-row">
       <div class="fluctuation-row-meta">
@@ -234,6 +242,7 @@ function renderFluctuationRow(anomaly, index) {
         </div>
       </div>
       <div class="fluctuation-row-chart">
+        ${renderFluctuationMetricTagControl(anomaly, tag)}
         ${renderLineChart(chart)}
         ${seriesState?.type === "loading" ? `<div class="fluctuation-chart-note">正在按看板 URL 拉取最近历史数据...</div>` : ""}
         ${seriesState?.type === "error" ? `<div class="fluctuation-chart-note error">${escapeHtml(seriesState.detail || "历史数据拉取失败")}</div>` : ""}
@@ -374,6 +383,49 @@ function renderLineChart(chart) {
       <text class="x-label" x="${width - pad.right}" y="${height - 10}" text-anchor="end">${escapeHtml((hasBaselineLine ? coords.at(-1) : anomalyPoint)?.label || "")}</text>
     </svg>
   `;
+}
+
+function renderFluctuationMetricTagControl(anomaly, tag) {
+  return `
+    <label class="fluctuation-metric-tag">
+      <span>标签</span>
+      <select data-fluctuation-tag data-tag-key="${escapeHtml(anomaly.tagKey)}">
+        ${["一级", "二级", "三级"].map((value) => `<option value="${value}"${tag === value ? " selected" : ""}>${value}</option>`).join("")}
+      </select>
+    </label>
+  `;
+}
+
+async function loadFluctuationMetricTags(root, model) {
+  const identities = (model.countries || []).flatMap((country) => country.anomalies || []).map((anomaly) => anomaly.tagIdentity).filter(Boolean);
+  const requestKey = identities.map((identity) => identity.tagKey).sort().join("|");
+  if (!requestKey || state.fluctuationMetricTagsRequestKey === requestKey) return;
+  state.fluctuationMetricTagsRequestKey = requestKey;
+  try {
+    const payload = await apiPost("/api/fluctuation-metric-tags/lookup", { items: identities });
+    state.fluctuationMetricTags = { ...(state.fluctuationMetricTags || {}), ...(payload.tags || {}) };
+    state.fluctuationMetricTagIdentities = Object.fromEntries(identities.map((identity) => [identity.tagKey, identity]));
+    state.fluctuationMetricTagError = "";
+    renderFluctuationVisual(root);
+  } catch (error) {
+    state.fluctuationMetricTagError = error.message;
+  }
+}
+
+async function updateFluctuationMetricTag(root, tagKey, tag) {
+  const identity = state.fluctuationMetricTagIdentities?.[tagKey];
+  if (!identity) return;
+  const previous = state.fluctuationMetricTags?.[tagKey] || "二级";
+  state.fluctuationMetricTags = { ...(state.fluctuationMetricTags || {}), [tagKey]: tag };
+  renderFluctuationVisual(root);
+  try {
+    await apiPut("/api/fluctuation-metric-tags", { identity, tag });
+    state.fluctuationMetricTagError = "";
+  } catch (error) {
+    state.fluctuationMetricTags = { ...(state.fluctuationMetricTags || {}), [tagKey]: previous };
+    state.fluctuationMetricTagError = error.message;
+    renderFluctuationVisual(root);
+  }
 }
 
 function resolveChartYBounds(values = []) {
@@ -561,10 +613,36 @@ function collectFluctuationAnomalies(run, countries = []) {
         hydratedSeries: hydrated?.series || null,
         detail,
         metricLabel: buildMetricLabel(anomaly, detail),
+        tagIdentity: buildFluctuationMetricTagIdentity(anomaly, countryName, detail),
+        tagKey: "",
       });
+      rows[rows.length - 1].tagKey = rows[rows.length - 1].tagIdentity.tagKey;
     }
   }
   return rows;
+}
+
+function buildFluctuationMetricTagIdentity(anomaly = {}, countryName = "", detail = {}) {
+  const identity = {
+    country_name: normalizeTagText(countryName || anomaly.countryName || anomaly.countryCode || "未知国家"),
+    dashboard_name: normalizeTagText(anomaly.dashboardTitle || "未命名看板"),
+    card_name: normalizeTagText(anomaly.cardTitle || "未命名卡片"),
+    metric_name: normalizeTagText(anomaly.metricName || anomaly.metricColumn || anomaly.column || anomaly.series?.find?.((point) => point?.metric)?.metric || detail.metricName || anomaly.cardTitle || "未命名指标"),
+    dimension_name: normalizeTagDimension(detail.dimensionText),
+    time_granularity: anomaly.series?.some?.((point) => point?.xType === "hour") || ["intradayTimePointChange", "intradaySameTimeChange"].includes(String(anomaly.type || "")) ? "hour" : "day",
+    dashboard_url: normalizeTagText(anomaly.dashboardUrl || ""),
+  };
+  identity.tagKey = [identity.country_name, identity.dashboard_name, identity.card_name, identity.metric_name, identity.dimension_name, identity.time_granularity].join("\u001f");
+  return identity;
+}
+
+function normalizeTagText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeTagDimension(value) {
+  const values = String(value || "").split(/[，,]/).map(normalizeTagText).filter(Boolean);
+  return [...new Set(values)].sort().join("，") || "无维度";
 }
 
 function isFluctuationAnomaly(anomaly, detail, countryCode = "") {
