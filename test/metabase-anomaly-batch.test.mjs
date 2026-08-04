@@ -20,20 +20,24 @@ test("groups every anomaly from one dashboard into one screening job", () => {
   assert.equal(jobs[0].dashboardUuid, "dash-1");
 });
 
-test("creates one deep-analysis job for every metric not proven normal", () => {
+test("batches non-verified metrics by source table into deep-analysis jobs", () => {
   const [screening] = buildDashboardScreeningJobs([
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 0 },
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 1 },
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 2 },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 0, sourceTable: "ads.loan_d" },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 1, sourceTable: "ads.loan_d" },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 2, sourceTable: "ads.loan_d" },
+    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 3, sourceTable: "ads.loan_d" },
   ]);
   const jobs = buildMetricDeepAnalysisJobs(screening, [
     { anomalyIndex: 0, screeningVerdict: "verified_normal" },
     { anomalyIndex: 1, screeningVerdict: "suspected_issue" },
     { anomalyIndex: 2, screeningVerdict: "needs_deep_analysis" },
+    { anomalyIndex: 3, screeningVerdict: "needs_deep_analysis" },
   ]);
 
-  assert.deepEqual(jobs.map((job) => job.cases[0].anomalyIndex), [1, 2]);
-  assert.ok(jobs.every((job) => job.stage === "metric_deep_analysis" && job.cases.length === 1));
+  // 3 non-verified (1,2,3) from same table -> 1 batch of 3
+  assert.equal(jobs.length, 1);
+  assert.deepEqual(jobs[0].cases.map((c) => c.anomalyIndex), [1, 2, 3]);
+  assert.equal(jobs[0].stage, "metric_deep_analysis");
 });
 
 test("batch investigation groups same source and limits every Dify payload to three cases", () => {
@@ -51,14 +55,14 @@ test("batch investigation limits never exceed two Dify workers or three cases", 
   assert.deepEqual(getBatchInvestigationLimits({
     METABASE_ANOMALY_BATCH_CONCURRENCY: "99",
     METABASE_ANOMALY_BATCH_SIZE: "99",
-  }), { maxConcurrentBatches: 2, maxCasesPerBatch: 3, timeoutMs: 600000, targetDurationMs: 1200000, deadlineMs: 1800000 });
+  }), { maxConcurrentBatches: 2, maxCasesPerBatch: 3, timeoutMs: 360000, targetDurationMs: 1200000, deadlineMs: 2700000 });
 });
 
 test("bounded investigation queue never submits a third Dify batch before one callback settles", async () => {
   const submitted = [];
   const releases = new Map();
   const queue = runBoundedInvestigationQueue({
-    batches: [{ batchId: "a" }, { batchId: "b" }, { batchId: "c" }],
+    batches: [{ batchId: "a" }, { batchId: "b" }, { batchId: "c" }, { batchId: "d" }],
     submit: async (batch) => { submitted.push(batch.batchId); },
     waitForSettlement: (batch) => new Promise((resolve) => releases.set(batch.batchId, resolve)),
   });
@@ -69,9 +73,12 @@ test("bounded investigation queue never submits a third Dify batch before one ca
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(submitted, ["a", "b", "c"]);
   releases.get("b")({ status: "completed" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(submitted, ["a", "b", "c", "d"]);
   releases.get("c")({ status: "completed" });
+  releases.get("d")({ status: "completed" });
   const result = await queue;
-  assert.equal(result.completed, 3);
+  assert.equal(result.completed, 4);
 });
 
 test("bounded investigation queue never submits queued batches after its global deadline", async () => {
@@ -87,4 +94,43 @@ test("bounded investigation queue never submits queued batches after its global 
 
   assert.deepEqual(submitted, ["a"]);
   assert.deepEqual(result.notSubmitted.map((batch) => batch.batchId), ["b"]);
+});
+
+test("bounded investigation queue does NOT count timed-out batches as completed", async () => {
+  const result = await runBoundedInvestigationQueue({
+    batches: [{ batchId: "a" }, { batchId: "b" }, { batchId: "c" }],
+    submit: async () => {},
+    waitForSettlement: async () => ({ status: "timed_out" }),
+  });
+  assert.equal(result.total, 3);
+  assert.equal(result.completed, 0);
+  assert.equal(result.timedOut, 3);
+  assert.equal(result.failed, 0);
+});
+
+test("bounded investigation queue does NOT count failed batches as completed", async () => {
+  const result = await runBoundedInvestigationQueue({
+    batches: [{ batchId: "a" }, { batchId: "b" }],
+    submit: async () => { throw new Error("n8n unreachable"); },
+    waitForSettlement: async () => ({ status: "completed" }),
+  });
+  assert.equal(result.total, 2);
+  assert.equal(result.completed, 0);
+  assert.equal(result.failed, 2);
+  assert.equal(result.timedOut, 0);
+});
+
+test("bounded investigation queue counts only truly completed batches", async () => {
+  const result = await runBoundedInvestigationQueue({
+    batches: [{ batchId: "a" }, { batchId: "b" }, { batchId: "c" }],
+    submit: async () => {},
+    waitForSettlement: async (batch) =>
+      batch.batchId === "a" ? { status: "completed" }
+      : batch.batchId === "b" ? { status: "timed_out" }
+      : { status: "failed" },
+  });
+  assert.equal(result.total, 3);
+  assert.equal(result.completed, 1);
+  assert.equal(result.timedOut, 1);
+  assert.equal(result.failed, 1);
 });

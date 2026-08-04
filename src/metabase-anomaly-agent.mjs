@@ -10,6 +10,7 @@ const AGENT_MODES = new Set(["summary", "evidence", "recursive_evidence"]);
 export function getMetabaseAnomalyAgentSettings(env = process.env) {
   const enabledValue = String(env.METABASE_ANOMALY_AGENT_ENABLED || "").trim().toLowerCase();
   const n8nWebhookUrl = String(env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL || "").trim();
+  const n8nBatchWebhookUrl = String(env.METABASE_ANOMALY_AGENT_N8N_BATCH_WEBHOOK_URL || "").trim();
   const n8nToken = String(env.METABASE_ANOMALY_AGENT_N8N_TOKEN || "").trim();
   const asyncSetting = String(env.METABASE_ANOMALY_AGENT_N8N_ASYNC || "").trim().toLowerCase();
   // n8n webhooks run evidence jobs by default. Legacy synchronous behavior is
@@ -34,6 +35,7 @@ export function getMetabaseAnomalyAgentSettings(env = process.env) {
     model,
     transport,
     n8nWebhookUrl,
+    n8nBatchWebhookUrl,
     n8nToken,
     n8nAsync,
     callbackUrl,
@@ -99,10 +101,19 @@ export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.en
     error.statusCode = 503;
     throw error;
   }
-  if (!batch.batchId || !batch.runId || !batch.countryCode || !batch.snapshotId || cases.length === 0
-    || (stage === "metric_deep_analysis" && cases.length !== 1)
-    || Buffer.byteLength(JSON.stringify({ ...batch, stage, cases }), "utf8") > 512 * 1024) {
-    const error = new Error("Metabase 两阶段分析必须包含有效标识；看板初筛包含全部指标，单指标深挖只能包含一条，且请求不得超过 512 KiB。");
+  const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, stage, cases }), "utf8");
+  const validationErrors = [];
+  if (!batch.batchId) validationErrors.push("batchId missing");
+  if (!batch.runId) validationErrors.push("runId missing");
+  if (!batch.countryCode) validationErrors.push("countryCode missing");
+  if (!batch.snapshotId) validationErrors.push("snapshotId missing");
+  if (cases.length === 0) validationErrors.push("cases empty");
+  if (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 3)) validationErrors.push(`deep_analysis requires 1-3 cases, got ${cases.length}`);
+  if (payloadBytes > 512 * 1024) validationErrors.push(`payload ${payloadBytes} bytes exceeds 512 KiB`);
+  if (validationErrors.length > 0) {
+    const detail = `stage=${stage}, countryCode=${batch.countryCode || "(empty)"}, batchId=${String(batch.batchId || "").slice(0, 20)}, runId=${String(batch.runId || "").slice(0, 20)}, snapshotId=${String(batch.snapshotId || "").slice(0, 20)}, cases=${cases.length}, payloadBytes=${payloadBytes}`;
+    console.error(`[metabase-anomaly-agent] batch validation FAILED: ${validationErrors.join(", ")} | ${detail}`);
+    const error = new Error(`Metabase 两阶段分析验证失败: ${validationErrors.join("; ")}`);
     error.statusCode = 400;
     throw error;
   }
@@ -205,7 +216,8 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
   try {
-    const response = await fetchFn(settings.n8nWebhookUrl, {
+    const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+    const response = await fetchFn(batchUrl, {
       method: "POST",
       headers: {
         Accept: "application/json",
