@@ -1,8 +1,8 @@
-const MAX_CONCURRENT_BATCHES = 2;
+const MAX_CONCURRENT_BATCHES = 3;
 const MAX_CASES_PER_BATCH = 3;
-const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_TIMEOUT_MS = 6 * 60 * 1000;
 const TARGET_DURATION_MS = 20 * 60 * 1000;
-const DEADLINE_MS = 30 * 60 * 1000;
+const DEADLINE_MS = 45 * 60 * 1000;
 export const MAX_DASHBOARD_SCREENING_BYTES = 512 * 1024;
 
 export function getBatchInvestigationLimits() {
