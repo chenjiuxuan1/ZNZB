@@ -642,7 +642,7 @@ export function createPlatformApi({
         return { ...existing, cached: true };
       }
       const agentSettings = getMetabaseAnomalyAgentSettings();
-      if (agentSettings.transport === "n8n" && agentSettings.n8nAsync) {
+      if (agentSettings.transport === "n8n") {
         // The n8n workflow only accepts protocolVersion 5 dashboard-analysis
         // jobs. Route the single anomaly through the same batch submission so
         // it reuses the webhook, Dify agent, and /batch-callback path. A fast
