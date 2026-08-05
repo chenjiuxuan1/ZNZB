@@ -76,7 +76,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw=String($json.data?.outputs?.text||$json.data?.outputs?.result||$json.answer||$json.text||''); const object=text=>{let start=-1,depth=0,q=false,e=false,last;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(e)e=false;else if(c==='\\\\')e=true;else if(c==='\\\"')q=false;continue;}if(c==='\\\"'){q=true;continue;}if(c==='{'){if(!depth)start=i;depth++;}else if(c==='}'&&depth&&!--depth){try{last=JSON.parse(text.slice(start,i+1));}catch{}}}return last;};return [{json:{difyText:raw.slice(-20000),decision:object(raw)||{}}}];"
+        "jsCode": "const raw=String($json.data?.outputs?.text||$json.data?.outputs?.result||$json.data?.outputs?.analysis_json||$json.answer||$json.text||''); const object=text=>{let start=-1,depth=0,q=false,e=false,last;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(e)e=false;else if(c==='\\\\')e=true;else if(c==='\\\"')q=false;continue;}if(c==='\\\"'){q=true;continue;}if(c==='{'){if(!depth)start=i;depth++;}else if(c==='}'&&depth&&!--depth){try{last=JSON.parse(text.slice(start,i+1));}catch{}}}return last;};return [{json:{difyText:raw.slice(-20000),decision:object(raw)||{}}}];"
       },
       "name": "Parse Dify Batch Response",
       "type": "n8n-nodes-base.code",
