@@ -37,6 +37,7 @@ export const state = {
   fluctuationVisualSelected: {},
   fluctuationVisualCountryCode: "",
   fluctuationVisualLoaded: false,
+  fluctuationVisualRefreshProgress: null,
   fluctuationVisualDisplayIndex: {},
   fluctuationVisualSeries: {},
   wattrelCurrentResult: null,
