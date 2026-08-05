@@ -4568,23 +4568,33 @@ function deduplicateDashboards(dashboards) {
   const seen = new Map();
   const result = [];
   for (const dashboard of dashboards) {
-    if (!dashboard.url) {
-      result.push(dashboard);
-      continue;
-    }
     const countryCode = getDashboardCountryCode(dashboard);
-    const urlKey = `${countryCode}:${dashboardUrlIdentity(dashboard.url)}`;
-    const existingIndex = seen.get(urlKey);
-    if (existingIndex !== undefined) {
-      const existing = result[existingIndex];
+    const urlKey = dashboard.url ? `${countryCode}:${dashboardUrlIdentity(dashboard.url)}` : null;
+    const titleKey = `${countryCode}:${canonicalDashboardTitle(dashboard.sourcePanelTitle || dashboard.title)}`;
+    const keys = [urlKey, titleKey].filter(Boolean);
+    let duplicateIndex = -1;
+    for (const key of keys) {
+      const existing = seen.get(key);
+      if (existing !== undefined) {
+        duplicateIndex = existing;
+        break;
+      }
+    }
+    if (duplicateIndex >= 0) {
+      const existing = result[duplicateIndex];
       const existingCards = existing.cards?.length || 0;
       const newCards = dashboard.cards?.length || 0;
       if (newCards > existingCards) {
-        result[existingIndex] = dashboard;
+        result[duplicateIndex] = dashboard;
+        for (const key of keys) {
+          seen.set(key, duplicateIndex);
+        }
       }
       continue;
     }
-    seen.set(urlKey, result.length);
+    for (const key of keys) {
+      seen.set(key, result.length);
+    }
     result.push(dashboard);
   }
   return result;
