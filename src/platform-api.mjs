@@ -17,6 +17,7 @@ import { MetabaseInternalClient } from "./metabase-internal-client.mjs";
 import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
+import { fetchCompatible } from "./fetch-compatible.mjs";
 import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
 import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
 import {
@@ -649,22 +650,45 @@ export function createPlatformApi({
         // callback may have already completed the entry before we read it back.
         const dashboardUuid = resolveAnomalyDashboardUuid(anomaly);
         const dashboardTitle = String(anomaly.dashboardTitle || "").trim();
-        await this.submitMetabaseInvestigationBatch({
-          runId,
-          countryCode,
-          batchId: `single-${randomUUID()}`,
-          snapshotId: `snapshot-${randomUUID()}`,
-          dashboardUuid,
-          dashboardTitle,
-          sourceTable: "",
-          cases: [{
-            anomalyIndex,
+        console.error(`[metabase-anomaly] dispatching single analysis: runId=${runId} country=${countryCode} idx=${anomalyIndex} dashboard=${dashboardTitle} n8nUrl=${agentSettings.n8nWebhookUrl}`);
+        try {
+          await this.submitMetabaseInvestigationBatch({
+            runId,
             countryCode,
+            batchId: `single-${randomUUID()}`,
+            snapshotId: `snapshot-${randomUUID()}`,
             dashboardUuid,
             dashboardTitle,
-            anomaly: compactMetabaseAnomaly(anomaly),
-          }],
-        });
+            sourceTable: "",
+            cases: [{
+              anomalyIndex,
+              countryCode,
+              dashboardUuid,
+              dashboardTitle,
+              anomaly: compactMetabaseAnomaly(anomaly),
+            }],
+          });
+        } catch (dispatchError) {
+          // Return a failed entry with HTTP 200 so the frontend always gets
+          // JSON (nginx otherwise intercepts 502 and returns HTML, hiding the
+          // actual error message from the user).
+          console.error(`[metabase-anomaly] single analysis dispatch FAILED for ${cacheKey}: ${dispatchError.message}`);
+          const failedEntry = {
+            key: cacheKey, runId, countryCode, anomalyIndex,
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+            status: "failed", pending: false,
+            provider: "n8n-evidence", model: "n8n-configured-model",
+            jobId: "",
+            analysis: normalizeMetabaseAnomalyAnalysis({}),
+            error: String(dispatchError.message || dispatchError),
+            observability: { enabled: false, written: false, reason: String(dispatchError.message || dispatchError) },
+          };
+          const failStore = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+          const failAnalyses = keepRecentMetabaseAnalyses([failedEntry, ...(failStore.analyses || []).filter((item) => item.key !== cacheKey)]);
+          await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses: failAnalyses });
+          return { ...failedEntry, cached: false };
+        }
         const refreshedCache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
         const entry = (refreshedCache.analyses || []).find((item) => item.key === cacheKey);
         return entry ? { ...entry, cached: false } : {
@@ -754,6 +778,77 @@ export function createPlatformApi({
       const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
       return { runId, analyses: (cache.analyses || []).filter((item) => String(item.runId || "") === runId) };
    },
+
+   async diagnoseMetabaseAnomalyAgent() {
+      const settings = getMetabaseAnomalyAgentSettings();
+      const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+      let n8nReachable = false;
+      let n8nError = null;
+      let n8nHttpStatus = null;
+      const n8nTestUrl = batchUrl ? String(batchUrl).replace(/\/webhook\//, "/webhook-test/").replace(/\/webhook$/, "/webhook-test") : "";
+      try {
+        if (batchUrl) {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5_000);
+          const response = await fetchCompatible(batchUrl, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+          }).catch((err) => {
+            n8nError = String(err?.message || err);
+            throw err;
+          });
+          clearTimeout(timeout);
+          n8nHttpStatus = response.status;
+          n8nReachable = true;
+        }
+      } catch (err) {
+        n8nError = n8nError || String(err?.message || err);
+      }
+      const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const recent = (cache.analyses || []).slice(0, 20).map((item) => ({
+        key: item.key,
+        status: item.status,
+        runId: String(item.runId || "").slice(0, 20),
+        countryCode: item.countryCode,
+        anomalyIndex: item.anomalyIndex,
+        jobId: String(item.jobId || "").slice(0, 20),
+        provider: item.provider,
+        error: item.error || null,
+        createdAt: item.createdAt,
+        completedAt: item.completedAt || null,
+      }));
+      const statusCounts = (cache.analyses || []).reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] || 0) + 1;
+        return acc;
+      }, {});
+      return {
+        timestamp: new Date().toISOString(),
+        settings: {
+          enabled: settings.enabled,
+          configured: settings.configured,
+          transport: settings.transport,
+          n8nAsync: settings.n8nAsync,
+          n8nWebhookUrl: settings.n8nWebhookUrl,
+          n8nBatchWebhookUrl: settings.n8nBatchWebhookUrl,
+          hasN8nToken: Boolean(settings.n8nToken),
+          callbackUrl: settings.callbackUrl,
+          hasCallbackToken: Boolean(settings.callbackToken),
+          requestedMode: settings.requestedMode,
+        },
+        n8nConnectivity: {
+          reachable: n8nReachable,
+          httpStatus: n8nHttpStatus,
+          error: n8nError,
+          testedUrl: batchUrl,
+        },
+        analysisStats: {
+          total: (cache.analyses || []).length,
+          byStatus: statusCounts,
+        },
+        recentAnalyses: recent,
+      };
+    },
 
    async rerunMetabaseAnomalyAnalysis(body = {}) {
       const historyRunId = String(body.historyRunId || body.runId || "").trim();
@@ -898,6 +993,7 @@ export function createPlatformApi({
       const countryCode = normalizeCountryCode(body.countryCode);
       const jobId = String(body.jobId || "").trim();
       const results = Array.isArray(body.results) ? body.results : [];
+      console.error(`[metabase-anomaly] batch-callback received: runId=${runId} country=${countryCode} jobId=${jobId.slice(0,20)} results=${results.length}`);
       if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 30) {
         throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-30 条结果。"]);
       }

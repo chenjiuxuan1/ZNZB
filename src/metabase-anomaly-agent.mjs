@@ -117,6 +117,8 @@ export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.en
    throw error;
  }
   const jobId = String(batch.jobId || randomUUID());
+  const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+  console.error(`[metabase-anomaly-agent] batch dispatch: jobId=${jobId} batchId=${String(batch.batchId).slice(0,20)} cases=${cases.length} url=${batchUrl} enabled=${settings.enabled} async=${settings.n8nAsync}`);
   const request = requestN8nAgentBatch({ settings, batch: { ...batch, stage, cases }, fetchFn, jobId });
   const settled = request.then((value) => ({ value }), (error) => ({ error }));
   const first = await Promise.race([
@@ -124,12 +126,17 @@ export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.en
     delay(N8N_ASYNC_ACCEPT_WAIT_MS).then(() => null),
   ]);
   if (!first) {
+    console.error(`[metabase-anomaly-agent] batch dispatch TIMEOUT (>${N8N_ASYNC_ACCEPT_WAIT_MS}ms) for ${jobId}, returning pending`);
     void settled.then(({ error }) => {
       if (error) console.error(`[metabase-anomaly-agent] n8n batch dispatch failed for ${jobId}: ${error.message}`);
     });
     return { ...pendingN8nEvidenceJob({ jobId }), batchId: String(batch.batchId) };
   }
-  if (first.error) throw first.error;
+  if (first.error) {
+    console.error(`[metabase-anomaly-agent] batch dispatch ERROR for ${jobId}: ${first.error.message}`);
+    throw first.error;
+  }
+  console.error(`[metabase-anomaly-agent] batch dispatch ACCEPTED for ${jobId}: ${JSON.stringify(first.value.payload || {}).slice(0, 200)}`);
   const payload = first.value.payload || {};
   if (!(payload.accepted === true || payload.status === "pending" || payload.jobId)) {
     const error = new Error("n8n 未受理批量 Metabase 异常分析任务。");
