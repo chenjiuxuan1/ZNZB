@@ -1121,7 +1121,7 @@ test("platform api does not duplicate a ready internal dashboard from panel sour
   assert.equal(inventory.dashboards[0].sourcePanelId, 11);
 });
 
-test("platform api scans a physical dashboard only once when saved and fresh identities differ", async () => {
+test("platform api scans a physical dashboard only once when saved and fresh URLs share dashcards", async () => {
   const rootDir = await makeFixture();
   let queryCount = 0;
   await fs.writeFile(
@@ -1146,11 +1146,11 @@ test("platform api scans a physical dashboard only once when saved and fresh ide
         countryCode: "INE",
         countryName: "印尼",
         access: "internal",
-        title: "OKR",
-        sourcePanelTitle: "业务概览-OKR",
+        title: "放款统计",
+        sourcePanelTitle: "资产管理-放款统计",
         dashboardId: "283",
         uuid: "internal-283",
-        url: "https://data.example/public/dashboard/shared-okr",
+        url: "https://data.example/dashboard/283",
         cards: [{ title: "规模", cardId: 1, dashcardId: 2, parameterMappings: [] }],
       }],
       sourceErrors: [],
