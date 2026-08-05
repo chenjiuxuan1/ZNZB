@@ -3,6 +3,7 @@ import { getDashboards, isDashboardExecutable, state } from "../state.js";
 import { compactDashboardUrl, compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
 
 let discoveryStatus = null;
+let discoveryProgress = null;
 
 export function renderInventory(root) {
   const dashboards = getDashboards();
@@ -23,7 +24,7 @@ export function renderInventory(root) {
       </div>
       <div class="button-group">
         <button id="discover-country-dashboards" ${selectedCountry ? "" : "disabled"}>重新发现当前国家看板</button>
-        <button class="primary" id="discover-all-dashboards">一键发现六国看板</button>
+        <button class="primary" id="discover-all-dashboards" ${discoveryProgress?.status === "running" ? "disabled aria-busy=\"true\"" : ""}>${discoveryProgress?.status === "running" ? "发现进行中..." : "一键发现六国看板"}</button>
       </div>
     </div>
     <form class="panel compact" id="manual-dashboard-form">
@@ -39,6 +40,7 @@ export function renderInventory(root) {
       </div>
     </form>
     ${discoveryStatus ? `<div class="sandbox-status ${discoveryStatus.type}"><strong>${escapeHtml(discoveryStatus.title)}</strong><span>${escapeHtml(discoveryStatus.detail)}</span></div>` : ""}
+    ${renderAllDiscoveryProgress()}
     <div class="notice">
       <strong>怎么读</strong>
       <span>先选国家，再选看板；右侧会展示该看板下的卡片、字段、样例行和查询状态。用于确认“规则会检查哪些卡片”。</span>
@@ -146,6 +148,7 @@ export function renderInventory(root) {
     renderInventory(root);
   });
   root.querySelector("#discover-all-dashboards")?.addEventListener("click", async () => {
+    discoveryProgress = { status: "running", countries: [], currentCountryCode: "" };
     discoveryStatus = { type: "loading", title: "六国看板发现已启动", detail: "正在后台逐国读取 Metabase 看板和卡片；此页面不会因耗时任务断开。" };
     renderInventory(root);
     try {
@@ -154,7 +157,7 @@ export function renderInventory(root) {
         discoveryStatus = { type: "loading", title: "六国看板发现进行中", detail: "已有发现任务正在后台执行，请稍候。" };
         renderInventory(root);
       }
-      const result = await waitForAllDashboardDiscovery();
+      const result = await waitForAllDashboardDiscovery(root);
       if (result.status === "failed") {
         throw new Error(result.error || "Metabase 看板发现失败");
       }
@@ -167,18 +170,63 @@ export function renderInventory(root) {
     } catch (error) {
       discoveryStatus = { type: "error", title: "六国看板发现失败", detail: error.payload?.errors?.join("；") || error.message };
     }
+    discoveryProgress = null;
     renderInventory(root);
   });
 }
 
-async function waitForAllDashboardDiscovery() {
+async function waitForAllDashboardDiscovery(root) {
   for (;;) {
     const progress = await apiGet("/api/inventory/discover-all/progress");
+    discoveryProgress = progress;
+    renderInventory(root);
     if (progress.status !== "running") {
       return progress;
     }
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
+}
+
+function renderAllDiscoveryProgress() {
+  if (discoveryProgress?.status !== "running") return "";
+  const countries = discoveryProgress.countries || [];
+  const completed = countries.filter((item) => ["success", "skipped", "failed"].includes(item.status)).length;
+  const total = Math.max((state.countries?.countries || []).length, countries.length);
+  const percent = total ? Math.round((completed / total) * 100) : 0;
+  const current = countries.find((item) => item.status === "running");
+  return `
+    <section class="sub-panel schedule-progress-panel inventory-discovery-progress">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">看板发现进度</h2>
+          <p class="muted">${escapeHtml(current ? `正在读取 ${current.countryName || current.countryCode} 的看板与卡片` : "正在准备下一个国家")}</p>
+        </div>
+        <span class="badge warn">${escapeHtml(completed)}/${escapeHtml(total || "-")}</span>
+      </div>
+      <div class="progress-track" aria-label="六国看板发现进度"><span style="width:${escapeHtml(percent)}%"></span></div>
+      ${countries.length ? `<div class="schedule-progress-list">${countries.map((country) => `
+        <article class="schedule-progress-item ${escapeHtml(country.status || "pending")}">
+          <div><strong>${escapeHtml(country.countryName || country.countryCode || "-")}</strong><span>${escapeHtml(discoveryCountryDetail(country))}</span></div>
+          <span class="badge ${escapeHtml(discoveryBadge(country.status))}">${escapeHtml(discoveryLabel(country.status))}</span>
+        </article>
+      `).join("")}</div>` : ""}
+    </section>
+  `;
+}
+
+function discoveryCountryDetail(country) {
+  if (country.status === "running") return "正在发现 Metabase 看板和卡片";
+  if (country.status === "success") return `发现 ${country.discoveredDashboardCount || 0} 个看板，可执行 ${country.executableDashboardCount || 0} 个`;
+  if (country.status === "skipped") return "看板已完整发现，已跳过";
+  return country.error || "等待发现";
+}
+
+function discoveryLabel(status) {
+  return ({ running: "进行中", success: "完成", skipped: "已跳过", failed: "失败" })[status] || "等待中";
+}
+
+function discoveryBadge(status) {
+  return ({ running: "warn", success: "ok", skipped: "ok", failed: "danger" })[status] || "idle";
 }
 
 function renderDashboardDetail(dashboard, cards) {

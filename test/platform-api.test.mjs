@@ -922,6 +922,10 @@ test("platform api starts all-country discovery in the background and exposes pr
   assert.equal(started.started, true);
   assert.equal(pending.status, "running");
   await requested;
+  const inProgress = api.getDiscoverAllCountryDashboardsProgress();
+  assert.equal(inProgress.countries.length, 1);
+  assert.equal(inProgress.countries[0].status, "running");
+  assert.equal(inProgress.currentCountryCode, inProgress.countries[0].countryCode);
   resolveDiscovery({ dashboards: [] });
   await started.completed;
   assert.equal(api.getDiscoverAllCountryDashboardsProgress().status, "completed");
