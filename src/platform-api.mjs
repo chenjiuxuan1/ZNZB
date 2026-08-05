@@ -641,6 +641,37 @@ export function createPlatformApi({
       if (existing && !body.force && !isExpiredMetabaseAnalysis(existing)) {
         return { ...existing, cached: true };
       }
+      const agentSettings = getMetabaseAnomalyAgentSettings();
+      if (agentSettings.transport === "n8n" && agentSettings.n8nAsync) {
+        // The n8n workflow only accepts protocolVersion 5 dashboard-analysis
+        // jobs. Route the single anomaly through the same batch submission so
+        // it reuses the webhook, Dify agent, and /batch-callback path. A fast
+        // callback may have already completed the entry before we read it back.
+        const dashboardUuid = resolveAnomalyDashboardUuid(anomaly);
+        const dashboardTitle = String(anomaly.dashboardTitle || "").trim();
+        await this.submitMetabaseInvestigationBatch({
+          runId,
+          countryCode,
+          batchId: `single-${randomUUID()}`,
+          snapshotId: `snapshot-${randomUUID()}`,
+          dashboardUuid,
+          dashboardTitle,
+          sourceTable: "",
+          cases: [{
+            anomalyIndex,
+            countryCode,
+            dashboardUuid,
+            dashboardTitle,
+            anomaly: compactMetabaseAnomaly(anomaly),
+          }],
+        });
+        const refreshedCache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
+        const entry = (refreshedCache.analyses || []).find((item) => item.key === cacheKey);
+        return entry ? { ...entry, cached: false } : {
+          key: cacheKey, runId, countryCode, anomalyIndex,
+          createdAt: new Date().toISOString(), status: "pending", pending: true, cached: false,
+        };
+      }
       const sameDashboardAnomalies = anomalies.filter((item) => (
         item.dashboardUuid && anomaly.dashboardUuid
           ? item.dashboardUuid === anomaly.dashboardUuid

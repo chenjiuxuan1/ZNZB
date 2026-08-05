@@ -460,12 +460,12 @@ test("platform api queues every anomaly from the same dashboard for independent 
   process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL = "https://n8n.example/webhook/agent";
   process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN = "test-token";
   process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN = "callback-token";
-  const received = [];
-  const api = createPlatformApi({
-    rootDir,
-    metabaseAnomalyAgentFn: async ({ anomaly, context }) => {
-      received.push({ anomaly, context });
-      return { analysis: { summary: `${anomaly.cardTitle} 已独立核验`, confidence: "high" } };
+ const received = [];
+ const api = createPlatformApi({
+   rootDir,
+    metabaseAnomalyBatchAgentFn: async ({ batch }) => {
+      received.push(batch);
+      return { pending: true, jobId: `job-${received.length}`, provider: "n8n-evidence" };
     },
   });
 
@@ -484,8 +484,8 @@ test("platform api queues every anomaly from the same dashboard for independent 
 
     assert.equal(result.triggered, 2);
     assert.equal(result.totalAnomalies, 2);
-    assert.deepEqual(received.map(({ anomaly }) => anomaly.cardTitle), ["放款金额", "放款件数"]);
-    assert.ok(received.every(({ context }) => context.sameDashboardAnomalies.length === 2));
+    assert.equal(received.length, 2);
+    assert.deepEqual(received.map((batch) => batch.cases[0].anomalyIndex), [0, 1]);
   } finally {
     for (const [key, value] of Object.entries(previousEnv)) {
       if (value === undefined) delete process.env[key];
@@ -758,6 +758,55 @@ test("platform api deduplicates concurrent Metabase evidence requests", async ()
   assert.equal(calls, 1);
   assert.equal(first.countryCode, "MX");
   assert.equal(second.pending, true);
+});
+
+test("platform api routes a single anomaly through the batch path when n8n is configured", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/batch-check-run-history.json"),
+    JSON.stringify({ runs: [{
+      id: "run-single-batch-route", startedAt: "2026-07-28T00:00:00.000Z",
+      runs: [{ countryCode: "INE", countryName: "印尼", result: { anomalies: [{ dashboardTitle: "OKR", dashboardUuid: "dash-1", cardTitle: "放款", message: "指标归零" }] } }],
+    }] }),
+  );
+  const previousEnv = {
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL,
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN,
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN,
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: process.env.METABASE_ANOMALY_AGENT_N8N_ASYNC,
+  };
+  process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL = "https://n8n.example/webhook/agent";
+  process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN = "test-token";
+  process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN = "callback-token";
+  let batchCalls = 0;
+  let singleCalls = 0;
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyAgentFn: async () => { singleCalls += 1; return { analysis: { summary: "should not be called" } }; },
+    metabaseAnomalyBatchAgentFn: async () => { batchCalls += 1; return { pending: true, jobId: "single-batch-job", provider: "n8n-evidence" }; },
+  });
+  try {
+    const result = await api.analyzeMetabaseAnomaly({ runId: "run-single-batch-route", countryCode: "INE", anomalyIndex: 0 });
+    assert.equal(batchCalls, 1);
+    assert.equal(singleCalls, 0);
+    assert.equal(result.status, "pending");
+    assert.equal(result.jobId, "single-batch-job");
+
+    const completed = await api.completeMetabaseAnomalyBatch({
+      runId: "run-single-batch-route",
+      countryCode: "INE",
+      jobId: "single-batch-job",
+      results: [{ anomalyIndex: 0, analysis: { summary: "底表数据正常", confidence: "high", dataSideVerdict: "business_change", notificationAction: "send" } }],
+    });
+    assert.equal(completed.results.length, 1);
+    assert.equal(completed.results[0].status, "completed");
+    assert.equal(completed.results[0].analysis.dataSideVerdict, "business_change");
+  } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test("platform api preserves an n8n callback that arrives before its pending job is written", async () => {
