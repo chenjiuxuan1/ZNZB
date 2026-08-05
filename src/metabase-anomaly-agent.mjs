@@ -96,7 +96,7 @@ export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.en
  const settings = getMetabaseAnomalyAgentSettings(env);
  const cases = Array.isArray(batch.cases) ? batch.cases : [];
   const stage = "dashboard_analysis";
- if (!settings.enabled || settings.transport !== "n8n" || !settings.n8nAsync) {
+ if (!settings.enabled || settings.transport !== "n8n") {
    const error = new Error("批量 Metabase 异常分析需要已配置的异步 n8n Agent。");
    error.statusCode = 503;
    throw error;
