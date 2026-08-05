@@ -216,7 +216,9 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
  const timeout = setTimeout(() => controller.abort(), 60_000);
  try {
    const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
-   const response = await fetchFn(batchUrl, {
+   let response;
+   try {
+     response = await fetchFn(batchUrl, {
      method: "POST",
      headers: {
        Accept: "application/json",
@@ -244,9 +246,14 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
      }),
      signal: controller.signal,
    });
+   } catch (networkError) {
+     const error = new Error(`无法连接 n8n Webhook (${batchUrl})，请确认 n8n 已启动且工作流已导入: ${networkError.message}`);
+     error.statusCode = 502;
+     throw error;
+   }
     const payload = await response.json().catch(() => null);
     if (!response.ok || payload?.success === false) {
-      const error = new Error(payload?.error?.message || payload?.error || `n8n 批量 Agent 请求失败（HTTP ${response.status}）`);
+      const error = new Error(payload?.error?.message || payload?.error || `n8n 批量 Agent 请求失败（HTTP ${response.status}），请检查 n8n 工作流是否已导入最新模板`);
       error.statusCode = 502;
       throw error;
     }
