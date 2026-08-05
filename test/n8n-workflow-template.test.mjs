@@ -34,12 +34,13 @@ test("batched workflow sends one Dify request and one callback for the whole bat
   assert.match(callback.parameters.jsonBody, /\$json/);
 });
 
-test("batched workflow tolerates incomplete Dify results with conservative defaults", async () => {
+test("batched workflow uses positional matching and tolerates incomplete Dify results", async () => {
   const data = await workflow();
   const build = data.nodes.find((node) => node.name === "Build Batch Callback");
-  assert.match(build.parameters.jsCode, /verdictByIndex/);
+  assert.match(build.parameters.jsCode, /verdicts\.length===source\.length/);
   assert.match(build.parameters.jsCode, /insufficient_evidence/);
   assert.match(build.parameters.jsCode, /Dify 未返回该指标/);
+  assert.match(build.parameters.jsCode, /screeningVerdict/);
 });
 
 test("workflow stays token-placeholder-only and no longer repeats card SQL reads", async () => {
