@@ -23,7 +23,7 @@ export function renderDashboard(root) {
           <table>
             <tr><th>巡检时间</th><td>${data.lastResult.checkedAt || "-"}</td></tr>
             <tr><th>检查卡片</th><td>${data.lastResult.checkedCardCount || 0}</td></tr>
-            <tr><th>报表异常</th><td>${data.lastResult.anomalyCount || 0}</td></tr>
+            <tr><th>看板异常</th><td>${data.lastResult.anomalyCount || 0}</td></tr>
             <tr><th>数据质量异常</th><td>${data.lastResult.dataQualityAnomalyCount || 0}</td></tr>
           </table>
         ` : `<p class="muted">暂无本地巡检结果。</p>`}
