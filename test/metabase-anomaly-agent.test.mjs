@@ -99,7 +99,7 @@ test("Metabase anomaly agent accepts an async n8n evidence job without blocking"
   assert.equal(result.jobId, "job-1");
 });
 
-test("Metabase anomaly agent sends every dashboard metric in one protocol v4 screening job", async () => {
+test("Metabase anomaly agent sends every dashboard metric in one protocol v5 dashboard analysis job", async () => {
   let payload = null;
   const result = await analyzeMetabaseAnomalyBatch({
     env: {
@@ -109,7 +109,7 @@ test("Metabase anomaly agent sends every dashboard metric in one protocol v4 scr
       METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",
     },
     batch: {
-      stage: "dashboard_screening", batchId: "batch-1", runId: "run-1", countryCode: "INE",
+      stage: "dashboard_analysis", batchId: "batch-1", runId: "run-1", countryCode: "INE",
       dashboardUuid: "dash-1", dashboardTitle: "OKR", snapshotId: "snapshot-1",
       cases: Array.from({ length: 12 }, (_, anomalyIndex) => ({ anomalyIndex })),
     },
@@ -120,13 +120,13 @@ test("Metabase anomaly agent sends every dashboard metric in one protocol v4 scr
   });
 
   assert.equal(result.pending, true);
-  assert.equal(payload.protocolVersion, 4);
-  assert.equal(payload.job.stage, "dashboard_screening");
+  assert.equal(payload.protocolVersion, 5);
+  assert.equal(payload.job.stage, "dashboard_analysis");
   assert.equal(payload.job.cases.length, 12);
-  assert.equal(payload.callback.url, "http://172.19.0.1:28787/api/metabase-anomaly-analysis/screening-callback");
+  assert.equal(payload.callback.url, "http://172.19.0.1:28787/api/metabase-anomaly-analysis/batch-callback");
 });
 
-test("Metabase anomaly agent sends exactly one metric in a protocol v4 deep-analysis job", async () => {
+test("Metabase anomaly agent always uses batch-callback regardless of stage input", async () => {
   let payload = null;
   await analyzeMetabaseAnomalyBatch({
     env: {
@@ -136,7 +136,7 @@ test("Metabase anomaly agent sends exactly one metric in a protocol v4 deep-anal
       METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback-token",
     },
     batch: {
-      stage: "metric_deep_analysis", batchId: "deep-1", runId: "run-1", countryCode: "INE",
+      batchId: "batch-2", runId: "run-1", countryCode: "INE",
       dashboardUuid: "dash-1", snapshotId: "snapshot-1", cases: [{ anomalyIndex: 9 }],
     },
     fetchFn: async (_url, options) => {
@@ -144,7 +144,7 @@ test("Metabase anomaly agent sends exactly one metric in a protocol v4 deep-anal
       return { ok: true, json: async () => ({ accepted: true, jobId: "deep-job-1" }) };
     },
   });
-  assert.equal(payload.job.stage, "metric_deep_analysis");
+  assert.equal(payload.job.stage, "dashboard_analysis");
   assert.equal(payload.job.cases.length, 1);
   assert.equal(payload.callback.url, "http://172.19.0.1:28787/api/metabase-anomaly-analysis/batch-callback");
 });

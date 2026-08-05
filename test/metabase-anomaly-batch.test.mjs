@@ -1,60 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildDashboardScreeningJobs,
-  buildInvestigationBatches,
-  buildMetricDeepAnalysisJobs,
+  buildDashboardAnalysisJobs,
   getBatchInvestigationLimits,
   runBoundedInvestigationQueue,
 } from "../src/metabase-anomaly-batch.mjs";
 
-test("groups every anomaly from one dashboard into one screening job", () => {
-  const jobs = buildDashboardScreeningJobs([
+test("groups every anomaly from one dashboard into one analysis job", () => {
+  const jobs = buildDashboardAnalysisJobs([
     { countryCode: "PH", dashboardUuid: "dash-1", dashboardTitle: "OKR", anomalyIndex: 0 },
     { countryCode: "PH", dashboardUuid: "dash-1", dashboardTitle: "OKR", anomalyIndex: 1 },
     { countryCode: "PH", dashboardUuid: "dash-2", dashboardTitle: "资产", anomalyIndex: 2 },
   ]);
 
   assert.deepEqual(jobs.map((job) => job.cases.map((item) => item.anomalyIndex)), [[0, 1], [2]]);
-  assert.equal(jobs[0].stage, "dashboard_screening");
+  assert.equal(jobs[0].stage, "dashboard_analysis");
   assert.equal(jobs[0].dashboardUuid, "dash-1");
 });
 
-test("batches non-verified metrics by source table into deep-analysis jobs", () => {
-  const [screening] = buildDashboardScreeningJobs([
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 0, sourceTable: "ads.loan_d" },
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 1, sourceTable: "ads.loan_d" },
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 2, sourceTable: "ads.loan_d" },
-    { countryCode: "PH", dashboardUuid: "dash-1", anomalyIndex: 3, sourceTable: "ads.loan_d" },
-  ]);
-  const jobs = buildMetricDeepAnalysisJobs(screening, [
-    { anomalyIndex: 0, screeningVerdict: "verified_normal" },
-    { anomalyIndex: 1, screeningVerdict: "suspected_issue" },
-    { anomalyIndex: 2, screeningVerdict: "needs_deep_analysis" },
-    { anomalyIndex: 3, screeningVerdict: "needs_deep_analysis" },
-  ]);
-
-  // 3 non-verified (1,2,3) from same table -> 1 batch of 3
-  assert.equal(jobs.length, 1);
-  assert.deepEqual(jobs[0].cases.map((c) => c.anomalyIndex), [1, 2, 3]);
-  assert.equal(jobs[0].stage, "metric_deep_analysis");
+test("single-stage limits allow three concurrent workers", () => {
+  assert.deepEqual(getBatchInvestigationLimits(), {
+    maxConcurrentBatches: 3,
+    timeoutMs: 360000,
+    targetDurationMs: 1200000,
+    deadlineMs: 2700000,
+  });
 });
 
-test("batch investigation groups same source and limits every Dify payload to ten cases", () => {
-  const items = Array.from({ length: 12 }, (_, i) => ({ countryCode: "INE", sourceTable: "ads.loan_d", anomalyIndex: i }));
-  const batches = buildInvestigationBatches(items);
-
-  assert.deepEqual(batches.map((batch) => batch.cases.map((item) => item.anomalyIndex)), [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [10, 11]]);
-});
-
-test("batch investigation limits never exceed two Dify workers or ten cases", () => {
-  assert.deepEqual(getBatchInvestigationLimits({
-    METABASE_ANOMALY_BATCH_CONCURRENCY: "99",
-    METABASE_ANOMALY_BATCH_SIZE: "99",
-  }), { maxConcurrentBatches: 2, maxCasesPerBatch: 10, timeoutMs: 360000, targetDurationMs: 1200000, deadlineMs: 2700000 });
-});
-
-test("bounded investigation queue never submits a third Dify batch before one callback settles", async () => {
+test("bounded investigation queue never submits a fourth batch before one settles", async () => {
   const submitted = [];
   const releases = new Map();
   const queue = runBoundedInvestigationQueue({
@@ -64,13 +37,11 @@ test("bounded investigation queue never submits a third Dify batch before one ca
   });
 
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b"]);
+  assert.deepEqual(submitted, ["a", "b", "c"]);
   releases.get("a")({ status: "completed" });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b", "c"]);
-  releases.get("b")({ status: "completed" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(submitted, ["a", "b", "c", "d"]);
+  releases.get("b")({ status: "completed" });
   releases.get("c")({ status: "completed" });
   releases.get("d")({ status: "completed" });
   const result = await queue;
