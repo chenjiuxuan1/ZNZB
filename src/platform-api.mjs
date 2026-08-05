@@ -4199,7 +4199,11 @@ function mergeInventories(inventories) {
     }
   }
 
-  const dashboards = [...dashboardsByKey.values()];
+  // This merge feeds runBatchCheck directly. A dashboard can arrive once from
+  // saved inventory and once from fresh internal discovery, with different
+  // access/ID fields but the same physical Metabase page. Deduplicate before
+  // cards are queried so it cannot create duplicate alerts or notifications.
+  const dashboards = deduplicateDashboards([...dashboardsByKey.values()]);
   return {
     ...(inventories[0] || {}),
     dashboardCount: dashboards.length,
@@ -4674,7 +4678,8 @@ function deduplicateDashboards(dashboards) {
     const countryCode = getDashboardCountryCode(dashboard);
     const urlKey = dashboard.url ? `${countryCode}:${dashboardUrlIdentity(dashboard.url)}` : null;
     const titleKey = `${countryCode}:${canonicalDashboardTitle(dashboard.sourcePanelTitle || dashboard.title)}`;
-    const keys = [urlKey, titleKey].filter(Boolean);
+    const cardSetKey = dashboardCardSetIdentity(dashboard);
+    const keys = [urlKey, titleKey, cardSetKey && `${countryCode}:cards:${cardSetKey}`].filter(Boolean);
     let duplicateIndex = -1;
     for (const key of keys) {
       const existing = seen.get(key);
@@ -4701,6 +4706,19 @@ function deduplicateDashboards(dashboards) {
     result.push(dashboard);
   }
   return result;
+}
+
+function dashboardCardSetIdentity(dashboard = {}) {
+  const cards = Array.isArray(dashboard.cards) ? dashboard.cards : [];
+  const identities = cards
+    .map((card) => {
+      const dashcardId = String(card?.dashcardId ?? "").trim();
+      const cardId = String(card?.cardId ?? "").trim();
+      return dashcardId && cardId ? `${dashcardId}:${cardId}` : "";
+    })
+    .filter(Boolean)
+    .sort();
+  return identities.length ? identities.join("|") : "";
 }
 
 function panelSourceToDashboard(source, panel) {

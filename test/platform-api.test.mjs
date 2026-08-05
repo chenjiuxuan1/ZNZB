@@ -1121,6 +1121,54 @@ test("platform api does not duplicate a ready internal dashboard from panel sour
   assert.equal(inventory.dashboards[0].sourcePanelId, 11);
 });
 
+test("platform api scans a physical dashboard only once when saved and fresh URLs share dashcards", async () => {
+  const rootDir = await makeFixture();
+  let queryCount = 0;
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [{
+        countryCode: "INE",
+        countryName: "印尼",
+        access: "public",
+        title: "OKR",
+        sourcePanelTitle: "OKR",
+        uuid: "public-okr",
+        url: "https://data.example/public/dashboard/shared-okr",
+        cards: [{ title: "规模", cardId: 1, dashcardId: 2, parameterMappings: [] }],
+      }],
+    }),
+  );
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => ({
+      dashboards: [{
+        countryCode: "INE",
+        countryName: "印尼",
+        access: "internal",
+        title: "放款统计",
+        sourcePanelTitle: "资产管理-放款统计",
+        dashboardId: "283",
+        uuid: "internal-283",
+        url: "https://data.example/dashboard/283",
+        cards: [{ title: "规模", cardId: 1, dashcardId: 2, parameterMappings: [] }],
+      }],
+      sourceErrors: [],
+    }),
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        queryCount += 1;
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+
+  const result = await api.runBatchCheck({ countryCode: "INE" });
+
+  assert.equal(queryCount, 1);
+  assert.equal(result.checkedCardCount, 1);
+});
+
 test("platform api lets country inventory override stale ready inventory", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
