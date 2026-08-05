@@ -147,7 +147,7 @@ export function renderBatchCheck(root) {
     btn.disabled = true;
     btn.textContent = "AI 分析中...";
     try {
-      await apiPost("/api/metabase-anomaly-analysis/rerun", { historyRunId });
+      const started = await apiPost("/api/metabase-anomaly-analysis/rerun", { historyRunId });
       const poll = async () => {
         const progress = await apiGet("/api/batch-schedule/progress");
         const stage = (progress.stages || []).find((item) => item.key === "ai_analysis") || {};
@@ -155,7 +155,12 @@ export function renderBatchCheck(root) {
         if (["success", "failed", "partial_failed"].includes(progress.status)) {
           btn.textContent = progress.status === "success" ? `AI 分析完成（${stage.completed || 0}/${stage.total || 0}）` : "AI 分析失败";
           btn.disabled = false;
+          if (started.runId) {
+            state.routeQuery = { historyRunId: started.runId };
+            window.history.replaceState(null, "", `#/batch-check?historyRunId=${encodeURIComponent(started.runId)}`);
+          }
           await reloadBatchHistory(root);
+          renderBatchCheck(root);
           return;
         }
         setTimeout(() => void poll(), 2000);

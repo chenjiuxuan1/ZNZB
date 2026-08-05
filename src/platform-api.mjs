@@ -869,13 +869,14 @@ export function createPlatformApi({
       const progressId = `rerun-${randomUUID()}`;
       batchScheduleRunProgress = createBatchScheduleRunProgress({ id: progressId, trigger: `rerun:${historyRunId}`, startedAt: new Date().toISOString(), countryConfigs: countries });
       batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "ai_analyzing", completedCountries: countries.length, countries: countries.map((item) => ({ ...item, status: "success" })), stages: batchScheduleRunProgress.stages.map((stage) => stage.key === "country_scan" || stage.key === "data_check" ? { ...stage, status: "success", detail: "复用历史巡检结果" } : stage) };
-      void this.rerunMetabaseAnomalyAnalysis({ historyRunId }).then((result) => {
+      const analysisRunId = `rerun-${randomUUID()}`;
+      void this.rerunMetabaseAnomalyAnalysis({ historyRunId, targetRunId: analysisRunId }).then((result) => {
         batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "success", finishedAt: new Date().toISOString(), result: result.queueResult || {} };
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "finished", { status: "success", detail: "历史 AI 分析完成" });
       }).catch((error) => {
         batchScheduleRunProgress = { ...batchScheduleRunProgress, status: "failed", error: error.message, finishedAt: new Date().toISOString() };
       });
-      return { started: true, progressId };
+      return { started: true, progressId, runId: analysisRunId, historyRunId };
     },
 
    async rerunMetabaseAnomalyAnalysis(body = {}) {
@@ -886,7 +887,7 @@ export function createPlatformApi({
       if (!entry) throw badRequest("History run not found", ["未找到该历史巡检记录。"]);
       const countryRuns = (entry.runs || []).filter((item) => item.ok && item.result?.anomalies?.length);
       if (!countryRuns.length) throw badRequest("No anomalies to analyze", ["该历史巡检记录没有可分析的异常。"]);
-      const runId = `rerun-${randomUUID()}`;
+      const runId = String(body.targetRunId || `rerun-${randomUUID()}`);
       const startedAt = new Date().toISOString();
       const schedule = { intervalMinutes: null };
       const detailUrl = buildBatchHistoryDetailUrl(runId);
