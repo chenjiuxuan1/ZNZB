@@ -93,30 +93,29 @@ export async function analyzeMetabaseAnomaly({ anomaly, context = {}, env = proc
 }
 
 export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.env, fetchFn = fetchCompatible } = {}) {
-  const settings = getMetabaseAnomalyAgentSettings(env);
-  const cases = Array.isArray(batch.cases) ? batch.cases : [];
-  const stage = batch.stage === "metric_deep_analysis" ? "metric_deep_analysis" : "dashboard_screening";
-  if (!settings.enabled || settings.transport !== "n8n" || !settings.n8nAsync) {
-    const error = new Error("批量 Metabase 异常分析需要已配置的异步 n8n Agent。");
-    error.statusCode = 503;
-    throw error;
-  }
-  const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, stage, cases }), "utf8");
-  const validationErrors = [];
-  if (!batch.batchId) validationErrors.push("batchId missing");
-  if (!batch.runId) validationErrors.push("runId missing");
-  if (!batch.countryCode) validationErrors.push("countryCode missing");
-  if (!batch.snapshotId) validationErrors.push("snapshotId missing");
-  if (cases.length === 0) validationErrors.push("cases empty");
-  if (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 10)) validationErrors.push(`deep_analysis requires 1-10 cases, got ${cases.length}`);
-  if (payloadBytes > 512 * 1024) validationErrors.push(`payload ${payloadBytes} bytes exceeds 512 KiB`);
-  if (validationErrors.length > 0) {
-    const detail = `stage=${stage}, countryCode=${batch.countryCode || "(empty)"}, batchId=${String(batch.batchId || "").slice(0, 20)}, runId=${String(batch.runId || "").slice(0, 20)}, snapshotId=${String(batch.snapshotId || "").slice(0, 20)}, cases=${cases.length}, payloadBytes=${payloadBytes}`;
-    console.error(`[metabase-anomaly-agent] batch validation FAILED: ${validationErrors.join(", ")} | ${detail}`);
-    const error = new Error(`Metabase 两阶段分析验证失败: ${validationErrors.join("; ")}`);
-    error.statusCode = 400;
-    throw error;
-  }
+ const settings = getMetabaseAnomalyAgentSettings(env);
+ const cases = Array.isArray(batch.cases) ? batch.cases : [];
+  const stage = "dashboard_analysis";
+ if (!settings.enabled || settings.transport !== "n8n" || !settings.n8nAsync) {
+   const error = new Error("批量 Metabase 异常分析需要已配置的异步 n8n Agent。");
+   error.statusCode = 503;
+   throw error;
+ }
+ const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, stage, cases }), "utf8");
+ const validationErrors = [];
+ if (!batch.batchId) validationErrors.push("batchId missing");
+ if (!batch.runId) validationErrors.push("runId missing");
+ if (!batch.countryCode) validationErrors.push("countryCode missing");
+ if (!batch.snapshotId) validationErrors.push("snapshotId missing");
+ if (cases.length === 0) validationErrors.push("cases empty");
+ if (payloadBytes > 512 * 1024) validationErrors.push(`payload ${payloadBytes} bytes exceeds 512 KiB`);
+ if (validationErrors.length > 0) {
+   const detail = `stage=${stage}, countryCode=${batch.countryCode || "(empty)"}, batchId=${String(batch.batchId || "").slice(0, 20)}, runId=${String(batch.runId || "").slice(0, 20)}, snapshotId=${String(batch.snapshotId || "").slice(0, 20)}, cases=${cases.length}, payloadBytes=${payloadBytes}`;
+   console.error(`[metabase-anomaly-agent] batch validation FAILED: ${validationErrors.join(", ")} | ${detail}`);
+    const error = new Error(`Metabase 看板分析验证失败: ${validationErrors.join("; ")}`);
+   error.statusCode = 400;
+   throw error;
+ }
   const jobId = String(batch.jobId || randomUUID());
   const request = requestN8nAgentBatch({ settings, batch: { ...batch, stage, cases }, fetchFn, jobId });
   const settled = request.then((value) => ({ value }), (error) => ({ error }));
@@ -213,40 +212,38 @@ async function requestN8nAgent({ settings, anomaly, context, fetchFn, jobId }) {
 }
 
 async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
-  try {
-    const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
-    const response = await fetchFn(batchUrl, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.n8nToken}`,
-      },
-      body: JSON.stringify({
-        protocolVersion: 4,
-        jobId,
-        job: {
-          stage: batch.stage,
-          batchId: String(batch.batchId),
-          runId: String(batch.runId),
-          countryCode: String(batch.countryCode).toUpperCase(),
-          snapshotId: String(batch.snapshotId),
-          dashboardUuid: String(batch.dashboardUuid || ""),
-          dashboardTitle: String(batch.dashboardTitle || ""),
-          dashboardSummary: String(batch.dashboardSummary || ""),
-          screeningVerdict: batch.screeningVerdict || null,
-          sourceTable: String(batch.sourceTable || ""),
-          cases: batch.cases,
-        },
-        callback: {
-          url: resolveBatchCallbackUrl(settings.callbackUrl, batch.stage),
-          token: settings.callbackToken || null,
-        },
-      }),
-      signal: controller.signal,
-    });
+ const controller = new AbortController();
+ const timeout = setTimeout(() => controller.abort(), 60_000);
+ try {
+   const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+   const response = await fetchFn(batchUrl, {
+     method: "POST",
+     headers: {
+       Accept: "application/json",
+       "Content-Type": "application/json",
+       Authorization: `Bearer ${settings.n8nToken}`,
+     },
+     body: JSON.stringify({
+        protocolVersion: 5,
+       jobId,
+       job: {
+          stage: "dashboard_analysis",
+         batchId: String(batch.batchId),
+         runId: String(batch.runId),
+         countryCode: String(batch.countryCode).toUpperCase(),
+         snapshotId: String(batch.snapshotId),
+         dashboardUuid: String(batch.dashboardUuid || ""),
+         dashboardTitle: String(batch.dashboardTitle || ""),
+         sourceTable: String(batch.sourceTable || ""),
+         cases: batch.cases,
+       },
+       callback: {
+          url: resolveBatchCallbackUrl(settings.callbackUrl),
+         token: settings.callbackToken || null,
+       },
+     }),
+     signal: controller.signal,
+   });
     const payload = await response.json().catch(() => null);
     if (!response.ok || payload?.success === false) {
       const error = new Error(payload?.error?.message || payload?.error || `n8n 批量 Agent 请求失败（HTTP ${response.status}）`);
@@ -259,9 +256,9 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
   }
 }
 
-function resolveBatchCallbackUrl(callbackUrl, stage) {
+function resolveBatchCallbackUrl(callbackUrl) {
   const value = String(callbackUrl || "").replace(/\/+$/, "");
-  return value.replace(/\/callback$/, stage === "dashboard_screening" ? "/screening-callback" : "/batch-callback");
+  return value.replace(/\/callback$/, "/batch-callback");
 }
 
 function normalizeRequestedMode(value, fallback) {

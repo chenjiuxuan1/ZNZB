@@ -8,13 +8,12 @@ async function workflow() {
   return JSON.parse(await fs.readFile(workflowFile, "utf8"));
 }
 
-test("two-stage evidence workflow accepts protocol v4 dashboard and metric jobs", async () => {
+test("single-stage evidence workflow accepts protocol v5 dashboard analysis jobs", async () => {
   const data = await workflow();
   const normalize = data.nodes.find((node) => node.name === "Normalize Batch");
   assert.ok(normalize);
-  assert.match(normalize.parameters.jsCode, /protocolVersion !== 4/);
-  assert.match(normalize.parameters.jsCode, /dashboard_screening/);
-  assert.match(normalize.parameters.jsCode, /metric_deep_analysis/);
+  assert.match(normalize.parameters.jsCode, /protocolVersion !== 5/);
+  assert.match(normalize.parameters.jsCode, /dashboard_analysis/);
   assert.match(normalize.parameters.jsCode, /512 \* 1024/);
   assert.match(normalize.parameters.jsCode, /unique non-negative anomalyIndex/);
 });
@@ -29,8 +28,8 @@ test("batched workflow sends one Dify request and one callback for the whole bat
   assert.match(dify.parameters.jsonBody, /snapshot_id/);
   assert.match(dify.parameters.jsonBody, /cases_json/);
   assert.match(dify.parameters.jsonBody, /analysis_stage/);
-  assert.match(build.parameters.jsCode, /screening-callback/);
   assert.match(build.parameters.jsCode, /batch-callback/);
+  assert.doesNotMatch(build.parameters.jsCode, /screening-callback/);
   assert.match(callback.parameters.url, /callbackUrl/);
   assert.match(callback.parameters.jsonBody, /\$json/);
 });
@@ -39,7 +38,6 @@ test("batched workflow tolerates incomplete Dify results with conservative defau
   const data = await workflow();
   const build = data.nodes.find((node) => node.name === "Build Batch Callback");
   assert.match(build.parameters.jsCode, /verdictByIndex/);
-  assert.match(build.parameters.jsCode, /needs_deep_analysis/);
   assert.match(build.parameters.jsCode, /insufficient_evidence/);
   assert.match(build.parameters.jsCode, /Dify 未返回该指标/);
 });

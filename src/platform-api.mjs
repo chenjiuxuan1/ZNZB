@@ -20,10 +20,9 @@ import { readJsonFile } from "./utils.mjs";
 import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
 import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
 import {
-  buildDashboardScreeningJobs,
-  buildMetricDeepAnalysisJobs,
+  buildDashboardAnalysisJobs,
   getBatchInvestigationLimits,
-  MAX_DASHBOARD_SCREENING_BYTES,
+  MAX_DASHBOARD_ANALYSIS_BYTES,
   runBoundedInvestigationQueue,
 } from "./metabase-anomaly-batch.mjs";
 import {
@@ -323,7 +322,7 @@ export function createPlatformApi({
           });
         }
       }
-      const groups = buildDashboardScreeningJobs(cases);
+      const groups = buildDashboardAnalysisJobs(cases);
       const store = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
       const snapshots = [...(store.snapshots || [])];
       const batches = groups.map((group) => {
@@ -365,14 +364,14 @@ export function createPlatformApi({
       const runId = String(batch.runId || "").trim();
       const countryCode = normalizeCountryCode(batch.countryCode);
       const batchId = String(batch.batchId || "").trim();
-      const snapshotId = String(batch.snapshotId || "").trim();
-      const cases = Array.isArray(batch.cases) ? batch.cases : [];
-      const stage = batch.stage === "metric_deep_analysis" ? "metric_deep_analysis" : "dashboard_screening";
-      const invalidCaseCount = cases.length === 0 || (stage === "metric_deep_analysis" && (cases.length < 1 || cases.length > 10));
-      const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, cases }), "utf8");
-      if (!runId || !countryCode || !batchId || !snapshotId || invalidCaseCount || payloadBytes > MAX_DASHBOARD_SCREENING_BYTES) {
-        throw badRequest("Invalid Metabase investigation batch", ["取证任务必须包含有效标识；看板初筛需包含全部指标，单指标深挖只能包含 1-10 条，且请求不得超过 512 KiB。"]);
-      }
+     const snapshotId = String(batch.snapshotId || "").trim();
+     const cases = Array.isArray(batch.cases) ? batch.cases : [];
+      const stage = "dashboard_analysis";
+      const invalidCaseCount = cases.length === 0;
+     const payloadBytes = Buffer.byteLength(JSON.stringify({ ...batch, cases }), "utf8");
+      if (!runId || !countryCode || !batchId || !snapshotId || invalidCaseCount || payloadBytes > MAX_DASHBOARD_ANALYSIS_BYTES) {
+        throw badRequest("Invalid Metabase investigation batch", ["看板分析任务必须包含有效标识和至少一条异常，且请求不得超过 512 KiB。"]);
+     }
       const normalizedCases = [];
       for (const item of cases) {
         const anomalyIndex = Number(item?.anomalyIndex);
@@ -407,137 +406,18 @@ export function createPlatformApi({
         jobId: String(generated.jobId),
         provider: generated.provider || "n8n-evidence",
         model: generated.model || "n8n-configured-model",
-        observability: generated.observability || { enabled: false, written: false, reason: "n8n 批量任务已受理，等待回调" },
-        screening: item.screeningVerdict || null,
-      }));
-      const keys = new Set(entries.map((item) => item.key));
-      const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
+       observability: generated.observability || { enabled: false, written: false, reason: "n8n 批量任务已受理，等待回调" },
+     }));
+     const keys = new Set(entries.map((item) => item.key));
+     const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
       const finalEntries = entries.map((entry) => {
         const existing = existingByKey.get(entry.key);
         if (existing?.status === "completed" && String(existing.jobId || "") === String(entry.jobId || "")) return existing;
-        if (stage === "metric_deep_analysis") {
-          return {
-            ...existing,
-            ...entry,
-            dashboardSummary: String(batch.dashboardSummary || existing?.dashboardSummary || ""),
-            screening: entry.screening || existing?.screening || null,
-          };
-        }
         return entry;
       });
       const analyses = keepRecentMetabaseAnalyses([...finalEntries, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
       await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: createdAt, analyses });
       return { ...generated, batchId, runId, countryCode, cases: normalizedCases };
-    },
-
-    async completeMetabaseDashboardScreening(body = {}) {
-      const runId = String(body.runId || "").trim();
-      const countryCode = normalizeCountryCode(body.countryCode);
-      const dashboardUuid = String(body.dashboardUuid || "").trim();
-      const jobId = String(body.jobId || "").trim();
-      const dashboardSummary = String(body.dashboardSummary || "").trim().slice(0, 2000);
-      const verdicts = Array.isArray(body.verdicts) ? body.verdicts : [];
-      if (!runId || !countryCode || !dashboardUuid || !jobId || verdicts.length === 0) {
-        throw badRequest("Invalid Metabase dashboard screening callback", ["看板初筛回调缺少必要字段。"]);
-      }
-      const store = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
-      const pending = (store.analyses || []).filter((item) => item.runId === runId
-        && item.countryCode === countryCode && item.dashboardUuid === dashboardUuid
-        && item.stage === "dashboard_screening" && String(item.jobId || "") === jobId);
-      const expected = pending.map((item) => Number(item.anomalyIndex)).sort((a, b) => a - b);
-      const received = verdicts.map((item) => Number(item?.anomalyIndex)).sort((a, b) => a - b);
-      if (!expected.length || expected.length !== received.length || new Set(received).size !== received.length
-        || expected.some((value, index) => value !== received[index])) {
-        throw badRequest("Invalid Metabase dashboard screening callback", ["初筛结果必须与该看板提交的全部指标一一对应。"]);
-      }
-      const verdictByIndex = new Map(verdicts.map((item) => [Number(item.anomalyIndex), normalizeScreeningVerdict(item)]));
-      const now = new Date().toISOString();
-      const replacementByKey = new Map(pending.map((entry) => {
-        const screening = verdictByIndex.get(Number(entry.anomalyIndex));
-        const verifiedNormal = screening.screeningVerdict === "verified_normal";
-        return [entry.key, verifiedNormal ? {
-          ...entry,
-          status: "completed",
-          pending: false,
-          completedAt: now,
-          dashboardSummary,
-          screening,
-          analysis: normalizeMetabaseAnomalyAnalysis({
-            summary: screening.summary || "AI 已核验该指标无异常。",
-            evidence: screening.evidence,
-            confidence: "high",
-            limitations: screening.limitations || "",
-            dataSideVerdict: "verified_normal",
-            notificationAction: "enrich_only",
-            chartVisibility: "hide_verified_normal",
-            verificationReason: screening.summary || "实时证据已证明指标正常。",
-          }),
-        } : {
-          ...entry,
-          status: "screening_completed",
-          pending: false,
-          completedAt: now,
-          dashboardSummary,
-          screening,
-        }];
-      }));
-      const analyses = keepRecentMetabaseAnalyses((store.analyses || []).map((entry) => replacementByKey.get(entry.key) || entry));
-      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: now, analyses });
-      const screeningJob = {
-        stage: "dashboard_screening", runId, countryCode, dashboardUuid, dashboardTitle: String(body.dashboardTitle || ""),
-        groupKey: `${countryCode}:${dashboardUuid}`, snapshotId: pending[0]?.snapshotId || "", batchId: pending[0]?.batchId || "",
-        dashboardSummary,
-        cases: pending.map((entry) => ({ anomalyIndex: Number(entry.anomalyIndex), anomaly: entry.anomaly })),
-      };
-      const followUps = buildMetricDeepAnalysisJobs(screeningJob, [...verdictByIndex.values()]).map((job) => ({
-        ...job,
-        batchId: `deep-${randomUUID()}`,
-        parentJobId: jobId,
-      }));
-      return { success: true, runId, countryCode, dashboardUuid, jobId, dashboardSummary, verdicts: [...verdictByIndex.values()], followUps };
-    },
-
-    async prepareMetricDeepAnalysisBatches({ runId, screeningBatches = [] } = {}) {
-      const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
-      const byKey = new Map((cache.analyses || []).filter((item) => item.runId === runId).map((item) => [item.key, item]));
-      const byTable = new Map();
-      for (const screeningBatch of screeningBatches) {
-        for (const item of (screeningBatch.cases || [])) {
-          const screening = byKey.get(`${runId}:${screeningBatch.countryCode}:${Number(item.anomalyIndex)}`)?.screening || {
-            anomalyIndex: Number(item.anomalyIndex),
-            screeningVerdict: "needs_deep_analysis",
-            summary: "首轮未取得完整结论，转单指标深度分析。",
-            evidence: [],
-            limitations: "看板初筛失败、超时或返回格式不完整。",
-          };
-          if (screening.screeningVerdict === "verified_normal") continue;
-          const table = String(item.sourceTable || screeningBatch.sourceTable || "").trim().toLowerCase() || "unknown";
-          const groupKey = `${screeningBatch.countryCode}:${table}`;
-          if (!byTable.has(groupKey)) byTable.set(groupKey, { countryCode: screeningBatch.countryCode, sourceTable: table, snapshotId: screeningBatch.snapshotId, dashboardSummary: byKey.get(`${runId}:${screeningBatch.countryCode}:${Number(item.anomalyIndex)}`)?.dashboardSummary || "", items: [] });
-          byTable.get(groupKey).items.push({ ...item, countryCode: screeningBatch.countryCode, screeningVerdict: screening });
-        }
-      }
-      const MAX_DEEP_BATCH = 10;
-      const batches = [];
-      for (const [groupKey, group] of byTable) {
-        for (let i = 0; i < group.items.length; i += MAX_DEEP_BATCH) {
-          const batchCases = group.items.slice(i, i + MAX_DEEP_BATCH);
-          batches.push({
-            stage: "metric_deep_analysis",
-            groupKey: `${groupKey}:deep:${Math.floor(i / MAX_DEEP_BATCH)}`,
-            countryCode: group.countryCode,
-            sourceTable: group.sourceTable,
-            dashboardUuid: "",
-            dashboardTitle: "",
-            snapshotId: group.snapshotId,
-            dashboardSummary: group.dashboardSummary,
-            runId,
-            batchId: `deep-${randomUUID()}`,
-            cases: batchCases,
-          });
-        }
-      }
-      return batches;
     },
 
     async waitForMetabaseInvestigationBatch(batch = {}, { deadlineAt = Number.POSITIVE_INFINITY, intervalMs = 2_000 } = {}) {
@@ -602,60 +482,35 @@ export function createPlatformApi({
       const deadlineAt = Date.parse(startedAt) + limits.deadlineMs;
       await this.savePendingMetabasePatrolRun({ id: runId, startedAt, trigger, schedule, runs: countryRuns, wattrelSummary, dsSchedulerSummary, dsSchedulerError });
       batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", { status: "queued", detail: "等待 AI 取证结论后再发送最终通知" });
-      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", { status: "running", detail: "正在准备看板公共证据" });
-      let queueResult = { total: 0, completed: 0, failed: 0, timedOut: 0, settled: [], notSubmitted: [], phases: {} };
-      if (getMetabaseAnomalyAgentSettings().enabled) {
-        const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
-        const screeningResult = await runBoundedInvestigationQueue({
+      batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", { status: "running", detail: "正在准备看板分析证据" });
+      let queueResult = { total: 0, completed: 0, failed: 0, timedOut: 0, settled: [], notSubmitted: [] };
+     if (getMetabaseAnomalyAgentSettings().enabled) {
+       const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
+        const analysisResult = await runBoundedInvestigationQueue({
           batches: prepared.batches,
           limits,
           deadlineAt,
           submit: async (batch) => this.submitMetabaseInvestigationBatch(batch),
           waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
-          onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, phase: "dashboard_screening" }); },
+          onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, event); },
         });
-        for (const batch of screeningResult.notSubmitted || []) {
+        for (const batch of analysisResult.notSubmitted || []) {
           await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 45 分钟全局截止，未再投递 Dify" });
         }
-        const deepBatches = await this.prepareMetricDeepAnalysisBatches({ runId, screeningBatches: prepared.batches });
-        const deepResult = await runBoundedInvestigationQueue({
-          batches: deepBatches,
-          limits,
-          deadlineAt,
-          submit: async (batch) => this.submitMetabaseInvestigationBatch(batch),
-          waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
-          onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, phase: "metric_deep_analysis" }); },
-        });
-        for (const batch of deepResult.notSubmitted || []) {
-          await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 45 分钟全局截止，未再投递单指标深度分析" });
-        }
-        queueResult = {
-          total: screeningResult.total + deepResult.total,
-          completed: screeningResult.completed + deepResult.completed,
-          failed: screeningResult.failed + deepResult.failed,
-          timedOut: screeningResult.timedOut + deepResult.timedOut,
-          settled: [...screeningResult.settled, ...deepResult.settled],
-          notSubmitted: [...screeningResult.notSubmitted, ...deepResult.notSubmitted],
-          phases: { dashboardScreening: screeningResult, metricDeepAnalysis: deepResult },
-        };
-      } else {
-        const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
-        for (const batch of prepared.batches) await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "Dify 批量取证未配置，已按保守策略通知" });
-        queueResult = { total: prepared.batches.length, completed: 0, failed: 0, timedOut: prepared.batches.length, settled: [], notSubmitted: [], phases: { dashboardScreening: { total: prepared.batches.length, completed: 0, failed: 0, timedOut: prepared.batches.length, notSubmitted: [] }, metricDeepAnalysis: { total: 0, completed: 0, failed: 0, timedOut: 0, notSubmitted: [] } } };
-      }
+        queueResult = analysisResult;
+     } else {
+       const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
+       for (const batch of prepared.batches) await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "Dify 批量取证未配置，已按保守策略通知" });
+        queueResult = { total: prepared.batches.length, completed: 0, failed: 0, timedOut: prepared.batches.length, settled: [], notSubmitted: [] };
+     }
       const finalizedRuns = await buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile: resolve("metabaseAnomalyAnalyses") });
       batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", {
         status: queueResult.failed || queueResult.timedOut || queueResult.notSubmitted.length ? "partial_failed" : "success",
         detail: (() => {
-          const s = queueResult.phases.dashboardScreening || {};
-          const d = queueResult.phases.metricDeepAnalysis || {};
-          const parts = [`看板初筛 ${s.completed || 0}/${s.total || 0}`, `指标深挖 ${d.completed || 0}/${d.total || 0}`];
-          const issues = (s.failed || 0) + (d.failed || 0);
-          const timeouts = (s.timedOut || 0) + (d.timedOut || 0);
-          const skipped = (s.notSubmitted?.length || 0) + (d.notSubmitted?.length || 0);
-          if (issues) parts.push(`失败 ${issues}`);
-          if (timeouts) parts.push(`超时 ${timeouts}`);
-          if (skipped) parts.push(`未投递 ${skipped}`);
+          const parts = [`看板分析 ${queueResult.completed || 0}/${queueResult.total || 0}`];
+          if (queueResult.failed) parts.push(`失败 ${queueResult.failed}`);
+          if (queueResult.timedOut) parts.push(`超时 ${queueResult.timedOut}`);
+          if (queueResult.notSubmitted?.length) parts.push(`未投递 ${queueResult.notSubmitted.length}`);
           return parts.join("；");
         })(),
       });
@@ -990,8 +845,8 @@ export function createPlatformApi({
       const countryCode = normalizeCountryCode(body.countryCode);
       const jobId = String(body.jobId || "").trim();
       const results = Array.isArray(body.results) ? body.results : [];
-      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 10) {
-        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-10 条结果。"]);
+      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 30) {
+        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-30 条结果。"]);
       }
       const indexes = results.map((item) => Number(item?.anomalyIndex));
       if (indexes.some((index) => !Number.isInteger(index) || index < 0) || new Set(indexes).size !== indexes.length) {
@@ -3411,7 +3266,7 @@ function createBatchScheduleRunProgress({ id, trigger, startedAt, countryConfigs
     stages: [
       { key: "country_scan", label: "国家巡检", status: "running", detail: "正在读取 Metabase 并执行规则" },
       { key: "data_check", label: "DS 调度核查", status: "pending", detail: "等待国家巡检完成" },
-      { key: "ai_analysis", label: "AI 取证队列", status: "pending", detail: "等待看板公共证据；先整板初筛，再仅深挖可疑指标，最多并行 2 个请求" },
+      { key: "ai_analysis", label: "AI 取证队列", status: "pending", detail: "每看板一次分析，最多并行 3 个请求" },
       { key: "notification", label: "告警通知", status: "pending", detail: "等待 AI 取证结论收敛" },
       { key: "finished", label: "巡检完成", status: "pending", detail: "等待所有必要阶段完成" },
     ],
@@ -3516,28 +3371,15 @@ function updateBatchScheduleAiProgress(progress, event = {}) {
 function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   if (!progress) return progress;
   const current = (progress.stages || []).find((stage) => stage.key === "ai_analysis") || {};
-  const screeningPhase = event.phase !== "metric_deep_analysis";
-  const totalKey = screeningPhase ? "screeningTotal" : "deepTotal";
-  const completedKey = screeningPhase ? "screeningCompleted" : "deepCompleted";
-  const total = Number(event.total ?? current[totalKey] ?? 0);
-  const completed = Number(event.completed ?? current[completedKey] ?? 0);
-  const screeningTotal = screeningPhase ? total : Number(current.screeningTotal || 0);
-  const screeningCompleted = screeningPhase ? completed : Number(current.screeningCompleted || 0);
-  const deepTotal = screeningPhase ? Number(current.deepTotal || 0) : total;
-  const deepCompleted = screeningPhase ? Number(current.deepCompleted || 0) : completed;
+  const total = Number(event.total ?? current.total ?? 0);
+  const completed = Number(event.completed ?? current.completed ?? 0);
   let status = "running";
-  let detail = screeningPhase
-    ? `看板初筛 ${completed}/${total}，最多同时运行 2 个请求`
-    : `看板初筛 ${screeningCompleted}/${screeningTotal}；指标深度分析 ${completed}/${total}`;
+  let detail = `看板分析 ${completed}/${total}，最多同时运行 3 个请求`;
   if (event.type === "batch_submitted") {
-    detail = screeningPhase
-      ? `看板初筛已提交 ${Math.min(event.submitted || 0, total)}/${total}，等待 Dify 回写`
-      : `看板初筛 ${screeningCompleted}/${screeningTotal}；指标深度分析已提交 ${Math.min(event.submitted || 0, total)}/${total}`;
+    detail = `看板分析已提交 ${Math.min(event.submitted || 0, total)}/${total}，等待 Dify 回写`;
   }
   if (event.type === "batch_settled") {
-    detail = screeningPhase
-      ? `看板初筛 ${completed}/${total}，仅可疑指标进入二次分析`
-      : `看板初筛 ${screeningCompleted}/${screeningTotal}；指标深度分析 ${completed}/${total}`;
+    detail = `看板分析 ${completed}/${total}，等待 Dify 回写`;
   }
   if (event.type === "global_deadline") {
     status = "partial_failed";
@@ -3545,10 +3387,8 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   }
   return updateBatchScheduleRunProgressStage(progress, "ai_analysis", {
     status,
-    screeningTotal,
-    screeningCompleted,
-    deepTotal,
-    deepCompleted,
+    total,
+    completed,
     detail,
   });
 }
@@ -3573,11 +3413,9 @@ async function buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile })
         verdict,
         notificationAction: entry?.analysis?.notificationAction || "send",
         chartVisibility,
-        verificationReason: entry?.analysis?.verificationReason || "",
-        dashboardSummary: entry?.dashboardSummary || "",
-        screeningVerdict: entry?.screening?.screeningVerdict || "",
-        screeningSummary: entry?.screening?.summary || "",
-        summary: entry?.analysis?.summary || "AI 未核验，请人工确认。",
+       verificationReason: entry?.analysis?.verificationReason || "",
+       dashboardSummary: entry?.dashboardSummary || "",
+       summary: entry?.analysis?.summary || "AI 未核验，请人工确认。",
         limitations: entry?.analysis?.limitations || "AI 未返回完整结论。",
         statusLabel: verifiedNormal ? "AI 查数正常" : businessChange ? "AI 核验为业务变化" : entry?.status === "completed" ? "AI 已核验数据侧异常" : "AI 未核验",
         notifiable,
@@ -3929,21 +3767,6 @@ function resolveAnomalyDashboardUuid(anomaly = {}) {
   } catch {
     return String(anomaly.dashboardTitle || anomaly.dashboardUrl || "").trim();
   }
-}
-
-function normalizeScreeningVerdict(value = {}) {
-  const screeningVerdict = ["verified_normal", "suspected_issue", "needs_deep_analysis"].includes(value.screeningVerdict)
-    ? value.screeningVerdict
-    : "needs_deep_analysis";
-  return {
-    anomalyIndex: Number(value.anomalyIndex),
-    screeningVerdict,
-    summary: String(value.summary || "").trim().slice(0, 1200),
-    evidence: Array.isArray(value.evidence)
-      ? value.evidence.filter((item) => typeof item === "string").map((item) => item.trim().slice(0, 600)).filter(Boolean).slice(0, 5)
-      : [],
-    limitations: String(value.limitations || "").trim().slice(0, 1200),
-  };
 }
 
 function getMetabaseBaseUrl(value) {
