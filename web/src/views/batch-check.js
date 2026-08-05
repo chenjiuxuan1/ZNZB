@@ -1158,7 +1158,7 @@ function renderHistoryDashboardSummary(result, context = {}) {
               <tr>
                 <td>${escapeHtml([dashboard.countryName, dashboard.countryCode].filter(Boolean).join(" / ") || "-")}</td>
                 <td>${escapeHtml(dashboard.dashboardTitle || "-")}</td>
-                <td>${dashboard.dashboardUrl ? `<a class="link-button compact-link" href="${escapeHtml(dashboard.dashboardUrl)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
+                <td>${resolveHistoryDashboardUrl(dashboard) ? `<a class="link-button compact-link" href="${escapeHtml(resolveHistoryDashboardUrl(dashboard))}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
                 <td>${escapeHtml(dashboard.checkedCardCount || 0)}</td>
                 <td>${escapeHtml(dashboard.failedCardCount || 0)}</td>
                 <td>${escapeHtml(dashboard.anomalyCount || 0)}</td>
@@ -1171,6 +1171,17 @@ function renderHistoryDashboardSummary(result, context = {}) {
       <p class="muted">这条历史产生于完整明细保存上线前，因此只展示当时已保存的看板摘要。</p>
     </div>
   `;
+}
+
+function resolveHistoryDashboardUrl(dashboard = {}) {
+  const dashboards = getDashboards();
+  const uuid = String(dashboard.dashboardUuid || "").trim();
+  const title = String(dashboard.dashboardTitle || "").trim();
+  const current = dashboards.find((item) => (
+    (uuid && String(item.uuid || "") === uuid)
+    || (!uuid && title && [item.title, item.sourcePanelTitle].includes(title) && String(item.countryCode || item.country?.code || "") === String(dashboard.countryCode || ""))
+  ));
+  return current?.url || dashboard.dashboardUrl || "";
 }
 
 function renderHistoryAnomalyTable(anomalies, context = {}) {
