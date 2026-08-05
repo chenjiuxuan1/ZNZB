@@ -332,7 +332,7 @@ async function waitForMetabaseAnalysis({ button, result, analysis, previousHtml 
     countryCode: analysis.countryCode || "",
     anomalyIndex: String(analysis.anomalyIndex ?? ""),
   });
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 3_000));
     try {
       const latest = await apiGet(`/api/metabase-anomaly-analysis?${params}`);
