@@ -2570,6 +2570,14 @@ function buildBatchHistoryDetailUrl(runId) {
 }
 
 function inferCountryNotifyChannel(mergedConfig, incomingConfig, previousSchedule) {
+  // Preserve the user's KN Chat target when an older saved schedule still
+  // carries notifyChannel=tv. A TV configuration is only valid when it has a
+  // bot id; recipient emails/chat_id are the unambiguous KN Chat target.
+  const hasKnTarget = Boolean(String(mergedConfig.recipientEmails || mergedConfig.chatId || "").trim());
+  const hasTvTarget = Boolean(String(mergedConfig.botId || "").trim());
+  if (hasKnTarget && !hasTvTarget && String(incomingConfig.notifyChannel || "").toLowerCase() !== "tv") {
+    return "knBot";
+  }
   if (incomingConfig.notifyChannel) {
     return normalizeNotifyChannel(incomingConfig.notifyChannel);
   }
