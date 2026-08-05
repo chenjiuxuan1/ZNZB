@@ -639,7 +639,10 @@ export function createPlatformApi({
       if (existing && existing.status === "pending" && !body.force && !isExpiredMetabaseAnalysis(existing)) {
         return { ...existing, cached: true };
       }
-      if (existing && !body.force && !isExpiredMetabaseAnalysis(existing)) {
+      // Completed results are cacheable. Failed/timed-out entries must be
+      // dispatchable again; otherwise the UI retry button only re-renders the
+      // old error and never reaches n8n.
+      if (existing && existing.status === "completed" && !body.force && !isExpiredMetabaseAnalysis(existing)) {
         return { ...existing, cached: true };
       }
       const agentSettings = getMetabaseAnomalyAgentSettings();
@@ -801,6 +804,9 @@ export function createPlatformApi({
           clearTimeout(timeout);
           n8nHttpStatus = response.status;
           n8nReachable = true;
+          if (response.status === 404) {
+            n8nError = "n8n 主机可达，但该 webhook 路径返回 404；请确认工作流已激活，并核对 metabase-anomaly-evidence-agent / metabase-anomaly-dynamic-evidence-agent 路径。";
+          }
         }
       } catch (err) {
         n8nError = n8nError || String(err?.message || err);
@@ -3568,13 +3574,14 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
     status = "partial_failed";
     detail = `已达到 45 分钟截止，${event.notSubmitted?.length || 0} 个请求标记为 AI 未核验`;
   }
-  return updateBatchScheduleRunProgressStage(progress, "ai_analysis", {
+  const next = updateBatchScheduleRunProgressStage(progress, "ai_analysis", {
     status,
     total,
     completed,
     errors: errors.slice(-5),
     detail,
   });
+  return { ...next, status: status === "partial_failed" ? "partial_failed" : "ai_analyzing" };
 }
 
 async function buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile }) {

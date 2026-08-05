@@ -223,9 +223,20 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
  const timeout = setTimeout(() => controller.abort(), 60_000);
  try {
    const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+   const candidateUrls = [batchUrl];
+   // Older imports use the shorter webhook path. A 404 is unambiguous here,
+   // so retry the compatible path before reporting a deployment failure.
+   if (batchUrl.includes("metabase-anomaly-dynamic-evidence-agent")) {
+     candidateUrls.push(batchUrl.replace("metabase-anomaly-dynamic-evidence-agent", "metabase-anomaly-evidence-agent"));
+   } else if (batchUrl.includes("metabase-anomaly-evidence-agent")) {
+     candidateUrls.push(batchUrl.replace("metabase-anomaly-evidence-agent", "metabase-anomaly-dynamic-evidence-agent"));
+   }
    let response;
+   let requestUrl = batchUrl;
    try {
-     response = await fetchFn(batchUrl, {
+     for (const candidateUrl of candidateUrls) {
+       requestUrl = candidateUrl;
+       response = await fetchFn(candidateUrl, {
      method: "POST",
      headers: {
        Accept: "application/json",
@@ -252,15 +263,17 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
        },
      }),
      signal: controller.signal,
-   });
+       });
+       if (response.status !== 404 || candidateUrl === candidateUrls.at(-1)) break;
+     }
    } catch (networkError) {
-     const error = new Error(`无法连接 n8n Webhook (${batchUrl})，请确认 n8n 已启动且工作流已导入: ${networkError.message}`);
+     const error = new Error(`无法连接 n8n Webhook (${requestUrl})，请确认 n8n 已启动且工作流已导入: ${networkError.message}`);
      error.statusCode = 502;
      throw error;
    }
     const payload = await response.json().catch(() => null);
     if (!response.ok || payload?.success === false) {
-      const error = new Error(payload?.error?.message || payload?.error || `n8n 批量 Agent 请求失败（HTTP ${response.status}），请检查 n8n 工作流是否已导入最新模板`);
+      const error = new Error(payload?.error?.message || payload?.error || `n8n 批量 Agent 请求失败（HTTP ${response.status}，已尝试 ${candidateUrls.length} 个 webhook 路径），请检查 n8n 工作流是否已导入最新模板`);
       error.statusCode = 502;
       throw error;
     }

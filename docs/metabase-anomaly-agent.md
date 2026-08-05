@@ -29,7 +29,7 @@ Dify ReAct Agent 可调用 6 个只读工具完成 SQL、底表实值、血缘�
 METABASE_ANOMALY_AGENT_ENABLED=true
 METABASE_ANOMALY_AGENT_N8N_ASYNC=true
 METABASE_ANOMALY_AGENT_MODE=recursive_evidence
-METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/metabase-anomaly-dynamic-evidence-agent
+METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/metabase-anomaly-evidence-agent
 METABASE_ANOMALY_AGENT_N8N_TOKEN=replace-with-dynamic-agent-ingress-token
 
 # n8n 容器回调宿主服务：固定内网地址，不能使用公网域名。
