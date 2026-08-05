@@ -136,11 +136,28 @@ export function renderBatchCheck(root) {
     state.batchHistoryFilters.status = event.target.value;
     await reloadBatchHistory(root);
   });
-  root.querySelector("#refresh-batch-history")?.addEventListener("click", async () => {
-    setButtonBusy(root.querySelector("#refresh-batch-history"), "刷新中...");
-    await reloadBatchHistory(root);
+ root.querySelector("#refresh-batch-history")?.addEventListener("click", async () => {
+   setButtonBusy(root.querySelector("#refresh-batch-history"), "刷新中...");
+   await reloadBatchHistory(root);
+ });
+  root.querySelector("#rerun-ai-analysis")?.addEventListener("click", async () => {
+    const btn = root.querySelector("#rerun-ai-analysis");
+    const historyRunId = btn?.dataset?.historyRunId;
+    if (!historyRunId) return;
+    btn.disabled = true;
+    btn.textContent = "AI 分析中...";
+    try {
+      const result = await apiPost("/api/metabase-anomaly-analysis/rerun", { historyRunId });
+      btn.textContent = `AI 分析完成（${result.queueResult?.completed || 0}/${result.queueResult?.total || 0}）`;
+      setTimeout(() => { btn.textContent = "重新 AI 分析"; btn.disabled = false; }, 5000);
+      await reloadBatchHistory(root);
+    } catch (error) {
+      btn.textContent = "AI 分析失败";
+      console.error("rerun failed:", error);
+      setTimeout(() => { btn.textContent = "重新 AI 分析"; btn.disabled = false; }, 3000);
+    }
   });
-  root.querySelector("#load-batch-history")?.addEventListener("click", async () => {
+ root.querySelector("#load-batch-history")?.addEventListener("click", async () => {
     setButtonBusy(root.querySelector("#load-batch-history"), "正在加载...");
     await reloadBatchHistory(root);
   });
@@ -932,9 +949,10 @@ function renderSelectedHistoryRunDetail() {
           <h2 class="panel-title">巡检历史详情${titleSuffix}</h2>
           <p class="muted">这里展示通知里没有展开的完整扫描结果：每个国家、每个看板检查了哪些卡片，哪些看板异常，具体异常消息是什么。</p>
         </div>
-        <div class="button-group">
-          <a class="link-button" href="#/batch-check">返回定时巡检</a>
-        </div>
+       <div class="button-group">
+          <button id="rerun-ai-analysis" class="secondary" type="button" data-history-run-id="${escapeHtml(run.id || "")}">重新 AI 分析</button>
+         <a class="link-button" href="#/batch-check">返回定时巡检</a>
+       </div>
       </div>
       <div class="auto-summary">
         ${summaryItem("运行时间", formatDisplayTime(run.startedAt))}

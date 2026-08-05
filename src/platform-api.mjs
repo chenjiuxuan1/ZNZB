@@ -722,9 +722,31 @@ export function createPlatformApi({
       if (!runId) throw badRequest("Invalid Metabase anomaly analyses request", ["请提供巡检记录。"]);
       const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
       return { runId, analyses: (cache.analyses || []).filter((item) => String(item.runId || "") === runId) };
+   },
+
+   async rerunMetabaseAnomalyAnalysis(body = {}) {
+      const historyRunId = String(body.historyRunId || body.runId || "").trim();
+      if (!historyRunId) throw badRequest("Invalid rerun request", ["请提供历史巡检记录 ID。"]);
+      const history = await readJsonFile(resolve("batchHistory"), DEFAULT_BATCH_HISTORY);
+      const entry = (history.runs || []).find((item) => String(item.id || "") === historyRunId);
+      if (!entry) throw badRequest("History run not found", ["未找到该历史巡检记录。"]);
+      const countryRuns = (entry.runs || []).filter((item) => item.ok && item.result?.anomalies?.length);
+      if (!countryRuns.length) throw badRequest("No anomalies to analyze", ["该历史巡检记录没有可分析的异常。"]);
+      const runId = `rerun-${randomUUID()}`;
+      const startedAt = new Date().toISOString();
+      const schedule = { intervalMinutes: null };
+      const detailUrl = buildBatchHistoryDetailUrl(runId);
+      const wattrelSummary = entry.wattrelSummary || null;
+      const dsSchedulerSummary = entry.dsSchedulerSummary || null;
+      const countriesConfig = await readJsonFile(resolve("countries"), { countries: [] });
+      const countryConfigs = (countriesConfig.countries || []).map((item) => ({ countryCode: item.code, countryName: item.name, enabled: true }));
+      const result = await this.finalizeAiFirstMetabasePatrol({
+        runId, startedAt, countryRuns, countryConfigs, schedule, detailUrl, wattrelSummary, dsSchedulerSummary, dsSchedulerError: null, trigger: `rerun:${historyRunId}`,
+      });
+      return { runId, historyRunId, ...result };
     },
 
-    async getMetabaseAnomalyEvidenceSnapshot(body = {}) {
+   async getMetabaseAnomalyEvidenceSnapshot(body = {}) {
       const runId = String(body.runId || body.historyRunId || "").trim();
       const countryCode = normalizeCountryCode(body.countryCode);
       const anomalyIndex = body.anomalyIndex === undefined || body.anomalyIndex === null || body.anomalyIndex === "" ? null : Number(body.anomalyIndex);
@@ -3401,6 +3423,11 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   const current = (progress.stages || []).find((stage) => stage.key === "ai_analysis") || {};
   const total = Number(event.total ?? current.total ?? 0);
   const completed = Number(event.completed ?? current.completed ?? 0);
+  const errors = Array.isArray(current.errors) ? [...current.errors] : [];
+  if (event.type === "batch_settled" && event.result?.status === "failed" && event.result?.error) {
+    const dashTitle = event.batch?.dashboardTitle || event.batch?.dashboardUuid || event.batch?.groupKey || "?";
+    errors.push(`${dashTitle}: ${event.result.error}`.slice(0, 200));
+  }
   let status = "running";
   let detail = `看板分析 ${completed}/${total}，最多同时运行 3 个请求`;
   if (event.type === "batch_submitted") {
@@ -3408,6 +3435,7 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   }
   if (event.type === "batch_settled") {
     detail = `看板分析 ${completed}/${total}，等待 Dify 回写`;
+    if (errors.length) detail += `；失败 ${errors.length}：${errors[errors.length - 1]}`;
   }
   if (event.type === "global_deadline") {
     status = "partial_failed";
@@ -3417,6 +3445,7 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
     status,
     total,
     completed,
+    errors: errors.slice(-5),
     detail,
   });
 }
