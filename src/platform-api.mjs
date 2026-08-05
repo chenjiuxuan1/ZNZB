@@ -4192,7 +4192,11 @@ function mergeInventories(inventories) {
     }
   }
 
-  const dashboards = [...dashboardsByKey.values()];
+  // This merge feeds runBatchCheck directly. A dashboard can arrive once from
+  // saved inventory and once from fresh internal discovery, with different
+  // access/ID fields but the same physical Metabase page. Deduplicate before
+  // cards are queried so it cannot create duplicate alerts or notifications.
+  const dashboards = deduplicateDashboards([...dashboardsByKey.values()]);
   return {
     ...(inventories[0] || {}),
     dashboardCount: dashboards.length,
