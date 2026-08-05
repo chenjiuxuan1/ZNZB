@@ -1,37 +1,19 @@
-const MAX_CONCURRENT_BATCHES = 2;
-const MAX_CASES_PER_BATCH = 10;
+const MAX_CONCURRENT_BATCHES = 3;
 const DEFAULT_TIMEOUT_MS = 6 * 60 * 1000;
 const TARGET_DURATION_MS = 20 * 60 * 1000;
 const DEADLINE_MS = 45 * 60 * 1000;
-export const MAX_DASHBOARD_SCREENING_BYTES = 512 * 1024;
+export const MAX_DASHBOARD_ANALYSIS_BYTES = 512 * 1024;
 
 export function getBatchInvestigationLimits() {
   return {
     maxConcurrentBatches: MAX_CONCURRENT_BATCHES,
-    maxCasesPerBatch: MAX_CASES_PER_BATCH,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     targetDurationMs: TARGET_DURATION_MS,
     deadlineMs: DEADLINE_MS,
   };
 }
 
-export function buildInvestigationBatches(cases = {}, { maxCasesPerBatch = MAX_CASES_PER_BATCH } = {}) {
-  const groups = new Map();
-  for (const item of Array.isArray(cases) ? cases : []) {
-    const countryCode = String(item.countryCode || "").trim().toUpperCase();
-    const sourceTable = String(item.sourceTable || "").trim().toLowerCase();
-    if (!countryCode || !sourceTable || !Number.isInteger(Number(item.anomalyIndex))) continue;
-    const groupKey = `${countryCode}:${sourceTable}`;
-    groups.set(groupKey, [...(groups.get(groupKey) || []), { ...item, countryCode, sourceTable }]);
-  }
-  return [...groups.entries()].flatMap(([groupKey, items]) => items.reduce((batches, item, index) => {
-    const batchIndex = Math.floor(index / MAX_CASES_PER_BATCH);
-    (batches[batchIndex] ||= { groupKey, sourceTable: item.sourceTable, countryCode: item.countryCode, cases: [] }).cases.push(item);
-    return batches;
-  }, []));
-}
-
-export function buildDashboardScreeningJobs(cases = []) {
+export function buildDashboardAnalysisJobs(cases = []) {
   const groups = new Map();
   for (const item of Array.isArray(cases) ? cases : []) {
     const countryCode = String(item.countryCode || "").trim().toUpperCase();
@@ -40,7 +22,7 @@ export function buildDashboardScreeningJobs(cases = []) {
     if (!countryCode || !dashboardUuid || !Number.isInteger(anomalyIndex) || anomalyIndex < 0) continue;
     const groupKey = `${countryCode}:${dashboardUuid}`;
     const group = groups.get(groupKey) || {
-      stage: "dashboard_screening",
+      stage: "dashboard_analysis",
       groupKey,
       countryCode,
       dashboardUuid,
@@ -51,33 +33,6 @@ export function buildDashboardScreeningJobs(cases = []) {
     groups.set(groupKey, group);
   }
   return [...groups.values()];
-}
-
-export function buildMetricDeepAnalysisJobs(screeningJob = {}, verdicts = [], { maxCasesPerBatch = MAX_CASES_PER_BATCH } = {}) {
-  const byIndex = new Map((Array.isArray(verdicts) ? verdicts : []).map((item) => [Number(item?.anomalyIndex), item]));
-  const nonVerified = (screeningJob.cases || [])
-    .filter((item) => byIndex.get(Number(item.anomalyIndex))?.screeningVerdict !== "verified_normal")
-    .map((item) => ({ ...item, _screeningVerdict: byIndex.get(Number(item.anomalyIndex)) || null }));
-  const byTable = new Map();
-  for (const item of nonVerified) {
-    const table = String(item.sourceTable || screeningJob.sourceTable || "").trim().toLowerCase() || "unknown";
-    if (!byTable.has(table)) byTable.set(table, []);
-    byTable.get(table).push(item);
-  }
-  const jobs = [];
-  for (const [table, items] of byTable) {
-    for (let i = 0; i < items.length; i += maxCasesPerBatch) {
-      const batchCases = items.slice(i, i + maxCasesPerBatch).map(({ _screeningVerdict, ...rest }) => ({ ...rest, screeningVerdict: _screeningVerdict }));
-      jobs.push({
-        ...screeningJob,
-        stage: "metric_deep_analysis",
-        groupKey: `${screeningJob.groupKey || `${screeningJob.countryCode}:${screeningJob.dashboardUuid}`}:deep:${table}:${Math.floor(i / maxCasesPerBatch)}`,
-        sourceTable: table,
-        cases: batchCases,
-      });
-    }
-  }
-  return jobs;
 }
 
 export async function runBoundedInvestigationQueue({
@@ -114,7 +69,7 @@ export async function runBoundedInvestigationQueue({
         settled.push({ batch, result: result || { status: "completed" } });
         onProgress?.({ type: "batch_settled", batch, result, completed: settled.length, total: work.length });
       } catch (error) {
-        console.error(`[batch-investigation] batch ${batch.batchId || batch.groupKey || "?"} (stage=${batch.stage || "?"}) FAILED: ${error.message}`);
+        console.error(`[batch-investigation] batch ${batch.batchId || batch.groupKey || "?"} FAILED: ${error.message}`);
         const result = { status: "failed", error: error.message };
         settled.push({ batch, result });
         onProgress?.({ type: "batch_settled", batch, result, completed: settled.length, total: work.length });

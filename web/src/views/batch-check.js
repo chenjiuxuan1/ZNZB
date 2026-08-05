@@ -684,10 +684,9 @@ function renderScheduleRunProgress() {
 }
 
 function renderAiStageCounters(stage = {}) {
-  const hasScreening = Number(stage.screeningTotal || 0) > 0;
-  const hasDeep = Number(stage.deepTotal || 0) > 0;
-  if (!hasScreening && !hasDeep) return "";
-  return `<span class="schedule-ai-counters">${hasScreening ? `<em>看板初筛 ${escapeHtml(stage.screeningCompleted || 0)}/${escapeHtml(stage.screeningTotal || 0)}</em>` : ""}${hasDeep ? `<em>指标深挖 ${escapeHtml(stage.deepCompleted || 0)}/${escapeHtml(stage.deepTotal || 0)}</em>` : ""}</span>`;
+  const total = Number(stage.total || 0);
+  if (!total) return "";
+  return `<span class="schedule-ai-counters"><em>看板分析 ${escapeHtml(stage.completed || 0)}/${escapeHtml(total)}</em></span>`;
 }
 
 function formatScheduleProgressStatus(progress, currentLabel) {
@@ -1235,12 +1234,9 @@ export function renderMetabaseAnomalyAnalysis(response) {
     return `<div class="sandbox-status info"><strong>数据侧取证进行中</strong><span>任务 ${escapeHtml(response.jobId || "-")} 已提交；完成后可查看 StarRocks、血缘和 DS 的核查结论。</span></div>`;
   }
   const analysis = response?.analysis || {};
-  const screening = response?.screening || {};
   return `
-    ${response?.dashboardSummary ? `<div class="sandbox-status neutral"><strong>看板 AI 初筛总结</strong><span>${escapeHtml(response.dashboardSummary)}</span></div>` : ""}
-    ${screening.screeningVerdict ? `<div class="sandbox-status info"><strong>单指标初筛：${escapeHtml(formatScreeningVerdict(screening.screeningVerdict))}</strong><span>${escapeHtml(screening.summary || "该指标已完成首轮判断。")}</span></div>` : ""}
     <div class="sandbox-status info">
-      <strong>${screening.screeningVerdict === "verified_normal" ? "AI 查数核验" : "单指标深挖"}${response.cached ? "（缓存）" : ""}</strong>
+      <strong>AI 数据侧分析${response.cached ? "（缓存）" : ""}</strong>
       <span>${escapeHtml(analysis.summary || "-")}</span>
     </div>
     ${renderMetabaseAnalysisList("可能原因", analysis.possibleCauses)}
@@ -1255,11 +1251,6 @@ export function renderMetabaseAnomalyAnalysis(response) {
   `;
 }
 
-function formatScreeningVerdict(verdict) {
-  if (verdict === "verified_normal") return "实时证据已证明正常";
-  if (verdict === "suspected_issue") return "发现可疑问题，已进入深挖";
-  return "证据不足，已进入深挖";
-}
 
 function renderMetabaseAnalysisList(label, items) {
   const values = Array.isArray(items) ? items : [];
