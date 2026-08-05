@@ -30,7 +30,7 @@
 ```dotenv
 METABASE_ANOMALY_AGENT_ENABLED=true
 METABASE_ANOMALY_AGENT_N8N_ASYNC=true
-METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/metabase-anomaly-dynamic-evidence-agent
+METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/metabase-anomaly-evidence-agent
 METABASE_ANOMALY_AGENT_N8N_TOKEN=<动态入口token>
 METABASE_ANOMALY_AGENT_CALLBACK_URL=http://172.19.0.1:28787/api/metabase-anomaly-analysis/callback
 METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=<平台callback/Card-SQL token>
