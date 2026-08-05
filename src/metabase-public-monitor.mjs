@@ -87,7 +87,7 @@ export async function checkPublicDashboards({
           dashboard,
           card,
           "metabaseConfigError",
-          `报表「${dashboard.sourcePanelTitle || dashboard.title}」无法巡检：缺少 Metabase 登录态，请配置 METABASE_SESSION 或 METABASE_COOKIE`,
+          `看板「${dashboard.sourcePanelTitle || dashboard.title}」无法巡检：缺少 Metabase 登录态，请配置 METABASE_SESSION 或 METABASE_COOKIE`,
         ),
       );
       continue;
@@ -607,13 +607,13 @@ function evaluateBuiltIns(config, dashboard, card, result, options = {}) {
         dashboard,
         card,
         errorType,
-        `报表「${dashboardTitle}」的「${card.title}」查询失败：${result.error || "unknown error"}`,
+        `看板「${dashboardTitle}」的「${card.title}」查询失败：${result.error || "unknown error"}`,
       ),
     );
   }
 
   if (config.builtInChecks?.noData !== false && result.ok && result.rows.length === 0) {
-    anomalies.push(buildAnomaly(dashboard, card, "noData", `报表「${dashboardTitle}」的「${card.title}」没有值`));
+    anomalies.push(buildAnomaly(dashboard, card, "noData", `看板「${dashboardTitle}」的「${card.title}」没有值`));
   }
 
   if (config.builtInChecks?.emptyMetrics !== false && result.ok && result.rows.length > 0) {
@@ -624,7 +624,7 @@ function evaluateBuiltIns(config, dashboard, card, result, options = {}) {
           dashboard,
           card,
           "emptyMetrics",
-          `报表「${dashboardTitle}」的「${card.title}」没有有效指标值：${metricColumns.join("、")}`,
+          `看板「${dashboardTitle}」的「${card.title}」没有有效指标值：${metricColumns.join("、")}`,
         ),
       );
     }

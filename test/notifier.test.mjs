@@ -235,7 +235,7 @@ test("duty summary counts BI query failures by affected country dashboard", () =
           countryName: "印尼",
           dashboardTitle: "OKR",
           cardTitle: "转化漏斗",
-          message: "报表「OKR」的「转化漏斗」查询失败：Metabase public request failed (403 Forbidden): <!DOCTYPE html>",
+          message: "看板「OKR」的「转化漏斗」查询失败：Metabase public request failed (403 Forbidden): <!DOCTYPE html>",
         },
         {
           type: "latestDayOverDayChange",
