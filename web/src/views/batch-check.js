@@ -147,10 +147,20 @@ export function renderBatchCheck(root) {
     btn.disabled = true;
     btn.textContent = "AI 分析中...";
     try {
-      const result = await apiPost("/api/metabase-anomaly-analysis/rerun", { historyRunId });
-      btn.textContent = `AI 分析完成（${result.queueResult?.completed || 0}/${result.queueResult?.total || 0}）`;
-      setTimeout(() => { btn.textContent = "重新 AI 分析"; btn.disabled = false; }, 5000);
-      await reloadBatchHistory(root);
+      await apiPost("/api/metabase-anomaly-analysis/rerun", { historyRunId });
+      const poll = async () => {
+        const progress = await apiGet("/api/batch-schedule/progress");
+        const stage = (progress.stages || []).find((item) => item.key === "ai_analysis") || {};
+        btn.textContent = `AI 分析中（${stage.completed || 0}/${stage.total || 0}）`;
+        if (["success", "failed", "partial_failed"].includes(progress.status)) {
+          btn.textContent = progress.status === "success" ? `AI 分析完成（${stage.completed || 0}/${stage.total || 0}）` : "AI 分析失败";
+          btn.disabled = false;
+          await reloadBatchHistory(root);
+          return;
+        }
+        setTimeout(() => void poll(), 2000);
+      };
+      void poll();
     } catch (error) {
       btn.textContent = "AI 分析失败";
       console.error("rerun failed:", error);
