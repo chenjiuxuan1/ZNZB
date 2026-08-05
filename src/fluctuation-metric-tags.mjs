@@ -186,10 +186,15 @@ function extractDimensionName(message = "") {
   const parts = [];
   for (const section of String(message).matchAll(/[（(]([^（）()]+)[）)]/g)) {
     for (const value of section[1].split(/[，,]/).map(normalizeText)) {
-      if (value.includes("=") && !/^(统计日期|stat_date|注册日期|到期日期|日期|时间|timezone)\s*=/.test(value)) parts.push(value);
+      if (value.includes("=") && !isTemporalDimension(value)) parts.push(value);
     }
   }
   return [...new Set(parts)].sort().join("，") || "无维度";
+}
+
+function isTemporalDimension(value = "") {
+  const name = normalizeText(String(value).split("=", 1)[0]).toLowerCase();
+  return /日期|时间|小时|date|time|hour|stat_date|timezone/.test(name);
 }
 
 function detectTimeGranularity(anomaly = {}) {

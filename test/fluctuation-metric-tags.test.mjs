@@ -14,8 +14,8 @@ test("hourly anomaly points share one stable fluctuation metric tag identity", (
       countryName: "泰国",
       result: {
         anomalies: [
-          { type: "intradaySameTimeChange", dashboardTitle: "每小时监控", dashboardUrl: "https://data.example/th", cardTitle: "放款", message: "指标「放款数」(APP=TH001) 从 10 到 0，统计日期 2026-08-04 09:00" },
-          { type: "intradaySameTimeChange", dashboardTitle: "每小时监控", dashboardUrl: "https://data.example/th", cardTitle: "放款", message: "指标「放款数」(APP=TH001) 从 12 到 0，统计日期 2026-08-04 10:00" },
+          { type: "intradaySameTimeChange", dashboardTitle: "每小时监控", dashboardUrl: "https://data.example/th", cardTitle: "放款", message: "指标「放款数」(APP=TH001,开始时间=02:30) 从 10 到 0，统计日期 2026-08-04 02:30" },
+          { type: "intradaySameTimeChange", dashboardTitle: "每小时监控", dashboardUrl: "https://data.example/th", cardTitle: "放款", message: "指标「放款数」(APP=TH001,开始时间=03:00) 从 12 到 0，统计日期 2026-08-04 03:00" },
         ],
       },
     }],

@@ -95,6 +95,7 @@ export function renderFluctuationVisual(root) {
 }
 
 async function reloadFluctuationHistory(root) {
+  state.fluctuationVisualRefreshProgress = { stage: "history" };
   state.batchHistoryStatus = {
     type: "loading",
     title: "正在刷新波动图谱",
@@ -110,6 +111,8 @@ async function reloadFluctuationHistory(root) {
     state.batchHistoryLoaded = true;
     const runId = state.batchHistory.runs?.[0]?.id;
     if (runId) {
+      state.fluctuationVisualRefreshProgress = { stage: "display-index" };
+      renderFluctuationVisual(root);
       const index = await apiGet(`/api/metabase-anomaly-analysis/display-index?runId=${encodeURIComponent(runId)}`);
       state.fluctuationVisualDisplayIndex = Object.fromEntries((index.items || []).map((item) => [
         `${runId}:${String(item.countryCode || "").toUpperCase()}:${item.anomalyIndex}`,
@@ -119,8 +122,10 @@ async function reloadFluctuationHistory(root) {
       state.fluctuationVisualDisplayIndex = {};
     }
     state.fluctuationVisualLoaded = true;
+    state.fluctuationVisualRefreshProgress = null;
     state.batchHistoryStatus = null;
   } catch (error) {
+    state.fluctuationVisualRefreshProgress = null;
     state.batchHistoryStatus = {
       type: "error",
       title: "波动图谱刷新失败",
@@ -132,14 +137,16 @@ async function reloadFluctuationHistory(root) {
 
 function renderFluctuationStatus() {
   const status = state.batchHistoryStatus;
+  const refreshing = Boolean(state.fluctuationVisualRefreshProgress);
   return `
     <section class="panel fluctuation-toolbar">
       <div>
         <h2 class="panel-title">异常走势视图</h2>
         <p class="muted">绿色折线来自巡检时保存的真实查询结果，红色表示报警当天的数据。旧历史没有真实序列时不画参考线，避免误判。</p>
       </div>
-      <button id="refresh-fluctuation-history" class="primary" type="button">${state.fluctuationVisualLoaded ? "刷新最新波动图谱" : "加载最新波动图谱"}</button>
+      <button id="refresh-fluctuation-history" class="primary" type="button" ${refreshing ? "disabled aria-busy=\"true\"" : ""}>${refreshing ? "刷新中..." : (state.fluctuationVisualLoaded ? "刷新最新波动图谱" : "加载最新波动图谱")}</button>
     </section>
+    ${renderFluctuationRefreshProgress()}
     ${status ? `
       <div class="sandbox-status ${escapeHtml(status.type)}">
         <strong>${escapeHtml(status.title)}</strong>
@@ -303,6 +310,25 @@ function renderFluctuationCountry(country) {
 
 function renderDetailField(label, value) {
   return `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+}
+
+function renderFluctuationRefreshProgress() {
+  const stage = state.fluctuationVisualRefreshProgress?.stage;
+  if (!stage) return "";
+  const historyActive = stage === "history";
+  return `
+    <section class="sub-panel schedule-progress-panel fluctuation-refresh-progress">
+      <div class="detail-header compact-header">
+        <div><h2 class="panel-title">正在更新波动图谱</h2><p class="muted">${historyActive ? "正在读取最新异常巡检历史" : "正在读取异常指标展示索引"}</p></div>
+        <span class="badge warn">${historyActive ? "1/2" : "2/2"}</span>
+      </div>
+      <div class="progress-track" aria-label="波动图谱刷新进度"><span style="width:${historyActive ? 35 : 75}%"></span></div>
+      <div class="schedule-stage-list">
+        <article class="schedule-stage ${historyActive ? "running" : "success"}"><span class="schedule-stage-index">1</span><div><strong>读取巡检历史</strong><small>定位最新一条包含异常的巡检记录</small></div></article>
+        <article class="schedule-stage ${historyActive ? "pending" : "running"}"><span class="schedule-stage-index">2</span><div><strong>构建图谱索引</strong><small>加载可展示异常指标的真实序列索引</small></div></article>
+      </div>
+    </section>
+  `;
 }
 
 function renderOptionalDetailField(label, value) {
@@ -641,8 +667,15 @@ function normalizeTagText(value) {
 }
 
 function normalizeTagDimension(value) {
-  const values = String(value || "").split(/[，,]/).map(normalizeTagText).filter(Boolean);
+  const values = String(value || "").split(/[，,]/)
+    .map(normalizeTagText)
+    .filter((item) => item && !isTemporalTagDimension(item));
   return [...new Set(values)].sort().join("，") || "无维度";
+}
+
+function isTemporalTagDimension(value) {
+  const name = normalizeTagText(String(value).split("=", 1)[0]).toLowerCase();
+  return /日期|时间|小时|date|time|hour|stat_date|timezone/.test(name);
 }
 
 function isFluctuationAnomaly(anomaly, detail, countryCode = "") {
