@@ -222,7 +222,13 @@ async function requestN8nAgentBatch({ settings, batch, fetchFn, jobId }) {
  const controller = new AbortController();
  const timeout = setTimeout(() => controller.abort(), 60_000);
  try {
-   const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+   const configuredBatchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+   // Normalize the legacy batch path to the production webhook path used by
+   // the current template. The old path returns 404 before n8n creates an execution.
+   const batchUrl = configuredBatchUrl.replace(
+     "/webhook/metabase-anomaly-evidence-batch",
+     "/webhook/metabase-anomaly-evidence-agent",
+   );
    const candidateUrls = [batchUrl];
    // Older imports use the shorter webhook path. A 404 is unambiguous here,
    // so retry the compatible path before reporting a deployment failure.
