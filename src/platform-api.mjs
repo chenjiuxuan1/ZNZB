@@ -1578,23 +1578,41 @@ export function createPlatformApi({
       };
     },
 
-    async discoverAllCountryDashboards() {
+    async discoverAllCountryDashboards({ onProgress } = {}) {
       const countries = await readJsonFile(resolve("countries"), { countries: [] });
       const results = [];
+      const progressItems = (runningCountry = null) => results.map((item) => ({
+        ...item,
+        countryName: (countries.countries || []).find((country) => String(country.code || "").toUpperCase() === item.countryCode)?.name || item.countryCode,
+        status: item.ok ? (item.skipped ? "skipped" : "success") : "failed",
+      })).concat(runningCountry ? [{
+        countryCode: runningCountry.code,
+        countryName: runningCountry.name || runningCountry.code,
+        status: "running",
+      }] : []);
       for (const country of countries.countries || []) {
+        const countryCode = String(country.code || "").toUpperCase();
+        onProgress?.({
+          phase: "running",
+          currentCountryCode: countryCode,
+          countries: progressItems({ code: countryCode, name: country.name || countryCode }),
+        });
         try {
           if (await isCountryInventoryFullyDiscovered(rootDir, country.code)) {
-            results.push({ ok: true, skipped: true, countryCode: String(country.code || "").toUpperCase() });
+            results.push({ ok: true, skipped: true, countryCode });
+            onProgress?.({ phase: "running", currentCountryCode: "", countries: progressItems() });
             continue;
           }
-          results.push(await this.discoverCountryDashboards(country.code));
+          const discovered = await this.discoverCountryDashboards(country.code);
+          results.push(discovered);
         } catch (error) {
           results.push({
             ok: false,
-            countryCode: String(country.code || "").toUpperCase(),
+            countryCode,
             error: error.errors?.join("；") || error.message,
           });
         }
+        onProgress?.({ phase: "running", currentCountryCode: "", countries: progressItems() });
       }
       return {
         ok: results.every((item) => item.ok),
@@ -1617,8 +1635,19 @@ export function createPlatformApi({
         error: null,
         startedAt: new Date().toISOString(),
         finishedAt: null,
+        currentCountryCode: "",
+        countries: [],
       };
-      const completed = this.discoverAllCountryDashboards()
+      const completed = this.discoverAllCountryDashboards({
+        onProgress: ({ currentCountryCode, countries }) => {
+          dashboardDiscoveryProgress = {
+            ...dashboardDiscoveryProgress,
+            status: "running",
+            currentCountryCode,
+            countries,
+          };
+        },
+      })
         .then((result) => {
           dashboardDiscoveryProgress = {
             status: "completed",
@@ -1626,6 +1655,11 @@ export function createPlatformApi({
             error: null,
             startedAt: dashboardDiscoveryProgress.startedAt,
             finishedAt: new Date().toISOString(),
+            currentCountryCode: "",
+            countries: (result.results || []).map((item) => ({
+              ...item,
+              status: item.ok ? (item.skipped ? "skipped" : "success") : "failed",
+            })),
           };
           return result;
         })
@@ -1636,6 +1670,8 @@ export function createPlatformApi({
             error: error.errors?.join("；") || error.message,
             startedAt: dashboardDiscoveryProgress.startedAt,
             finishedAt: new Date().toISOString(),
+            currentCountryCode: "",
+            countries: dashboardDiscoveryProgress.countries || [],
           };
           return null;
         })
