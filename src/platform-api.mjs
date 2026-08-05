@@ -784,7 +784,10 @@ export function createPlatformApi({
 
    async diagnoseMetabaseAnomalyAgent() {
       const settings = getMetabaseAnomalyAgentSettings();
-      const batchUrl = settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl;
+      const batchUrl = (settings.n8nBatchWebhookUrl || settings.n8nWebhookUrl).replace(
+        "/webhook/metabase-anomaly-evidence-batch",
+        "/webhook/metabase-anomaly-evidence-agent",
+      );
       let n8nReachable = false;
       let n8nError = null;
       let n8nHttpStatus = null;
