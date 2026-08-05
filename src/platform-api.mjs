@@ -4678,7 +4678,8 @@ function deduplicateDashboards(dashboards) {
     const countryCode = getDashboardCountryCode(dashboard);
     const urlKey = dashboard.url ? `${countryCode}:${dashboardUrlIdentity(dashboard.url)}` : null;
     const titleKey = `${countryCode}:${canonicalDashboardTitle(dashboard.sourcePanelTitle || dashboard.title)}`;
-    const keys = [urlKey, titleKey].filter(Boolean);
+    const cardSetKey = dashboardCardSetIdentity(dashboard);
+    const keys = [urlKey, titleKey, cardSetKey && `${countryCode}:cards:${cardSetKey}`].filter(Boolean);
     let duplicateIndex = -1;
     for (const key of keys) {
       const existing = seen.get(key);
@@ -4705,6 +4706,19 @@ function deduplicateDashboards(dashboards) {
     result.push(dashboard);
   }
   return result;
+}
+
+function dashboardCardSetIdentity(dashboard = {}) {
+  const cards = Array.isArray(dashboard.cards) ? dashboard.cards : [];
+  const identities = cards
+    .map((card) => {
+      const dashcardId = String(card?.dashcardId ?? "").trim();
+      const cardId = String(card?.cardId ?? "").trim();
+      return dashcardId && cardId ? `${dashcardId}:${cardId}` : "";
+    })
+    .filter(Boolean)
+    .sort();
+  return identities.length ? identities.join("|") : "";
 }
 
 function panelSourceToDashboard(source, panel) {
