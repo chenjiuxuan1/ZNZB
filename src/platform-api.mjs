@@ -4554,12 +4554,40 @@ function mergeDashboardSources(inventory, panelSources = []) {
         dashboardIdentities(dashboards[match]).forEach((identity) => identities.set(identity, match));
         continue;
       }
-      const index = dashboards.push(pending) - 1;
-      dashboardIdentities(pending).forEach((identity) => identities.set(identity, index));
-    }
-  }
+     const index = dashboards.push(pending) - 1;
+     dashboardIdentities(pending).forEach((identity) => identities.set(identity, index));
+   }
+ }
 
-  return { ...inventory, dashboards };
+  const deduped = deduplicateDashboards(dashboards);
+
+  return { ...inventory, dashboards: deduped };
+}
+
+function deduplicateDashboards(dashboards) {
+  const seen = new Map();
+  const result = [];
+  for (const dashboard of dashboards) {
+    if (!dashboard.url) {
+      result.push(dashboard);
+      continue;
+    }
+    const countryCode = getDashboardCountryCode(dashboard);
+    const urlKey = `${countryCode}:${dashboardUrlIdentity(dashboard.url)}`;
+    const existingIndex = seen.get(urlKey);
+    if (existingIndex !== undefined) {
+      const existing = result[existingIndex];
+      const existingCards = existing.cards?.length || 0;
+      const newCards = dashboard.cards?.length || 0;
+      if (newCards > existingCards) {
+        result[existingIndex] = dashboard;
+      }
+      continue;
+    }
+    seen.set(urlKey, result.length);
+    result.push(dashboard);
+  }
+  return result;
 }
 
 function panelSourceToDashboard(source, panel) {
