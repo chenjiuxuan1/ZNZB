@@ -107,6 +107,9 @@ async function handleApi(request, response, url) {
  if (method === "GET" && url.pathname === "/api/metabase-anomaly-analyses") {
    return sendJson(response, 200, await api.getMetabaseAnomalyAnalysesForRun(Object.fromEntries(url.searchParams.entries())));
  }
+  if (method === "GET" && url.pathname === "/api/metabase-anomaly-analysis/diagnostic") {
+    return sendJson(response, 200, await api.diagnoseMetabaseAnomalyAgent());
+  }
   if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/rerun") {
     const body = await readBody(request, {});
     return sendJson(response, 200, await api.rerunMetabaseAnomalyAnalysis(body));
@@ -126,6 +129,7 @@ async function handleApi(request, response, url) {
   }
  if (method === "POST" && url.pathname === "/api/metabase-anomaly-analysis/batch-callback") {
    const body = await readBody(request, {});
+   console.error(`[server] batch-callback: auth=${request.headers.authorization ? "present" : "missing"} keys=${Object.keys(body).join(",")} results=${Array.isArray(body.results) ? body.results.length : 0}`);
    assertMetabaseAgentCallbackAuthorized(request, body);
    return sendJson(response, 200, await api.completeMetabaseAnomalyBatch(body));
  }

@@ -1290,6 +1290,13 @@ function renderHistoryAnomalyInsights(result, anomalies, hasDashboardAnomalySumm
 }
 
 export function renderMetabaseAnomalyAnalysis(response) {
+  if (response?.status === "failed") {
+    return `<div class="sandbox-status error"><strong>AI 分析失败</strong><span>${escapeHtml(response.error || "n8n/Dify 连接失败，请检查 n8n 是否运行及工作流是否已导入最新模板。")}</span></div>
+    <p class="muted">可访问 <code>/api/metabase-anomaly-analysis/diagnostic</code> 查看 Agent 配置与 n8n 连接状态。</p>
+    <div class="button-group">
+      <button class="secondary" type="button" data-metabase-anomaly-retry data-run-id="${escapeHtml(response.runId || "")}" data-country-code="${escapeHtml(response.countryCode || "")}" data-anomaly-index="${escapeHtml(response.anomalyIndex ?? "")}" data-analysis-result-id="metabase-ai-analysis-${encodeURIComponent(`${response.runId || ""}-${response.countryCode || ""}-${response.anomalyIndex ?? ""}`).replace(/%/g, "")}">重新 AI 分析</button>
+    </div>`;
+  }
   if (response?.status === "pending" || response?.pending) {
     return `<div class="sandbox-status info"><strong>数据侧取证进行中</strong><span>任务 ${escapeHtml(response.jobId || "-")} 已提交；完成后可查看 StarRocks、血缘和 DS 的核查结论。</span></div>`;
   }
