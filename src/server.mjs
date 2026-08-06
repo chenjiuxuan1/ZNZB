@@ -57,6 +57,9 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/inventory/manual") {
     return sendJson(response, 200, await api.addManualDashboard(await readBody(request, {})));
   }
+  if (method === "DELETE" && url.pathname === "/api/inventory/dashboard") {
+    return sendJson(response, 200, await api.deleteDashboard(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/inventory/discover-one") {
     return sendJson(response, 200, await api.discoverManualDashboard(await readBody(request, {})));
   }
