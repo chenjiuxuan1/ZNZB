@@ -144,7 +144,8 @@ export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.en
     throw error;
   }
   return {
-    ...pendingN8nEvidenceJob({ jobId: String(payload.jobId || payload.executionId || jobId) }),
+    ...pendingN8nEvidenceJob({ jobId }),
+    n8nJobId: String(payload.jobId || payload.executionId || ""),
     batchId: String(batch.batchId),
   };
 }

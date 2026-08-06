@@ -102,6 +102,7 @@ export function renderFluctuationVisual(root) {
   } else if (selectedCountry) {
     void hydrateVisibleFluctuationSeries(root, selectedCountry);
   }
+  void ensureFluctuationAiDisplayIndex(root, model.run?.id || "");
   void loadFluctuationMetricTags(root, model);
 }
 
@@ -129,8 +130,10 @@ async function reloadFluctuationHistory(root) {
         `${runId}:${String(item.countryCode || "").toUpperCase()}:${item.anomalyIndex}`,
         item,
       ]));
+      state.fluctuationVisualDisplayIndexRunId = runId;
     } else {
       state.fluctuationVisualDisplayIndex = {};
+      state.fluctuationVisualDisplayIndexRunId = "";
     }
     state.fluctuationVisualLoaded = true;
     state.fluctuationVisualRefreshProgress = null;
@@ -145,6 +148,52 @@ async function reloadFluctuationHistory(root) {
     };
   }
   renderFluctuationVisual(root);
+}
+
+async function ensureFluctuationAiDisplayIndex(root, runIdInput = "") {
+  const runId = String(runIdInput || "").trim();
+  if (!runId) return;
+  if (!shouldLoadFluctuationAiDisplayIndex({
+    runId,
+    loadedRunId: state.fluctuationVisualDisplayIndexRunId,
+    loadingRunId: state.fluctuationVisualDisplayIndexLoadingRunId,
+    displayIndex: state.fluctuationVisualDisplayIndex,
+  })) {
+    return;
+  }
+  state.fluctuationVisualDisplayIndexLoadingRunId = runId;
+  try {
+    const index = await apiGet(`/api/metabase-anomaly-analysis/display-index?runId=${encodeURIComponent(runId)}`);
+    state.fluctuationVisualDisplayIndex = {
+      ...(state.fluctuationVisualDisplayIndex || {}),
+      ...Object.fromEntries((index.items || []).map((item) => [
+        `${runId}:${String(item.countryCode || "").toUpperCase()}:${item.anomalyIndex}`,
+        item,
+      ])),
+    };
+    state.fluctuationVisualDisplayIndexRunId = runId;
+  } catch {
+    // The graph itself should remain usable when historical AI conclusions are
+    // unavailable. This endpoint is read-only and never triggers a re-analysis.
+    state.fluctuationVisualDisplayIndexRunId = runId;
+  } finally {
+    if (state.fluctuationVisualDisplayIndexLoadingRunId === runId) {
+      state.fluctuationVisualDisplayIndexLoadingRunId = "";
+    }
+  }
+  renderFluctuationVisual(root);
+}
+
+function shouldLoadFluctuationAiDisplayIndex({
+  runId = "",
+  loadedRunId = "",
+  loadingRunId = "",
+  displayIndex = {},
+} = {}) {
+  if (!runId) return false;
+  if (loadingRunId === runId) return false;
+  if (loadedRunId === runId) return false;
+  return !Object.keys(displayIndex || {}).some((key) => key.startsWith(`${runId}:`));
 }
 
 function renderFluctuationStatus(model = {}) {
@@ -1139,4 +1188,5 @@ export const __test__ = {
   normalizeFluctuationAiAnalysis,
   matchesDashboardFilter,
   shouldLoadRequestedFluctuationRun,
+  shouldLoadFluctuationAiDisplayIndex,
 };

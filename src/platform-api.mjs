@@ -435,7 +435,8 @@ export function createPlatformApi({
         }
         await delay(Math.min(intervalMs, Math.max(1, endAt - Date.now())));
       }
-      return this.markMetabaseInvestigationBatchTimedOut(batch, { reason: Date.now() >= deadlineAt ? "巡检已达到 45 分钟全局截止" : "等待 Dify 回调超过 10 分钟" });
+      const timeoutMinutes = Math.max(1, Math.round(limits.timeoutMs / 60_000));
+      return this.markMetabaseInvestigationBatchTimedOut(batch, { reason: Date.now() >= deadlineAt ? "巡检已达到 45 分钟全局截止" : `等待 Dify 回调超过 ${timeoutMinutes} 分钟` });
     },
 
     async markMetabaseInvestigationBatchTimedOut(batch = {}, { reason = "AI 未在时限内回写" } = {}) {
@@ -1028,6 +1029,7 @@ export function createPlatformApi({
         return earlyCompleted;
       }
       if (existing.jobId && String(body.jobId || "") !== String(existing.jobId)) {
+        console.error(`[metabase-anomaly] callback jobId mismatch: key=${entryKey} expected=${existing.jobId} actual=${body.jobId || ""} batchId=${existing.batchId || ""}`);
         throw badRequest("Invalid Metabase anomaly analysis callback", ["回调任务编号与待处理任务不一致。"]);
       }
       const completed = buildCompletedMetabaseAnalysis({
@@ -1051,8 +1053,8 @@ export function createPlatformApi({
       const jobId = String(body.jobId || "").trim();
       const results = Array.isArray(body.results) ? body.results : [];
       console.error(`[metabase-anomaly] batch-callback received: runId=${runId} country=${countryCode} jobId=${jobId.slice(0,20)} results=${results.length}`);
-      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 30) {
-        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-30 条结果。"]);
+      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 100) {
+        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-100 条结果。"]);
       }
       const indexes = results.map((item) => Number(item?.anomalyIndex));
       if (indexes.some((index) => !Number.isInteger(index) || index < 0) || new Set(indexes).size !== indexes.length) {
@@ -3670,9 +3672,15 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   const total = Number(event.total ?? current.total ?? 0);
   const completed = Number(event.completed ?? current.completed ?? 0);
   const errors = Array.isArray(current.errors) ? [...current.errors] : [];
+  const details = upsertAiBatchProgressDetail(current.details || [], event);
   if (event.type === "batch_settled" && event.result?.status === "failed" && event.result?.error) {
     const dashTitle = event.batch?.dashboardTitle || event.batch?.dashboardUuid || event.batch?.groupKey || "?";
     errors.push(`${dashTitle}: ${event.result.error}`.slice(0, 200));
+  }
+  if (event.type === "batch_settled" && event.result?.status === "timed_out") {
+    const dashTitle = event.batch?.dashboardTitle || event.batch?.dashboardUuid || event.batch?.groupKey || "?";
+    const reason = event.result?.entries?.[0]?.analysis?.limitations || "等待 Dify 回调超过等待窗口";
+    errors.push(`${dashTitle}: ${reason}`.slice(0, 200));
   }
   let status = "running";
   let detail = `看板分析 ${completed}/${total}，最多同时运行 3 个请求`;
@@ -3692,9 +3700,54 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
     total,
     completed,
     errors: errors.slice(-5),
+    details,
     detail,
   });
   return { ...next, status: status === "partial_failed" ? "partial_failed" : "ai_analyzing" };
+}
+
+function upsertAiBatchProgressDetail(existing = [], event = {}) {
+  if (!event.batch) return Array.isArray(existing) ? existing : [];
+  const next = Array.isArray(existing) ? [...existing] : [];
+  const detail = buildAiBatchProgressDetail(event);
+  const index = next.findIndex((item) => item.key === detail.key);
+  if (index >= 0) {
+    next[index] = { ...next[index], ...detail };
+  } else {
+    next.push(detail);
+  }
+  return next.slice(-30);
+}
+
+function buildAiBatchProgressDetail(event = {}) {
+  const batch = event.batch || {};
+  const result = event.result || {};
+  const entries = Array.isArray(result.entries) ? result.entries : [];
+  const firstEntry = entries[0] || {};
+  const status = event.type === "batch_submitted"
+    ? "submitted"
+    : event.type === "batch_start"
+      ? "running"
+      : result.status || "running";
+  const reason = result.error
+    || firstEntry.analysis?.limitations
+    || (status === "timed_out" ? "等待 Dify 回调超过等待窗口" : "");
+  return {
+    key: String(batch.batchId || batch.groupKey || `${batch.countryCode || ""}:${batch.dashboardUuid || ""}`),
+    batchId: String(batch.batchId || ""),
+    groupKey: String(batch.groupKey || ""),
+    countryCode: normalizeCountryCode(batch.countryCode),
+    dashboardTitle: String(batch.dashboardTitle || batch.dashboardUuid || batch.groupKey || "-"),
+    dashboardUuid: String(batch.dashboardUuid || ""),
+    caseCount: Array.isArray(batch.cases) ? batch.cases.length : 0,
+    anomalyIndexes: (batch.cases || []).map((item) => Number(item.anomalyIndex)).filter(Number.isFinite),
+    status,
+    retry: Boolean(event.retry),
+    submitted: Number(event.submitted || 0),
+    total: Number(event.total || 0),
+    reason,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 function mergeBatchInvestigationResults(initial = {}, retry = {}) {
@@ -5410,8 +5463,8 @@ export async function completeMetabaseAnomalyBatch({ rootDir = process.cwd(), ba
   if (!Array.isArray(results)) {
     throw badRequest("results must be an array", ["results 必须是数组。"]);
   }
-  if (results.length > 30) {
-    throw badRequest("单个 batch 结果不能超过 30 条", ["单个 batch 结果不能超过 30 条。"]);
+  if (results.length > 100) {
+    throw badRequest("单个 batch 结果不能超过 100 条", ["单个 batch 结果不能超过 100 条。"]);
   }
 
   const filePath = path.join(rootDir, FILES.anomalyAnalyses);
