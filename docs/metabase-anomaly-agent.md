@@ -47,6 +47,8 @@ METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=replace-with-long-random-callback-token
 
 模板已固定使用内网 Dify Agent API `http://172.20.0.234/v1/chat-messages` 和 ZNZB 容器回调地址 `http://172.19.0.1:28787`。生产 n8n 服务器不允许访问公网，因此不能替换为 Dify 公网域名。Dify 使用已导入的 6 个只读工具完成取证；n8n 不直接持有 DS 或 SR 的写权限。
 
+新版 Agent 仅支持 `response_mode: streaming`。模板的 HTTP 节点以文本接收 SSE，并在 `Parse Dify Batch Response` 节点合并所有 `data:` 事件中的 `answer` 内容；不要改回 `blocking`，否则 Dify 会返回 `Agent App only supports streaming response mode`。
+
 新版 Dify 导出文件的 `app.mode` 必须为 `agent`。旧的 Workflow DSL（`app.mode: workflow`）对应 `/v1/workflows/run`，不能与新版 Agent 的 `app-` Key 混用。更新 n8n 模板后，需要重新导入或同步修改已发布工作流中的 `Call Dify Batch Agent` 节点，并把 `REPLACE_WITH_DIFY_API_KEY` 替换为新应用 Key；真实 Key 不提交到 Git。
 
 ## 行为与结果
