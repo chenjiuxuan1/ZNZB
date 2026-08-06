@@ -28,6 +28,7 @@ export function renderFluctuationVisual(root) {
   if (requestedCountryCode) state.fluctuationVisualCountryCode = requestedCountryCode;
   const model = buildFluctuationVisualModel(state.batchHistory, state.countries?.countries || [], {
     displayIndex: state.fluctuationVisualDisplayIndex,
+    showAiSuppressed: state.fluctuationVisualShowAiSuppressed,
     runId: query.runId,
     dashboardUrl: query.dashboardUrl,
     dashboardTitle: query.dashboardTitle,
@@ -45,14 +46,19 @@ export function renderFluctuationVisual(root) {
       </div>
     </div>
 
-    ${renderFluctuationStatus()}
+    ${renderFluctuationStatus(model)}
     ${state.fluctuationMetricTagError ? `<div class="sandbox-status error"><strong>标签保存失败</strong><span>${escapeHtml(state.fluctuationMetricTagError)}</span></div>` : ""}
-    ${model.hiddenVerifiedNormalCount ? `<div class="sandbox-status success"><strong>已隐藏 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已排除/降级点</strong><span>AI 判定为无异常或业务变化的波动点不再展示在图谱中，原始告警、查询方式和完整结论仍保留在巡检历史详情中。</span></div>` : ""}
+    ${model.hiddenVerifiedNormalCount && !model.showAiSuppressed ? `<div class="sandbox-status success"><strong>已隐藏 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已排除/降级点</strong><span>AI 判定为无异常或业务变化的波动点默认不展示在图谱中，可通过上方开关临时展示；原始告警、查询方式和完整结论仍保留在巡检历史详情中。</span></div>` : ""}
+    ${model.hiddenVerifiedNormalCount && model.showAiSuppressed ? `<div class="sandbox-status warn"><strong>正在展示 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已排除/降级点</strong><span>这些点不会进入最终异常播报，仅用于回看原始波动走势。</span></div>` : ""}
     ${model.run ? renderFluctuationCountries(model) : renderEmptyFluctuationState()}
   `;
 
   root.querySelector("#refresh-fluctuation-history")?.addEventListener("click", () => {
     void reloadFluctuationHistory(root);
+  });
+  root.querySelector("[data-show-ai-suppressed]")?.addEventListener("change", (event) => {
+    state.fluctuationVisualShowAiSuppressed = Boolean(event.target.checked);
+    renderFluctuationVisual(root);
   });
   root.querySelectorAll("[data-fluctuation-country]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -141,16 +147,25 @@ async function reloadFluctuationHistory(root) {
   renderFluctuationVisual(root);
 }
 
-function renderFluctuationStatus() {
+function renderFluctuationStatus(model = {}) {
   const status = state.batchHistoryStatus;
   const refreshing = Boolean(state.fluctuationVisualRefreshProgress);
+  const hiddenCount = model.hiddenVerifiedNormalCount || 0;
+  const showAiSuppressed = Boolean(state.fluctuationVisualShowAiSuppressed && hiddenCount);
   return `
     <section class="panel fluctuation-toolbar">
       <div>
         <h2 class="panel-title">异常走势视图</h2>
         <p class="muted">绿色折线来自巡检时保存的真实查询结果，红色表示报警当天的数据。旧历史没有真实序列时不画参考线，避免误判。</p>
       </div>
-      <button id="refresh-fluctuation-history" class="primary" type="button" ${refreshing ? "disabled aria-busy=\"true\"" : ""}>${refreshing ? "刷新中..." : (state.fluctuationVisualLoaded ? "刷新最新波动图谱" : "加载最新波动图谱")}</button>
+      <div class="fluctuation-toolbar-actions">
+        <label class="mini-switch fluctuation-ai-filter" title="默认隐藏 AI 判断为无异常或业务变化降级的波动点">
+          <input type="checkbox" data-show-ai-suppressed ${showAiSuppressed ? "checked" : ""} ${hiddenCount ? "" : "disabled"}>
+          <span aria-hidden="true"></span>
+          <em>${hiddenCount ? (showAiSuppressed ? "正在展示 AI 已排除/降级点" : `隐藏 AI 已排除/降级点（${hiddenCount}）`) : "无 AI 已排除/降级点"}</em>
+        </label>
+        <button id="refresh-fluctuation-history" class="primary" type="button" ${refreshing ? "disabled aria-busy=\"true\"" : ""}>${refreshing ? "刷新中..." : (state.fluctuationVisualLoaded ? "刷新最新波动图谱" : "加载最新波动图谱")}</button>
+      </div>
     </section>
     ${renderFluctuationRefreshProgress()}
     ${status ? `
@@ -239,11 +254,11 @@ function renderFluctuationRow(anomaly, index) {
   const seriesState = state.fluctuationVisualSeries?.[anomaly.seriesKey];
   const tag = state.fluctuationMetricTags?.[anomaly.tagKey] || "二级";
   return `
-    <section class="fluctuation-row">
+    <section class="fluctuation-row ${anomaly.aiSuppressed ? "is-ai-suppressed" : ""}">
       <div class="fluctuation-row-meta">
         <span class="fluctuation-row-index">${escapeHtml(index + 1)}</span>
         <div class="fluctuation-row-title">
-          <h3>${escapeHtml(anomaly.metricLabel)}</h3>
+          <h3>${escapeHtml(anomaly.metricLabel)}${anomaly.aiSuppressed ? `<span class="badge success fluctuation-ai-suppressed-badge">${escapeHtml(anomaly.aiSuppressedReason || "AI 已排除")}</span>` : ""}</h3>
           <p>${escapeHtml(anomaly.dashboardTitle || "-")}</p>
           <p>${escapeHtml(anomaly.cardTitle || "-")}</p>
         </div>
@@ -580,7 +595,18 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
   const allAnomalies = collectFluctuationAnomalies(run, countries)
     .filter((anomaly) => matchesDashboardFilter(anomaly, options));
   const displayIndex = options.displayIndex || {};
-  const anomalies = allAnomalies.filter((anomaly) => !isAiSuppressedFluctuationPoint(displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`]));
+  const showAiSuppressed = Boolean(options.showAiSuppressed);
+  const annotatedAnomalies = allAnomalies.map((anomaly) => {
+    const displayItem = displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`];
+    return {
+      ...anomaly,
+      aiSuppressed: isAiSuppressedFluctuationPoint(displayItem),
+      aiSuppressedReason: describeAiSuppressedFluctuationPoint(displayItem),
+    };
+  });
+  const anomalies = showAiSuppressed
+    ? annotatedAnomalies
+    : annotatedAnomalies.filter((anomaly) => !anomaly.aiSuppressed);
   const byCountry = new Map();
   for (const anomaly of anomalies) {
     if (!byCountry.has(anomaly.countryCode)) {
@@ -599,7 +625,8 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
     countries: countryModels,
     countryCount: countryModels.length,
     anomalyCount: anomalies.length,
-    hiddenVerifiedNormalCount: allAnomalies.length - anomalies.length,
+    hiddenVerifiedNormalCount: annotatedAnomalies.filter((anomaly) => anomaly.aiSuppressed).length,
+    showAiSuppressed,
   };
 }
 
@@ -610,6 +637,14 @@ function isAiSuppressedFluctuationPoint(item = {}) {
     || verdict === "verified_normal"
     || verdict === "business_change"
     || action === "downgrade";
+}
+
+function describeAiSuppressedFluctuationPoint(item = {}) {
+  const verdict = String(item.dataSideVerdict || item.verdict || "").trim();
+  const action = String(item.notificationAction || "").trim();
+  if (verdict === "verified_normal" || item.chartVisibility === "hide_verified_normal") return "AI 判定无异常";
+  if (verdict === "business_change" || action === "downgrade") return "AI 判定业务变化/降级";
+  return "";
 }
 
 function matchesDashboardFilter(anomaly, options = {}) {
