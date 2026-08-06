@@ -55,14 +55,25 @@
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "text/event-stream"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { inputs: { analysis_stage: $json.job.stage, run_id: $json.job.runId, country_code: $json.job.countryCode, batch_id: $json.job.batchId, snapshot_id: $json.job.snapshotId, dashboard_uuid: $json.job.dashboardUuid, dashboard_title: $json.job.dashboardTitle, cases_json: JSON.stringify($json.job.cases) }, query: '请执行 dashboard_analysis，分析 inputs 中的全部异常指标，并严格返回约定的单个 JSON 对象。', response_mode: 'blocking', conversation_id: '', user: 'metabase-evidence-' + $json.jobId } }}",
+        "jsonBody": "={{ { inputs: { analysis_stage: $json.job.stage, run_id: $json.job.runId, country_code: $json.job.countryCode, batch_id: $json.job.batchId, snapshot_id: $json.job.snapshotId, dashboard_uuid: $json.job.dashboardUuid, dashboard_title: $json.job.dashboardTitle, cases_json: JSON.stringify($json.job.cases) }, query: '请执行 dashboard_analysis，分析 inputs 中的全部异常指标，并严格返回约定的单个 JSON 对象。', response_mode: 'streaming', conversation_id: '', user: 'metabase-evidence-' + $json.jobId } }}",
         "options": {
-          "timeout": 300000
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "response": {
+                "format": "text"
+              }
+            }
+          }
         }
       },
       "name": "Call Dify Batch Agent",
@@ -76,7 +87,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const outputs=$json.data?.outputs||$json.outputs||{};\nlet decision={};\nif(outputs.analysis_json&&typeof outputs.analysis_json==='object'){decision=outputs.analysis_json;}\nelse if($json.analysis_json&&typeof $json.analysis_json==='object'){decision=$json.analysis_json;}\nelse if(Array.isArray(outputs.verdicts)||outputs.action||outputs.dashboardSummary){decision=outputs;}\nelse if(Array.isArray($json.verdicts)||$json.action){decision=$json;}\nelse{\nconst raw=String(outputs.text||outputs.result||outputs.analysis_json||$json.analysis_json||$json.data?.analysis_json||$json.answer||$json.text||'');\ntry{decision=JSON.parse(raw.trim());}catch(e){\nconst object=text=>{let start=-1,depth=0,q=false,esc=false,last;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(esc)esc=false;else if(c==='\\\\')esc=true;else if(c==='\"')q=false;continue;}if(c==='\"'){q=true;continue;}if(c==='{'){if(!depth)start=i;depth++;}else if(c==='}'&&depth&&!--depth){try{last=JSON.parse(text.slice(start,i+1));}catch{}}}return last;};\ndecision=object(raw)||{};\n}\n}\nconsole.log('ParseDify: keys='+Object.keys(decision).join(',')+' verdicts='+((decision.verdicts||[]).length));\nreturn [{json:{difyText:JSON.stringify(decision).slice(-20000),decision}}];"
+        "jsCode": "const outputs=$json.data?.outputs||$json.outputs||{};\nlet decision={};\nif(outputs.analysis_json&&typeof outputs.analysis_json==='object'){decision=outputs.analysis_json;}\nelse if($json.analysis_json&&typeof $json.analysis_json==='object'){decision=$json.analysis_json;}\nelse if(Array.isArray(outputs.verdicts)||outputs.action||outputs.dashboardSummary){decision=outputs;}\nelse if(Array.isArray($json.verdicts)||$json.action){decision=$json;}\nelse{\nconst rawText=String(outputs.text||outputs.result||outputs.analysis_json||$json.analysis_json||$json.data?.analysis_json||$json.answer||$json.text||$json.body||$json.data||'');\nconst chunks=[];for(const line of rawText.split(/\\r?\\n/)){if(!line.startsWith('data:'))continue;try{const event=JSON.parse(line.slice(5).trim());if(typeof event.answer==='string')chunks.push(event.answer);}catch{}}\nconst raw=chunks.join('')||rawText;\ntry{decision=JSON.parse(raw.trim());}catch(e){\nconst object=text=>{let start=-1,depth=0,q=false,esc=false,last;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(esc)esc=false;else if(c==='\\\\')esc=true;else if(c==='\"')q=false;continue;}if(c==='\"'){q=true;continue;}if(c==='{'){if(!depth)start=i;depth++;}else if(c==='}'&&depth&&!--depth){try{last=JSON.parse(text.slice(start,i+1));}catch{}}}return last;};\ndecision=object(raw)||{};\n}\n}\nconsole.log('ParseDify: keys='+Object.keys(decision).join(',')+' verdicts='+((decision.verdicts||[]).length));\nreturn [{json:{difyText:JSON.stringify(decision).slice(-20000),decision}}];"
       },
       "name": "Parse Dify Batch Response",
       "type": "n8n-nodes-base.code",

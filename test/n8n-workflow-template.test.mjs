@@ -41,8 +41,16 @@ test("batched workflow calls the Dify Agent chat API over the internal network",
   assert.equal(dify.parameters.url, "http://172.20.0.234/v1/chat-messages");
   assert.match(dify.parameters.jsonBody, /query:/);
   assert.match(dify.parameters.jsonBody, /conversation_id: ''/);
-  assert.match(dify.parameters.jsonBody, /response_mode: 'blocking'/);
+  assert.match(dify.parameters.jsonBody, /response_mode: 'streaming'/);
+  assert.match(dify.parameters.options?.response?.response?.format || JSON.stringify(dify.parameters.options), /text/);
   assert.doesNotMatch(dify.parameters.url, /workflows\/run/);
+});
+
+test("streaming Agent responses are parsed from SSE data events", async () => {
+  const data = await workflow();
+  const parser = data.nodes.find((node) => node.name === "Parse Dify Batch Response");
+  assert.match(parser.parameters.jsCode, /text\/event-stream|data:/);
+  assert.match(parser.parameters.jsCode, /answer/);
 });
 
 test("batched workflow uses positional matching and tolerates incomplete Dify results", async () => {
