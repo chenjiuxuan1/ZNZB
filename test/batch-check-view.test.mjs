@@ -152,6 +152,28 @@ test("dashboard scan details put fluctuation charts in their own anomaly column"
   assert.doesNotMatch(root.innerHTML, /查看异常波动/);
 });
 
+test("dashboard scan details hide retired marketing dashboards from saved history", () => {
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  state.routeQuery = { historyRunId: "run-retired-dashboard" };
+  state.batchHistory = { runs: [{
+    id: "run-retired-dashboard", startedAt: "2026-08-06T00:00:00.000Z", successCount: 1, countryCount: 1,
+    checkedCardCount: 2, anomalyCount: 1, dataQualityAnomalyCount: 0,
+    runs: [{ countryCode: "CN", countryName: "中国", ok: true, result: {
+      checkedCards: [
+        { countryCode: "CN", countryName: "中国", dashboardUuid: "retired", dashboardTitle: "营销过程数据统计", dashboardUrl: "https://data.kuainiu.io/dashboard/994", cardTitle: "过程", ok: true },
+        { countryCode: "CN", countryName: "中国", dashboardUuid: "active", dashboardTitle: "业务概览-OKR", dashboardUrl: "https://data.kuainiu.io/dashboard/121", cardTitle: "D3", ok: true },
+      ],
+      anomalies: [{ countryCode: "CN", countryName: "中国", dashboardUuid: "retired", dashboardTitle: "营销过程数据统计", dashboardUrl: "https://data.kuainiu.io/dashboard/994", cardTitle: "过程", type: "completeDayChange", message: "指标从 10 到 20" }],
+    } }],
+  }] };
+
+  renderBatchCheck(root);
+  const scanDetails = root.innerHTML.match(/<div class="sub-panel dashboard-scan-details">[\s\S]*?<\/table>/)?.[0] || "";
+  assert.doesNotMatch(scanDetails, /营销过程数据统计/);
+  assert.doesNotMatch(scanDetails, /dashboard\/994/);
+  assert.match(scanDetails, /业务概览-OKR/);
+});
+
 test("scheduled run progress renders compact five-stage status and keeps country details collapsible", () => {
   const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
   state.routeQuery = {};
