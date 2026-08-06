@@ -1128,6 +1128,71 @@ button[aria-busy="true"] { cursor: progress; }
   overflow-wrap: anywhere;
 }
 
+.ai-analysis-supporting {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.ai-analysis-supporting .anomaly-detail-reason {
+  background: #fff;
+  border-color: #e2e8f0;
+  box-shadow: none;
+  padding: 10px 12px;
+}
+
+.ai-analysis-supporting .anomaly-detail-reason span {
+  color: #475467;
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  margin-bottom: 6px;
+}
+
+.ai-analysis-supporting .anomaly-detail-reason ul {
+  color: #344054;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.ai-analysis-supporting .anomaly-detail-reason li + li {
+  margin-top: 3px;
+}
+
+.ai-analysis-supporting.ai-support-normal .anomaly-detail-reason,
+.ai-analysis-supporting.ai-support-business .anomaly-detail-reason {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.ai-analysis-supporting.ai-support-normal .anomaly-detail-reason span {
+  color: #047857;
+}
+
+.ai-analysis-supporting.ai-support-business .anomaly-detail-reason span {
+  color: #1d4ed8;
+}
+
+.ai-analysis-supporting.ai-support-issue .anomaly-detail-reason {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.ai-analysis-supporting.ai-support-issue .anomaly-detail-reason span {
+  color: #c2410c;
+}
+
+.ai-analysis-supporting.ai-support-unknown .anomaly-detail-reason {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.ai-analysis-supporting.ai-support-unknown .anomaly-detail-reason span {
+  color: #b45309;
+}
+
 .anomaly-detail-table th:nth-child(4),
 .anomaly-detail-table th:nth-child(5),
 .anomaly-detail-table td.numeric-cell {
