@@ -638,13 +638,25 @@ test("fluctuation visual renders AI conclusion for problem verdicts", () => {
       confidence: "high",
       dataSideVerdict: "data_issue",
       notificationAction: "send",
+      status: "completed",
+      statusLabel: "AI 已核验数据侧异常",
+      possibleCauses: ["ODS 分区延迟"],
+      verificationSteps: ["查询底表分区"],
+      recommendedActions: ["通知数仓补数"],
+      limitations: "仅基于巡检保存数据",
     },
   });
 
-  assert.match(html, /AI 分析结论/);
+  assert.match(html, /AI 巡检过程与通知/);
   assert.match(html, /有数据侧异常/);
   assert.match(html, /底表分区缺失导致指标异常升高/);
+  assert.match(html, /巡检状态：AI 已核验数据侧异常/);
+  assert.match(html, /ODS 分区延迟/);
+  assert.match(html, /查询底表分区/);
+  assert.match(html, /通知数仓补数/);
+  assert.match(html, /限制说明/);
   assert.match(html, /通知建议：播报/);
+  assert.match(html, /最终通知：播报/);
 });
 
 test("fluctuation visual reads AI conclusion from saved history audit", () => {
