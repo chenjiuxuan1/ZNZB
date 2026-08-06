@@ -34,6 +34,17 @@ test("batched workflow sends one Dify request and one callback for the whole bat
   assert.match(callback.parameters.jsonBody, /\$json/);
 });
 
+test("batched workflow calls the Dify Agent chat API without an HTTP redirect", async () => {
+  const data = await workflow();
+  const dify = data.nodes.find((node) => node.name === "Call Dify Batch Agent");
+
+  assert.equal(dify.parameters.url, "https://bigdata-dify.kuainiu.io/v1/chat-messages");
+  assert.match(dify.parameters.jsonBody, /query:/);
+  assert.match(dify.parameters.jsonBody, /conversation_id: ''/);
+  assert.match(dify.parameters.jsonBody, /response_mode: 'blocking'/);
+  assert.doesNotMatch(dify.parameters.url, /workflows\/run/);
+});
+
 test("batched workflow uses positional matching and tolerates incomplete Dify results", async () => {
   const data = await workflow();
   const build = data.nodes.find((node) => node.name === "Build Batch Callback");
