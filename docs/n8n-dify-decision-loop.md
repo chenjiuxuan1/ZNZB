@@ -33,7 +33,7 @@ Dify 可在文字说明后追加一个 JSON 对象；n8n 只解析最后一个 J
 模板没有任何真实 token、主机或 n8n Variables 引用。导入后在节点中替换下列明确标注的占位符：
 
 - `REPLACE_WITH_DUTY_PLATFORM_HOST` 与 `REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN`：平台受保护的 Card SQL 读取接口。后者必须与 ZNZB `.env` 的 `METABASE_ANOMALY_AGENT_CALLBACK_TOKEN` 完全相同；它也用于 n8n → 平台 callback。绝不能在这里填写 Dify App API Key 或 `DIFY_WAREHOUSE_LINEAGE_TOOL_TOKEN`。
-- `Call Dify Batch Agent` 与 `REPLACE_WITH_DIFY_API_KEY`：新版 Dify Agent API。URL 必须完整写为 `https://bigdata-dify.kuainiu.io/v1/chat-messages`；必须直接使用 HTTPS，不能继续调用旧的 `/v1/workflows/run`。
+- `Call Dify Batch Agent` 与 `REPLACE_WITH_DIFY_API_KEY`：新版 Dify Agent API。生产 URL 必须完整写为 `http://172.20.0.234/v1/chat-messages`；服务器不能访问公网，也不能继续调用旧的 `/v1/workflows/run`。
 - `REPLACE_WITH_N8N_PUBLIC_HOST`：已发布的固定公共网关主机；路径必须分别保持 `/webhook/warehouse-lineage`（血缘）、`/webhook/wattrel-query`（Wattrel 质量告警）、`/webhook/ds-scheduler`（DS 运行状态）。DS 任务匹配通过 `executeWorkflow` 节点直接调用已有子流程（`REPLACE_WITH_DS_TASK_MATCH_WORKFLOW_ID`），不需要 HTTP 网关。
 - `REPLACE_WITH_EVIDENCE_GATEWAY_TOKEN`：血缘网关的随机 Bearer token。Wattrel 和 DS scheduler 网关通过 webhook 路径隔离。`REPLACE_WITH_DS_API_TOKEN` 是 DolphinScheduler API token，仅用于只读查询任务状态。`REPLACE_WITH_DS_TASK_MATCH_WORKFLOW_ID` 是 DS 匹配子流程的 workflow ID。
 - `REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN`：动态 Agent 入口的专用随机 Bearer token。ZNZB 的 `METABASE_ANOMALY_AGENT_N8N_TOKEN` 必须使用同一个值；没有该 token 时平台不会派发任务。

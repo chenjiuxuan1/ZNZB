@@ -45,7 +45,7 @@ METABASE_ANOMALY_AGENT_CALLBACK_TOKEN=replace-with-long-random-callback-token
 2. `REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN`：必须与 ZNZB 的 `METABASE_ANOMALY_AGENT_CALLBACK_TOKEN` 相同。
 3. `REPLACE_WITH_DIFY_API_KEY`：Dify 应用“后端服务 API”页面生成的 `app-` key；不是工具提供者 token，也不是 `.env` 变量名。
 
-模板已固定使用新版 Dify Agent API `https://bigdata-dify.kuainiu.io/v1/chat-messages` 和 ZNZB 容器回调地址 `http://172.19.0.1:28787`。必须直接使用 HTTPS；HTTP 地址会重定向，并可能导致 Authorization 头丢失。Dify 使用已导入的 6 个只读工具完成取证；n8n 不直接持有 DS 或 SR 的写权限。
+模板已固定使用内网 Dify Agent API `http://172.20.0.234/v1/chat-messages` 和 ZNZB 容器回调地址 `http://172.19.0.1:28787`。生产 n8n 服务器不允许访问公网，因此不能替换为 Dify 公网域名。Dify 使用已导入的 6 个只读工具完成取证；n8n 不直接持有 DS 或 SR 的写权限。
 
 新版 Dify 导出文件的 `app.mode` 必须为 `agent`。旧的 Workflow DSL（`app.mode: workflow`）对应 `/v1/workflows/run`，不能与新版 Agent 的 `app-` Key 混用。更新 n8n 模板后，需要重新导入或同步修改已发布工作流中的 `Call Dify Batch Agent` 节点，并把 `REPLACE_WITH_DIFY_API_KEY` 替换为新应用 Key；真实 Key 不提交到 Git。
 
