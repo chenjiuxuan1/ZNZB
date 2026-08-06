@@ -1338,9 +1338,11 @@ export function renderMetabaseAnomalyAnalysis(response) {
       <strong>AI 数据侧分析${response.cached ? "（缓存）" : ""}</strong>
       <span>${escapeHtml(analysis.summary || "-")}</span>
     </div>
-    ${renderMetabaseAnalysisList("可能原因", analysis.possibleCauses)}
-    ${renderMetabaseAnalysisList("核查步骤", analysis.verificationSteps)}
-    ${renderMetabaseAnalysisList("建议处理", analysis.recommendedActions)}
+    <div class="ai-analysis-supporting ${escapeHtml(finalVerdict.supportClass)}">
+      ${renderMetabaseAnalysisList("可能原因", analysis.possibleCauses)}
+      ${renderMetabaseAnalysisList("核查步骤", analysis.verificationSteps)}
+      ${renderMetabaseAnalysisList("建议处理", analysis.recommendedActions)}
+    </div>
     ${analysis.dataSideVerdict ? `<p class="muted">数据侧判定：${escapeHtml(analysis.dataSideVerdict)}；通知建议：${escapeHtml(analysis.notificationAction || "enrich_only")}</p>` : ""}
     ${analysis.chartVisibility === "hide_verified_normal" ? `<div class="sandbox-status success"><strong>AI 已核验正常（不展示于波动图谱）</strong><span>${escapeHtml(analysis.verificationReason || "本轮查询已确认该点不属于当前数据异常。")}</span></div>` : ""}
     <p class="muted">置信度：${escapeHtml(analysis.confidence || "low")}；限制：${escapeHtml(analysis.limitations || "仅基于本次巡检记录分析。")}</p>
@@ -1356,6 +1358,7 @@ function formatMetabaseFinalVerdict(analysis = {}) {
   if (verdict === "verified_normal" || analysis.chartVisibility === "hide_verified_normal") {
     return {
       className: "success ai-verdict-normal",
+      supportClass: "ai-support-normal",
       title: "AI 分析后无异常",
       detail: analysis.verificationReason || "实时取证已确认该原始告警不属于当前数据异常，最终播报会跳过。",
     };
@@ -1363,6 +1366,7 @@ function formatMetabaseFinalVerdict(analysis = {}) {
   if (verdict === "business_change" || action === "downgrade") {
     return {
       className: "success ai-verdict-business",
+      supportClass: "ai-support-business",
       title: "业务变化，不作为数据侧异常播报",
       detail: "AI 判断数据链路未发现故障证据，最终播报会跳过或降级。",
     };
@@ -1370,12 +1374,14 @@ function formatMetabaseFinalVerdict(analysis = {}) {
   if (verdict === "data_issue" || action === "send") {
     return {
       className: "error ai-verdict-issue",
+      supportClass: "ai-support-issue",
       title: "有数据侧异常",
       detail: "AI 取证认为需要进入最终异常播报或人工处理。",
     };
   }
   return {
     className: "warn ai-verdict-unknown",
+    supportClass: "ai-support-unknown",
     title: "证据不足，按异常保守处理",
     detail: "AI 未取得足够证据排除异常，最终播报会保留该项。",
   };
