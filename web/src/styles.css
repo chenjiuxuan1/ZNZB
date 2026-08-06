@@ -2134,6 +2134,17 @@ button.primary:hover {
   box-shadow: 0 14px 28px rgb(37 99 235 / 0.24);
 }
 
+button.danger {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+button.danger:hover {
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
 button.secondary {
   background: #f8fafc;
   border-color: #cbd5e1;

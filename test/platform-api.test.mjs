@@ -1140,6 +1140,59 @@ test("platform api preserves manually discovered dashboards across tracked confi
   assert.equal(hourly?.availability, "ready");
 });
 
+test("platform api deletes dashboards from inventory and scheduled scan scope", async () => {
+  const rootDir = await makeFixture();
+  let queryCount = 0;
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => ({ dashboards: [] }),
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        queryCount += 1;
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+  const added = await api.addManualDashboard({
+    countryCode: "INE",
+    title: "手动核心看板",
+    url: "https://data.example/public/dashboard/manual-uuid",
+  });
+  await api.discoverManualDashboard({ countryCode: "INE", sourcePanelId: added.sourcePanelId });
+
+  let inventory = await api.getInventory({ countryCode: "INE" });
+  assert.ok(inventory.dashboards.find((item) => item.title === "手动核心看板"));
+
+  const deleted = await api.deleteDashboard({
+    countryCode: "INE",
+    dashboardUuid: "manual-uuid",
+    sourcePanelId: added.sourcePanelId,
+    url: "https://data.example/public/dashboard/manual-uuid",
+  });
+  inventory = await api.getInventory({ countryCode: "INE" });
+  const result = await api.runBatchCheck({ countryCode: "INE" });
+
+  assert.equal(deleted.ok, true);
+  assert.equal(inventory.dashboards.some((item) => item.title === "手动核心看板"), false);
+  assert.equal(result.dashboardCount, 1);
+  assert.equal(result.checkedCardCount, 1);
+  assert.equal(queryCount, 1);
+});
+
+test("platform api deletion tombstone hides tracked dashboards after code resets", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+  const deleted = await api.deleteDashboard({
+    countryCode: "INE",
+    dashboardUuid: "dash-1",
+    url: "https://data.example/public/dashboard/dash-1",
+  });
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.equal(deleted.ok, true);
+  assert.equal(inventory.dashboards.some((item) => item.uuid === "dash-1"), false);
+});
+
 test("platform api does not duplicate a ready internal dashboard from panel sources", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
