@@ -34,11 +34,11 @@ test("batched workflow sends one Dify request and one callback for the whole bat
   assert.match(callback.parameters.jsonBody, /\$json/);
 });
 
-test("batched workflow calls the Dify Agent chat API without an HTTP redirect", async () => {
+test("batched workflow calls the Dify Agent chat API over the internal network", async () => {
   const data = await workflow();
   const dify = data.nodes.find((node) => node.name === "Call Dify Batch Agent");
 
-  assert.equal(dify.parameters.url, "https://bigdata-dify.kuainiu.io/v1/chat-messages");
+  assert.equal(dify.parameters.url, "http://172.20.0.234/v1/chat-messages");
   assert.match(dify.parameters.jsonBody, /query:/);
   assert.match(dify.parameters.jsonBody, /conversation_id: ''/);
   assert.match(dify.parameters.jsonBody, /response_mode: 'blocking'/);

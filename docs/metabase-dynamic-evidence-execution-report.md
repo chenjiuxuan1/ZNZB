@@ -19,7 +19,7 @@
 3. 绑定六个国家的只读 StarRocks 凭据；未绑定前分区网关会返回 `unavailable`。
 4. 绑定经过审核的只读 DS 候选查询工作流；不要绑定任何自动重跑/通知工作流。
 5. 导入并发布动态主流程，配置：
-   - `Call Dify Batch Agent` URL：`https://bigdata-dify.kuainiu.io/v1/chat-messages`
+   - `Call Dify Batch Agent` URL：`http://172.20.0.234/v1/chat-messages`
    - `REPLACE_WITH_DIFY_API_KEY`：Dify 应用的 `app-` API Key
    - `REPLACE_WITH_METABASE_AGENT_CALLBACK_TOKEN`：与 ZNZB `.env` 的 `METABASE_ANOMALY_AGENT_CALLBACK_TOKEN` 相同
    - `REPLACE_WITH_METABASE_ANOMALY_AGENT_WEBHOOK_TOKEN`：与 `.env` 的 `METABASE_ANOMALY_AGENT_N8N_TOKEN` 相同

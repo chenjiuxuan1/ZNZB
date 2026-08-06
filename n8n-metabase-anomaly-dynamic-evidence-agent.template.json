@@ -44,7 +44,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://bigdata-dify.kuainiu.io/v1/chat-messages",
+        "url": "http://172.20.0.234/v1/chat-messages",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
