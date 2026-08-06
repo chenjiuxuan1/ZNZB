@@ -40,9 +40,12 @@ test("batched workflow calls the Dify Agent chat API over the internal network",
 
   assert.equal(dify.parameters.url, "http://172.20.0.234/v1/chat-messages");
   assert.match(dify.parameters.jsonBody, /query:/);
+  assert.match(dify.parameters.jsonBody, /payloadJson/);
+  assert.match(dify.parameters.jsonBody, /输入 JSON/);
   assert.match(dify.parameters.jsonBody, /conversation_id: ''/);
   assert.match(dify.parameters.jsonBody, /response_mode: 'streaming'/);
   assert.match(dify.parameters.options?.response?.response?.format || JSON.stringify(dify.parameters.options), /text/);
+  assert.doesNotMatch(dify.parameters.jsonBody, /\{\{#start\./);
   assert.doesNotMatch(dify.parameters.url, /workflows\/run/);
 });
 
