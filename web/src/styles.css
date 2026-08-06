@@ -4920,6 +4920,66 @@ body {
   overflow-wrap: anywhere;
 }
 
+.fluctuation-ai-conclusion {
+  align-self: stretch;
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+  border: 1px solid #fdba74;
+  border-radius: 10px;
+  box-shadow: inset 4px 0 0 #f97316;
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+}
+
+.fluctuation-ai-conclusion-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.fluctuation-ai-conclusion-head span {
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.fluctuation-ai-conclusion-head strong {
+  background: #ffedd5;
+  border-radius: 999px;
+  color: #c2410c;
+  font-size: 12px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.fluctuation-ai-conclusion p {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.fluctuation-ai-conclusion-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fluctuation-ai-conclusion-meta em {
+  background: #fff;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  color: #9a3412;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  padding: 3px 7px;
+}
+
 .fluctuation-row-chart {
   display: grid;
   gap: 8px;

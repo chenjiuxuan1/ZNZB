@@ -631,6 +631,35 @@ test("fluctuation visual hides AI suppressed business-change anomalies", () => {
   assert.equal(expandedModel.countries[0].anomalies[0].aiSuppressedReason, "AI 判定业务变化/降级");
 });
 
+test("fluctuation visual renders AI conclusion for problem verdicts", () => {
+  const html = fluctuationVisualTest.renderAiProblemConclusion({
+    aiAnalysis: {
+      summary: "底表分区缺失导致指标异常升高",
+      confidence: "high",
+      dataSideVerdict: "data_issue",
+      notificationAction: "send",
+    },
+  });
+
+  assert.match(html, /AI 分析结论/);
+  assert.match(html, /有数据侧异常/);
+  assert.match(html, /底表分区缺失导致指标异常升高/);
+  assert.match(html, /通知建议：播报/);
+});
+
+test("fluctuation visual does not render AI conclusion for verified normal verdicts", () => {
+  const html = fluctuationVisualTest.renderAiProblemConclusion({
+    aiAnalysis: {
+      summary: "底表查询正常",
+      confidence: "high",
+      dataSideVerdict: "verified_normal",
+      notificationAction: "enrich_only",
+    },
+  });
+
+  assert.equal(html, "");
+});
+
 test("fluctuation visual excludes China empty and zero-style anomalies", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
     runs: [{
