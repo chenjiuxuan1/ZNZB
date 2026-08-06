@@ -128,6 +128,14 @@ test("history anomaly detail exposes an AI analysis action", () => {
     runId: "run-ai", countryCode: "PH", anomalyIndex: 0,
     analysis: { summary: "已完成", confidence: "low", limitations: "测试" },
   }), /AI 数据侧分析[\s\S]*已完成[\s\S]*重新 AI 分析/);
+  assert.match(renderMetabaseAnomalyAnalysis({
+    runId: "run-ai", countryCode: "INE", anomalyIndex: 1,
+    analysis: { summary: "底表字段全量为 0", confidence: "high", limitations: "测试", dataSideVerdict: "data_issue", notificationAction: "send" },
+  }), /最终判定：有数据侧异常[\s\S]*AI 数据侧分析/);
+  assert.match(renderMetabaseAnomalyAnalysis({
+    runId: "run-ai", countryCode: "INE", anomalyIndex: 2,
+    analysis: { summary: "重跑后正常", confidence: "high", limitations: "测试", dataSideVerdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal" },
+  }), /最终判定：AI 分析后无异常/);
 });
 
 test("dashboard scan details put fluctuation charts in their own anomaly column", () => {
@@ -172,6 +180,31 @@ test("dashboard scan details hide retired marketing dashboards from saved histor
   assert.doesNotMatch(scanDetails, /营销过程数据统计/);
   assert.doesNotMatch(scanDetails, /dashboard\/994/);
   assert.match(scanDetails, /业务概览-OKR/);
+});
+
+test("dashboard scan details show AI verified normal as no anomaly", () => {
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  state.routeQuery = { historyRunId: "run-ai-normal" };
+  state.batchHistory = { runs: [{
+    id: "run-ai-normal", startedAt: "2026-08-06T00:00:00.000Z", successCount: 1, countryCount: 1,
+    checkedCardCount: 1, anomalyCount: 0, dataQualityAnomalyCount: 0,
+    runs: [{ countryCode: "INE", countryName: "印尼", ok: true, result: {
+      checkedCardCount: 1,
+      dashboardCount: 1,
+      rawAnomalyCount: 1,
+      anomalyCount: 0,
+      checkedCards: [{ countryCode: "INE", countryName: "印尼", dashboardUuid: "dash-okr", dashboardTitle: "业务概览-OKR", dashboardUrl: "https://data.example/dashboard/okr", cardTitle: "新客放款量", ok: true }],
+      anomalies: [{ countryCode: "INE", countryName: "印尼", dashboardUuid: "dash-okr", dashboardTitle: "业务概览-OKR", dashboardUrl: "https://data.example/dashboard/okr", cardTitle: "新客放款量", type: "latestNonZeroToZero", message: "指标从 537 降为 0" }],
+      aiAudit: [{ anomalyIndex: 0, verdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal", notifiable: false }],
+      notifiableAnomalies: [],
+    } }],
+  }] };
+
+  renderBatchCheck(root);
+  const scanDetails = root.innerHTML.match(/<div class="sub-panel dashboard-scan-details">[\s\S]*?<\/table>/)?.[0] || "";
+  assert.match(scanDetails, /AI分析后无异常/);
+  assert.match(scanDetails, /AI 已核验 1 条原始异常无需最终播报/);
+  assert.doesNotMatch(scanDetails, /发现 1 条异常/);
 });
 
 test("scheduled run progress renders compact five-stage status and keeps country details collapsible", () => {
