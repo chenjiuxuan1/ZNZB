@@ -14,6 +14,8 @@ config/batch-check-schedule.json
 config/batch-check-run-history.json
 config/metabase-anomaly-analyses.json
 config/metabase.auth.json
+config/runtime-discovered-panels*.json
+config/runtime-discovered-public-dashboards*.json
 .DS_Store
 config/ds-scheduler.config.json
 n8n-metabase-anomaly-agent.json

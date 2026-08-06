@@ -1493,7 +1493,7 @@ export function createPlatformApi({
         throw badRequest("Invalid dashboard", ["仅支持 Metabase 的 /public/dashboard/... 或 /dashboard/... 看板链接。"]);
       }
 
-      const sourcePath = panelSourceFilePath(rootDir, countryCode);
+      const sourcePath = runtimePanelSourceFilePath(rootDir, countryCode);
       const source = await readJsonFile(sourcePath, {});
       const panels = Array.isArray(source.panels) ? source.panels : [];
       const normalizedUrl = dashboardUrlIdentity(url);
@@ -1527,7 +1527,7 @@ export function createPlatformApi({
       if (!country || !panelId) {
         throw badRequest("Invalid dashboard", ["请选择需要发现卡片的看板。"]);
       }
-      const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), { panels: [] });
+      const source = await readMergedPanelSource(rootDir, countryCode);
       const panel = (source.panels || []).find((item) => String(item.id) === panelId);
       if (!panel) {
         throw badRequest("Dashboard not found", ["未找到该看板的来源记录，请刷新页面后重试。"]);
@@ -1574,7 +1574,7 @@ export function createPlatformApi({
         country: { code: country.code, name: country.name, timezone: country.timezone },
         dashboards: discovered,
       }]);
-      const outputFile = path.join(rootDir, `config/discovered-public-dashboards.${countryCode.toLowerCase()}.json`);
+      const outputFile = runtimeCountryInventoryFilePath(rootDir, countryCode);
       const discoveredAt = new Date().toISOString();
       await writeJsonAtomic(outputFile, { ...merged, discoveredAt });
       return {
@@ -1621,7 +1621,7 @@ export function createPlatformApi({
         const message = discovered.sourceErrors.map((item) => item.error).filter(Boolean).join("; ") || "Metabase 看板发现失败";
         throw badRequest("Dashboard discovery failed", [message]);
       }
-      const outputFile = path.join(rootDir, `config/discovered-public-dashboards.${countryCode.toLowerCase()}.json`);
+      const outputFile = runtimeCountryInventoryFilePath(rootDir, countryCode);
       await writeJsonAtomic(outputFile, { ...discovered, discoveredAt });
       return {
         ok: true,
@@ -4142,7 +4142,7 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
   const primaryInventoryName = path.basename(primaryInventoryFile);
   const countryInventoryFiles = fileNames
     .filter((fileName) => fileName !== primaryInventoryName)
-    .filter((fileName) => /^discovered-public-dashboards\.[a-z]+\.json$/i.test(fileName))
+    .filter((fileName) => /^(?:runtime-)?discovered-public-dashboards\.[a-z]+\.json$/i.test(fileName))
     .map((fileName) => path.join(configDir, fileName));
   const countryInventories = [];
 
@@ -4191,8 +4191,7 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
     return { urls: new Set(), panelIds: new Set() };
   }
 
-  const panelsFile = path.join(configDir, `discovered-panels.${match[1].toLowerCase()}.json`);
-  const panels = await readJsonFile(panelsFile, { panels: [] });
+  const panels = await readMergedPanelSource(path.dirname(configDir), match[1].toUpperCase());
   const panelItems = (panels?.panels || []).filter((panel) => !isExcludedScanDashboard(panel));
   return {
     urls: new Set(
@@ -4215,7 +4214,7 @@ async function discoverCountryInventoryFromPanelSources(rootDir, countryCode, di
     return { dashboards: [] };
   }
 
-  const inputFile = panelSourceFilePath(rootDir, countryCode);
+  const inputFile = await writeTemporaryMergedPanelSource(rootDir, countryCode);
   try {
     return await discoverDashboardsFn({
       inputFile,
@@ -4235,6 +4234,8 @@ async function discoverCountryInventoryFromPanelSources(rootDir, countryCode, di
       ],
       dashboards: [],
     };
+  } finally {
+    await fs.rm(inputFile, { force: true });
   }
 }
 
@@ -4242,7 +4243,7 @@ async function hasCountryPanelSources(rootDir, countryCode) {
   if (!countryCode) {
     return false;
   }
-  const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
+  const source = await readMergedPanelSource(rootDir, countryCode);
   return Array.isArray(source.panels) && source.panels.length > 0;
 }
 
@@ -4253,8 +4254,8 @@ async function isCountryInventoryFullyDiscovered(rootDir, countryCode) {
     ? "config/discovered-public-dashboards.json"
     : `config/discovered-public-dashboards.${code}.json`;
   const [sources, inventory] = await Promise.all([
-    readJsonFile(panelSourceFilePath(rootDir, code.toUpperCase()), { panels: [] }),
-    readJsonFile(path.join(rootDir, inventoryFile), { dashboards: [] }),
+    readMergedPanelSource(rootDir, code.toUpperCase()),
+    readPlatformInventory(rootDir, path.join(rootDir, inventoryFile)),
   ]);
   const refs = extractPanelSourceRefs(sources);
   if (refs.length === 0) return false;
@@ -4967,8 +4968,7 @@ async function loadPanelSources(rootDir, countries, filters = {}) {
   const sources = [];
 
   for (const country of targetCountries) {
-    const filePath = panelSourceFilePath(rootDir, country.code);
-    const source = await readJsonFile(filePath, {});
+    const source = await readMergedPanelSource(rootDir, country.code);
     if (!source || !Array.isArray(source.panels) || source.panels.length === 0) {
       continue;
     }
@@ -4999,6 +4999,73 @@ function panelSourceFilePath(rootDir, countryCode) {
     return path.join(rootDir, "config/discovered-panels.json");
   }
   return path.join(rootDir, `config/discovered-panels.${String(countryCode || "").toLowerCase()}.json`);
+}
+
+function runtimePanelSourceFilePath(rootDir, countryCode) {
+  return path.join(rootDir, `config/runtime-discovered-panels.${String(countryCode || "").toLowerCase()}.json`);
+}
+
+function runtimeCountryInventoryFilePath(rootDir, countryCode) {
+  return path.join(rootDir, `config/runtime-discovered-public-dashboards.${String(countryCode || "").toLowerCase()}.json`);
+}
+
+async function readMergedPanelSource(rootDir, countryCode) {
+  const [base, runtime, countries] = await Promise.all([
+    readJsonFile(panelSourceFilePath(rootDir, countryCode), {}),
+    readJsonFile(runtimePanelSourceFilePath(rootDir, countryCode), {}),
+    readJsonFile(path.join(rootDir, FILES.countries), { countries: [] }),
+  ]);
+  const merged = mergePanelSources(base, runtime);
+  if (!merged.country) {
+    const code = String(countryCode || "").trim().toUpperCase();
+    const country = (countries.countries || []).find((item) => String(item.code || "").toUpperCase() === code) || {};
+    merged.country = {
+      code,
+      name: country.name || code,
+      timezone: country.timezone,
+    };
+  }
+  return merged;
+}
+
+function mergePanelSources(...sources) {
+  const panels = [];
+  const seen = new Set();
+  let country = null;
+  let title = "";
+  let uid = "";
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    country = country || source.country || null;
+    title = title || source.title || "";
+    uid = uid || source.uid || "";
+    for (const panel of Array.isArray(source.panels) ? source.panels : []) {
+      const identities = panelSourceIdentities(panel);
+      const duplicate = identities.some((identity) => seen.has(identity));
+      if (duplicate) continue;
+      panels.push(panel);
+      identities.forEach((identity) => seen.add(identity));
+    }
+  }
+  return { country, title, uid, panels };
+}
+
+function panelSourceIdentities(panel = {}) {
+  const values = [];
+  if (panel.id != null) values.push(`id:${String(panel.id)}`);
+  for (const link of panel.links || []) {
+    const identity = dashboardUrlIdentity(link?.url || "");
+    if (identity) values.push(`url:${identity}`);
+  }
+  if (!values.length && panel.title) values.push(`title:${canonicalDashboardTitle(panel.title)}`);
+  return values;
+}
+
+async function writeTemporaryMergedPanelSource(rootDir, countryCode) {
+  const source = await readMergedPanelSource(rootDir, countryCode);
+  const temporaryInputFile = path.join(rootDir, `config/.merged-discovery-${String(countryCode || "").toLowerCase()}-${randomUUID()}.json`);
+  await writeJsonAtomic(temporaryInputFile, source);
+  return temporaryInputFile;
 }
 
 async function explainUnavailableCountryInventory(rootDir, countryCode, countries = []) {
