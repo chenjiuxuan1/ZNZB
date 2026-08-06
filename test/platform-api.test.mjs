@@ -897,7 +897,7 @@ test("platform api explicitly discovers and persists one country inventory", asy
 
   assert.equal(result.ok, true);
   assert.equal(result.discoveredDashboardCount, 1);
-  const saved = JSON.parse(await fs.readFile(path.join(rootDir, "config/discovered-public-dashboards.ine.json"), "utf8"));
+  const saved = JSON.parse(await fs.readFile(path.join(rootDir, "config/runtime-discovered-public-dashboards.ine.json"), "utf8"));
   assert.equal(saved.dashboards[0].dashboardId, 1052);
 });
 
@@ -941,7 +941,8 @@ test("platform api discovers all configured countries and isolates failures", as
     rootDir,
     discoverDashboardsFn: async ({ inputFile }) => {
       attempts += 1;
-      if (inputFile.endsWith(".ph.json")) throw new Error("Metabase authentication failed");
+      const source = JSON.parse(await fs.readFile(inputFile, "utf8"));
+      if (source.country?.code === "PH") throw new Error("Metabase authentication failed");
       return { dashboards: [] };
     },
   });
@@ -1086,6 +1087,57 @@ test("platform api discovers only the selected manual dashboard and preserves ot
   assert.equal(result.executableDashboardCount, 1);
   assert.equal(inventory.dashboards.find((item) => item.title === "手动核心看板").executable, true);
   assert.ok(inventory.dashboards.find((item) => item.title === "OKR"));
+});
+
+test("platform api preserves manually discovered dashboards across tracked config resets", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async ({ inputFile }) => {
+      const source = JSON.parse(await fs.readFile(inputFile, "utf8"));
+      const panel = source.panels[0];
+      return {
+        dashboards: [{
+          countryCode: "PH",
+          countryName: "菲律宾",
+          sourcePanelId: panel.id,
+          sourcePanelTitle: panel.title,
+          title: panel.title,
+          dashboardId: "1056",
+          uuid: "internal-1056",
+          url: panel.links[0].url,
+          sourceUrl: panel.links[0].url,
+          cards: [{ title: "小时指标", cardId: 105, dashcardId: 106 }],
+        }],
+      };
+    },
+  });
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({ countries: [{ code: "PH", name: "菲律宾", timezone: "Asia/Manila", status: "ready" }] }),
+  );
+  const added = await api.addManualDashboard({
+    countryCode: "PH",
+    title: "每小时监控",
+    url: "https://data.kuainiu.io/dashboard/1056",
+  });
+
+  await api.discoverManualDashboard({ countryCode: "PH", sourcePanelId: added.sourcePanelId });
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.ph.json"),
+    JSON.stringify({ country: { code: "PH", name: "菲律宾" }, panels: [] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ph.json"),
+    JSON.stringify({ country: { code: "PH", name: "菲律宾" }, dashboards: [] }),
+  );
+
+  const inventory = await api.getInventory({ countryCode: "PH" });
+  const hourly = inventory.dashboards.find((item) => item.title === "每小时监控");
+
+  assert.equal(hourly?.executable, true);
+  assert.equal(hourly?.cards.length, 1);
+  assert.equal(hourly?.availability, "ready");
 });
 
 test("platform api does not duplicate a ready internal dashboard from panel sources", async () => {
@@ -1790,6 +1842,8 @@ test("platform api discovers internal dashboards from source list when country i
     rootDir,
     discoverDashboardsFn: async (options) => {
       discoveredInputs.push(options.inputFile);
+      const source = JSON.parse(await fs.readFile(options.inputFile, "utf8"));
+      assert.equal(source.panels[0].title, "业务概览-OKR");
       return {
         country: { code: "PH", name: "菲律宾", timezone: "Asia/Manila" },
         dashboardCount: 1,
@@ -1825,7 +1879,6 @@ test("platform api discovers internal dashboards from source list when country i
   assert.equal(result.checkedCardCount, 1);
   assert.equal(result.checkedCards[0].dashboardUuid, "internal-501");
   assert.equal(discoveredInputs.length, 1);
-  assert.match(discoveredInputs[0], /discovered-panels\.ph\.json$/);
 });
 
 test("platform api runs scoped batch check and sends TV notification", async () => {
