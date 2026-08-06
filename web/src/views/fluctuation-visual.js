@@ -686,19 +686,54 @@ function renderAiProblemConclusion(anomaly = {}) {
   const summary = String(analysis.summary || "").trim();
   const confidence = String(analysis.confidence || "").trim();
   const verdict = describeAiProblemVerdict(analysis);
+  const processItems = [
+    analysis.statusLabel ? `巡检状态：${analysis.statusLabel}` : "",
+    analysis.verificationReason ? `核验说明：${analysis.verificationReason}` : "",
+    analysis.dashboardSummary ? `看板结论：${analysis.dashboardSummary}` : "",
+  ].filter(Boolean);
   return `
     <aside class="fluctuation-ai-conclusion">
       <div class="fluctuation-ai-conclusion-head">
-        <span>AI 分析结论</span>
+        <span>AI 巡检过程与通知</span>
         <strong>${escapeHtml(verdict)}</strong>
       </div>
       <p>${escapeHtml(summary || "AI 已判定该波动需要关注，但本次结果未返回摘要。")}</p>
+      ${renderAiProcessList("巡检过程", processItems)}
+      ${renderAiProcessList("可能原因", analysis.possibleCauses)}
+      ${renderAiProcessList("核查步骤", analysis.verificationSteps)}
+      ${renderAiProcessList("建议处理", analysis.recommendedActions)}
+      ${analysis.limitations ? `<div class="fluctuation-ai-limitation"><span>限制说明</span><p>${escapeHtml(analysis.limitations)}</p></div>` : ""}
       <div class="fluctuation-ai-conclusion-meta">
+        ${analysis.status ? `<em>任务状态：${escapeHtml(describeAiTaskStatus(analysis.status))}</em>` : ""}
         ${confidence ? `<em>置信度：${escapeHtml(confidence)}</em>` : ""}
         ${analysis.notificationAction ? `<em>通知建议：${escapeHtml(describeNotificationAction(analysis.notificationAction))}</em>` : ""}
+        ${analysis.notifiable === false ? `<em>最终通知：不播报</em>` : `<em>最终通知：${escapeHtml(describeNotificationAction(analysis.notificationAction || "send"))}</em>`}
       </div>
     </aside>
   `;
+}
+
+function renderAiProcessList(title, values) {
+  const items = Array.isArray(values) ? values : [values].filter(Boolean);
+  const normalized = items.map((item) => String(item || "").trim()).filter(Boolean);
+  if (!normalized.length) return "";
+  return `
+    <div class="fluctuation-ai-process-block">
+      <span>${escapeHtml(title)}</span>
+      <ul>
+        ${normalized.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function describeAiTaskStatus(status) {
+  const value = String(status || "").trim();
+  if (value === "completed") return "已完成";
+  if (value === "timed_out") return "超时";
+  if (value === "failed") return "失败";
+  if (value === "pending") return "等待回调";
+  return value;
 }
 
 function describeAiProblemVerdict(item = {}) {

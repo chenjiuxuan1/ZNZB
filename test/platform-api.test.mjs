@@ -562,7 +562,7 @@ test("batch callback completes all verdicts from a single dashboard analysis", a
     runId: "pending-dashboard-analysis", countryCode: "PH", jobId: "analysis-job-1",
     results: [
       { anomalyIndex: 0, analysis: { summary: "底表值正常", confidence: "high", dataSideVerdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal", verificationReason: "实时查询确认正常" } },
-      { anomalyIndex: 1, analysis: { summary: "底表分区缺失", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send", chartVisibility: "show" } },
+      { anomalyIndex: 1, analysis: { summary: "底表分区缺失", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send", chartVisibility: "show", possibleCauses: ["ODS 分区未产出"], verificationSteps: ["检查底表分区"], recommendedActions: ["补跑 DS 任务"], limitations: "测试限制" } },
     ],
   });
 
@@ -578,6 +578,10 @@ test("batch callback completes all verdicts from a single dashboard analysis", a
   assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).notificationAction, "send");
   assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).summary, "底表分区缺失");
   assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).confidence, "high");
+  assert.deepEqual(displayIndex.items.find((item) => item.anomalyIndex === 1).possibleCauses, ["ODS 分区未产出"]);
+  assert.deepEqual(displayIndex.items.find((item) => item.anomalyIndex === 1).verificationSteps, ["检查底表分区"]);
+  assert.deepEqual(displayIndex.items.find((item) => item.anomalyIndex === 1).recommendedActions, ["补跑 DS 任务"]);
+  assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).limitations, "测试限制");
 });
 
 test("platform prepares one analysis request containing every metric on a dashboard", async () => {
