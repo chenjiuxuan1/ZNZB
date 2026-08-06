@@ -120,6 +120,9 @@ test("Metabase anomaly agent sends every dashboard metric in one protocol v5 das
   });
 
   assert.equal(result.pending, true);
+  assert.notEqual(result.jobId, "batch-job-1");
+  assert.equal(result.n8nJobId, "batch-job-1");
+  assert.equal(payload.jobId, result.jobId);
   assert.equal(payload.protocolVersion, 5);
   assert.equal(payload.job.stage, "dashboard_analysis");
   assert.equal(payload.job.cases.length, 12);
