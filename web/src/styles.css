@@ -4714,6 +4714,29 @@ body {
   margin-bottom: 14px;
 }
 
+.fluctuation-toolbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.fluctuation-ai-filter {
+  background: #f8fafc;
+  border: 1px solid #dfe6f1;
+  border-radius: 999px;
+  padding: 7px 10px;
+}
+
+.fluctuation-ai-filter input:disabled + span {
+  opacity: 0.55;
+}
+
+.fluctuation-ai-filter input:disabled ~ em {
+  color: #94a3b8;
+}
+
 .fluctuation-country-card {
   display: grid;
   gap: 14px;
@@ -4800,6 +4823,12 @@ body {
   padding: 12px;
 }
 
+.fluctuation-row.is-ai-suppressed {
+  background: #f8fafc;
+  border-color: #bbf7d0;
+  opacity: 0.86;
+}
+
 .fluctuation-row-meta {
   align-content: start;
   display: grid;
@@ -4830,10 +4859,20 @@ body {
 }
 
 .fluctuation-row-title h3 {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 16px;
   line-height: 1.35;
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.fluctuation-ai-suppressed-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 7px;
 }
 
 .fluctuation-row-title p {
