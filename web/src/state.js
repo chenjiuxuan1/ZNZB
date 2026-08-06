@@ -39,6 +39,7 @@ export const state = {
   fluctuationVisualLoaded: false,
   fluctuationVisualRefreshProgress: null,
   fluctuationVisualDisplayIndex: {},
+  fluctuationVisualShowAiSuppressed: false,
   fluctuationVisualSeries: {},
   wattrelCurrentResult: null,
   wattrelCurrentStatus: null,

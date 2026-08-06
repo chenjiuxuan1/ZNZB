@@ -581,7 +581,7 @@ test("fluctuation visual only uses runs updated today", () => {
 });
 
 test("fluctuation visual hides AI suppressed business-change anomalies", () => {
-  const model = fluctuationVisualTest.buildFluctuationVisualModel({
+  const history = {
     runs: [{
       id: "ai-suppressed-run",
       startedAt: "2026-07-28T01:00:00.000Z",
@@ -602,7 +602,8 @@ test("fluctuation visual hides AI suppressed business-change anomalies", () => {
         },
       }],
     }],
-  }, [], {
+  };
+  const options = {
     today: "2026-07-28",
     displayIndex: {
       "ai-suppressed-run:MX:0": {
@@ -616,11 +617,18 @@ test("fluctuation visual hides AI suppressed business-change anomalies", () => {
         chartVisibility: "show",
       },
     },
-  });
+  };
+  const model = fluctuationVisualTest.buildFluctuationVisualModel(history, [], options);
 
   assert.equal(model.hiddenVerifiedNormalCount, 1);
   assert.equal(model.anomalyCount, 1);
   assert.equal(model.countries[0].anomalies[0].dashboardTitle, "Data issue");
+
+  const expandedModel = fluctuationVisualTest.buildFluctuationVisualModel(history, [], { ...options, showAiSuppressed: true });
+  assert.equal(expandedModel.hiddenVerifiedNormalCount, 1);
+  assert.equal(expandedModel.anomalyCount, 2);
+  assert.equal(expandedModel.countries[0].anomalies[0].aiSuppressed, true);
+  assert.equal(expandedModel.countries[0].anomalies[0].aiSuppressedReason, "AI 判定业务变化/降级");
 });
 
 test("fluctuation visual excludes China empty and zero-style anomalies", () => {
