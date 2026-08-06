@@ -1723,6 +1723,32 @@ a.dashboard-row {
   width: 62px;
 }
 
+.dashboard-scan-details .dashboard-summary-table table {
+  min-width: 1180px;
+}
+
+.dashboard-scan-details .dashboard-summary-table table th:nth-child(7),
+.dashboard-scan-details .dashboard-summary-table table td:nth-child(7) {
+  width: 112px;
+}
+
+.dashboard-scan-details .dashboard-summary-table table th:nth-child(8),
+.dashboard-scan-details .dashboard-summary-table table td:nth-child(8) {
+  min-width: 360px;
+  width: auto;
+}
+
+.dashboard-scan-details .dashboard-summary-table table td:nth-child(7) .badge {
+  border-radius: 8px;
+  display: inline-flex;
+  justify-content: center;
+  line-height: 1.25;
+  max-width: 96px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .dashboard-anomaly-actions {
   align-items: center;
   display: flex;
