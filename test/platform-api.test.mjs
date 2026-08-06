@@ -2784,6 +2784,65 @@ test("AI-first patrol waits for batch verdicts before final notification and his
   }
 });
 
+test("AI-first patrol suppresses AI verified normal anomalies from final notification and history status", async () => {
+  const rootDir = await makeFixture();
+  const previous = {
+    METABASE_ANOMALY_BATCH_MODE: process.env.METABASE_ANOMALY_BATCH_MODE,
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL,
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN,
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN,
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: process.env.METABASE_ANOMALY_AGENT_N8N_ASYNC,
+    METABASE_ANOMALY_AGENT_ENABLED: process.env.METABASE_ANOMALY_AGENT_ENABLED,
+  };
+  Object.assign(process.env, {
+    METABASE_ANOMALY_BATCH_MODE: "1",
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/batch",
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: "token",
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback",
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
+    METABASE_ANOMALY_AGENT_ENABLED: "1",
+  });
+  const order = [];
+  let api;
+  api = createPlatformApi({
+    rootDir,
+    aiFirstMetabasePatrolEnabled: true,
+    metabaseClientFactory: () => ({ async queryDashcardJson() { return [{ "统计日期": "2026-07-05", "注册数": 10 }]; } }),
+    metabaseInternalClientFactory: () => ({ getCard: async () => ({ id: 1, dataset_query: { native: { query: "SELECT * FROM ads.loan_d" } } }) }),
+    metabaseAnomalyBatchAgentFn: async ({ batch }) => {
+      order.push(batch.stage);
+      const jobId = `analysis-callback-${batch.cases[0].anomalyIndex}`;
+      setTimeout(() => {
+        void api.completeMetabaseAnomalyBatch({
+          runId: batch.runId, countryCode: batch.countryCode, jobId, results: batch.cases.map((item) => ({
+            anomalyIndex: item.anomalyIndex,
+            analysis: { summary: "实时查询确认正常", confidence: "high", dataSideVerdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal", verificationReason: "底表已恢复" },
+          })),
+        }).catch((error) => order.push(`analysis-error:${error.message}`));
+      }, 50);
+      return { pending: true, jobId, provider: "n8n-evidence" };
+    },
+    notifyTextFn: async () => { order.push("notify"); return { sent: true, status: 200 }; },
+  });
+  try {
+    await api.saveBatchSchedule({ enabled: false, countryConfigs: [{ countryCode: "INE", enabled: true, dashboardUuids: ["dash-1"], notifyChannel: "tv", webhookUrl: "https://tv.example", botId: "bot" }] });
+    await api.runBatchScheduleNow(new Date());
+    assert.deepEqual(order, ["dashboard_analysis"]);
+    const history = await api.getBatchHistory();
+    const countryResult = history.runs[0].runs[0].result;
+    assert.equal(history.runs[0].notificationSentCount, 0);
+    assert.equal(history.runs[0].anomalyCount, 0);
+    assert.equal(countryResult.anomalyCount, 0);
+    assert.equal(countryResult.rawAnomalyCount, 1);
+    assert.equal(countryResult.aiAudit[0].statusLabel, "AI 查数正常");
+    assert.equal(countryResult.notification.skipped, true);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
 test("scheduled Wattrel history keeps only the latest result for each quality rule", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(

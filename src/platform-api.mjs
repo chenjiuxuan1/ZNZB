@@ -495,10 +495,29 @@ export function createPlatformApi({
           waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
           onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, event); },
         });
+        const timedOutBatches = (analysisResult.settled || [])
+          .filter((item) => item.result?.status === "timed_out")
+          .map((item) => item.batch);
+        if (timedOutBatches.length && Date.now() < deadlineAt) {
+          batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", {
+            status: "running",
+            detail: `正在重刷 ${timedOutBatches.length} 个超时看板分析`,
+          });
+          const retryResult = await runBoundedInvestigationQueue({
+            batches: timedOutBatches,
+            limits,
+            deadlineAt,
+            submit: async (batch) => this.submitMetabaseInvestigationBatch(batch),
+            waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
+            onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, retry: true }); },
+          });
+          queueResult = mergeBatchInvestigationResults(analysisResult, retryResult);
+        } else {
+          queueResult = analysisResult;
+        }
         for (const batch of analysisResult.notSubmitted || []) {
           await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 45 分钟全局截止，未再投递 Dify" });
         }
-        queueResult = analysisResult;
      } else {
        const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
        for (const batch of prepared.batches) await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "Dify 批量取证未配置，已按保守策略通知" });
@@ -3595,10 +3614,10 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   let status = "running";
   let detail = `看板分析 ${completed}/${total}，最多同时运行 3 个请求`;
   if (event.type === "batch_submitted") {
-    detail = `看板分析已提交 ${Math.min(event.submitted || 0, total)}/${total}，等待 Dify 回写`;
+    detail = `${event.retry ? "重刷看板分析" : "看板分析"}已提交 ${Math.min(event.submitted || 0, total)}/${total}，等待 Dify 回写`;
   }
   if (event.type === "batch_settled") {
-    detail = `看板分析 ${completed}/${total}，等待 Dify 回写`;
+    detail = `${event.retry ? "重刷看板分析" : "看板分析"} ${completed}/${total}，等待 Dify 回写`;
     if (errors.length) detail += `；失败 ${errors.length}：${errors[errors.length - 1]}`;
   }
   if (event.type === "global_deadline") {
@@ -3613,6 +3632,31 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
     detail,
   });
   return { ...next, status: status === "partial_failed" ? "partial_failed" : "ai_analyzing" };
+}
+
+function mergeBatchInvestigationResults(initial = {}, retry = {}) {
+  const keyForBatch = (batch = {}) => String(batch.batchId || batch.groupKey || "");
+  const keyForSettled = (item = {}) => keyForBatch(item.batch);
+  const byBatch = new Map();
+  for (const item of initial.settled || []) byBatch.set(keyForSettled(item), item);
+  for (const item of retry.settled || []) byBatch.set(keyForSettled(item), item);
+  const settled = [...byBatch.values()];
+  const settledKeys = new Set(settled.map(keyForSettled));
+  const notSubmitted = [
+    ...(initial.notSubmitted || []),
+    ...(retry.notSubmitted || []),
+  ].filter((batch, index, all) => {
+    const key = keyForBatch(batch);
+    return key && !settledKeys.has(key) && all.findIndex((item) => keyForBatch(item) === key) === index;
+  });
+  return {
+    total: initial.total || retry.total || settled.length,
+    completed: settled.filter((item) => item.result?.status === "completed").length,
+    settled,
+    failed: settled.filter((item) => item.result?.status === "failed").length,
+    timedOut: settled.filter((item) => item.result?.status === "timed_out").length,
+    notSubmitted,
+  };
 }
 
 async function buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile }) {
@@ -3644,9 +3688,21 @@ async function buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile })
       };
     });
     const notifiableAnomalies = anomalies.filter((_item, index) => aiAudit[index].notifiable);
+    const aiVerdictCounts = aiAudit.reduce((counts, item) => {
+      const key = item.verdict || "insufficient_evidence";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
     return {
       ...countryRun,
-      result: { ...countryRun.result, aiAudit, notifiableAnomalies },
+      result: {
+        ...countryRun.result,
+        rawAnomalyCount: Number(countryRun.result.anomalyCount || anomalies.length || 0),
+        anomalyCount: notifiableAnomalies.length,
+        aiAudit,
+        aiVerdictCounts,
+        notifiableAnomalies,
+      },
     };
   });
 }
@@ -3687,6 +3743,25 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
       ...combineScheduledCountryResults(notificationRuns),
       wattrelSummary,
     };
+    if (Number(result.anomalyCount || 0) + Number(result.dataQualityAnomalyCount || 0) <= 0) {
+      const notification = {
+        sent: false,
+        skipped: true,
+        reason: "no data-side anomalies after AI verification",
+        sentMessages: 0,
+        results: [],
+        channel: group.alerts.channel,
+        botId: group.alerts.botId || "",
+        chatId: group.alerts.chatId || "",
+        recipientEmails: group.alerts.recipientEmails || "",
+        mentions: group.alerts.mentions || [],
+        webhookUrl: group.alerts.webhookUrl || "",
+        detailUrl: group.alerts.detailUrl || "",
+        sentAt: new Date().toISOString(),
+      };
+      for (const countryRun of group.countryRuns) countryRun.result.notification = notification;
+      continue;
+    }
     const messages = buildPublicCheckMessages(result, {
       ...group.alerts,
       countryDetailMode: "summary",
