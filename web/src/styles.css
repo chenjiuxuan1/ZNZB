@@ -1269,6 +1269,79 @@ button[aria-busy="true"] { cursor: progress; }
   color: #b45309;
 }
 
+.sandbox-status.ai-final-verdict {
+  border-left-width: 6px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+  padding: 14px 16px;
+}
+
+.sandbox-status.ai-final-verdict strong {
+  align-items: center;
+  display: flex;
+  font-size: 16px;
+  gap: 8px;
+}
+
+.sandbox-status.ai-final-verdict strong::before {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+
+.sandbox-status.ai-verdict-issue {
+  background: #fff1f2;
+  border-color: #fb7185;
+  color: #be123c;
+}
+
+.sandbox-status.ai-verdict-issue strong::before {
+  background: #be123c;
+  color: #fff;
+  content: "!";
+}
+
+.sandbox-status.ai-verdict-normal {
+  background: #ecfdf3;
+  border-color: #22c55e;
+  color: #047857;
+}
+
+.sandbox-status.ai-verdict-normal strong::before {
+  background: #047857;
+  color: #fff;
+  content: "✓";
+}
+
+.sandbox-status.ai-verdict-business {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}
+
+.sandbox-status.ai-verdict-business strong::before {
+  background: #1d4ed8;
+  color: #fff;
+  content: "↓";
+}
+
+.sandbox-status.ai-verdict-unknown {
+  background: #fffbeb;
+  border-color: #f59e0b;
+  color: #b45309;
+}
+
+.sandbox-status.ai-verdict-unknown strong::before {
+  background: #b45309;
+  color: #fff;
+  content: "?";
+}
+
 .sandbox-status.error pre {
   background: #111827;
   border-radius: 8px;
@@ -1724,12 +1797,12 @@ a.dashboard-row {
 }
 
 .dashboard-scan-details .dashboard-summary-table table {
-  min-width: 1180px;
+  min-width: 1260px;
 }
 
 .dashboard-scan-details .dashboard-summary-table table th:nth-child(7),
 .dashboard-scan-details .dashboard-summary-table table td:nth-child(7) {
-  width: 112px;
+  width: 156px;
 }
 
 .dashboard-scan-details .dashboard-summary-table table th:nth-child(8),
@@ -1739,14 +1812,14 @@ a.dashboard-row {
 }
 
 .dashboard-scan-details .dashboard-summary-table table td:nth-child(7) .badge {
-  border-radius: 8px;
+  border-radius: 999px;
   display: inline-flex;
   justify-content: center;
   line-height: 1.25;
-  max-width: 96px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  max-width: none;
+  min-width: max-content;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .dashboard-anomaly-actions {

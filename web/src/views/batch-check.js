@@ -1330,7 +1330,7 @@ export function renderMetabaseAnomalyAnalysis(response) {
   const analysis = response?.analysis || {};
   const finalVerdict = formatMetabaseFinalVerdict(analysis);
   return `
-    <div class="sandbox-status ${escapeHtml(finalVerdict.className)}">
+    <div class="sandbox-status ai-final-verdict ${escapeHtml(finalVerdict.className)}">
       <strong>最终判定：${escapeHtml(finalVerdict.title)}</strong>
       <span>${escapeHtml(finalVerdict.detail)}</span>
     </div>
@@ -1355,27 +1355,27 @@ function formatMetabaseFinalVerdict(analysis = {}) {
   const action = String(analysis.notificationAction || "").trim();
   if (verdict === "verified_normal" || analysis.chartVisibility === "hide_verified_normal") {
     return {
-      className: "success",
+      className: "success ai-verdict-normal",
       title: "AI 分析后无异常",
       detail: analysis.verificationReason || "实时取证已确认该原始告警不属于当前数据异常，最终播报会跳过。",
     };
   }
   if (verdict === "business_change" || action === "downgrade") {
     return {
-      className: "success",
+      className: "success ai-verdict-business",
       title: "业务变化，不作为数据侧异常播报",
       detail: "AI 判断数据链路未发现故障证据，最终播报会跳过或降级。",
     };
   }
   if (verdict === "data_issue" || action === "send") {
     return {
-      className: "error",
+      className: "error ai-verdict-issue",
       title: "有数据侧异常",
       detail: "AI 取证认为需要进入最终异常播报或人工处理。",
     };
   }
   return {
-    className: "warn",
+    className: "warn ai-verdict-unknown",
     title: "证据不足，按异常保守处理",
     detail: "AI 未取得足够证据排除异常，最终播报会保留该项。",
   };
