@@ -82,10 +82,15 @@ export function renderFluctuationVisual(root) {
   const selectedCountry = getSelectedFluctuationCountry(model.countries || []);
   const requestedRunId = String(query.runId || "");
   const hasRequestedRun = !requestedRunId || (state.batchHistory?.runs || []).some((run) => run.id === requestedRunId);
-  // A link opened from scan details already has a targeted history request in
-  // app startup. Do not race it with a second request here, otherwise the
-  // later response can leave the initial country without a hydration pass.
-  if (!hasRequestedRun && !requestedRunId && state.fluctuationVisualRequestedRunId !== requestedRunId) {
+  // A link opened from scan details needs its exact history run. App startup
+  // normally provides it, but in-app navigation happens after startup and
+  // therefore needs this fallback request.
+  if (shouldLoadRequestedFluctuationRun({
+    requestedRunId,
+    hasRequestedRun,
+    historyLoading: state.batchHistoryStatus?.type === "loading",
+    alreadyRequestedRunId: state.fluctuationVisualRequestedRunId,
+  })) {
     state.fluctuationVisualRequestedRunId = requestedRunId;
     void reloadFluctuationHistory(root);
   } else if (selectedCountry) {
@@ -125,6 +130,7 @@ async function reloadFluctuationHistory(root) {
     state.fluctuationVisualRefreshProgress = null;
     state.batchHistoryStatus = null;
   } catch (error) {
+    state.fluctuationVisualRequestedRunId = "";
     state.fluctuationVisualRefreshProgress = null;
     state.batchHistoryStatus = {
       type: "error",
@@ -310,6 +316,18 @@ function renderFluctuationCountry(country) {
 
 function renderDetailField(label, value) {
   return `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+}
+
+function shouldLoadRequestedFluctuationRun({
+  requestedRunId = "",
+  hasRequestedRun = false,
+  historyLoading = false,
+  alreadyRequestedRunId = "",
+} = {}) {
+  return Boolean(requestedRunId)
+    && !hasRequestedRun
+    && !historyLoading
+    && alreadyRequestedRunId !== requestedRunId;
 }
 
 function renderFluctuationRefreshProgress() {
@@ -965,4 +983,5 @@ export const __test__ = {
   resolveChartYBounds,
   renderOptionalDetailField,
   matchesDashboardFilter,
+  shouldLoadRequestedFluctuationRun,
 };
