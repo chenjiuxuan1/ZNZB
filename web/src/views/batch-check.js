@@ -1148,7 +1148,7 @@ function renderHistoryCountryDetail(countryRun, runId = "") {
 }
 
 function renderHistoryDashboardSummary(result, context = {}) {
-  const dashboards = result.checkedDashboards || [];
+  const dashboards = (result.checkedDashboards || []).filter((dashboard) => !isExcludedScanDashboardRow(dashboard));
   if (!dashboards.length) {
     return "";
   }
@@ -1877,6 +1877,9 @@ function renderDashboardScanDetails(result, context = {}) {
 function buildDashboardScanRows(result) {
   const groups = new Map();
   for (const card of result.checkedCards || []) {
+    if (isExcludedScanDashboardRow(card)) {
+      continue;
+    }
     const key = `${card.countryCode || ""}::${card.dashboardUuid || card.dashboardTitle || ""}`;
     if (!groups.has(key)) {
       groups.set(key, {
@@ -1901,6 +1904,9 @@ function buildDashboardScanRows(result) {
     }
   }
   for (const anomaly of result.anomalies || []) {
+    if (isExcludedScanDashboardRow(anomaly)) {
+      continue;
+    }
     const key = `${anomaly.countryCode || ""}::${anomaly.dashboardUuid || anomaly.dashboardTitle || ""}`;
     if (!groups.has(key)) {
       groups.set(key, {
@@ -1940,6 +1946,13 @@ function buildDashboardScanRows(result) {
       issueSummary: summarizeDashboardIssue(group),
     };
   });
+}
+
+function isExcludedScanDashboardRow(item = {}) {
+  const title = String(item.dashboardTitle || item.sourcePanelTitle || item.title || "");
+  const url = String(item.dashboardUrl || item.sourceUrl || item.url || "");
+  return title.includes("营销过程数据统计")
+    || /\/dashboard\/(?:993|994)(?:[/?#]|$)/.test(url);
 }
 
 function summarizeDashboardIssue(group) {
