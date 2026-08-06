@@ -44,7 +44,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://172.20.0.234/v1/workflows/run",
+        "url": "https://bigdata-dify.kuainiu.io/v1/chat-messages",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -60,7 +60,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { inputs: { analysis_stage: $json.job.stage, run_id: $json.job.runId, country_code: $json.job.countryCode, batch_id: $json.job.batchId, snapshot_id: $json.job.snapshotId, dashboard_uuid: $json.job.dashboardUuid, dashboard_title: $json.job.dashboardTitle, cases_json: JSON.stringify($json.job.cases) }, response_mode: 'blocking', user: 'metabase-evidence-' + $json.jobId } }}",
+        "jsonBody": "={{ { inputs: { analysis_stage: $json.job.stage, run_id: $json.job.runId, country_code: $json.job.countryCode, batch_id: $json.job.batchId, snapshot_id: $json.job.snapshotId, dashboard_uuid: $json.job.dashboardUuid, dashboard_title: $json.job.dashboardTitle, cases_json: JSON.stringify($json.job.cases) }, query: '请执行 dashboard_analysis，分析 inputs 中的全部异常指标，并严格返回约定的单个 JSON 对象。', response_mode: 'blocking', conversation_id: '', user: 'metabase-evidence-' + $json.jobId } }}",
         "options": {
           "timeout": 300000
         }
