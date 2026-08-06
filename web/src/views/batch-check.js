@@ -1128,17 +1128,18 @@ function renderHistoryCountryDetail(countryRun, runId = "") {
   }
   const result = countryRun.result || {};
   const anomalies = result.anomalies || [];
+  const effectiveAnomalyCount = Number(result.anomalyCount ?? anomalies.length ?? 0);
   const hasDashboardAnomalySummary = Number(result.anomalyCount || 0) > 0;
   return `
     <div class="sub-panel history-country-detail">
       <div class="detail-header compact-header">
         <h2 class="panel-title">${escapeHtml(label)}</h2>
-        <span class="badge ${anomalies.length || result.dataQualityAnomalyCount ? "warn" : "ok"}">${anomalies.length || result.dataQualityAnomalyCount ? "有异常" : "正常"}</span>
+        <span class="badge ${effectiveAnomalyCount || result.dataQualityAnomalyCount ? "warn" : "ok"}">${effectiveAnomalyCount || result.dataQualityAnomalyCount ? "有异常" : (anomalies.length ? "AI 分析后无异常" : "正常")}</span>
       </div>
       <div class="auto-summary small-summary">
         ${summaryItem("检查卡片", result.checkedCardCount || 0)}
         ${summaryItem("覆盖看板", result.dashboardCount || 0)}
-        ${summaryItem("规则异常", result.anomalyCount || 0)}
+        ${summaryItem(result.rawAnomalyCount && result.rawAnomalyCount !== effectiveAnomalyCount ? "AI后异常" : "规则异常", effectiveAnomalyCount)}
         ${summaryItem("数据质量异常", result.dataQualityAnomalyCount || 0)}
       </div>
       ${renderDashboardScanDetails(result, { runId, countryCode: countryRun.countryCode || "" }) || renderHistoryDashboardSummary(result, { runId, countryCode: countryRun.countryCode || "" })}
@@ -1327,7 +1328,12 @@ export function renderMetabaseAnomalyAnalysis(response) {
     return `<div class="sandbox-status info"><strong>数据侧取证进行中</strong><span>任务 ${escapeHtml(response.jobId || "-")} 已提交；完成后可查看 StarRocks、血缘和 DS 的核查结论。</span></div>`;
   }
   const analysis = response?.analysis || {};
+  const finalVerdict = formatMetabaseFinalVerdict(analysis);
   return `
+    <div class="sandbox-status ${escapeHtml(finalVerdict.className)}">
+      <strong>最终判定：${escapeHtml(finalVerdict.title)}</strong>
+      <span>${escapeHtml(finalVerdict.detail)}</span>
+    </div>
     <div class="sandbox-status info">
       <strong>AI 数据侧分析${response.cached ? "（缓存）" : ""}</strong>
       <span>${escapeHtml(analysis.summary || "-")}</span>
@@ -1342,6 +1348,37 @@ export function renderMetabaseAnomalyAnalysis(response) {
       <button class="secondary" type="button" data-metabase-anomaly-retry data-run-id="${escapeHtml(response.runId || "")}" data-country-code="${escapeHtml(response.countryCode || "")}" data-anomaly-index="${escapeHtml(response.anomalyIndex ?? "")}" data-analysis-result-id="metabase-ai-analysis-${encodeURIComponent(`${response.runId || ""}-${response.countryCode || ""}-${response.anomalyIndex ?? ""}`).replace(/%/g, "")}">重新 AI 分析</button>
     </div>
   `;
+}
+
+function formatMetabaseFinalVerdict(analysis = {}) {
+  const verdict = String(analysis.dataSideVerdict || "").trim();
+  const action = String(analysis.notificationAction || "").trim();
+  if (verdict === "verified_normal" || analysis.chartVisibility === "hide_verified_normal") {
+    return {
+      className: "success",
+      title: "AI 分析后无异常",
+      detail: analysis.verificationReason || "实时取证已确认该原始告警不属于当前数据异常，最终播报会跳过。",
+    };
+  }
+  if (verdict === "business_change" || action === "downgrade") {
+    return {
+      className: "success",
+      title: "业务变化，不作为数据侧异常播报",
+      detail: "AI 判断数据链路未发现故障证据，最终播报会跳过或降级。",
+    };
+  }
+  if (verdict === "data_issue" || action === "send") {
+    return {
+      className: "error",
+      title: "有数据侧异常",
+      detail: "AI 取证认为需要进入最终异常播报或人工处理。",
+    };
+  }
+  return {
+    className: "warn",
+    title: "证据不足，按异常保守处理",
+    detail: "AI 未取得足够证据排除异常，最终播报会保留该项。",
+  };
 }
 
 
@@ -1890,6 +1927,7 @@ function buildDashboardScanRows(result) {
         checkedCardCount: 0,
         failedCardCount: 0,
         anomalyCount: 0,
+        aiSuppressedCount: 0,
         cards: [],
         anomalySamples: [],
       });
@@ -1903,7 +1941,7 @@ function buildDashboardScanRows(result) {
       group.cards.push(card.cardTitle);
     }
   }
-  for (const anomaly of result.anomalies || []) {
+  for (const [anomalyIndex, anomaly] of (result.anomalies || []).entries()) {
     if (isExcludedScanDashboardRow(anomaly)) {
       continue;
     }
@@ -1917,11 +1955,17 @@ function buildDashboardScanRows(result) {
         checkedCardCount: 0,
         failedCardCount: 0,
         anomalyCount: 0,
+        aiSuppressedCount: 0,
         cards: [],
         anomalySamples: [],
       });
     }
     const group = groups.get(key);
+    const audit = Array.isArray(result.aiAudit) ? result.aiAudit[anomalyIndex] : null;
+    if (audit && audit.notifiable === false) {
+      group.aiSuppressedCount += 1;
+      continue;
+    }
     group.anomalyCount += 1;
     if (!group.dashboardUrl && anomaly.dashboardUrl) {
       group.dashboardUrl = anomaly.dashboardUrl;
@@ -1934,6 +1978,8 @@ function buildDashboardScanRows(result) {
   return [...groups.values()].map((group) => {
     const statusText = group.anomalyCount > 0
       ? "有异常"
+      : group.aiSuppressedCount > 0
+        ? "AI分析后无异常"
       : group.failedCardCount > 0
         ? "查询失败"
         : "正常";
@@ -1963,6 +2009,9 @@ function summarizeDashboardIssue(group) {
   if (group.anomalyCount > 0) {
     const sampleText = group.anomalySamples.length ? `：${group.anomalySamples.join("；")}` : "";
     parts.push(`发现 ${group.anomalyCount} 条异常${sampleText}`);
+  }
+  if (group.aiSuppressedCount > 0) {
+    parts.push(`AI 已核验 ${group.aiSuppressedCount} 条原始异常无需最终播报`);
   }
   if (!parts.length) {
     return `无异常，已扫描 ${group.checkedCardCount || 0} 张卡片`;
