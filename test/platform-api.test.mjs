@@ -576,6 +576,8 @@ test("batch callback completes all verdicts from a single dashboard analysis", a
   const displayIndex = await api.getMetabaseAnomalyAnalysisDisplayIndex({ runId: "pending-dashboard-analysis" });
   assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 0).dataSideVerdict, "verified_normal");
   assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).notificationAction, "send");
+  assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).summary, "底表分区缺失");
+  assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).confidence, "high");
 });
 
 test("platform prepares one analysis request containing every metric on a dashboard", async () => {

@@ -268,6 +268,7 @@ function renderFluctuationRow(anomaly, index) {
           ${renderOptionalDetailField("变化", anomaly.detail.changeValue)}
           <div>${renderDetailField("时间", anomaly.detail.timeText || "-")}</div>
         </div>
+        ${renderAiProblemConclusion(anomaly)}
       </div>
       <div class="fluctuation-row-chart">
         ${renderFluctuationMetricTagControl(anomaly, tag)}
@@ -602,6 +603,7 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
       ...anomaly,
       aiSuppressed: isAiSuppressedFluctuationPoint(displayItem),
       aiSuppressedReason: describeAiSuppressedFluctuationPoint(displayItem),
+      aiAnalysis: displayItem || null,
     };
   });
   const anomalies = showAiSuppressed
@@ -645,6 +647,53 @@ function describeAiSuppressedFluctuationPoint(item = {}) {
   if (verdict === "verified_normal" || item.chartVisibility === "hide_verified_normal") return "AI 判定无异常";
   if (verdict === "business_change" || action === "downgrade") return "AI 判定业务变化/降级";
   return "";
+}
+
+function isAiProblemFluctuationPoint(item = {}) {
+  const verdict = String(item.dataSideVerdict || item.finalVerdict || item.verdict || "").trim();
+  const action = String(item.notificationAction || "").trim();
+  return verdict === "data_issue"
+    || verdict === "system_issue"
+    || verdict === "metric_issue"
+    || action === "send";
+}
+
+function renderAiProblemConclusion(anomaly = {}) {
+  const analysis = anomaly.aiAnalysis || {};
+  if (!isAiProblemFluctuationPoint(analysis)) return "";
+  const summary = String(analysis.summary || "").trim();
+  const confidence = String(analysis.confidence || "").trim();
+  const verdict = describeAiProblemVerdict(analysis);
+  return `
+    <aside class="fluctuation-ai-conclusion">
+      <div class="fluctuation-ai-conclusion-head">
+        <span>AI 分析结论</span>
+        <strong>${escapeHtml(verdict)}</strong>
+      </div>
+      <p>${escapeHtml(summary || "AI 已判定该波动需要关注，但本次结果未返回摘要。")}</p>
+      <div class="fluctuation-ai-conclusion-meta">
+        ${confidence ? `<em>置信度：${escapeHtml(confidence)}</em>` : ""}
+        ${analysis.notificationAction ? `<em>通知建议：${escapeHtml(describeNotificationAction(analysis.notificationAction))}</em>` : ""}
+      </div>
+    </aside>
+  `;
+}
+
+function describeAiProblemVerdict(item = {}) {
+  const verdict = String(item.dataSideVerdict || item.finalVerdict || item.verdict || "").trim();
+  if (verdict === "data_issue") return "有数据侧异常";
+  if (verdict === "system_issue") return "有系统侧异常";
+  if (verdict === "metric_issue") return "指标异常需关注";
+  if (verdict === "insufficient_evidence") return "证据不足但建议关注";
+  return "AI 判断有问题";
+}
+
+function describeNotificationAction(action) {
+  const value = String(action || "").trim();
+  if (value === "send") return "播报";
+  if (value === "downgrade") return "降级";
+  if (value === "enrich_only") return "仅补充";
+  return value;
 }
 
 function matchesDashboardFilter(anomaly, options = {}) {
@@ -1026,6 +1075,7 @@ export const __test__ = {
   buildSmoothPath,
   resolveChartYBounds,
   renderOptionalDetailField,
+  renderAiProblemConclusion,
   matchesDashboardFilter,
   shouldLoadRequestedFluctuationRun,
 };
