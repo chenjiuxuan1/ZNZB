@@ -4927,7 +4927,7 @@ body {
   border-radius: 10px;
   box-shadow: inset 4px 0 0 #f97316;
   display: grid;
-  gap: 8px;
+  gap: 10px;
   grid-column: 1 / -1;
   padding: 12px 14px;
 }
@@ -4961,6 +4961,57 @@ body {
   font-weight: 650;
   line-height: 1.55;
   margin: 0;
+}
+
+.fluctuation-ai-process-block,
+.fluctuation-ai-limitation {
+  background: rgb(255 255 255 / 0.72);
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+}
+
+.fluctuation-ai-process-block span,
+.fluctuation-ai-limitation span {
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fluctuation-ai-process-block ul {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fluctuation-ai-process-block li {
+  color: #344054;
+  font-size: 12px;
+  line-height: 1.45;
+  padding-left: 13px;
+  position: relative;
+}
+
+.fluctuation-ai-process-block li::before {
+  background: #f97316;
+  border-radius: 999px;
+  content: "";
+  height: 4px;
+  left: 1px;
+  position: absolute;
+  top: 8px;
+  width: 4px;
+}
+
+.fluctuation-ai-limitation p {
+  color: #475467;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 .fluctuation-ai-conclusion-meta {
