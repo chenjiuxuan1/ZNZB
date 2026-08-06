@@ -4097,6 +4097,9 @@ async function filterInventoryByCurrentPanelSources(configDir, inventoryFilePath
   return {
     ...inventory,
     dashboards: (inventory.dashboards || []).filter((dashboard) => {
+      if (isExcludedScanDashboard(dashboard)) {
+        return false;
+      }
       const sourcePanelId = dashboard.sourcePanelId == null ? "" : String(dashboard.sourcePanelId);
       return sourceRefs.urls.has(dashboard.sourceUrl || "")
         || sourceRefs.urls.has(dashboard.url || "")
@@ -4113,7 +4116,7 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
 
   const panelsFile = path.join(configDir, `discovered-panels.${match[1].toLowerCase()}.json`);
   const panels = await readJsonFile(panelsFile, { panels: [] });
-  const panelItems = panels?.panels || [];
+  const panelItems = (panels?.panels || []).filter((panel) => !isExcludedScanDashboard(panel));
   return {
     urls: new Set(
       panelItems
@@ -4647,12 +4650,14 @@ export function flattenInventory(inventory) {
 }
 
 function mergeDashboardSources(inventory, panelSources = []) {
-  const dashboards = (inventory?.dashboards || []).map((dashboard) => ({
+  const dashboards = (inventory?.dashboards || [])
+    .filter((dashboard) => !isExcludedScanDashboard(dashboard))
+    .map((dashboard) => ({
     ...dashboard,
     availability: "ready",
     executable: Array.isArray(dashboard.cards) && dashboard.cards.length > 0,
     pendingReason: "",
-  }));
+    }));
   const identities = new Map();
   dashboards.forEach((dashboard, index) => {
     dashboardIdentities(dashboard).forEach((identity) => identities.set(identity, index));
@@ -4660,6 +4665,9 @@ function mergeDashboardSources(inventory, panelSources = []) {
 
   for (const source of panelSources) {
     for (const panel of source.panels || []) {
+      if (isExcludedScanDashboard(panel)) {
+        continue;
+      }
       const pending = panelSourceToDashboard(source, panel);
       let match = dashboardIdentities(pending)
         .map((identity) => identities.get(identity))
@@ -4700,6 +4708,16 @@ function mergeDashboardSources(inventory, panelSources = []) {
   const deduped = deduplicateDashboards(dashboards);
 
   return { ...inventory, dashboards: deduped };
+}
+
+function isExcludedScanDashboard(item = {}) {
+  const title = String(item.sourcePanelTitle || item.title || "");
+  const urls = [item.url, item.sourceUrl, ...(item.links || []).map((link) => link?.url)]
+    .filter(Boolean)
+    .join(" ");
+
+  return title.includes("营销过程数据统计")
+    || /\/dashboard\/(?:993|994)(?:[/?#]|$)/.test(urls);
 }
 
 function deduplicateDashboards(dashboards) {
