@@ -374,6 +374,18 @@ test("history anomaly dashboard link keeps the run, country, and dashboard filte
   assert.equal(query.get("dashboardTitle"), "转化漏斗");
 });
 
+test("filtered fluctuation route reloads its requested history run after in-app navigation", () => {
+  assert.equal(fluctuationVisualTest.shouldLoadRequestedFluctuationRun({
+    requestedRunId: "run-detail", hasRequestedRun: false, historyLoading: false, alreadyRequestedRunId: "",
+  }), true);
+  assert.equal(fluctuationVisualTest.shouldLoadRequestedFluctuationRun({
+    requestedRunId: "run-detail", hasRequestedRun: false, historyLoading: true, alreadyRequestedRunId: "",
+  }), false);
+  assert.equal(fluctuationVisualTest.shouldLoadRequestedFluctuationRun({
+    requestedRunId: "run-detail", hasRequestedRun: true, historyLoading: false, alreadyRequestedRunId: "",
+  }), false);
+});
+
 test("fluctuation visual prefers refreshed hourly data and keeps all 24 hours", () => {
   const savedSeries = [
     { date: "2026-08-02", value: 6650.72 },
