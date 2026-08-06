@@ -788,6 +788,8 @@ export function createPlatformApi({
           countryCode: item.countryCode,
           anomalyIndex: item.anomalyIndex,
           verificationStatus: "completed",
+          dataSideVerdict: item.analysis?.dataSideVerdict || "",
+          notificationAction: item.analysis?.notificationAction || "",
           chartVisibility: item.analysis?.chartVisibility === "hide_verified_normal" ? "hide_verified_normal" : "show",
           verificationReason: item.analysis?.chartVisibility === "hide_verified_normal" ? item.analysis?.verificationReason || "" : "",
         }));

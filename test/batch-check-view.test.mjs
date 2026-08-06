@@ -580,6 +580,49 @@ test("fluctuation visual only uses runs updated today", () => {
   assert.equal(model.countries[0].anomalies[0].dashboardTitle, "Today");
 });
 
+test("fluctuation visual hides AI suppressed business-change anomalies", () => {
+  const model = fluctuationVisualTest.buildFluctuationVisualModel({
+    runs: [{
+      id: "ai-suppressed-run",
+      startedAt: "2026-07-28T01:00:00.000Z",
+      runs: [{
+        countryCode: "MX",
+        result: {
+          anomalies: [{
+            dashboardTitle: "Business change",
+            cardTitle: "Loan amount",
+            type: "completeDayChange",
+            message: "完整日指标「放款金额」从 10 到 0，变化 -100%",
+          }, {
+            dashboardTitle: "Data issue",
+            cardTitle: "Overdue rate",
+            type: "completeDayChange",
+            message: "完整日指标「逾期率」从 10% 到 30%，绝对变化 +20个百分点",
+          }],
+        },
+      }],
+    }],
+  }, [], {
+    today: "2026-07-28",
+    displayIndex: {
+      "ai-suppressed-run:MX:0": {
+        dataSideVerdict: "business_change",
+        notificationAction: "downgrade",
+        chartVisibility: "show",
+      },
+      "ai-suppressed-run:MX:1": {
+        dataSideVerdict: "data_issue",
+        notificationAction: "send",
+        chartVisibility: "show",
+      },
+    },
+  });
+
+  assert.equal(model.hiddenVerifiedNormalCount, 1);
+  assert.equal(model.anomalyCount, 1);
+  assert.equal(model.countries[0].anomalies[0].dashboardTitle, "Data issue");
+});
+
 test("fluctuation visual excludes China empty and zero-style anomalies", () => {
   const model = fluctuationVisualTest.buildFluctuationVisualModel({
     runs: [{

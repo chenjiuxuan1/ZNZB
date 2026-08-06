@@ -47,7 +47,7 @@ export function renderFluctuationVisual(root) {
 
     ${renderFluctuationStatus()}
     ${state.fluctuationMetricTagError ? `<div class="sandbox-status error"><strong>标签保存失败</strong><span>${escapeHtml(state.fluctuationMetricTagError)}</span></div>` : ""}
-    ${model.hiddenVerifiedNormalCount ? `<div class="sandbox-status success"><strong>已隐藏 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已核验正常点</strong><span>原始告警、查询方式和完整结论仍保留在巡检历史详情中。</span></div>` : ""}
+    ${model.hiddenVerifiedNormalCount ? `<div class="sandbox-status success"><strong>已隐藏 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已排除/降级点</strong><span>AI 判定为无异常或业务变化的波动点不再展示在图谱中，原始告警、查询方式和完整结论仍保留在巡检历史详情中。</span></div>` : ""}
     ${model.run ? renderFluctuationCountries(model) : renderEmptyFluctuationState()}
   `;
 
@@ -580,7 +580,7 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
   const allAnomalies = collectFluctuationAnomalies(run, countries)
     .filter((anomaly) => matchesDashboardFilter(anomaly, options));
   const displayIndex = options.displayIndex || {};
-  const anomalies = allAnomalies.filter((anomaly) => displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`]?.chartVisibility !== "hide_verified_normal");
+  const anomalies = allAnomalies.filter((anomaly) => !isAiSuppressedFluctuationPoint(displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`]));
   const byCountry = new Map();
   for (const anomaly of anomalies) {
     if (!byCountry.has(anomaly.countryCode)) {
@@ -601,6 +601,15 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
     anomalyCount: anomalies.length,
     hiddenVerifiedNormalCount: allAnomalies.length - anomalies.length,
   };
+}
+
+function isAiSuppressedFluctuationPoint(item = {}) {
+  const verdict = String(item.dataSideVerdict || item.verdict || "").trim();
+  const action = String(item.notificationAction || "").trim();
+  return item.chartVisibility === "hide_verified_normal"
+    || verdict === "verified_normal"
+    || verdict === "business_change"
+    || action === "downgrade";
 }
 
 function matchesDashboardFilter(anomaly, options = {}) {
