@@ -226,7 +226,7 @@ workflow:
 
               根因判定规则： - query_table_data 已确认底表当天无数据，且 DS 未运行/失败或 Wattrel 告警匹配 -> data_issue（置信度 high） - DS 任务失败或未运行，且与异常底表生产链匹配 -> data_issue（置信度 high） - Wattrel 质量告警匹配异常底表或直接上游表 -> data_issue（置信度 high） - query_table_data 已确认当天数据存在且异常指标实际为 0，同时 DS 已完成且没有相关 Wattrel 告警 -> business_change（置信度 medium） - 证据不足（工具失败或未完成调查）-> insufficient_evidence（置信度 low） - 只有本轮 query_table_data 已证明异常日期的实际指标正常，且 DS 完成时间晚于检测时间或其他原始证据可证明检测时机误报时，才输出 chartVisibility=hide_verified_normal，并在 verificationReason 中写明查询方式、实际值和时间证据；其他所有情况均输出 chartVisibility=show。
 
-              输入字段： - run_id: {{#start.run_id#}} - country_code: {{#start.country_code#}} - anomaly_index: {{#start.anomaly_index#}} - anomaly_message: {{#start.anomaly_message#}} - dashboard_title: {{#start.dashboard_title#}} - card_title: {{#start.card_title#}} - dashboard_url: {{#start.dashboard_url#}} - state_json: {{#start.state_json#}} - batch_id: {{#start.batch_id#}} - snapshot_id: {{#start.snapshot_id#}} - cases_json: {{#start.cases_json#}} - analysis_stage: {{#start.analysis_stage#}} - dashboard_uuid: {{#start.dashboard_uuid#}}
+              输入字段以本轮用户消息中的 JSON 为准，不要读取或引用未解析的模板变量。JSON 字段包括：analysis_stage、run_id、country_code、batch_id、snapshot_id、dashboard_uuid、dashboard_title、cases。cases 是本看板全部异常指标数组；每个元素至少包含 anomalyIndex、dashboardTitle、cardTitle、dashboardUrl、type、message。
 
               state_json 仅为兼容旧调用保留；协议 v5 应以 snapshot_id 对应的公共快照为准。
 
@@ -244,7 +244,7 @@ workflow:
               type: model-selector
           query:
             type: constant
-            value: '{{#start.cases_json#}}'
+            value: '请执行 dashboard_analysis，分析本轮输入 JSON 中的全部异常指标，并严格返回约定的单个 JSON 对象。'
           tools:
             type: constant
             value:
