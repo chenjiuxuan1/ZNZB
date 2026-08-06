@@ -34,6 +34,28 @@ test("batched workflow sends one Dify request and one callback for the whole bat
   assert.match(callback.parameters.jsonBody, /\$json/);
 });
 
+test("batched workflow calls the Dify Agent chat API over the internal network", async () => {
+  const data = await workflow();
+  const dify = data.nodes.find((node) => node.name === "Call Dify Batch Agent");
+
+  assert.equal(dify.parameters.url, "http://172.20.0.234/v1/chat-messages");
+  assert.match(dify.parameters.jsonBody, /query:/);
+  assert.match(dify.parameters.jsonBody, /payloadJson/);
+  assert.match(dify.parameters.jsonBody, /输入 JSON/);
+  assert.match(dify.parameters.jsonBody, /conversation_id: ''/);
+  assert.match(dify.parameters.jsonBody, /response_mode: 'streaming'/);
+  assert.match(dify.parameters.options?.response?.response?.format || JSON.stringify(dify.parameters.options), /text/);
+  assert.doesNotMatch(dify.parameters.jsonBody, /\{\{#start\./);
+  assert.doesNotMatch(dify.parameters.url, /workflows\/run/);
+});
+
+test("streaming Agent responses are parsed from SSE data events", async () => {
+  const data = await workflow();
+  const parser = data.nodes.find((node) => node.name === "Parse Dify Batch Response");
+  assert.match(parser.parameters.jsCode, /text\/event-stream|data:/);
+  assert.match(parser.parameters.jsCode, /answer/);
+});
+
 test("batched workflow uses positional matching and tolerates incomplete Dify results", async () => {
   const data = await workflow();
   const build = data.nodes.find((node) => node.name === "Build Batch Callback");
