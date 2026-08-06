@@ -599,11 +599,12 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
   const showAiSuppressed = Boolean(options.showAiSuppressed);
   const annotatedAnomalies = allAnomalies.map((anomaly) => {
     const displayItem = displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`];
+    const aiAnalysis = normalizeFluctuationAiAnalysis(anomaly.aiAudit, displayItem);
     return {
       ...anomaly,
-      aiSuppressed: isAiSuppressedFluctuationPoint(displayItem),
-      aiSuppressedReason: describeAiSuppressedFluctuationPoint(displayItem),
-      aiAnalysis: displayItem || null,
+      aiSuppressed: isAiSuppressedFluctuationPoint(aiAnalysis),
+      aiSuppressedReason: describeAiSuppressedFluctuationPoint(aiAnalysis),
+      aiAnalysis,
     };
   });
   const anomalies = showAiSuppressed
@@ -633,6 +634,7 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
 }
 
 function isAiSuppressedFluctuationPoint(item = {}) {
+  item = item || {};
   const verdict = String(item.dataSideVerdict || item.verdict || "").trim();
   const action = String(item.notificationAction || "").trim();
   return item.chartVisibility === "hide_verified_normal"
@@ -642,6 +644,7 @@ function isAiSuppressedFluctuationPoint(item = {}) {
 }
 
 function describeAiSuppressedFluctuationPoint(item = {}) {
+  item = item || {};
   const verdict = String(item.dataSideVerdict || item.verdict || "").trim();
   const action = String(item.notificationAction || "").trim();
   if (verdict === "verified_normal" || item.chartVisibility === "hide_verified_normal") return "AI 判定无异常";
@@ -649,7 +652,26 @@ function describeAiSuppressedFluctuationPoint(item = {}) {
   return "";
 }
 
+function normalizeFluctuationAiAnalysis(...candidates) {
+  const merged = {};
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    for (const [key, value] of Object.entries(candidate)) {
+      if (value === undefined || value === null || value === "") continue;
+      merged[key] = value;
+    }
+  }
+  if (!Object.keys(merged).length) return null;
+  const verdict = String(merged.dataSideVerdict || merged.finalVerdict || merged.verdict || "").trim();
+  return {
+    ...merged,
+    finalVerdict: merged.finalVerdict || verdict,
+    dataSideVerdict: merged.dataSideVerdict || verdict,
+  };
+}
+
 function isAiProblemFluctuationPoint(item = {}) {
+  item = item || {};
   const verdict = String(item.dataSideVerdict || item.finalVerdict || item.verdict || "").trim();
   const action = String(item.notificationAction || "").trim();
   return verdict === "data_issue"
@@ -680,6 +702,7 @@ function renderAiProblemConclusion(anomaly = {}) {
 }
 
 function describeAiProblemVerdict(item = {}) {
+  item = item || {};
   const verdict = String(item.dataSideVerdict || item.finalVerdict || item.verdict || "").trim();
   if (verdict === "data_issue") return "有数据侧异常";
   if (verdict === "system_issue") return "有系统侧异常";
@@ -733,6 +756,7 @@ function collectFluctuationAnomalies(run, countries = []) {
   for (const countryRun of run.runs || []) {
     const countryCode = String(countryRun.countryCode || "").toUpperCase();
     const countryName = countryRun.countryName || countryNames.get(countryCode) || countryCode;
+    const aiAudit = Array.isArray(countryRun.result?.aiAudit) ? countryRun.result.aiAudit : [];
     for (const [anomalyIndex, anomaly] of (countryRun.result?.anomalies || []).entries()) {
       const detail = parseAnomalyMessage(anomaly.message || "", anomaly.type || "");
       if (!isFluctuationAnomaly(anomaly, detail, countryCode)) {
@@ -746,6 +770,7 @@ function collectFluctuationAnomalies(run, countries = []) {
         countryName,
         runId: run.id || "",
         anomalyIndex,
+        aiAudit: aiAudit[anomalyIndex] || null,
         seriesKey,
         hydratedSeries: hydrated?.series || null,
         detail,
@@ -1076,6 +1101,7 @@ export const __test__ = {
   resolveChartYBounds,
   renderOptionalDetailField,
   renderAiProblemConclusion,
+  normalizeFluctuationAiAnalysis,
   matchesDashboardFilter,
   shouldLoadRequestedFluctuationRun,
 };
