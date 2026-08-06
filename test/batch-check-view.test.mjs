@@ -647,6 +647,39 @@ test("fluctuation visual renders AI conclusion for problem verdicts", () => {
   assert.match(html, /通知建议：播报/);
 });
 
+test("fluctuation visual reads AI conclusion from saved history audit", () => {
+  const model = fluctuationVisualTest.buildFluctuationVisualModel({
+    runs: [{
+      id: "history-ai-run",
+      startedAt: "2026-07-28T01:00:00.000Z",
+      runs: [{
+        countryCode: "CN",
+        result: {
+          anomalies: [{
+            dashboardTitle: "联系人信息 · 一级渠道=短信",
+            cardTitle: "一级渠道时间趋势",
+            type: "completeDayChange",
+            message: "完整日指标「投放获客-新客转化率:注册~放款」从 1 到 7，变化 +600%",
+          }],
+          aiAudit: [{
+            anomalyIndex: 0,
+            verdict: "data_issue",
+            notificationAction: "send",
+            summary: "AI 已确认渠道转化率存在数据侧异常",
+            statusLabel: "AI 已核验数据侧异常",
+            notifiable: true,
+          }],
+        },
+      }],
+    }],
+  }, [], { today: "2026-07-28", displayIndex: {} });
+
+  const anomaly = model.countries[0].anomalies[0];
+  assert.equal(anomaly.aiAnalysis.summary, "AI 已确认渠道转化率存在数据侧异常");
+  assert.equal(anomaly.aiAnalysis.dataSideVerdict, "data_issue");
+  assert.match(fluctuationVisualTest.renderAiProblemConclusion(anomaly), /AI 已确认渠道转化率存在数据侧异常/);
+});
+
 test("fluctuation visual does not render AI conclusion for verified normal verdicts", () => {
   const html = fluctuationVisualTest.renderAiProblemConclusion({
     aiAnalysis: {
