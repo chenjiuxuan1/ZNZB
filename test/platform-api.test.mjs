@@ -584,6 +584,37 @@ test("batch callback completes all verdicts from a single dashboard analysis", a
   assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).limitations, "测试限制");
 });
 
+test("batch callback accepts dashboards with forty anomaly verdicts", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyBatchAgentFn: async () => ({ pending: true, jobId: "analysis-job-40", provider: "n8n-evidence" }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-dashboard-forty",
+    runs: [{ countryCode: "CN", ok: true, result: { anomalies: Array.from({ length: 40 }, (_, anomalyIndex) => ({
+      dashboardUuid: "dash-40", dashboardTitle: "核心指标概览", cardTitle: `指标${anomalyIndex}`, message: `指标${anomalyIndex}异常`,
+    })) } }],
+  });
+  await api.submitMetabaseInvestigationBatch({
+    stage: "dashboard_analysis", batchId: "analysis-batch-40", runId: "pending-dashboard-forty",
+    countryCode: "CN", dashboardUuid: "dash-40", snapshotId: "analysis-snapshot-40",
+    cases: Array.from({ length: 40 }, (_, anomalyIndex) => ({ anomalyIndex })),
+  });
+
+  const completed = await api.completeMetabaseAnomalyBatch({
+    runId: "pending-dashboard-forty", countryCode: "CN", jobId: "analysis-job-40",
+    results: Array.from({ length: 40 }, (_, anomalyIndex) => ({
+      anomalyIndex, analysis: { summary: `指标${anomalyIndex}已核验`, confidence: "medium", dataSideVerdict: "data_issue", notificationAction: "send" },
+    })),
+  });
+
+  assert.equal(completed.success, true);
+  assert.equal(completed.results.length, 40);
+  const analyses = await api.getMetabaseAnomalyAnalysesForRun({ runId: "pending-dashboard-forty" });
+  assert.equal(analyses.analyses.filter((item) => item.status === "completed").length, 40);
+});
+
 test("platform prepares one analysis request containing every metric on a dashboard", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

@@ -218,7 +218,9 @@ test("scheduled run progress renders compact five-stage status and keeps country
       { key: "country_scan", label: "国家巡检", status: "success", detail: "已完成 1/1 个国家巡检" },
       { key: "data_check", label: "DS 调度核查", status: "success", detail: "DS 调度核查完成" },
       { key: "notification", label: "告警通知", status: "success", detail: "已发送 1 条通知" },
-      { key: "ai_analysis", label: "AI 取证队列", status: "running", detail: "看板分析 1/3", total: 3, completed: 1 },
+      { key: "ai_analysis", label: "AI 取证队列", status: "running", detail: "看板分析 1/3", total: 3, completed: 1, details: [
+        { countryCode: "MX", dashboardTitle: "贷后催收-核心指标概览", status: "timed_out", retry: true, reason: "等待 Dify 回调超过 6 分钟", caseCount: 1, batchId: "batch-1", anomalyIndexes: [0] },
+      ] },
       { key: "finished", label: "巡检完成", status: "success", detail: "巡检和通知已完成" },
     ],
   };
@@ -226,6 +228,10 @@ test("scheduled run progress renders compact five-stage status and keeps country
   assert.match(root.innerHTML, /AI 取证队列/);
   assert.match(root.innerHTML, /查看国家巡检明细/);
   assert.match(root.innerHTML, /看板分析 1\/3/);
+  assert.match(root.innerHTML, /查看 AI 取证明细/);
+  assert.match(root.innerHTML, /贷后催收-核心指标概览/);
+  assert.match(root.innerHTML, /等待 Dify 回调超过 6 分钟/);
+  assert.match(root.innerHTML, /重刷/);
 });
 
 test("scheduled country progress details stay open across polling rerenders", () => {
@@ -416,6 +422,21 @@ test("filtered fluctuation route reloads its requested history run after in-app 
   }), false);
   assert.equal(fluctuationVisualTest.shouldLoadRequestedFluctuationRun({
     requestedRunId: "run-detail", hasRequestedRun: true, historyLoading: false, alreadyRequestedRunId: "",
+  }), false);
+});
+
+test("fluctuation visual auto loads saved AI display index once per run", () => {
+  assert.equal(fluctuationVisualTest.shouldLoadFluctuationAiDisplayIndex({
+    runId: "run-ai", loadedRunId: "", loadingRunId: "", displayIndex: {},
+  }), true);
+  assert.equal(fluctuationVisualTest.shouldLoadFluctuationAiDisplayIndex({
+    runId: "run-ai", loadedRunId: "run-ai", loadingRunId: "", displayIndex: {},
+  }), false);
+  assert.equal(fluctuationVisualTest.shouldLoadFluctuationAiDisplayIndex({
+    runId: "run-ai", loadedRunId: "", loadingRunId: "run-ai", displayIndex: {},
+  }), false);
+  assert.equal(fluctuationVisualTest.shouldLoadFluctuationAiDisplayIndex({
+    runId: "run-ai", loadedRunId: "", loadingRunId: "", displayIndex: { "run-ai:MX:0": { summary: "已加载" } },
   }), false);
 });
 

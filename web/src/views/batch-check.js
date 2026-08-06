@@ -760,7 +760,55 @@ function renderScheduleRunProgress() {
 function renderAiStageCounters(stage = {}) {
   const total = Number(stage.total || 0);
   if (!total) return "";
-  return `<span class="schedule-ai-counters"><em>看板分析 ${escapeHtml(stage.completed || 0)}/${escapeHtml(total)}</em></span>`;
+  return `
+    <span class="schedule-ai-counters"><em>看板分析 ${escapeHtml(stage.completed || 0)}/${escapeHtml(total)}</em></span>
+    ${renderAiBatchDetails(stage)}
+  `;
+}
+
+function renderAiBatchDetails(stage = {}) {
+  const details = Array.isArray(stage.details) ? stage.details : [];
+  if (!details.length) return "";
+  const priority = { timed_out: 0, failed: 1, partial_failed: 2, running: 3, submitted: 4, completed: 5 };
+  const visible = [...details]
+    .sort((a, b) => (priority[a.status] ?? 9) - (priority[b.status] ?? 9) || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .slice(0, 12);
+  const problemCount = details.filter((item) => ["timed_out", "failed", "partial_failed"].includes(item.status)).length;
+  const summary = problemCount
+    ? `查看 AI 取证明细（异常 ${problemCount}/${details.length}）`
+    : `查看 AI 取证明细（${details.length} 个看板）`;
+  return `
+    <details class="schedule-ai-detail-list">
+      <summary>${escapeHtml(summary)}</summary>
+      <div class="schedule-ai-detail-items">
+        ${visible.map((item) => renderAiBatchDetailItem(item)).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function renderAiBatchDetailItem(item = {}) {
+  const status = String(item.status || "running");
+  const title = item.dashboardTitle || item.dashboardUuid || item.groupKey || "-";
+  const meta = [
+    item.countryCode ? `国家 ${item.countryCode}` : "",
+    item.caseCount ? `指标 ${item.caseCount} 个` : "",
+    item.retry ? "重刷" : "首次",
+    item.batchId ? `batch ${item.batchId}` : item.groupKey ? `分组 ${item.groupKey}` : "",
+  ].filter(Boolean).join(" · ");
+  const indexes = Array.isArray(item.anomalyIndexes) && item.anomalyIndexes.length ? `异常序号：${item.anomalyIndexes.join(", ")}` : "";
+  const reason = item.reason || (status === "timed_out" ? "等待 AI 回调超过等待窗口" : "");
+  return `
+    <article class="schedule-ai-detail-item ${escapeHtml(status)}">
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(meta || "-")}</span>
+        ${indexes ? `<small>${escapeHtml(indexes)}</small>` : ""}
+        ${reason ? `<small class="schedule-ai-detail-reason">${escapeHtml(reason)}</small>` : ""}
+      </div>
+      <span class="badge ${escapeHtml(scheduleProgressBadge(status))}">${escapeHtml(scheduleProgressLabel(status))}</span>
+    </article>
+  `;
 }
 
 function formatScheduleProgressStatus(progress, currentLabel) {
