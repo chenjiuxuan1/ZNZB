@@ -1519,6 +1519,60 @@ export function createPlatformApi({
       }, panel);
     },
 
+    async deleteDashboard({ countryCode: countryCodeInput, dashboardUuid = "", sourcePanelId = "", dashboardId = "", url = "" } = {}) {
+      const countryCode = String(countryCodeInput || "").trim().toUpperCase();
+      if (!countryCode) {
+        throw badRequest("Invalid dashboard deletion", ["请选择需要删除的国家。"]);
+      }
+      const [countries, readyInventory] = await Promise.all([
+        readJsonFile(resolve("countries"), { countries: [] }),
+        readPlatformInventory(rootDir, resolve("inventory")),
+      ]);
+      const panelSources = await loadPanelSources(rootDir, countries.countries || [], { countryCode });
+      const inventory = mergeDashboardSources(readyInventory, panelSources);
+      const dashboard = (inventory.dashboards || []).find((item) => (
+        getDashboardCountryCode(item) === countryCode
+        && dashboardMatchesDeleteRequest(item, { countryCode, dashboardUuid, sourcePanelId, dashboardId, url })
+      ));
+      if (!dashboard) {
+        throw badRequest("Dashboard not found", ["未找到该看板，请刷新页面后重试。"]);
+      }
+
+      const deletion = buildDashboardDeletionRef(dashboard);
+      const sourcePath = runtimePanelSourceFilePath(rootDir, countryCode);
+      const source = await readJsonFile(sourcePath, {});
+      const panels = (source.panels || []).filter((panel) => !panelMatchesDeletion(panel, deletion));
+      const deletedDashboards = appendUniqueDashboardDeletions(source.deletedDashboards || [], [deletion]);
+      await writeJsonAtomic(sourcePath, {
+        ...source,
+        country: source.country || dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
+        panels,
+        deletedDashboards,
+      });
+
+      const inventoryPath = runtimeCountryInventoryFilePath(rootDir, countryCode);
+      const runtimeInventory = await readJsonFile(inventoryPath, {
+        country: dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
+        dashboards: [],
+      });
+      await writeJsonAtomic(inventoryPath, {
+        ...runtimeInventory,
+        country: runtimeInventory.country || dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
+        dashboards: (runtimeInventory.dashboards || []).filter((item) => !dashboardMatchesDeletion(item, deletion)),
+        deletedDashboards: appendUniqueDashboardDeletions(runtimeInventory.deletedDashboards || [], [deletion]),
+        updatedAt: new Date().toISOString(),
+      });
+
+      return {
+        ok: true,
+        countryCode,
+        dashboardUuid: dashboard.uuid || "",
+        dashboardId: dashboard.dashboardId || "",
+        sourcePanelId: dashboard.sourcePanelId || "",
+        title: dashboard.title || dashboard.sourcePanelTitle || "",
+      };
+    },
+
     async discoverManualDashboard({ countryCode: countryCodeInput, sourcePanelId } = {}) {
       const countryCode = String(countryCodeInput || "").trim().toUpperCase();
       const panelId = String(sourcePanelId || "").trim();
@@ -4161,20 +4215,24 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
       }
     : primary;
   const inventories = [filteredPrimary, ...countryInventories];
+  const deletedDashboards = await readRuntimeDashboardDeletions(configDir);
 
-  return mergeInventories(inventories);
+  return filterInventoryDeletedDashboards(mergeInventories(inventories), deletedDashboards);
 }
 
 async function filterInventoryByCurrentPanelSources(configDir, inventoryFilePath, inventory) {
   const sourceRefs = await readCurrentPanelSourceRefs(configDir, inventoryFilePath);
   if (sourceRefs.urls.size === 0 && sourceRefs.panelIds.size === 0) {
-    return inventory;
+    return filterInventoryDeletedDashboards(inventory, sourceRefs.deletedDashboards || []);
   }
 
   return {
     ...inventory,
     dashboards: (inventory.dashboards || []).filter((dashboard) => {
       if (isExcludedScanDashboard(dashboard)) {
+        return false;
+      }
+      if (dashboardMatchesAnyDeletion(dashboard, sourceRefs.deletedDashboards || [])) {
         return false;
       }
       const sourcePanelId = dashboard.sourcePanelId == null ? "" : String(dashboard.sourcePanelId);
@@ -4206,6 +4264,7 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
         .filter((id) => id != null)
         .map(String),
     ),
+    deletedDashboards: panels.deletedDashboards || [],
   };
 }
 
@@ -4972,6 +5031,18 @@ async function loadPanelSources(rootDir, countries, filters = {}) {
     if (!source || !Array.isArray(source.panels) || source.panels.length === 0) {
       continue;
     }
+    const visiblePanels = source.panels.filter((panel) => (
+      !isExcludedScanDashboard(panel)
+      && !dashboardMatchesAnyDeletion(panelSourceToDashboard({
+        countryCode: country.code,
+        countryName: country.name,
+        timezone: country.timezone,
+      }, panel), source.deletedDashboards || [])
+      && !panelMatchesAnyDeletion(panel, source.deletedDashboards || [])
+    ));
+    if (visiblePanels.length === 0) {
+      continue;
+    }
 
     sources.push({
       countryCode: country.code,
@@ -4979,7 +5050,7 @@ async function loadPanelSources(rootDir, countries, filters = {}) {
       timezone: country.timezone,
       sourceTitle: source.title || "",
       sourceUid: source.uid || "",
-      panels: source.panels.map((panel) => ({
+      panels: visiblePanels.map((panel) => ({
         id: panel.id,
         title: panel.title || "-",
         type: panel.type || "",
@@ -5009,6 +5080,119 @@ function runtimeCountryInventoryFilePath(rootDir, countryCode) {
   return path.join(rootDir, `config/runtime-discovered-public-dashboards.${String(countryCode || "").toLowerCase()}.json`);
 }
 
+async function readRuntimeDashboardDeletions(configDir) {
+  let fileNames = [];
+  try {
+    fileNames = await fs.readdir(configDir);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const deletions = [];
+  for (const fileName of fileNames) {
+    if (!/^runtime-discovered-(?:panels|public-dashboards)\.[a-z]+\.json$/i.test(fileName)) continue;
+    const source = await readJsonFile(path.join(configDir, fileName), {});
+    deletions.push(...(source.deletedDashboards || []));
+  }
+  return appendUniqueDashboardDeletions([], deletions);
+}
+
+function filterInventoryDeletedDashboards(inventory = {}, deletedDashboards = []) {
+  if (!deletedDashboards.length) return inventory;
+  return {
+    ...inventory,
+    dashboards: (inventory.dashboards || []).filter((dashboard) => !dashboardMatchesAnyDeletion(dashboard, deletedDashboards)),
+  };
+}
+
+function dashboardMatchesAnyDeletion(dashboard = {}, deletedDashboards = []) {
+  return deletedDashboards.some((deletion) => dashboardMatchesDeletion(dashboard, deletion));
+}
+
+function panelMatchesAnyDeletion(panel = {}, deletedDashboards = []) {
+  return deletedDashboards.some((deletion) => panelMatchesDeletion(panel, deletion));
+}
+
+function dashboardMatchesDeleteRequest(dashboard = {}, request = {}) {
+  const deletion = {
+    countryCode: request.countryCode || getDashboardCountryCode(dashboard),
+    uuid: request.dashboardUuid,
+    dashboardId: request.dashboardId,
+    sourcePanelId: request.sourcePanelId,
+    url: request.url,
+  };
+  return dashboardMatchesDeletion(dashboard, deletion);
+}
+
+function buildDashboardDeletionRef(dashboard = {}) {
+  return {
+    countryCode: getDashboardCountryCode(dashboard),
+    uuid: dashboard.uuid || "",
+    dashboardId: dashboard.dashboardId == null ? "" : String(dashboard.dashboardId),
+    sourcePanelId: dashboard.sourcePanelId == null ? "" : String(dashboard.sourcePanelId),
+    url: dashboard.url || "",
+    sourceUrl: dashboard.sourceUrl || "",
+    title: dashboard.title || dashboard.sourcePanelTitle || "",
+    deletedAt: new Date().toISOString(),
+  };
+}
+
+function appendUniqueDashboardDeletions(existing = [], additions = []) {
+  const result = [];
+  const seen = new Set();
+  for (const deletion of [...existing, ...additions]) {
+    const normalized = normalizeDashboardDeletion(deletion);
+    const key = dashboardDeletionKey(normalized);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function normalizeDashboardDeletion(deletion = {}) {
+  return {
+    ...deletion,
+    countryCode: String(deletion.countryCode || "").toUpperCase(),
+    uuid: String(deletion.uuid || deletion.dashboardUuid || ""),
+    dashboardId: deletion.dashboardId == null ? "" : String(deletion.dashboardId),
+    sourcePanelId: deletion.sourcePanelId == null ? "" : String(deletion.sourcePanelId),
+    url: deletion.url || "",
+    sourceUrl: deletion.sourceUrl || "",
+    title: deletion.title || "",
+  };
+}
+
+function dashboardDeletionKey(deletion = {}) {
+  const countryCode = String(deletion.countryCode || "").toUpperCase();
+  return [
+    deletion.dashboardId ? `id:${countryCode}:${deletion.dashboardId}` : "",
+    deletion.uuid ? `uuid:${countryCode}:${deletion.uuid}` : "",
+    deletion.sourcePanelId ? `panel:${countryCode}:${deletion.sourcePanelId}` : "",
+    deletion.url ? `url:${countryCode}:${dashboardUrlIdentity(deletion.url)}` : "",
+    deletion.sourceUrl ? `url:${countryCode}:${dashboardUrlIdentity(deletion.sourceUrl)}` : "",
+  ].filter(Boolean)[0] || "";
+}
+
+function dashboardMatchesDeletion(dashboard = {}, deletionInput = {}) {
+  const deletion = normalizeDashboardDeletion(deletionInput);
+  const countryCode = getDashboardCountryCode(dashboard);
+  if (deletion.countryCode && countryCode && deletion.countryCode !== countryCode) return false;
+  if (deletion.dashboardId && String(dashboard.dashboardId ?? "") === deletion.dashboardId) return true;
+  if (deletion.uuid && String(dashboard.uuid || "") === deletion.uuid) return true;
+  if (deletion.sourcePanelId && String(dashboard.sourcePanelId ?? "") === deletion.sourcePanelId) return true;
+  const deletedUrls = [deletion.url, deletion.sourceUrl].filter(Boolean).map(dashboardUrlIdentity);
+  const dashboardUrls = [dashboard.url, dashboard.sourceUrl].filter(Boolean).map(dashboardUrlIdentity);
+  return deletedUrls.some((deletedUrl) => dashboardUrls.includes(deletedUrl));
+}
+
+function panelMatchesDeletion(panel = {}, deletionInput = {}) {
+  const deletion = normalizeDashboardDeletion(deletionInput);
+  if (deletion.sourcePanelId && String(panel.id ?? "") === deletion.sourcePanelId) return true;
+  const deletedUrls = [deletion.url, deletion.sourceUrl].filter(Boolean).map(dashboardUrlIdentity);
+  const panelUrls = (panel.links || []).map((link) => dashboardUrlIdentity(link?.url || "")).filter(Boolean);
+  return deletedUrls.some((deletedUrl) => panelUrls.includes(deletedUrl));
+}
+
 async function readMergedPanelSource(rootDir, countryCode) {
   const [base, runtime, countries] = await Promise.all([
     readJsonFile(panelSourceFilePath(rootDir, countryCode), {}),
@@ -5030,6 +5214,7 @@ async function readMergedPanelSource(rootDir, countryCode) {
 
 function mergePanelSources(...sources) {
   const panels = [];
+  const deletedDashboards = [];
   const seen = new Set();
   let country = null;
   let title = "";
@@ -5039,6 +5224,7 @@ function mergePanelSources(...sources) {
     country = country || source.country || null;
     title = title || source.title || "";
     uid = uid || source.uid || "";
+    deletedDashboards.push(...(source.deletedDashboards || []));
     for (const panel of Array.isArray(source.panels) ? source.panels : []) {
       const identities = panelSourceIdentities(panel);
       const duplicate = identities.some((identity) => seen.has(identity));
@@ -5047,7 +5233,7 @@ function mergePanelSources(...sources) {
       identities.forEach((identity) => seen.add(identity));
     }
   }
-  return { country, title, uid, panels };
+  return { country, title, uid, panels, deletedDashboards: appendUniqueDashboardDeletions([], deletedDashboards) };
 }
 
 function panelSourceIdentities(panel = {}) {

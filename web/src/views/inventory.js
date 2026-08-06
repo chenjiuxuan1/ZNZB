@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "../api.js";
+import { apiDelete, apiGet, apiPost } from "../api.js";
 import { getDashboards, isDashboardExecutable, state } from "../state.js";
 import { compactDashboardUrl, compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
 
@@ -126,6 +126,28 @@ export function renderInventory(root) {
     }
     renderInventory(root);
   });
+  root.querySelector("#delete-dashboard")?.addEventListener("click", async () => {
+    if (!selectedDashboard) return;
+    const title = selectedDashboard.title || selectedDashboard.sourcePanelTitle || "该看板";
+    if (!window.confirm(`确定删除“${title}”吗？删除后不会再展示，也不会进入手动或定时巡检。`)) return;
+    discoveryStatus = { type: "loading", title: "正在删除看板", detail: "正在从运行时巡检范围中移除该看板。" };
+    renderInventory(root);
+    try {
+      await apiDelete("/api/inventory/dashboard", {
+        countryCode: selectedDashboard.countryCode || selectedDashboard.country?.code || "",
+        dashboardUuid: selectedDashboard.uuid || "",
+        sourcePanelId: selectedDashboard.sourcePanelId || "",
+        dashboardId: selectedDashboard.dashboardId || "",
+        url: selectedDashboard.url || selectedDashboard.sourceUrl || "",
+      });
+      state.inventory = await apiGet("/api/inventory");
+      state.selected.dashboardUuid = "";
+      discoveryStatus = { type: "success", title: "看板已删除", detail: "该看板已从展示清单和巡检范围中移除；后续定时巡检不会扫描它。" };
+    } catch (error) {
+      discoveryStatus = { type: "error", title: "删除看板失败", detail: error.payload?.errors?.join("；") || error.message };
+    }
+    renderInventory(root);
+  });
   root.querySelector("#discover-country-dashboards")?.addEventListener("click", async () => {
     discoveryStatus = { type: "loading", title: "正在重新发现", detail: `正在读取 ${countryLabel(selectedCountry, countries)} 的内部 Metabase 看板和卡片。` };
     renderInventory(root);
@@ -237,7 +259,10 @@ function renderDashboardDetail(dashboard, cards) {
         <h2 class="panel-title">${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "-")}</h2>
         <p class="muted">${escapeHtml(dashboard.countryName || dashboard.countryCode || "-")} · ${executable ? `${cards.length} 张卡片` : "待发现卡片"}</p>
       </div>
-      ${dashboard.url ? `<a class="link-button" href="${escapeHtml(dashboard.url)}" target="_blank" rel="noreferrer">打开 Metabase</a>` : ""}
+      <div class="button-group">
+        ${dashboard.url ? `<a class="link-button" href="${escapeHtml(dashboard.url)}" target="_blank" rel="noreferrer">打开 Metabase</a>` : ""}
+        <button class="danger" id="delete-dashboard" type="button">删除看板</button>
+      </div>
     </div>
     ${executable ? `<div class="card-list">${cards.map((card) => renderCard(card)).join("")}</div>` : `
       <div class="source-notice">
