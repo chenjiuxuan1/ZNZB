@@ -18,6 +18,17 @@ test("groups every anomaly from one dashboard into one analysis job", () => {
   assert.equal(jobs[0].dashboardUuid, "dash-1");
 });
 
+test("splits oversized dashboard batches to cap anomalies per Dify request", () => {
+  const cases = [];
+  for (let i = 0; i < 9; i++) cases.push({ countryCode: "CN", dashboardUuid: "dash-big", dashboardTitle: "概览", anomalyIndex: i });
+  const jobs = buildDashboardAnalysisJobs(cases, 5);
+  assert.deepEqual(jobs.map((job) => job.cases.length), [5, 4]);
+  assert.equal(jobs[0].groupKey, "CN:dash-big#1");
+  assert.equal(jobs[1].groupKey, "CN:dash-big#2");
+  assert.equal(jobs[0].cases[0].anomalyIndex, 0);
+  assert.equal(jobs[1].cases[0].anomalyIndex, 5);
+});
+
 test("single-stage limits allow three concurrent workers", () => {
   assert.deepEqual(getBatchInvestigationLimits(), {
     maxConcurrentBatches: 3,
