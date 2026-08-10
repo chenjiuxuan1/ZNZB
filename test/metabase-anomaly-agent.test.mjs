@@ -1,12 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
+import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, getMetabaseAnomalyAgentSettings, isMetabaseVerdictMissingAnalysis, normalizeMetabaseAnomalyAnalysis } from "../src/metabase-anomaly-agent.mjs";
 
 const env = {
   METABASE_ANOMALY_AGENT_BASE_URL: "https://llm.example/v1",
   METABASE_ANOMALY_AGENT_API_KEY: "test-key",
   METABASE_ANOMALY_AGENT_MODEL: "test-model",
 };
+
+test("Metabase verdict-missing fallback is detected and flagged for retry", () => {
+  const fallback = normalizeMetabaseAnomalyAnalysis({
+    summary: "Dify 未返回该指标判断，需人工核查",
+    limitations: "Dify 响应缺少该指标 verdict",
+    dataSideVerdict: "insufficient_evidence",
+  });
+  assert.equal(isMetabaseVerdictMissingAnalysis(fallback), true);
+  assert.equal(fallback.verdictMissing, true);
+
+  const real = normalizeMetabaseAnomalyAnalysis({
+    summary: "放款转化归零，上游数据未同步。",
+    dataSideVerdict: "insufficient_evidence",
+  });
+  assert.equal(isMetabaseVerdictMissingAnalysis(real), false);
+});
 
 test("Metabase anomaly agent uses an OpenAI-compatible endpoint and returns structured analysis", async () => {
   let request = null;
