@@ -9,6 +9,7 @@ import {
   flattenInventory,
 } from "../src/platform-api.mjs";
 import { getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
+import { MAX_ANOMALIES_PER_DIFY_BATCH } from "../src/metabase-anomaly-batch.mjs";
 
 test("fluctuation history window ends on a delayed anomaly date", () => {
   assert.equal(
@@ -615,7 +616,7 @@ test("batch callback accepts dashboards with forty anomaly verdicts", async () =
   assert.equal(analyses.analyses.filter((item) => item.status === "completed").length, 40);
 });
 
-test("platform prepares one analysis request containing every metric on a dashboard", async () => {
+test("platform splits oversized dashboard into capped Dify analysis requests", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });
   await api.savePendingMetabasePatrolRun({
@@ -626,10 +627,11 @@ test("platform prepares one analysis request containing every metric on a dashbo
   });
 
   const prepared = await api.prepareMetabaseInvestigationBatches({ runId: "pending-dashboard-all-metrics" });
-  assert.equal(prepared.batches.length, 1);
+  assert.ok(prepared.batches.length >= 2);
   assert.equal(prepared.batches[0].stage, "dashboard_analysis");
   assert.equal(prepared.batches[0].dashboardUuid, "dash-many");
-  assert.equal(prepared.batches[0].cases.length, 7);
+  assert.ok(prepared.batches.every((batch) => batch.cases.length <= MAX_ANOMALIES_PER_DIFY_BATCH));
+  assert.equal(prepared.batches.reduce((sum, batch) => sum + batch.cases.length, 0), 7);
 });
 
 test("platform api creates one source-table evidence snapshot for same-card patrol anomalies", async () => {

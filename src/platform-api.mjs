@@ -24,6 +24,7 @@ import {
   buildDashboardAnalysisJobs,
   getBatchInvestigationLimits,
   MAX_DASHBOARD_ANALYSIS_BYTES,
+  MAX_ANOMALIES_PER_DIFY_BATCH,
   runBoundedInvestigationQueue,
 } from "./metabase-anomaly-batch.mjs";
 import {
@@ -324,7 +325,7 @@ export function createPlatformApi({
           });
         }
       }
-      const groups = buildDashboardAnalysisJobs(cases);
+      const groups = buildDashboardAnalysisJobs(cases, MAX_ANOMALIES_PER_DIFY_BATCH);
       const store = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
       const snapshots = [...(store.snapshots || [])];
       const batches = groups.map((group) => {
