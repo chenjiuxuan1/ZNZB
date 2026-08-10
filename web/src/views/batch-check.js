@@ -856,19 +856,23 @@ function scheduleProgressLabel(status) {
   const labels = {
     pending: "等待",
     running: "运行中",
+    submitted: "已提交",
     sending: "发送中",
     queued: "已排队",
     skipped: "已跳过",
     success: "完成",
+    completed: "完成",
     partial_failed: "部分失败",
     failed: "失败",
+    timed_out: "超时",
   };
   return labels[status] || "未开始";
 }
 
 function scheduleProgressBadge(status) {
   if (status === "success") return "ok";
-  if (status === "failed" || status === "partial_failed") return "danger";
+  if (status === "completed") return "ok";
+  if (status === "failed" || status === "partial_failed" || status === "timed_out") return "danger";
   if (status === "running" || status === "sending" || status === "queued") return "warn";
   return "idle";
 }
