@@ -729,12 +729,41 @@ function isAiProblemFluctuationPoint(item = {}) {
     || action === "send";
 }
 
+function isGenericAiFallbackAnalysis(analysis = {}) {
+  const verdict = String(analysis.dataSideVerdict || analysis.finalVerdict || analysis.verdict || "").trim();
+  const summary = String(analysis.summary || "").trim();
+  const limitations = String(analysis.limitations || "").trim();
+  return analysis.verdictMissing === true
+    || verdict === "insufficient_evidence"
+    || summary.includes("Dify 未返回该指标判断")
+    || summary.includes("AI 未在巡检时限内完成取证")
+    || summary.includes("AI 未核验")
+    || limitations.includes("Dify 响应缺少该指标 verdict");
+}
+
+function describeActualAnomalyProblem(anomaly = {}) {
+  const detail = anomaly.detail || {};
+  const parts = [];
+  if (anomaly.metricLabel) parts.push(`指标「${anomaly.metricLabel}」出现数据异常`);
+  else if (anomaly.dashboardTitle || anomaly.cardTitle) parts.push(`「${anomaly.dashboardTitle || anomaly.cardTitle}」出现数据异常`);
+  if (anomaly.dashboardTitle || anomaly.cardTitle) parts.push(`位于${anomaly.dashboardTitle || anomaly.cardTitle}`);
+  const values = [];
+  if (detail.currentValue) values.push(`当前值 ${detail.currentValue}`);
+  if (detail.baselineValue) values.push(`基准值 ${detail.baselineValue}`);
+  if (detail.changeValue) values.push(`变化 ${detail.changeValue}`);
+  if (values.length) parts.push(`（${values.join("，")}）`);
+  if (detail.timeText) parts.push(`异常时间 ${detail.timeText}`);
+  return parts.join("，") || "存在数据侧异常，请人工核查。";
+}
+
 function renderAiProblemConclusion(anomaly = {}) {
   const analysis = anomaly.aiAnalysis || {};
   if (!isAiProblemFluctuationPoint(analysis)) return "";
   const summary = String(analysis.summary || "").trim();
   const confidence = String(analysis.confidence || "").trim();
   const verdict = describeAiProblemVerdict(analysis);
+  const genericFallback = isGenericAiFallbackAnalysis(analysis);
+  const actualProblem = describeActualAnomalyProblem(anomaly);
   const processItems = [
     analysis.statusLabel ? `巡检状态：${analysis.statusLabel}` : "",
     analysis.verificationReason ? `核验说明：${analysis.verificationReason}` : "",
@@ -746,7 +775,9 @@ function renderAiProblemConclusion(anomaly = {}) {
         <span>AI 巡检过程与通知</span>
         <strong>${escapeHtml(verdict)}</strong>
       </div>
-      <p>${escapeHtml(summary || "AI 已判定该波动需要关注，但本次结果未返回摘要。")}</p>
+      ${genericFallback
+        ? `<div class="fluctuation-ai-actual-problem"><span>实际异常</span><p>${escapeHtml(actualProblem || summary || "AI 未能返回该指标的判断，请人工核查。")}</p></div>`
+        : `<p>${escapeHtml(summary || "AI 已判定该波动需要关注，但本次结果未返回摘要。")}</p>`}
       ${renderAiProcessList("巡检过程", processItems)}
       ${renderAiProcessList("可能原因", analysis.possibleCauses)}
       ${renderAiProcessList("核查步骤", analysis.verificationSteps)}
