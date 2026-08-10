@@ -20,10 +20,13 @@ test("single-stage evidence workflow accepts protocol v5 dashboard analysis jobs
 
 test("batched workflow sends one Dify request and one callback for the whole batch", async () => {
   const data = await workflow();
-  assert.equal(data.nodes.length, 7);
+  assert.equal(data.nodes.length, 10);
   const dify = data.nodes.find((node) => node.name === "Call Dify Batch Agent");
   const build = data.nodes.find((node) => node.name === "Build Batch Callback");
   const callback = data.nodes.find((node) => node.name === "Callback Batch Platform");
+  assert.ok(data.nodes.find((node) => node.name === "Extract Missing Cases"));
+  assert.ok(data.nodes.find((node) => node.name === "Call Dify Missing Agent"));
+  assert.ok(data.nodes.find((node) => node.name === "Parse Dify Missing Response"));
   assert.match(dify.parameters.jsonBody, /batch_id/);
   assert.match(dify.parameters.jsonBody, /snapshot_id/);
   assert.match(dify.parameters.jsonBody, /cases_json/);
@@ -56,10 +59,11 @@ test("streaming Agent responses are parsed from SSE data events", async () => {
   assert.match(parser.parameters.jsCode, /answer/);
 });
 
-test("batched workflow uses positional matching and tolerates incomplete Dify results", async () => {
+test("batched workflow merges a repair pass and tolerates incomplete Dify results", async () => {
   const data = await workflow();
   const build = data.nodes.find((node) => node.name === "Build Batch Callback");
-  assert.match(build.parameters.jsCode, /verdicts\.length===source\.length/);
+  assert.match(build.parameters.jsCode, /Parse Dify Missing Response/);
+  assert.match(build.parameters.jsCode, /matched\.get\(Number\(c\.anomalyIndex\)\)/);
   assert.match(build.parameters.jsCode, /insufficient_evidence/);
   assert.match(build.parameters.jsCode, /Dify 未返回该指标/);
   assert.match(build.parameters.jsCode, /screeningVerdict/);
