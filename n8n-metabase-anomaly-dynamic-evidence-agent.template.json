@@ -99,7 +99,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const norm=$('Normalize Batch').first().json,parsed=$json,job=norm.job||{},source=job.cases||[];\nconst text=(v,m,f)=>{const s=typeof v==='string'?v.trim():String(v||'');return s.slice(0,m)||f||'';};\nconst list=(v,n,m)=>(Array.isArray(v)?v:v?[v]:[]).map(i=>String(i||'').trim()).filter(Boolean).slice(0,n).map(i=>i.slice(0,m));\nconst missing=$('Parse Dify Missing Response').first();\nlet verdicts=Array.isArray(parsed.decision?.verdicts)?parsed.decision.verdicts:[];\nif(missing&&missing.json){const _mv=Array.isArray(missing.json.decision?.verdicts)?missing.json.decision.verdicts:[];verdicts=verdicts.concat(_mv);}\nconst sourceSet=new Set(source.map(c=>Number(c.anomalyIndex)));\nconst matched=new Map();\nfor(const raw of verdicts){const i=Number(raw?.anomalyIndex);if(sourceSet.has(i)&&!matched.has(i))matched.set(i,raw);}\nconst results=source.map(c=>{const raw=matched.get(Number(c.anomalyIndex))||{anomalyIndex:c.anomalyIndex,summary:'Dify 未返回该指标判断，需人工核查',evidence:[],limitations:'Dify 响应缺少该指标 verdict',dataSideVerdict:'insufficient_evidence',notificationAction:'send',confidence:'low'};\nconst idx=Number(c.anomalyIndex);\nreturn{anomalyIndex:idx,analysis:{\nsummary:text(raw.summary,1200,'Evidence collection finished.'),\nevidence:list(raw.evidence,5,600),\npossibleCauses:list(raw.possibleCauses,3,600),\nverificationSteps:list(raw.verificationSteps,3,600),\nrecommendedActions:list(raw.recommendedActions,3,600),\nconfidence:['low','medium','high'].includes(raw.confidence)?raw.confidence:raw.screeningVerdict==='verified_normal'?'high':'low',\nlimitations:text(raw.limitations,1600,parsed.difyText?.slice(-500)||'Evidence is bounded.'),\ndataSideVerdict:['data_issue','business_change','verified_normal','insufficient_evidence'].includes(raw.dataSideVerdict)?raw.dataSideVerdict:raw.screeningVerdict==='verified_normal'?'verified_normal':raw.screeningVerdict==='suspected_issue'?'data_issue':'insufficient_evidence',\nnotificationAction:['send','downgrade','enrich_only'].includes(raw.notificationAction)?raw.notificationAction:raw.screeningVerdict==='verified_normal'?'enrich_only':'send',\nchartVisibility:raw.dataSideVerdict==='verified_normal'||raw.screeningVerdict==='verified_normal'||raw.chartVisibility==='hide_verified_normal'?'hide_verified_normal':'show',\nverdictMissing:raw.verdictMissing===true,\nverificationReason:text(raw.verificationReason,600)\n},evidence:{evidenceChain:[]}}});\nconsole.log('BuildCallback: results='+results.length+' matched='+matched.size+' callbackUrl='+(norm.callbackUrl||''));return[{json:{callbackUrl:norm.callbackUrl||'http://127.0.0.1:8787/api/metabase-anomaly-analysis/batch-callback',runId:job.runId,countryCode:job.countryCode,jobId:norm.jobId,callbackToken:norm.callbackToken,results}}];"
+        "jsCode": "const norm=$('Normalize Batch').first().json,parsed=$json,job=norm.job||{},source=job.cases||[];\nconst text=(v,m,f)=>{const s=typeof v==='string'?v.trim():String(v||'');return s.slice(0,m)||f||'';};\nconst list=(v,n,m)=>(Array.isArray(v)?v:v?[v]:[]).map(i=>String(i||'').trim()).filter(Boolean).slice(0,n).map(i=>i.slice(0,m));\nlet verdicts=Array.isArray(parsed.decision?.verdicts)?parsed.decision.verdicts:[];\nconst sourceSet=new Set(source.map(c=>Number(c.anomalyIndex)));\nlet matched=new Map();\nif(verdicts.length===source.length){\nfor(let i=0;i<source.length;i++){matched.set(Number(source[i].anomalyIndex),verdicts[i]);}\n}else{\nfor(const raw of verdicts){const i=Number(raw?.anomalyIndex);if(sourceSet.has(i)&&!matched.has(i))matched.set(i,raw);}\n}\nconst results=source.map(c=>{const raw=matched.get(Number(c.anomalyIndex))||{anomalyIndex:c.anomalyIndex,summary:'Dify 未返回该指标判断，需人工核查',evidence:[],limitations:'Dify 响应缺少该指标 verdict',dataSideVerdict:'insufficient_evidence',notificationAction:'send',confidence:'low'};\nconst idx=Number(c.anomalyIndex);\nreturn{anomalyIndex:idx,analysis:{\nsummary:text(raw.summary,1200,'Evidence collection finished.'),\nevidence:list(raw.evidence,5,600),\npossibleCauses:list(raw.possibleCauses,3,600),\nverificationSteps:list(raw.verificationSteps,3,600),\nrecommendedActions:list(raw.recommendedActions,3,600),\nconfidence:['low','medium','high'].includes(raw.confidence)?raw.confidence:raw.screeningVerdict==='verified_normal'?'high':'low',\nlimitations:text(raw.limitations,1600,parsed.difyText?.slice(-500)||'Evidence is bounded.'),\ndataSideVerdict:['data_issue','business_change','verified_normal','insufficient_evidence'].includes(raw.dataSideVerdict)?raw.dataSideVerdict:raw.screeningVerdict==='verified_normal'?'verified_normal':raw.screeningVerdict==='suspected_issue'?'data_issue':'insufficient_evidence',\nnotificationAction:['send','downgrade','enrich_only'].includes(raw.notificationAction)?raw.notificationAction:raw.screeningVerdict==='verified_normal'?'enrich_only':'send',\nchartVisibility:raw.dataSideVerdict==='verified_normal'||raw.screeningVerdict==='verified_normal'||raw.chartVisibility==='hide_verified_normal'?'hide_verified_normal':'show',\nverdictMissing:raw.verdictMissing===true,\nverificationReason:text(raw.verificationReason,600)\n},evidence:{evidenceChain:[]}}});\nconsole.log('BuildCallback: results='+results.length+' matched='+matched.size+' callbackUrl='+(norm.callbackUrl||''));return[{json:{callbackUrl:norm.callbackUrl||'http://127.0.0.1:8787/api/metabase-anomaly-analysis/batch-callback',runId:job.runId,countryCode:job.countryCode,jobId:norm.jobId,callbackToken:norm.callbackToken,results}}];"
       },
       "name": "Build Batch Callback",
       "type": "n8n-nodes-base.code",
@@ -141,77 +141,6 @@
         100
       ],
       "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const norm=$('Normalize Batch').first().json;\nconst job=norm.job||{};\nconst source=Array.isArray(job.cases)?job.cases:[];\nconst parsed=$json||{};\nconst verdicts=Array.isArray(parsed.decision?.verdicts)?parsed.decision.verdicts:[];\nconst sourceSet=new Set(source.map(c=>Number(c.anomalyIndex)));\nconst matched=new Set();\nfor(const raw of verdicts){const i=Number(raw?.anomalyIndex);if(sourceSet.has(i))matched.add(i);}\nconst missing=source.filter(c=>!matched.has(Number(c.anomalyIndex)));\nif(missing.length===0){return[];}\nreturn missing.map(c=>({json:{jobId:norm.jobId,job:{stage:job.stage,runId:job.runId,countryCode:job.countryCode,batchId:job.batchId,snapshotId:job.snapshotId,dashboardUuid:job.dashboardUuid,dashboardTitle:job.dashboardTitle,cases:[c]}}}));"
-      },
-      "id": "107882a8-a884-4b4b-b09e-f6cd3444a1f1",
-      "name": "Extract Missing Cases",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        660,
-        360
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://172.20.0.234/v1/chat-messages",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer REPLACE_WITH_DIFY_API_KEY"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "text/event-stream"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ (() => { const payload = { analysis_stage: $json.job.stage, run_id: $json.job.runId, country_code: $json.job.countryCode, batch_id: $json.job.batchId, snapshot_id: $json.job.snapshotId, dashboard_uuid: $json.job.dashboardUuid, dashboard_title: $json.job.dashboardTitle, cases: $json.job.cases }; const payloadJson = JSON.stringify(payload); return { inputs: { analysis_stage: payload.analysis_stage, run_id: payload.run_id, country_code: payload.country_code, batch_id: payload.batch_id, snapshot_id: payload.snapshot_id, dashboard_uuid: payload.dashboard_uuid, dashboard_title: payload.dashboard_title, cases_json: JSON.stringify(payload.cases) }, query: '请执行 dashboard_analysis，分析下面 JSON 中的全部异常指标，并严格返回约定的单个 JSON 对象。如果系统提示词里出现未解析的模板变量，以本消息里的 JSON 为唯一真实输入。\\n\\n输入 JSON：\\n' + payloadJson, response_mode: 'streaming', conversation_id: '', user: 'metabase-evidence-' + $json.jobId }; })() }}",
-        "options": {
-          "timeout": 300000,
-          "response": {
-            "response": {
-              "response": {
-                "format": "text"
-              }
-            }
-          }
-        }
-      },
-      "name": "Call Dify Missing Agent",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        880,
-        360
-      ],
-      "onError": "continueRegularOutput",
-      "id": "42585698-bfad-416f-abdc-6d117d80fcbe"
-    },
-    {
-      "parameters": {
-        "jsCode": "const outputs=$json.data?.outputs||$json.outputs||{};\nlet decision={};\nif(outputs.analysis_json&&typeof outputs.analysis_json==='object'){decision=outputs.analysis_json;}\nelse if($json.analysis_json&&typeof $json.analysis_json==='object'){decision=$json.analysis_json;}\nelse if(Array.isArray(outputs.verdicts)||outputs.action||outputs.dashboardSummary){decision=outputs;}\nelse if(Array.isArray($json.verdicts)||$json.action){decision=$json;}\nelse{\nconst rawText=String(outputs.text||outputs.result||outputs.analysis_json||$json.analysis_json||$json.data?.analysis_json||$json.answer||$json.text||$json.body||$json.data||'');\nconst chunks=[];for(const line of rawText.split(/\\r?\\n/)){if(!line.startsWith('data:'))continue;try{const event=JSON.parse(line.slice(5).trim());if(typeof event.answer==='string')chunks.push(event.answer);}catch{}}\nconst raw=chunks.join('')||rawText;\ntry{decision=JSON.parse(raw.trim());}catch(e){\nconst object=text=>{let start=-1,depth=0,q=false,esc=false,last;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(esc)esc=false;else if(c==='\\\\')esc=true;else if(c==='\"')q=false;continue;}if(c==='\"'){q=true;continue;}if(c==='{'){if(!depth)start=i;depth++;}else if(c==='}'&&depth&&!--depth){try{last=JSON.parse(text.slice(start,i+1));}catch{}}}return last;};\ndecision=object(raw)||{};\n}\n}\nconsole.log('ParseDify: keys='+Object.keys(decision).join(',')+' verdicts='+((decision.verdicts||[]).length));\nreturn [{json:{difyText:JSON.stringify(decision).slice(-20000),decision}}];"
-      },
-      "name": "Parse Dify Missing Response",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1100,
-        360
-      ],
-      "id": "280687c4-3a26-4252-a0c0-1d090fc9ac37"
     }
   ],
   "connections": {
@@ -260,11 +189,6 @@
             "node": "Build Batch Callback",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Extract Missing Cases",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -274,28 +198,6 @@
         [
           {
             "node": "Callback Batch Platform",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract Missing Cases": {
-      "main": [
-        [
-          {
-            "node": "Call Dify Missing Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Call Dify Missing Agent": {
-      "main": [
-        [
-          {
-            "node": "Parse Dify Missing Response",
             "type": "main",
             "index": 0
           }
