@@ -18,7 +18,7 @@ import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import { fetchCompatible } from "./fetch-compatible.mjs";
-import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
+import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, isMetabaseVerdictMissingAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
 import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
 import {
   buildDashboardAnalysisJobs,
@@ -106,6 +106,7 @@ const DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS = { snapshots: [] };
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BATCH_HISTORY_RUNS = 200;
 const METABASE_ANALYSIS_PENDING_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_METABASE_ANALYSIS_ATTEMPTS = 3;
 const DEFAULT_DS_SCHEDULE = {
   enabled: false,
   intervalMinutes: 60,
@@ -479,6 +480,28 @@ export function createPlatformApi({
       return { status: "timed_out", entries: replacements };
     },
 
+    async collectRetryableMetabaseBatches({ settled = [], runId, analysesFile }) {
+      const cache = await readJsonFile(analysesFile, DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const byKey = new Map((cache.analyses || []).map((item) => [item.key, item]));
+      const retryable = [];
+      for (const { batch, result } of settled || []) {
+        const settlement = String(result?.status || "").trim();
+        if (settlement === "timed_out" || settlement === "failed") {
+          retryable.push(batch);
+          continue;
+        }
+        if (settlement !== "completed") continue;
+        const countryCode = normalizeCountryCode(batch.countryCode);
+        const anyUnresolved = (batch.cases || []).some((item) => {
+          const entry = byKey.get(`${runId}:${countryCode}:${Number(item.anomalyIndex)}`);
+          if (!entry) return false;
+          return entry.verdictMissing === true || entry.status === "timed_out" || entry.status === "failed";
+        });
+        if (anyUnresolved) retryable.push(batch);
+      }
+      return retryable;
+    },
+
     async finalizeAiFirstMetabasePatrol({ runId, startedAt, countryRuns, countryConfigs, schedule, detailUrl, wattrelSummary, dsSchedulerSummary, dsSchedulerError, trigger }) {
       const limits = getBatchInvestigationLimits();
       const deadlineAt = Date.parse(startedAt) + limits.deadlineMs;
@@ -496,27 +519,29 @@ export function createPlatformApi({
           waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
           onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, event); },
         });
-        const timedOutBatches = (analysisResult.settled || [])
-          .filter((item) => item.result?.status === "timed_out")
-          .map((item) => item.batch);
-        if (timedOutBatches.length && Date.now() < deadlineAt) {
+        queueResult = analysisResult;
+        for (let attempt = 2; attempt <= MAX_METABASE_ANALYSIS_ATTEMPTS && Date.now() < deadlineAt; attempt++) {
+          const retryBatches = await this.collectRetryableMetabaseBatches({
+            settled: queueResult.settled || [],
+            runId,
+            analysesFile: resolve("metabaseAnomalyAnalyses"),
+          });
+          if (!retryBatches.length) break;
           batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", {
             status: "running",
-            detail: `正在重刷 ${timedOutBatches.length} 个超时看板分析`,
+            detail: `正在重刷 ${retryBatches.length} 个未出结论的看板分析（第 ${attempt}/${MAX_METABASE_ANALYSIS_ATTEMPTS} 次）`,
           });
           const retryResult = await runBoundedInvestigationQueue({
-            batches: timedOutBatches,
+            batches: retryBatches,
             limits,
             deadlineAt,
             submit: async (batch) => this.submitMetabaseInvestigationBatch(batch),
             waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
-            onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, retry: true }); },
+            onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, retry: true, attempt }); },
           });
-          queueResult = mergeBatchInvestigationResults(analysisResult, retryResult);
-        } else {
-          queueResult = analysisResult;
+          queueResult = mergeBatchInvestigationResults(queueResult, retryResult);
         }
-        for (const batch of analysisResult.notSubmitted || []) {
+        for (const batch of queueResult.notSubmitted || []) {
           await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 45 分钟全局截止，未再投递 Dify" });
         }
      } else {
@@ -4215,6 +4240,7 @@ function buildCompletedMetabaseAnalysis({ key, runId, countryCode, anomalyIndex,
     provider: existing.provider || "n8n-evidence",
     model: String(body.model || existing.model || "n8n-configured-model"),
     analysis: normalizeMetabaseAnomalyAnalysis(body.analysis),
+    verdictMissing: isMetabaseVerdictMissingAnalysis(body.analysis),
     evidence: normalizeAgentEvidence(body.evidence),
     observability: body.observability && typeof body.observability === "object"
       ? body.observability
