@@ -1718,6 +1718,11 @@ a.dashboard-row {
   margin: 0;
 }
 
+.source-notice-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .source-notice code {
   background: #fff7ed;
   border: 1px solid #fed7aa;
