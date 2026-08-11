@@ -1093,12 +1093,12 @@ export function renderHistoryDsDetails(summary, error) {
     <div class="sub-panel history-country-detail">
       <div class="detail-header compact-header">
         <h2 class="panel-title">DS 调度监控</h2>
-        <span class="badge ${summary.totalStuck || summary.totalStale || summary.totalFailed || summary.failedCountries ? "warn" : "ok"}">卡死 ${summary.totalStuck || 0}，离线 ${summary.totalStale || 0}，执行失败 ${summary.totalFailed || 0}</span>
+        <span class="badge ${summary.totalStale || summary.totalFailed || summary.failedCountries ? "warn" : "ok"}">未运行 ${summary.totalStale || 0}，状态异常 ${summary.totalFailed || 0}</span>
       </div>
       <p class="muted">检查 ${escapeHtml(summary.totalChecked || 0)} 个工作流，覆盖 ${escapeHtml(summary.totalCountries || 0)} 个国家。</p>
       ${countries.length ? `<ul class="history-dashboard-list">${countries.map((country) => `
         <li>
-          ${escapeHtml([country.countryName, country.country].filter(Boolean).join(" / ") || "-")}：卡死 ${escapeHtml(country.stuckCount || 0)}，离线 ${escapeHtml(country.staleCount || 0)}，执行失败 ${escapeHtml(country.failedCount || 0)}，检查 ${escapeHtml(country.checkedWorkflows || 0)}${country.error ? `，检查失败：${escapeHtml(country.error)}` : ""}
+          ${escapeHtml([country.countryName, country.country].filter(Boolean).join(" / ") || "-")}：未运行 ${escapeHtml(country.staleCount || 0)}，状态异常 ${escapeHtml(country.failedCount || 0)}，应运行 ${escapeHtml(country.checkedWorkflows || 0)}${country.error ? `，检查失败：${escapeHtml(country.error)}` : ""}
           ${renderHistoryDsProjects(country.projects || [])}
           ${renderHistoryDsWorkflows(country.stuckWorkflows || [], country.staleWorkflows || [], country.failedWorkflows || [])}
         </li>
@@ -1132,9 +1132,8 @@ function renderHistoryCheckedWorkflows(workflows) {
 
 function renderHistoryDsWorkflows(stuckWorkflows, staleWorkflows, failedWorkflows) {
   const items = [
-    ...stuckWorkflows.map((workflow) => `卡死：${workflow.workflowName || workflow.workflowCode || "未命名工作流"} (${workflow.workflowCode || "-"})，连续失败 ${workflow.consecutiveFailures || 0} 次`),
-    ...staleWorkflows.map((workflow) => `离线：${workflow.workflowName || workflow.workflowCode || "未命名工作流"} (${workflow.workflowCode || "-"})，${workflow.staleMessage || workflow.staleReason || "未运行"}`),
-    ...failedWorkflows.map((workflow) => `执行失败：${workflow.workflowName || workflow.workflowCode || "未命名工作流"} (${workflow.workflowCode || "-"})，${workflow.failureMessage || workflow.failureReason || "当天定时实例失败"}`),
+    ...staleWorkflows.map((workflow) => `未运行：${workflow.workflowName || workflow.workflowCode || "未命名工作流"} (${workflow.workflowCode || "-"})，${workflow.staleMessage || workflow.staleReason || "今天截至巡检时间应运行但未运行"}`),
+    ...failedWorkflows.map((workflow) => `状态异常：${workflow.workflowName || workflow.workflowCode || "未命名工作流"} (${workflow.workflowCode || "-"})，${workflow.failureMessage || workflow.failureReason || "今天定时调度实例状态异常"}`),
   ];
   if (!items.length) return "";
   return `<ul class="history-dashboard-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;

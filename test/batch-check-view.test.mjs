@@ -79,11 +79,11 @@ test("history details show Wattrel table values and DS project workflow scan det
   assert.match(wattrelHtml, /2,781/);
   assert.match(dsHtml, /泰国数仓/);
   assert.doesNotMatch(dsHtml, /1001/);
-  assert.match(dsHtml, /每日放款/);
+  assert.doesNotMatch(dsHtml, /每日放款/);
   assert.match(dsHtml, /每日注册/);
   assert.match(dsHtml, /<summary>查看 1 个已扫描工作流<\/summary>/);
-  assert.match(dsHtml, /连续失败 3 次/);
-  assert.match(dsHtml, /执行失败：每日还款/);
+  assert.doesNotMatch(dsHtml, /连续失败 3 次/);
+  assert.match(dsHtml, /状态异常：每日还款/);
 });
 
 test("history anomaly details parse latest non-zero to zero values", () => {

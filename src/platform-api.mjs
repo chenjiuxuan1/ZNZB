@@ -2391,6 +2391,7 @@ export function createPlatformApi({
       return saveDsSchedulerConfig(rootDir, {
         ...config,
         alerts: current.alerts,
+        alertRouting: current.alertRouting,
       });
     },
 
