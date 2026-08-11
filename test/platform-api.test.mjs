@@ -1250,6 +1250,30 @@ test("platform api deletes dashboards from inventory and scheduled scan scope", 
   assert.equal(queryCount, 1);
 });
 
+test("platform api allows a deleted manual dashboard to be added again", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+  const input = {
+    countryCode: "INE",
+    title: "可重新添加的看板",
+    url: "https://data.example/public/dashboard/readd-manual-dashboard",
+  };
+
+  const added = await api.addManualDashboard(input);
+  await api.deleteDashboard({
+    countryCode: input.countryCode,
+    sourcePanelId: added.sourcePanelId,
+    url: input.url,
+  });
+  const readded = await api.addManualDashboard(input);
+  const inventory = await api.getInventory({ countryCode: input.countryCode });
+
+  assert.equal(readded.availability, "pending_discovery");
+  assert.ok(inventory.dashboards.some((dashboard) => (
+    dashboard.url === input.url && dashboard.availability === "pending_discovery"
+  )));
+});
+
 test("platform api deletion tombstone hides tracked dashboards after code resets", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });
