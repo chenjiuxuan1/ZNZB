@@ -33,6 +33,12 @@ import {
   checkAllCountries,
 } from "./ds-scheduler-monitor.mjs";
 import {
+  loadHiveSchedulerConfig,
+  saveHiveSchedulerConfig,
+  checkAllHiveCountries,
+  notifyHiveSchedulerCheck,
+} from "./hive-scheduler-monitor.mjs";
+import {
   mapWattrelRowsToAnomalies,
   queryWattrelAlerts as queryWattrelAlertRows,
 } from "./wattrel-client.mjs";
@@ -69,6 +75,9 @@ const FILES = {
   dsSchedule: "config/ds-scheduler-schedule.json",
   dsHistory: "config/ds-scheduler-history.json",
   dsNotification: "config/ds-scheduler-notification.json",
+  hiveScheduler: "config/hive-scheduler.config.json",
+  hiveSchedule: "config/hive-scheduler-schedule.json",
+  hiveHistory: "config/hive-scheduler-history.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
@@ -107,7 +116,7 @@ const DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS = { snapshots: [] };
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BATCH_HISTORY_RUNS = 200;
 const METABASE_ANALYSIS_PENDING_TIMEOUT_MS = 10 * 60 * 1000;
-const MAX_METABASE_ANALYSIS_ATTEMPTS = 3;
+const MAX_METABASE_ANALYSIS_ATTEMPTS = 2;
 const DEFAULT_DS_SCHEDULE = {
   enabled: false,
   intervalMinutes: 60,
@@ -118,6 +127,15 @@ const DEFAULT_DS_SCHEDULE = {
   lastResult: null,
 };
 const DEFAULT_DS_HISTORY = { runs: [] };
+const DEFAULT_HIVE_SCHEDULE = {
+  enabled: false,
+  intervalMinutes: 60,
+  nextRunAt: null,
+  lastRunAt: null,
+  lastError: null,
+  lastResult: null,
+};
+const DEFAULT_HIVE_HISTORY = { runs: [] };
 
 export function createPlatformApi({
   rootDir = process.cwd(),
@@ -2388,6 +2406,46 @@ export function createPlatformApi({
       };
     },
 
+    async getHiveSchedulerConfig() {
+      const config = await loadHiveSchedulerConfig(rootDir);
+      return { ...config, projectStatus: buildHiveProjectStatus(config) };
+    },
+
+    async saveHiveSchedulerConfig(input = {}) {
+      return saveHiveSchedulerConfig(rootDir, input);
+    },
+
+    async checkAllHiveCountries() {
+      return checkAllHiveCountries(rootDir, await this.getHiveSchedulerConfig());
+    },
+
+    async getHiveSchedule() {
+      const stored = await readJsonFile(resolve("hiveSchedule"), DEFAULT_HIVE_SCHEDULE);
+      return normalizeHiveSchedule(stored, { preserveNextRunAt: true });
+    },
+
+    async saveHiveSchedule(input = {}) {
+      const schedule = normalizeHiveSchedule(input);
+      await writeJsonAtomic(resolve("hiveSchedule"), schedule);
+      return schedule;
+    },
+
+    async getHiveHistory(filters = {}) {
+      const history = await readJsonFile(resolve("hiveHistory"), DEFAULT_HIVE_HISTORY);
+      const limit = Math.max(1, Math.min(200, Number(filters.limit || 50)));
+      return { ...history, runs: keepRecentHistoryRuns(history.runs || []).slice(0, limit) };
+    },
+
+    async runHiveScheduleNow() {
+      return runHiveSchedule({ api: this, schedule: await this.getHiveSchedule(), trigger: "manual", scheduleFile: resolve("hiveSchedule"), historyFile: resolve("hiveHistory") });
+    },
+
+    async runDueHiveSchedule(now = new Date()) {
+      const schedule = await this.getHiveSchedule();
+      if (!schedule.enabled || !schedule.nextRunAt || new Date(schedule.nextRunAt) > now) return { ran: false, schedule };
+      return runHiveSchedule({ api: this, schedule, trigger: "schedule", scheduleFile: resolve("hiveSchedule"), historyFile: resolve("hiveHistory"), now });
+    },
+
     async getDsSchedulerConfig() {
       const [config, batchSchedule, rules, dsOverride] = await Promise.all([
         loadDsSchedulerConfig(rootDir),
@@ -2510,6 +2568,55 @@ export function createPlatformApi({
       return runDsSchedule({ api: this, schedule, trigger: "schedule", rootDir, scheduleFile: resolve("dsSchedule"), historyFile: resolve("dsHistory"), now });
     },
   };
+}
+
+function normalizeHiveSchedule(input = {}, { preserveNextRunAt = false } = {}) {
+  const enabled = Boolean(input.enabled);
+  const intervalMinutes = Math.max(5, Number(input.intervalMinutes || DEFAULT_HIVE_SCHEDULE.intervalMinutes));
+  return {
+    ...DEFAULT_HIVE_SCHEDULE,
+    ...input,
+    enabled,
+    intervalMinutes,
+    nextRunAt: enabled
+      ? (preserveNextRunAt && input.nextRunAt ? input.nextRunAt : new Date(Date.now() + intervalMinutes * 60_000).toISOString())
+      : null,
+  };
+}
+
+async function runHiveSchedule({ api, schedule, trigger, scheduleFile, historyFile, now = new Date() }) {
+  const config = await api.getHiveSchedulerConfig();
+  const enabledCountries = Object.values(config.countries || {}).filter((item) => item.enabled);
+  if (!enabledCountries.length) throw badRequest("No HIVE countries enabled", ["请至少选择一个需要监控的国家，并配置项目。"]);
+  const startedAt = now.toISOString();
+  try {
+    const result = await checkAllHiveCountries(null, config);
+    result.notification = await notifyHiveSchedulerCheck(config, result);
+    const finishedAt = new Date().toISOString();
+    const next = {
+      ...schedule,
+      nextRunAt: schedule.enabled ? new Date(Date.now() + schedule.intervalMinutes * 60_000).toISOString() : null,
+      lastRunAt: finishedAt,
+      lastError: null,
+      lastResult: result,
+    };
+    await writeJsonAtomic(scheduleFile, next);
+    await appendHiveHistory(historyFile, { id: randomUUID(), trigger, startedAt, finishedAt, ok: true, result });
+    return { ran: true, schedule: next, result };
+  } catch (error) {
+    const finishedAt = new Date().toISOString();
+    await writeJsonAtomic(scheduleFile, { ...schedule, lastRunAt: finishedAt, lastError: error.message });
+    await appendHiveHistory(historyFile, { id: randomUUID(), trigger, startedAt, finishedAt, ok: false, error: error.message });
+    throw error;
+  }
+}
+
+async function appendHiveHistory(filePath, entry) {
+  const history = await readJsonFile(filePath, DEFAULT_HIVE_HISTORY);
+  await writeJsonAtomic(filePath, {
+    updatedAt: new Date().toISOString(),
+    runs: keepRecentHistoryRuns([entry, ...(history.runs || [])]),
+  });
 }
 
 function normalizeDsSchedule(input = {}, config = {}, { preserveNextRunAt = false } = {}) {
@@ -2653,6 +2760,20 @@ function buildDsProjectStatus(config = {}) {
         || (config.projectNames?.[code] && !config.projectCodes?.[code] ? "项目名称尚未匹配" : ""),
     },
   ]));
+}
+
+function buildHiveProjectStatus(config = {}) {
+  return Object.fromEntries(Object.keys(config.countries || {}).map((code) => {
+    const projects = config.projects?.[code] || [];
+    return [code, {
+      status: projects.length
+        ? (projects.every((item) => item.code) ? "resolved" : projects.some((item) => item.code) ? "partial" : "unresolved")
+        : "unresolved",
+      projectName: config.projectNames?.[code] || "",
+      projects,
+      error: projects.filter((item) => !item.code).map((item) => `${item.name}：${item.error || "尚未匹配"}`).join("；"),
+    }];
+  }));
 }
 
 function normalizeMentions(value) {
