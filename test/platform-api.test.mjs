@@ -1128,6 +1128,24 @@ test("platform api discovers only the selected manual dashboard and preserves ot
   assert.ok(inventory.dashboards.find((item) => item.title === "OKR"));
 });
 
+test("platform api reports a discovery failure when a manual dashboard has no executable cards", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => ({ dashboards: [] }),
+  });
+  const added = await api.addManualDashboard({
+    countryCode: "INE",
+    title: "空看板",
+    url: "https://data.example/public/dashboard/empty-manual-dashboard",
+  });
+
+  await assert.rejects(
+    () => api.discoverManualDashboard({ countryCode: "INE", sourcePanelId: added.sourcePanelId }),
+    (error) => error.statusCode === 400 && error.errors.some((message) => message.includes("未发现可巡检卡片")),
+  );
+});
+
 test("platform api preserves manually discovered dashboards across tracked config resets", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({
@@ -1184,7 +1202,21 @@ test("platform api deletes dashboards from inventory and scheduled scan scope", 
   let queryCount = 0;
   const api = createPlatformApi({
     rootDir,
-    discoverDashboardsFn: async () => ({ dashboards: [] }),
+    discoverDashboardsFn: async ({ inputFile }) => {
+      const source = JSON.parse(await fs.readFile(inputFile, "utf8"));
+      const panel = source.panels[0];
+      return {
+        dashboards: [{
+          countryCode: "INE",
+          sourcePanelId: panel.id,
+          sourcePanelTitle: panel.title,
+          title: panel.title,
+          uuid: "manual-uuid",
+          url: panel.links[0].url,
+          cards: [{ title: "手动卡片", cardId: 12, dashcardId: 13 }],
+        }],
+      };
+    },
     metabaseClientFactory: () => ({
       async queryDashcardJson() {
         queryCount += 1;
