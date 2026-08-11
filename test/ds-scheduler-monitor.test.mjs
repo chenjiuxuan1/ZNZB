@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { checkAllCountries, loadDsSchedulerConfig, notifyDsSchedulerCheck, parseProjectNames, resolveDsWebhookUrl, resolveProjectName, saveDsSchedulerConfig } from "../src/ds-scheduler-monitor.mjs";
+import { checkAllCountries, loadDsSchedulerConfig, parseProjectNames, resolveDsWebhookUrl, resolveProjectName, saveDsSchedulerConfig } from "../src/ds-scheduler-monitor.mjs";
 
 test("DS project names accept common separators and remove duplicates", () => {
   assert.deepEqual(
@@ -199,7 +199,7 @@ test("DS check surfaces a readable error when the gateway returns an object erro
   }
 });
 
-test("DS check reports only ONLINE workflows that should have run today but did not", async () => {
+test("DS check only reports ONLINE workflows that missed one full schedule cycle", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
     status: 200,
@@ -278,63 +278,13 @@ test("DS check reports only online scheduled workflows whose current-day executi
       projects: { th: [{ name: "泰国数仓", code: "123" }] },
     });
     const country = result.countries[0];
-    assert.equal(requestPayload.monitor_policy, "scheduled_today_once");
-    assert.equal(requestPayload.schedule_scope, "today_due");
-    assert.equal(requestPayload.run_scope, "today");
-    assert.equal(requestPayload.success_state, "SUCCESS");
-    assert.equal(requestPayload.include_not_run_workflows, true);
-    assert.equal(requestPayload.include_abnormal_workflows, true);
-    assert.equal(requestPayload.consecutive_failures, undefined);
-    assert.equal(requestPayload.stale_policy, undefined);
+    assert.equal(requestPayload.failure_policy, "scheduled_today_final_failure");
+    assert.equal(requestPayload.include_failed_workflows, true);
     assert.equal(country.failedCount, 1);
     assert.equal(country.failedWorkflows[0].workflowName, "daily-loan");
     assert.equal(country.failedWorkflows[0].instanceState, "FAILURE");
     assert.doesNotMatch(JSON.stringify(country.failedWorkflows), /recovered-daily-loan/);
     assert.equal(result.totalFailed, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("DS check classifies today's due workflows as not run, abnormal, or successful", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({
-    status: 200,
-    ok: true,
-    async text() {
-      return JSON.stringify({
-        success: true,
-        data: {
-          total_should_run: 3,
-          checked_workflows: [
-            { workflow_code: "success", workflow_name: "成功任务" },
-            { workflow_code: "not-run", workflow_name: "未运行任务" },
-            { workflow_code: "running", workflow_name: "运行中任务" },
-          ],
-          not_run_workflows: [
-            { workflow_code: "not-run", workflow_name: "未运行任务", schedule_status: "ONLINE", not_run_reason: "scheduled_today_not_run", crontab: "0 0 9 * * ?" },
-          ],
-          abnormal_workflows: [
-            { workflow_code: "running", workflow_name: "运行中任务", schedule_status: "ONLINE", abnormal_reason: "scheduled_today_abnormal_state", instance_state: "RUNNING_EXECUTION" },
-          ],
-        },
-      });
-    },
-  });
-  try {
-    const result = await checkAllCountries(process.cwd(), {
-      n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
-      countries: { cn: { name: "中国", token: "real-token" } },
-      projects: { cn: [{ name: "数据平台", code: "123" }] },
-    });
-    const country = result.countries[0];
-    assert.equal(result.totalChecked, 3);
-    assert.equal(result.totalStale, 1);
-    assert.equal(result.totalFailed, 1);
-    assert.equal(result.totalStuck, 0);
-    assert.equal(country.staleWorkflows[0].workflowName, "未运行任务");
-    assert.equal(country.failedWorkflows[0].workflowName, "运行中任务");
-    assert.equal(country.failedWorkflows[0].instanceState, "RUNNING_EXECUTION");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -438,91 +388,35 @@ test("DS check enriches a raw failed instance with its failed task log", async (
   }
 });
 
-test("DS check does not retry a transient n8n timeout within the same patrol", async () => {
+test("DS check retries one transient n8n timeout before marking a project failed", async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async () => {
     calls += 1;
-    const error = new Error("request aborted");
-    error.name = "AbortError";
-    throw error;
+    if (calls === 1) {
+      const error = new Error("request aborted");
+      error.name = "AbortError";
+      throw error;
+    }
+    return {
+      status: 200,
+      ok: true,
+      async text() {
+        return JSON.stringify({ success: true, data: { total_checked: 17, stuck_count: 0, stale_count: 0, failed_workflows: [] } });
+      },
+    };
   };
   try {
     const result = await checkAllCountries(process.cwd(), {
       n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+      checkRetries: 1,
+      checkRetryDelayMs: 0,
       countries: { pk: { name: "巴基斯坦", token: "real-token" } },
       projects: { pk: [{ name: "巴基斯坦数仓-工作流_new", code: "123" }] },
     });
-    assert.equal(calls, 1);
-    assert.equal(result.countries[0].success, false);
-    assert.equal(result.countries[0].checkedWorkflows, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("DS country routing mentions the country owners for any failed project in that country", async () => {
-  const originalFetch = globalThis.fetch;
-  const requests = [];
-  globalThis.fetch = async (url, options) => {
-    requests.push({ url, body: JSON.parse(options.body) });
-    return { ok: true, status: 200, async text() { return "ok"; } };
-  };
-  try {
-    const project = (projectName, workflowName) => ({
-      projectName,
-      projectCode: projectName,
-      success: true,
-      checkedWorkflows: 1,
-      staleWorkflows: [{ projectName, workflowName, workflowCode: workflowName, staleMessage: "今天截至巡检时间应运行但未运行" }],
-      failedWorkflows: [],
-    });
-    const dwDm = project("DW_DM", "dm_feature_daily");
-    const other = project("OTHER_PROJECT", "other_daily");
-    const result = await notifyDsSchedulerCheck({
-      alerts: { channel: "tv", sendWhenHealthy: true },
-      alertRouting: {
-        webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
-        botId: "494903d0-6203-4d4c-a8d7-6bd7d3c92680",
-        countryMentions: { mx: ["jingxiao@kn.group", "ericyou@kn.group"] },
-      },
-    }, {
-      checkedAt: "2026-08-11T09:00:00.000Z",
-      totalCountries: 1,
-      failedCountries: 0,
-      countries: [{
-        country: "mx",
-        countryName: "墨西哥",
-        success: true,
-        staleCount: 2,
-        failedCount: 0,
-        checkedWorkflows: 2,
-        staleWorkflows: [...dwDm.staleWorkflows, ...other.staleWorkflows],
-        failedWorkflows: [],
-        projects: [dwDm, other],
-      }, {
-        country: "cn",
-        countryName: "中国",
-        success: true,
-        staleCount: 0,
-        failedCount: 0,
-        checkedWorkflows: 1,
-        staleWorkflows: [],
-        failedWorkflows: [],
-        projects: [{ projectName: "CN_PROJECT", success: true, checkedWorkflows: 1, staleWorkflows: [], failedWorkflows: [] }],
-      }],
-    });
-
-    assert.equal(result.sent, true);
-    assert.equal(requests.length, 2);
-    assert.equal(requests[0].url, "https://tv-service-alert.kuainiu.chat/alert/v2/array");
-    assert.equal(requests[0].body.botId, "494903d0-6203-4d4c-a8d7-6bd7d3c92680");
-    assert.deepEqual(requests[0].body.mentions, ["jingxiao@kn.group", "ericyou@kn.group"]);
-    assert.match(requests[0].body.message, /墨西哥/);
-    assert.match(requests[0].body.message, /dm_feature_daily/);
-    assert.match(requests[0].body.message, /other_daily/);
-    assert.match(requests[1].body.message, /中国/);
-    assert.equal(requests[1].body.mentions, undefined);
+    assert.equal(calls, 2);
+    assert.equal(result.countries[0].success, true);
+    assert.equal(result.countries[0].checkedWorkflows, 17);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -307,9 +307,9 @@ test("duty summary renders concise DS status by country", () => {
     },
   );
 
-  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：正常\n🇨🇳 中国：异常（未运行 1、状态异常 1、项目失败 0）/);
-  assert.match(messages[0].body, /项目 国内数仓 \/ 工作流 每日放款：未运行（错过计划执行时间）/);
-  assert.match(messages[0].body, /项目 国内风控 \/ 工作流 每日还款 \/ 任务 还款数据校验：状态异常（SQL 执行失败）/);
+  assert.match(messages[0].body, /2\.DS调度：\n🇮🇩 印尼：正常\n🇨🇳 中国：异常（卡死 0、离线 1、执行失败 1、项目失败 0）/);
+  assert.match(messages[0].body, /项目 国内数仓 \/ 工作流 每日放款：离线（错过计划执行时间）/);
+  assert.match(messages[0].body, /项目 国内风控 \/ 工作流 每日还款 \/ 任务 还款数据校验：执行失败（SQL 执行失败）/);
 });
 
 test("duty summary shows failed projects even when another project in the country is healthy", () => {
