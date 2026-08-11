@@ -8,12 +8,12 @@ const DEFAULT_DS_ALERT_ROUTING = {
   webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
   botId: "494903d0-6203-4d4c-a8d7-6bd7d3c92680",
   countryMentions: {
-    cn: [rockyzong@kn.group],
-    ine: [gretchenhe@kn.group],
-    ph: [jiangchuanchen@kn.group],
-    th: [qilonghuang@kn.group],
-    pk: [gretchenhe@kn.group],
-    mx: [kuiwu@kn.group],
+    cn: ["rockyzong@kn.group"],
+    ine: ["gretchenhe@kn.group"],
+    ph: ["jiangchuanchen@kn.group"],
+    th: ["qilonghuang@kn.group"],
+    pk: ["gretchenhe@kn.group"],
+    mx: ["kuiwu@kn.group"],
   },
 };
 
