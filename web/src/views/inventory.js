@@ -14,9 +14,14 @@ export function renderInventory(root) {
   const selectedCountry = state.selected.countryCode || countryCodes[0] || "";
   const countryDashboards = dashboards
     .filter((dashboard) => (dashboard.countryCode || dashboard.country?.code) === selectedCountry)
+    .map((dashboard, index) => ({ dashboard, index }))
     // Keep manually added, not-yet-discovered dashboards at the bottom. This
     // makes the next user action unambiguous without changing scan ordering.
-    .sort((left, right) => Number(!isDashboardExecutable(left)) - Number(!isDashboardExecutable(right)));
+    .sort((left, right) => {
+      const pendingOrder = Number(isPendingDiscovery(left.dashboard)) - Number(isPendingDiscovery(right.dashboard));
+      return pendingOrder || left.index - right.index;
+    })
+    .map(({ dashboard }) => dashboard);
   const selectedDashboard = countryDashboards.find((dashboard) => dashboard.uuid === state.selected.dashboardUuid) || countryDashboards[0] || null;
   const cards = selectedDashboard?.cards || [];
 
@@ -70,7 +75,7 @@ export function renderInventory(root) {
               </span>
               ${isDashboardExecutable(dashboard)
                 ? `<b class="badge ok">可执行 · ${dashboard.cards?.length || 0} 张卡片</b>`
-                : `<b class="badge warn">待发现</b>`}
+                : `<b class="badge">待发现</b>`}
             </button>
           `).join("") || `<p class="muted">该国家暂无看板。</p>`}
         </div>
@@ -281,8 +286,8 @@ function renderDashboardDetail(dashboard, cards) {
     </div>
     ${executable ? `<div class="card-list">${cards.map((card) => renderCard(card)).join("")}</div>` : `
       <div class="source-notice">
-        <span class="badge warn">已纳入巡检范围 · 待发现</span>
-        <p>${escapeHtml(dashboard.pendingReason || "尚未取得 Metabase 卡片清单")}。完成内部 Metabase 发现后会自动变为可执行，无需再次录入看板。</p>
+        <span class="badge">待发现</span>
+        <p>${escapeHtml(dashboard.pendingReason || "尚未取得 Metabase 卡片清单")}。点击“发现看板”后将读取卡片；成功后自动纳入巡检范围，无需再次录入。</p>
         ${dashboard.sourcePanelId != null ? `<div class="source-notice-actions"><button class="primary" id="discover-one-dashboard" type="button">发现看板</button></div>` : ""}
       </div>
     `}
@@ -291,6 +296,10 @@ function renderDashboardDetail(dashboard, cards) {
       <pre class="code">${escapeHtml(json(cards[0]?.sampleRows || []))}</pre>
     </details>` : ""}
   `;
+}
+
+function isPendingDiscovery(dashboard) {
+  return dashboard?.availability === "pending_discovery" || !isDashboardExecutable(dashboard);
 }
 
 function formatDiscoveryError(error) {

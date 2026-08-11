@@ -2,7 +2,7 @@ import { apiGet } from "./api.js";
 import { parseHashRoute, setRoute, state } from "./state.js";
 import { renderCountries } from "./views/countries.js?v=20260706-ui16";
 import { renderDashboard } from "./views/dashboard.js?v=20260706-ui16";
-import { renderInventory } from "./views/inventory.js?v=20260707-cn-source2";
+import { renderInventory } from "./views/inventory.js?v=20260811-manual-discovery2";
 import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui16";
 import { renderRules } from "./views/rules.js?v=20260706-ui16";
 import { renderSandbox } from "./views/sandbox.js?v=20260707-sandbox-country";
