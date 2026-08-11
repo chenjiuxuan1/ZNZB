@@ -1,6 +1,8 @@
 {
   "n8nWebhookUrl": "http://127.0.0.1:5678/webhook/ds-scheduler",
   "checkTimeoutMs": 60000,
+  "checkRetries": 1,
+  "checkRetryDelayMs": 1000,
   "countries": {
     "cn": { "name": "中国", "token": "" },
     "ine": { "name": "印尼", "token": "" },
@@ -16,17 +18,5 @@
     "textField": "message",
     "sendWhenHealthy": true,
     "maxAnomalies": 50
-  },
-  "alertRouting": {
-    "webhookUrl": "https://tv-service-alert.kuainiu.chat/alert/v2/array",
-    "botId": "494903d0-6203-4d4c-a8d7-6bd7d3c92680",
-    "countryMentions": {
-      "cn": [],
-      "ine": [],
-      "ph": [],
-      "th": [],
-      "pk": [],
-      "mx": ["jingxiao@kn.group", "ericyou@kn.group"]
-    }
   }
 }

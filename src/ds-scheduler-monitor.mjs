@@ -4,18 +4,7 @@ import { readJsonFile } from "./utils.mjs";
 import { notifyText } from "./notifier.mjs";
 
 const DS_FETCH_TIMEOUT_MS = 60_000;
-const DEFAULT_DS_ALERT_ROUTING = {
-  webhookUrl: "https://tv-service-alert.kuainiu.chat/alert/v2/array",
-  botId: "494903d0-6203-4d4c-a8d7-6bd7d3c92680",
-  countryMentions: {
-    cn: ["rockyzong@kn.group"],
-    ine: ["gretchenhe@kn.group"],
-    ph: ["jiangchuanchen@kn.group"],
-    th: ["qilonghuang@kn.group"],
-    pk: ["gretchenhe@kn.group"],
-    mx: ["kuiwu@kn.group"],
-  },
-};
+const DS_CHECK_RETRY_COUNT = 1;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = DS_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -37,8 +26,23 @@ function fetchWithTimeout(url, options = {}, timeoutMs = DS_FETCH_TIMEOUT_MS) {
     .finally(() => clearTimeout(timer));
 }
 
-async function fetchDsProjectCheck(url, options, { timeoutMs = DS_FETCH_TIMEOUT_MS } = {}) {
-  return fetchWithTimeout(url, options, timeoutMs);
+async function fetchDsProjectCheck(url, options, { timeoutMs = DS_FETCH_TIMEOUT_MS, retries = DS_CHECK_RETRY_COUNT, retryDelayMs = 1_000 } = {}) {
+  let lastError;
+  const attempts = Math.max(1, Number(retries) + 1);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetchWithTimeout(url, options, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      const retryable = /请求超时|AbortError|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(error.message || error.name || "");
+      if (!retryable || attempt === attempts) break;
+      console.warn(`[ds-scheduler] project check retry ${attempt}/${attempts - 1} after: ${error.message}`);
+      if (retryDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+  }
+  throw new Error(`巡检请求连续 ${attempts} 次失败：${lastError?.message || "unknown error"}`);
 }
 
 const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
@@ -77,6 +81,16 @@ function normalizeDsCheckTimeout(value) {
   return Number.isFinite(timeout) ? Math.max(15_000, Math.min(120_000, timeout)) : DS_FETCH_TIMEOUT_MS;
 }
 
+function normalizeDsCheckRetries(value) {
+  const retries = Number(value);
+  return Number.isFinite(retries) ? Math.max(0, Math.min(2, Math.floor(retries))) : DS_CHECK_RETRY_COUNT;
+}
+
+function normalizeDsCheckRetryDelay(value) {
+  const delay = Number(value);
+  return Number.isFinite(delay) ? Math.max(0, Math.min(10_000, delay)) : 1_000;
+}
+
 export async function loadDsSchedulerConfig(rootDir) {
   const configPath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
   let config = null;
@@ -86,7 +100,7 @@ export async function loadDsSchedulerConfig(rootDir) {
     if (error.code !== "ENOENT") throw error;
   }
   if (!config) {
-    return { n8nWebhookUrl: resolveDsWebhookUrl(), countries: {}, alerts: {}, alertRouting: DEFAULT_DS_ALERT_ROUTING };
+    return { n8nWebhookUrl: resolveDsWebhookUrl(), countries: {}, alerts: {} };
   }
   return {
     n8nWebhookUrl: resolveDsWebhookUrl(config.n8nWebhookUrl),
@@ -95,8 +109,9 @@ export async function loadDsSchedulerConfig(rootDir) {
     projectNames: config.projectNames || {},
     projects: config.projects || {},
     checkTimeoutMs: config.checkTimeoutMs,
+    checkRetries: config.checkRetries,
+    checkRetryDelayMs: config.checkRetryDelayMs,
     alerts: config.alerts || {},
-    alertRouting: config.alertRouting || DEFAULT_DS_ALERT_ROUTING,
   };
 }
 
@@ -179,6 +194,8 @@ async function postDsAction(webhookUrl, countryCode, token, action, payload, con
     body: JSON.stringify({ country: countryCode, action, ds_token: token, payload }),
   }, {
     timeoutMs: normalizeDsCheckTimeout(config.checkTimeoutMs),
+    retries: normalizeDsCheckRetries(config.checkRetries),
+    retryDelayMs: normalizeDsCheckRetryDelay(config.checkRetryDelayMs),
   });
   const body = await response.text();
   let parsed;
@@ -322,7 +339,6 @@ export async function saveDsSchedulerConfig(rootDir, config) {
     projects,
     countries,
     alerts: config.alerts || {},
-    alertRouting: config.alertRouting || DEFAULT_DS_ALERT_ROUTING,
   };
 
   await fs.writeFile(filePath, JSON.stringify(fullConfig, null, 2), "utf8");
@@ -373,19 +389,19 @@ export async function checkAllCountries(rootDir, config) {
           action: "check_failed_instances",
           ds_token: token,
           payload: {
+            consecutive_failures: 3,
             page_size: 20,
             project_code: project.code,
-            monitor_policy: "scheduled_today_once",
-            schedule_scope: "today_due",
-            run_scope: "today",
-            success_state: "SUCCESS",
+            stale_policy: "one_full_schedule_cycle",
             include_checked_workflows: true,
-            include_not_run_workflows: true,
-            include_abnormal_workflows: true,
+            failure_policy: "scheduled_today_final_failure",
+            include_failed_workflows: true,
           },
         }),
       }, {
         timeoutMs: normalizeDsCheckTimeout(config.checkTimeoutMs),
+        retries: normalizeDsCheckRetries(config.checkRetries),
+        retryDelayMs: normalizeDsCheckRetryDelay(config.checkRetryDelayMs),
       });
 
       const body = await response.text();
@@ -423,13 +439,11 @@ export async function checkAllCountries(rootDir, config) {
       const data = parsed.data || {};
       const checkedWorkflowDetails = normalizeCheckedWorkflowDetails(data.checked_workflows || data.workflows);
       console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} workflows=${checkedWorkflowDetails.length ? checkedWorkflowDetails.map((workflow) => workflow.workflowName || workflow.workflowCode).join(",") : "not returned by gateway"}`);
-      // Match the reference monitor: only workflows whose schedule is due today
-      // are checked, and a due workflow without a run today is "not run".
-      // stale_workflows remains a compatibility fallback for older gateways.
-      const notRunSource = Array.isArray(data.not_run_workflows) ? data.not_run_workflows : (data.stale_workflows || []);
-      const staleWorkflows = notRunSource
-        .filter((wf) => wf.schedule_status === "ONLINE"
-          && ["scheduled_today_not_run", "missed_schedule_cycle"].includes(wf.not_run_reason || wf.stale_reason))
+      // The gateway determines schedule lateness from DS's schedule definition.
+      // Legacy "no_recent_run" entries have an unspecified fixed lookback and
+      // must not create false alerts for infrequent schedules such as monthly jobs.
+      const staleWorkflows = (data.stale_workflows || [])
+        .filter((wf) => wf.schedule_status === "ONLINE" && wf.stale_reason === "missed_schedule_cycle")
         .map((wf) => ({
           projectName: project.name,
           projectCode: project.code,
@@ -437,22 +451,15 @@ export async function checkAllCountries(rootDir, config) {
           workflowName: wf.workflow_name,
           scheduleId: wf.schedule_id,
           scheduleStatus: wf.schedule_status,
-          staleReason: wf.not_run_reason || wf.stale_reason,
-          staleMessage: wf.not_run_message || wf.stale_message || "今天截至巡检时间应运行但未运行",
-          scheduleCycle: wf.crontab || wf.schedule_cycle || "",
+          staleReason: wf.stale_reason,
+          staleMessage: wf.stale_message,
+          scheduleCycle: wf.schedule_cycle || "",
           lastRunAt: wf.last_run_at || null,
           nextRunAt: wf.next_run_at || null,
           totalInstancesChecked: wf.total_instances_checked,
         }));
-      const hasAbnormalEnvelope = Array.isArray(data.abnormal_workflows);
-      const abnormalSource = hasAbnormalEnvelope
-        ? data.abnormal_workflows
-        : normalizeFailedSchedulerInstances(data);
-      const failedWorkflows = abnormalSource
-        .filter((wf) => wf.schedule_status === "ONLINE"
-          && (hasAbnormalEnvelope || wf.failure_reason === "scheduled_instance_failed")
-          && !["7", "SUCCESS"].includes(String(wf.instance_state || wf.state || "").toUpperCase())
-          && wf.has_later_success !== true)
+      const failedWorkflows = normalizeFailedSchedulerInstances(data)
+        .filter((wf) => wf.schedule_status === "ONLINE" && wf.failure_reason === "scheduled_instance_failed" && wf.has_later_success !== true)
         .map((wf) => ({
           projectName: project.name,
           projectCode: project.code,
@@ -460,8 +467,8 @@ export async function checkAllCountries(rootDir, config) {
           workflowName: wf.workflow_name,
           scheduleId: wf.schedule_id,
           scheduleStatus: wf.schedule_status,
-          failureReason: wf.abnormal_reason || wf.failure_reason || "scheduled_today_abnormal_state",
-          failureMessage: wf.abnormal_message || wf.failure_message || "今天定时调度实例状态异常",
+          failureReason: wf.failure_reason,
+          failureMessage: wf.failure_message,
           instanceId: wf.instance_id,
           instanceState: wf.instance_state,
           taskName: wf.task_name || wf.failed_task_name || wf.task?.name || "",
@@ -475,7 +482,7 @@ export async function checkAllCountries(rootDir, config) {
       // The current legacy gateway only returns raw workflow instances. Enrich
       // those records here; the documented failed_workflows response already
       // carries task-level failure details and must remain a single request.
-      const enrichedFailedWorkflows = Array.isArray(data.abnormal_workflows) || Array.isArray(data.failed_workflows)
+      const enrichedFailedWorkflows = Array.isArray(data.failed_workflows)
         ? failedWorkflows
         : await Promise.all(failedWorkflows.map((failure) => enrichFailureWithTaskLog(failure, {
           webhookUrl,
@@ -484,19 +491,28 @@ export async function checkAllCountries(rootDir, config) {
           projectCode: project.code,
           config,
         })));
-      const shouldRunCount = Number(data.total_should_run ?? data.total_checked ?? checkedWorkflowDetails.length ?? 0);
-      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE notRun=${staleWorkflows.length} abnormal=${enrichedFailedWorkflows.length} shouldRun=${shouldRunCount}`);
+      console.log(`[ds-scheduler] country=${countryCode} project=${project.code || "-"} DONE stuck=${data.stuck_count || 0} stale=${staleWorkflows.length} failed=${enrichedFailedWorkflows.length} checked=${data.total_checked || 0}`);
       projectResults.push({
         projectName: project.name,
         projectCode: project.code,
         success: true,
         error: null,
-        stuckCount: 0,
+        stuckCount: data.stuck_count || 0,
         staleCount: staleWorkflows.length,
         failedCount: enrichedFailedWorkflows.length,
-        checkedWorkflows: shouldRunCount,
+        checkedWorkflows: data.total_checked || 0,
         checkedWorkflowDetails,
-        stuckWorkflows: [],
+        stuckWorkflows: (data.stuck_workflows || []).map((wf) => ({
+          projectName: project.name,
+          projectCode: project.code,
+          workflowCode: wf.workflow_code,
+          workflowName: wf.workflow_name,
+          scheduleId: wf.schedule_id,
+          scheduleStatus: wf.schedule_status,
+          consecutiveFailures: wf.consecutive_failures,
+          totalChecked: wf.total_checked,
+          recentFailures: (wf.recent_failures || []).slice(0, 5),
+        })),
         staleWorkflows,
         failedWorkflows: enrichedFailedWorkflows,
       });
@@ -536,7 +552,7 @@ export async function checkAllCountries(rootDir, config) {
   const totalChecked = results.reduce((sum, r) => sum + r.checkedWorkflows, 0);
   const failedCountries = results.filter((r) => !r.success).length;
 
-  console.log(`[ds-scheduler] checkAllCountries DONE: notRun=${totalStale} abnormal=${totalFailed} shouldRun=${totalChecked}`);
+  console.log(`[ds-scheduler] checkAllCountries DONE: stuck=${totalStuck} stale=${totalStale} failed=${totalFailed} checked=${totalChecked}`);
   return {
     checkedAt: new Date().toISOString(),
     totalStuck,
@@ -597,43 +613,33 @@ function normalizeCheckedWorkflowDetails(value) {
  */
 export async function notifyDsSchedulerCheck(config, checkResult) {
   const alertConfig = config.alerts || {};
-  const routing = config.alertRouting || DEFAULT_DS_ALERT_ROUTING;
-  const webhookUrl = routing.webhookUrl || alertConfig.webhookUrl;
-  const botId = routing.botId || alertConfig.botId;
-  if (!webhookUrl || !botId) {
+  if (!alertConfig.channel && !alertConfig.webhookUrl) {
     return { sent: false, reason: "alert not configured" };
   }
 
-  const results = [];
-  let sentMessages = 0;
-  for (const country of checkResult.countries || []) {
-    const countryResult = filterDsCheckResultByCountry(checkResult, country.country);
-    if (countryResult.totalChecked === 0 && countryResult.failedCountries === 0) continue;
-    const hasAnomalies = countryResult.totalStale > 0 || countryResult.totalFailed > 0 || countryResult.failedCountries > 0;
-    if (!hasAnomalies && alertConfig.sendWhenHealthy === false) continue;
+  const totalStuck = checkResult.totalStuck || 0;
+  const totalStale = checkResult.totalStale || 0;
+  const hasAnomalies = totalStuck > 0 || totalStale > 0;
 
-    const countryCode = String(country.country || "").trim().toLowerCase();
-    const mentions = hasAnomalies ? normalizeMentionList(routing.countryMentions?.[countryCode]) : [];
-    const countryAlerts = {
-      ...alertConfig,
-      channel: routing.channel || "tv",
-      webhookUrl,
-      botId,
-      mentions,
-    };
-    const messages = buildDsSchedulerMessages(countryResult, countryAlerts, country.countryName || country.country);
-    for (const message of messages) {
-      results.push(await notifyText({ ...config, alerts: countryAlerts }, message.body, {
+  if (!hasAnomalies && alertConfig.sendWhenHealthy === false) {
+    return { sent: false, reason: "healthy notification disabled" };
+  }
+
+  const messages = buildDsSchedulerMessages(checkResult, alertConfig);
+  const results = [];
+
+  for (const message of messages) {
+    results.push(
+      await notifyText(config, message.body, {
         title: message.title,
         severity: hasAnomalies ? "warning" : "info",
-      }));
-      sentMessages += 1;
-    }
+      }),
+    );
   }
 
   return {
     sent: results.some((resultItem) => resultItem.sent),
-    sentMessages,
+    sentMessages: messages.length,
     results,
   };
 }
@@ -641,51 +647,51 @@ export async function notifyDsSchedulerCheck(config, checkResult) {
 /**
  * Build notification messages for DS scheduler check results.
  */
-function buildDsSchedulerMessages(checkResult, alertConfig = {}, routeLabel = "") {
+function buildDsSchedulerMessages(checkResult, alertConfig = {}) {
   const messages = [];
+  const totalStuck = checkResult.totalStuck || 0;
   const totalStale = checkResult.totalStale || 0;
-  const totalFailed = checkResult.totalFailed || 0;
-  const hasAnomalies = totalStale > 0 || totalFailed > 0 || (checkResult.failedCountries || 0) > 0;
-  const successfulTasks = Math.max(0, (checkResult.totalChecked || 0) - totalStale - totalFailed);
+  const hasAnomalies = totalStuck > 0 || totalStale > 0;
 
   // Build overview message
-  let body = `## ${routeLabel ? `【${routeLabel}】` : ""}DS 调度监控巡检报告\n\n`;
+  let body = `## DS 调度监控巡检报告\n\n`;
   body += `**检查时间**: ${new Date(checkResult.checkedAt).toLocaleString("zh-CN")}\n\n`;
   body += `### 概览\n`;
   body += `- 监控国家: ${checkResult.totalCountries}\n`;
-  body += `- 今日截至当前应运行: ${checkResult.totalChecked}\n`;
-  body += `- 正常完成: ${successfulTasks}\n`;
-  body += `- 未运行任务: ${totalStale}\n`;
-  body += `- 状态异常任务: ${totalFailed}\n`;
+  body += `- 检查工作流: ${checkResult.totalChecked}\n`;
+  body += `- 卡死工作流: ${totalStuck}\n`;
+  body += `- 离线/旷工任务: ${totalStale}\n`;
   body += `- 检查失败国家: ${checkResult.failedCountries}\n\n`;
 
   if (hasAnomalies) {
     body += `### 异常详情\n\n`;
 
-    if (totalStale > 0) {
-      body += `#### 📋 未运行的任务 (${totalStale})\n\n`;
+    // Add stuck workflows
+    if (totalStuck > 0) {
+      body += `#### ⛔ 卡死工作流 (${totalStuck})\n\n`;
       for (const countryResult of checkResult.countries || []) {
-        if (countryResult.staleWorkflows && countryResult.staleWorkflows.length > 0) {
+        if (countryResult.stuckWorkflows && countryResult.stuckWorkflows.length > 0) {
           body += `**${countryResult.countryName} (${countryResult.country})**\n`;
-          for (const wf of countryResult.staleWorkflows) {
+          for (const wf of countryResult.stuckWorkflows) {
             body += `- \`${wf.workflowName}\` (${wf.workflowCode})\n`;
-            body += `  - 状态: ${wf.staleMessage || wf.staleReason || "今天截至巡检时间应运行但未运行"}\n`;
-            if (wf.scheduleCycle) body += `  - Cron: ${wf.scheduleCycle}\n`;
+            body += `  - 连续失败: ${wf.consecutiveFailures} 次\n`;
+            body += `  - 调度状态: ${wf.scheduleStatus || "未知"}\n`;
           }
           body += `\n`;
         }
       }
     }
 
-    if (totalFailed > 0) {
-      body += `#### ❌ 状态异常的任务 (${totalFailed})\n\n`;
+    // Add stale workflows
+    if (totalStale > 0) {
+      body += `#### ⚠️ 离线/旷工任务 (${totalStale})\n\n`;
       for (const countryResult of checkResult.countries || []) {
-        if (countryResult.failedWorkflows && countryResult.failedWorkflows.length > 0) {
+        if (countryResult.staleWorkflows && countryResult.staleWorkflows.length > 0) {
           body += `**${countryResult.countryName} (${countryResult.country})**\n`;
-          for (const wf of countryResult.failedWorkflows) {
+          for (const wf of countryResult.staleWorkflows) {
             body += `- \`${wf.workflowName}\` (${wf.workflowCode})\n`;
-            body += `  - 状态: ${wf.instanceState || wf.taskState || "未知"}\n`;
-            body += `  - 说明: ${wf.failureMessage || wf.failureReason || "今天定时调度实例状态异常"}\n`;
+            body += `  - 状态: ${wf.staleMessage || wf.staleReason || "离线"}\n`;
+            body += `  - 调度状态: ${wf.scheduleStatus || "未知"}\n`;
           }
           body += `\n`;
         }
@@ -708,29 +714,9 @@ function buildDsSchedulerMessages(checkResult, alertConfig = {}, routeLabel = ""
   }
 
   messages.push({
-    title: hasAnomalies ? `⚠️ ${routeLabel ? `【${routeLabel}】` : ""}DS 调度监控异常告警` : `✅ ${routeLabel ? `【${routeLabel}】` : ""}DS 调度监控健康报告`,
+    title: hasAnomalies ? "⚠️ DS 调度监控异常告警" : "✅ DS 调度监控健康报告",
     body,
   });
 
   return messages;
-}
-
-function filterDsCheckResultByCountry(checkResult = {}, countryCode = "") {
-  const country = (checkResult.countries || []).find((item) => String(item.country || "").toLowerCase() === String(countryCode || "").toLowerCase());
-  const countries = country ? [country] : [];
-  return {
-    checkedAt: checkResult.checkedAt,
-    totalStuck: 0,
-    totalStale: countries.reduce((sum, country) => sum + country.staleCount, 0),
-    totalFailed: countries.reduce((sum, country) => sum + country.failedCount, 0),
-    totalChecked: countries.reduce((sum, country) => sum + country.checkedWorkflows, 0),
-    totalCountries: countries.length,
-    failedCountries: countries.filter((country) => !country.success).length,
-    countries,
-  };
-}
-
-function normalizeMentionList(value) {
-  const values = Array.isArray(value) ? value : String(value || "").split(/[\n,，;；]+/);
-  return [...new Set(values.map((item) => String(item || "").trim()).filter(Boolean))];
 }

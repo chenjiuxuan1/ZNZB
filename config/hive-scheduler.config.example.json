@@ -1,0 +1,26 @@
+{
+  "n8nWebhookUrl": "http://127.0.0.1:5678/webhook/ds-scheduler",
+  "countries": {
+    "cn": { "name": "中国", "enabled": false, "token": "${DS_CN_TOKEN}" },
+    "ine": { "name": "印尼", "enabled": false, "token": "${DS_INE_TOKEN}" },
+    "ph": { "name": "菲律宾", "enabled": false, "token": "${DS_PH_TOKEN}" },
+    "th": { "name": "泰国", "enabled": false, "token": "${DS_TH_TOKEN}" },
+    "pk": { "name": "巴基斯坦", "enabled": false, "token": "${DS_PK_TOKEN}" },
+    "mx": { "name": "墨西哥", "enabled": false, "token": "${DS_MX_TOKEN}" }
+  },
+  "projectNames": { "cn": "", "ine": "", "ph": "", "th": "", "pk": "", "mx": "" },
+  "projects": {},
+  "alertRouting": {
+    "channel": "tv",
+    "webhookUrl": "https://tv-service-alert.kuainiu.chat/alert/v2/array",
+    "botId": "494903d0-6203-4d4c-a8d7-6bd7d3c92680",
+    "countryMentions": {
+      "cn": ["rockyzong@kn.group"],
+      "ine": ["gretchenhe@kn.group"],
+      "ph": ["jiangchuanchen@kn.group"],
+      "th": ["qilonghuang@kn.group"],
+      "pk": ["gretchenhe@kn.group"],
+      "mx": ["kuiwu@kn.group"]
+    }
+  }
+}
