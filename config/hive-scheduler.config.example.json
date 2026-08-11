@@ -8,7 +8,14 @@
     "pk": { "name": "巴基斯坦", "enabled": false, "token": "${DS_PK_TOKEN}" },
     "mx": { "name": "墨西哥", "enabled": false, "token": "${DS_MX_TOKEN}" }
   },
-  "projectNames": { "cn": "", "ine": "", "ph": "", "th": "", "pk": "", "mx": "" },
+  "projectNames": {
+    "cn": "ods，dwb，tdm，dm_feature，temp，market，dwd，rpt，dws，privacy，dim，dm_n，ext，dwt",
+    "ine": "ods，dwb，tdm，dm_feature，temp，market，dwd，rpt，dws，privacy，dim",
+    "ph": "",
+    "th": "ods，dwb，tdm，dm_feature，temp，market，dwd，rpt，dws，privacy，dim，dwt",
+    "pk": "",
+    "mx": ""
+  },
   "projects": {},
   "alertRouting": {
     "channel": "tv",
