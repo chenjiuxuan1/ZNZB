@@ -28,6 +28,7 @@ export function renderFluctuationVisual(root) {
   if (requestedCountryCode) state.fluctuationVisualCountryCode = requestedCountryCode;
   const model = buildFluctuationVisualModel(state.batchHistory, state.countries?.countries || [], {
     displayIndex: state.fluctuationVisualDisplayIndex,
+    showAiSuppressed: state.fluctuationVisualShowAiSuppressed,
     runId: query.runId,
     dashboardUrl: query.dashboardUrl,
     dashboardTitle: query.dashboardTitle,
@@ -45,14 +46,19 @@ export function renderFluctuationVisual(root) {
       </div>
     </div>
 
-    ${renderFluctuationStatus()}
+    ${renderFluctuationStatus(model)}
     ${state.fluctuationMetricTagError ? `<div class="sandbox-status error"><strong>标签保存失败</strong><span>${escapeHtml(state.fluctuationMetricTagError)}</span></div>` : ""}
-    ${model.hiddenVerifiedNormalCount ? `<div class="sandbox-status success"><strong>已隐藏 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已核验正常点</strong><span>原始告警、查询方式和完整结论仍保留在巡检历史详情中。</span></div>` : ""}
+    ${model.hiddenVerifiedNormalCount && !model.showAiSuppressed ? `<div class="sandbox-status success"><strong>已隐藏 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已排除/降级点</strong><span>AI 判定为无异常或业务变化的波动点默认不展示在图谱中，可通过上方开关临时展示；原始告警、查询方式和完整结论仍保留在巡检历史详情中。</span></div>` : ""}
+    ${model.hiddenVerifiedNormalCount && model.showAiSuppressed ? `<div class="sandbox-status warn"><strong>正在展示 ${escapeHtml(model.hiddenVerifiedNormalCount)} 个 AI 已排除/降级点</strong><span>这些点不会进入最终异常播报，仅用于回看原始波动走势。</span></div>` : ""}
     ${model.run ? renderFluctuationCountries(model) : renderEmptyFluctuationState()}
   `;
 
   root.querySelector("#refresh-fluctuation-history")?.addEventListener("click", () => {
     void reloadFluctuationHistory(root);
+  });
+  root.querySelector("[data-show-ai-suppressed]")?.addEventListener("change", (event) => {
+    state.fluctuationVisualShowAiSuppressed = Boolean(event.target.checked);
+    renderFluctuationVisual(root);
   });
   root.querySelectorAll("[data-fluctuation-country]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -96,6 +102,7 @@ export function renderFluctuationVisual(root) {
   } else if (selectedCountry) {
     void hydrateVisibleFluctuationSeries(root, selectedCountry);
   }
+  void ensureFluctuationAiDisplayIndex(root, model.run?.id || "");
   void loadFluctuationMetricTags(root, model);
 }
 
@@ -123,8 +130,10 @@ async function reloadFluctuationHistory(root) {
         `${runId}:${String(item.countryCode || "").toUpperCase()}:${item.anomalyIndex}`,
         item,
       ]));
+      state.fluctuationVisualDisplayIndexRunId = runId;
     } else {
       state.fluctuationVisualDisplayIndex = {};
+      state.fluctuationVisualDisplayIndexRunId = "";
     }
     state.fluctuationVisualLoaded = true;
     state.fluctuationVisualRefreshProgress = null;
@@ -141,16 +150,71 @@ async function reloadFluctuationHistory(root) {
   renderFluctuationVisual(root);
 }
 
-function renderFluctuationStatus() {
+async function ensureFluctuationAiDisplayIndex(root, runIdInput = "") {
+  const runId = String(runIdInput || "").trim();
+  if (!runId) return;
+  if (!shouldLoadFluctuationAiDisplayIndex({
+    runId,
+    loadedRunId: state.fluctuationVisualDisplayIndexRunId,
+    loadingRunId: state.fluctuationVisualDisplayIndexLoadingRunId,
+    displayIndex: state.fluctuationVisualDisplayIndex,
+  })) {
+    return;
+  }
+  state.fluctuationVisualDisplayIndexLoadingRunId = runId;
+  try {
+    const index = await apiGet(`/api/metabase-anomaly-analysis/display-index?runId=${encodeURIComponent(runId)}`);
+    state.fluctuationVisualDisplayIndex = {
+      ...(state.fluctuationVisualDisplayIndex || {}),
+      ...Object.fromEntries((index.items || []).map((item) => [
+        `${runId}:${String(item.countryCode || "").toUpperCase()}:${item.anomalyIndex}`,
+        item,
+      ])),
+    };
+    state.fluctuationVisualDisplayIndexRunId = runId;
+  } catch {
+    // The graph itself should remain usable when historical AI conclusions are
+    // unavailable. This endpoint is read-only and never triggers a re-analysis.
+    state.fluctuationVisualDisplayIndexRunId = runId;
+  } finally {
+    if (state.fluctuationVisualDisplayIndexLoadingRunId === runId) {
+      state.fluctuationVisualDisplayIndexLoadingRunId = "";
+    }
+  }
+  renderFluctuationVisual(root);
+}
+
+function shouldLoadFluctuationAiDisplayIndex({
+  runId = "",
+  loadedRunId = "",
+  loadingRunId = "",
+  displayIndex = {},
+} = {}) {
+  if (!runId) return false;
+  if (loadingRunId === runId) return false;
+  if (loadedRunId === runId) return false;
+  return !Object.keys(displayIndex || {}).some((key) => key.startsWith(`${runId}:`));
+}
+
+function renderFluctuationStatus(model = {}) {
   const status = state.batchHistoryStatus;
   const refreshing = Boolean(state.fluctuationVisualRefreshProgress);
+  const hiddenCount = model.hiddenVerifiedNormalCount || 0;
+  const showAiSuppressed = Boolean(state.fluctuationVisualShowAiSuppressed && hiddenCount);
   return `
     <section class="panel fluctuation-toolbar">
       <div>
         <h2 class="panel-title">异常走势视图</h2>
         <p class="muted">绿色折线来自巡检时保存的真实查询结果，红色表示报警当天的数据。旧历史没有真实序列时不画参考线，避免误判。</p>
       </div>
-      <button id="refresh-fluctuation-history" class="primary" type="button" ${refreshing ? "disabled aria-busy=\"true\"" : ""}>${refreshing ? "刷新中..." : (state.fluctuationVisualLoaded ? "刷新最新波动图谱" : "加载最新波动图谱")}</button>
+      <div class="fluctuation-toolbar-actions">
+        <label class="mini-switch fluctuation-ai-filter" title="默认隐藏 AI 判断为无异常或业务变化降级的波动点">
+          <input type="checkbox" data-show-ai-suppressed ${showAiSuppressed ? "checked" : ""} ${hiddenCount ? "" : "disabled"}>
+          <span aria-hidden="true"></span>
+          <em>${hiddenCount ? (showAiSuppressed ? "正在展示 AI 已排除/降级点" : `隐藏 AI 已排除/降级点（${hiddenCount}）`) : "无 AI 已排除/降级点"}</em>
+        </label>
+        <button id="refresh-fluctuation-history" class="primary" type="button" ${refreshing ? "disabled aria-busy=\"true\"" : ""}>${refreshing ? "刷新中..." : (state.fluctuationVisualLoaded ? "刷新最新波动图谱" : "加载最新波动图谱")}</button>
+      </div>
     </section>
     ${renderFluctuationRefreshProgress()}
     ${status ? `
@@ -239,11 +303,11 @@ function renderFluctuationRow(anomaly, index) {
   const seriesState = state.fluctuationVisualSeries?.[anomaly.seriesKey];
   const tag = state.fluctuationMetricTags?.[anomaly.tagKey] || "二级";
   return `
-    <section class="fluctuation-row">
+    <section class="fluctuation-row ${anomaly.aiSuppressed ? "is-ai-suppressed" : ""}">
       <div class="fluctuation-row-meta">
         <span class="fluctuation-row-index">${escapeHtml(index + 1)}</span>
         <div class="fluctuation-row-title">
-          <h3>${escapeHtml(anomaly.metricLabel)}</h3>
+          <h3>${escapeHtml(anomaly.metricLabel)}${anomaly.aiSuppressed ? `<span class="badge success fluctuation-ai-suppressed-badge">${escapeHtml(anomaly.aiSuppressedReason || "AI 已排除")}</span>` : ""}</h3>
           <p>${escapeHtml(anomaly.dashboardTitle || "-")}</p>
           <p>${escapeHtml(anomaly.cardTitle || "-")}</p>
         </div>
@@ -253,6 +317,7 @@ function renderFluctuationRow(anomaly, index) {
           ${renderOptionalDetailField("变化", anomaly.detail.changeValue)}
           <div>${renderDetailField("时间", anomaly.detail.timeText || "-")}</div>
         </div>
+        ${renderAiProblemConclusion(anomaly)}
       </div>
       <div class="fluctuation-row-chart">
         ${renderFluctuationMetricTagControl(anomaly, tag)}
@@ -580,7 +645,20 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
   const allAnomalies = collectFluctuationAnomalies(run, countries)
     .filter((anomaly) => matchesDashboardFilter(anomaly, options));
   const displayIndex = options.displayIndex || {};
-  const anomalies = allAnomalies.filter((anomaly) => displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`]?.chartVisibility !== "hide_verified_normal");
+  const showAiSuppressed = Boolean(options.showAiSuppressed);
+  const annotatedAnomalies = allAnomalies.map((anomaly) => {
+    const displayItem = displayIndex[`${anomaly.runId}:${anomaly.countryCode}:${anomaly.anomalyIndex}`];
+    const aiAnalysis = normalizeFluctuationAiAnalysis(anomaly.aiAudit, displayItem);
+    return {
+      ...anomaly,
+      aiSuppressed: isAiSuppressedFluctuationPoint(aiAnalysis),
+      aiSuppressedReason: describeAiSuppressedFluctuationPoint(aiAnalysis),
+      aiAnalysis,
+    };
+  });
+  const anomalies = showAiSuppressed
+    ? annotatedAnomalies
+    : annotatedAnomalies.filter((anomaly) => !anomaly.aiSuppressed);
   const byCountry = new Map();
   for (const anomaly of anomalies) {
     if (!byCountry.has(anomaly.countryCode)) {
@@ -599,8 +677,161 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
     countries: countryModels,
     countryCount: countryModels.length,
     anomalyCount: anomalies.length,
-    hiddenVerifiedNormalCount: allAnomalies.length - anomalies.length,
+    hiddenVerifiedNormalCount: annotatedAnomalies.filter((anomaly) => anomaly.aiSuppressed).length,
+    showAiSuppressed,
   };
+}
+
+function isAiSuppressedFluctuationPoint(item = {}) {
+  item = item || {};
+  const verdict = String(item.dataSideVerdict || item.verdict || "").trim();
+  const action = String(item.notificationAction || "").trim();
+  return item.chartVisibility === "hide_verified_normal"
+    || verdict === "verified_normal"
+    || verdict === "business_change"
+    || action === "downgrade";
+}
+
+function describeAiSuppressedFluctuationPoint(item = {}) {
+  item = item || {};
+  const verdict = String(item.dataSideVerdict || item.verdict || "").trim();
+  const action = String(item.notificationAction || "").trim();
+  if (verdict === "verified_normal" || item.chartVisibility === "hide_verified_normal") return "AI 判定无异常";
+  if (verdict === "business_change" || action === "downgrade") return "AI 判定业务变化/降级";
+  return "";
+}
+
+function normalizeFluctuationAiAnalysis(...candidates) {
+  const merged = {};
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    for (const [key, value] of Object.entries(candidate)) {
+      if (value === undefined || value === null || value === "") continue;
+      merged[key] = value;
+    }
+  }
+  if (!Object.keys(merged).length) return null;
+  const verdict = String(merged.dataSideVerdict || merged.finalVerdict || merged.verdict || "").trim();
+  return {
+    ...merged,
+    finalVerdict: merged.finalVerdict || verdict,
+    dataSideVerdict: merged.dataSideVerdict || verdict,
+  };
+}
+
+function isAiProblemFluctuationPoint(item = {}) {
+  item = item || {};
+  const verdict = String(item.dataSideVerdict || item.finalVerdict || item.verdict || "").trim();
+  const action = String(item.notificationAction || "").trim();
+  return verdict === "data_issue"
+    || verdict === "system_issue"
+    || verdict === "metric_issue"
+    || action === "send";
+}
+
+function isGenericAiFallbackAnalysis(analysis = {}) {
+  const verdict = String(analysis.dataSideVerdict || analysis.finalVerdict || analysis.verdict || "").trim();
+  const summary = String(analysis.summary || "").trim();
+  const limitations = String(analysis.limitations || "").trim();
+  return analysis.verdictMissing === true
+    || verdict === "insufficient_evidence"
+    || summary.includes("Dify 未返回该指标判断")
+    || summary.includes("AI 未在巡检时限内完成取证")
+    || summary.includes("AI 未核验")
+    || limitations.includes("Dify 响应缺少该指标 verdict");
+}
+
+function describeActualAnomalyProblem(anomaly = {}) {
+  const detail = anomaly.detail || {};
+  const parts = [];
+  if (anomaly.metricLabel) parts.push(`指标「${anomaly.metricLabel}」出现数据异常`);
+  else if (anomaly.dashboardTitle || anomaly.cardTitle) parts.push(`「${anomaly.dashboardTitle || anomaly.cardTitle}」出现数据异常`);
+  if (anomaly.dashboardTitle || anomaly.cardTitle) parts.push(`位于${anomaly.dashboardTitle || anomaly.cardTitle}`);
+  const values = [];
+  if (detail.currentValue) values.push(`当前值 ${detail.currentValue}`);
+  if (detail.baselineValue) values.push(`基准值 ${detail.baselineValue}`);
+  if (detail.changeValue) values.push(`变化 ${detail.changeValue}`);
+  if (values.length) parts.push(`（${values.join("，")}）`);
+  if (detail.timeText) parts.push(`异常时间 ${detail.timeText}`);
+  return parts.join("，") || "存在数据侧异常，请人工核查。";
+}
+
+function renderAiProblemConclusion(anomaly = {}) {
+  const analysis = anomaly.aiAnalysis || {};
+  if (!isAiProblemFluctuationPoint(analysis)) return "";
+  const summary = String(analysis.summary || "").trim();
+  const confidence = String(analysis.confidence || "").trim();
+  const verdict = describeAiProblemVerdict(analysis);
+  const genericFallback = isGenericAiFallbackAnalysis(analysis);
+  const actualProblem = describeActualAnomalyProblem(anomaly);
+  const processItems = [
+    analysis.statusLabel ? `巡检状态：${analysis.statusLabel}` : "",
+    analysis.verificationReason ? `核验说明：${analysis.verificationReason}` : "",
+    analysis.dashboardSummary ? `看板结论：${analysis.dashboardSummary}` : "",
+  ].filter(Boolean);
+  return `
+    <aside class="fluctuation-ai-conclusion">
+      <div class="fluctuation-ai-conclusion-head">
+        <span>AI 巡检过程与通知</span>
+        <strong>${escapeHtml(verdict)}</strong>
+      </div>
+      ${genericFallback
+        ? `<div class="fluctuation-ai-actual-problem"><span>实际异常</span><p>${escapeHtml(actualProblem || summary || "AI 未能返回该指标的判断，请人工核查。")}</p></div>`
+        : `<p>${escapeHtml(summary || "AI 已判定该波动需要关注，但本次结果未返回摘要。")}</p>`}
+      ${renderAiProcessList("巡检过程", processItems)}
+      ${renderAiProcessList("可能原因", analysis.possibleCauses)}
+      ${renderAiProcessList("核查步骤", analysis.verificationSteps)}
+      ${renderAiProcessList("建议处理", analysis.recommendedActions)}
+      ${analysis.limitations ? `<div class="fluctuation-ai-limitation"><span>限制说明</span><p>${escapeHtml(analysis.limitations)}</p></div>` : ""}
+      <div class="fluctuation-ai-conclusion-meta">
+        ${analysis.status ? `<em>任务状态：${escapeHtml(describeAiTaskStatus(analysis.status))}</em>` : ""}
+        ${confidence ? `<em>置信度：${escapeHtml(confidence)}</em>` : ""}
+        ${analysis.notificationAction ? `<em>通知建议：${escapeHtml(describeNotificationAction(analysis.notificationAction))}</em>` : ""}
+        ${analysis.notifiable === false ? `<em>最终通知：不播报</em>` : `<em>最终通知：${escapeHtml(describeNotificationAction(analysis.notificationAction || "send"))}</em>`}
+      </div>
+    </aside>
+  `;
+}
+
+function renderAiProcessList(title, values) {
+  const items = Array.isArray(values) ? values : [values].filter(Boolean);
+  const normalized = items.map((item) => String(item || "").trim()).filter(Boolean);
+  if (!normalized.length) return "";
+  return `
+    <div class="fluctuation-ai-process-block">
+      <span>${escapeHtml(title)}</span>
+      <ul>
+        ${normalized.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function describeAiTaskStatus(status) {
+  const value = String(status || "").trim();
+  if (value === "completed") return "已完成";
+  if (value === "timed_out") return "超时";
+  if (value === "failed") return "失败";
+  if (value === "pending") return "等待回调";
+  return value;
+}
+
+function describeAiProblemVerdict(item = {}) {
+  item = item || {};
+  const verdict = String(item.dataSideVerdict || item.finalVerdict || item.verdict || "").trim();
+  if (verdict === "data_issue") return "有数据侧异常";
+  if (verdict === "system_issue") return "有系统侧异常";
+  if (verdict === "metric_issue") return "指标异常需关注";
+  if (verdict === "insufficient_evidence") return "证据不足但建议关注";
+  return "AI 判断有问题";
+}
+
+function describeNotificationAction(action) {
+  const value = String(action || "").trim();
+  if (value === "send") return "播报";
+  if (value === "downgrade") return "降级";
+  if (value === "enrich_only") return "仅补充";
+  return value;
 }
 
 function matchesDashboardFilter(anomaly, options = {}) {
@@ -640,6 +871,7 @@ function collectFluctuationAnomalies(run, countries = []) {
   for (const countryRun of run.runs || []) {
     const countryCode = String(countryRun.countryCode || "").toUpperCase();
     const countryName = countryRun.countryName || countryNames.get(countryCode) || countryCode;
+    const aiAudit = Array.isArray(countryRun.result?.aiAudit) ? countryRun.result.aiAudit : [];
     for (const [anomalyIndex, anomaly] of (countryRun.result?.anomalies || []).entries()) {
       const detail = parseAnomalyMessage(anomaly.message || "", anomaly.type || "");
       if (!isFluctuationAnomaly(anomaly, detail, countryCode)) {
@@ -653,6 +885,7 @@ function collectFluctuationAnomalies(run, countries = []) {
         countryName,
         runId: run.id || "",
         anomalyIndex,
+        aiAudit: aiAudit[anomalyIndex] || null,
         seriesKey,
         hydratedSeries: hydrated?.series || null,
         detail,
@@ -982,6 +1215,9 @@ export const __test__ = {
   buildSmoothPath,
   resolveChartYBounds,
   renderOptionalDetailField,
+  renderAiProblemConclusion,
+  normalizeFluctuationAiAnalysis,
   matchesDashboardFilter,
   shouldLoadRequestedFluctuationRun,
+  shouldLoadFluctuationAiDisplayIndex,
 };

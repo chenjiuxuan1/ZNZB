@@ -18,12 +18,13 @@ import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import { fetchCompatible } from "./fetch-compatible.mjs";
-import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
+import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, isMetabaseVerdictMissingAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
 import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
 import {
   buildDashboardAnalysisJobs,
   getBatchInvestigationLimits,
   MAX_DASHBOARD_ANALYSIS_BYTES,
+  MAX_ANOMALIES_PER_DIFY_BATCH,
   runBoundedInvestigationQueue,
 } from "./metabase-anomaly-batch.mjs";
 import {
@@ -106,6 +107,7 @@ const DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS = { snapshots: [] };
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BATCH_HISTORY_RUNS = 200;
 const METABASE_ANALYSIS_PENDING_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_METABASE_ANALYSIS_ATTEMPTS = 3;
 const DEFAULT_DS_SCHEDULE = {
   enabled: false,
   intervalMinutes: 60,
@@ -323,7 +325,7 @@ export function createPlatformApi({
           });
         }
       }
-      const groups = buildDashboardAnalysisJobs(cases);
+      const groups = buildDashboardAnalysisJobs(cases, MAX_ANOMALIES_PER_DIFY_BATCH);
       const store = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
       const snapshots = [...(store.snapshots || [])];
       const batches = groups.map((group) => {
@@ -435,7 +437,8 @@ export function createPlatformApi({
         }
         await delay(Math.min(intervalMs, Math.max(1, endAt - Date.now())));
       }
-      return this.markMetabaseInvestigationBatchTimedOut(batch, { reason: Date.now() >= deadlineAt ? "巡检已达到 45 分钟全局截止" : "等待 Dify 回调超过 10 分钟" });
+      const timeoutMinutes = Math.max(1, Math.round(limits.timeoutMs / 60_000));
+      return this.markMetabaseInvestigationBatchTimedOut(batch, { reason: Date.now() >= deadlineAt ? "巡检已达到 45 分钟全局截止" : `等待 Dify 回调超过 ${timeoutMinutes} 分钟` });
     },
 
     async markMetabaseInvestigationBatchTimedOut(batch = {}, { reason = "AI 未在时限内回写" } = {}) {
@@ -478,6 +481,28 @@ export function createPlatformApi({
       return { status: "timed_out", entries: replacements };
     },
 
+    async collectRetryableMetabaseBatches({ settled = [], runId, analysesFile }) {
+      const cache = await readJsonFile(analysesFile, DEFAULT_METABASE_ANOMALY_ANALYSES);
+      const byKey = new Map((cache.analyses || []).map((item) => [item.key, item]));
+      const retryable = [];
+      for (const { batch, result } of settled || []) {
+        const settlement = String(result?.status || "").trim();
+        if (settlement === "timed_out" || settlement === "failed") {
+          retryable.push(batch);
+          continue;
+        }
+        if (settlement !== "completed") continue;
+        const countryCode = normalizeCountryCode(batch.countryCode);
+        const anyUnresolved = (batch.cases || []).some((item) => {
+          const entry = byKey.get(`${runId}:${countryCode}:${Number(item.anomalyIndex)}`);
+          if (!entry) return false;
+          return entry.verdictMissing === true || entry.status === "timed_out" || entry.status === "failed";
+        });
+        if (anyUnresolved) retryable.push(batch);
+      }
+      return retryable;
+    },
+
     async finalizeAiFirstMetabasePatrol({ runId, startedAt, countryRuns, countryConfigs, schedule, detailUrl, wattrelSummary, dsSchedulerSummary, dsSchedulerError, trigger }) {
       const limits = getBatchInvestigationLimits();
       const deadlineAt = Date.parse(startedAt) + limits.deadlineMs;
@@ -495,10 +520,31 @@ export function createPlatformApi({
           waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
           onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, event); },
         });
-        for (const batch of analysisResult.notSubmitted || []) {
+        queueResult = analysisResult;
+        for (let attempt = 2; attempt <= MAX_METABASE_ANALYSIS_ATTEMPTS && Date.now() < deadlineAt; attempt++) {
+          const retryBatches = await this.collectRetryableMetabaseBatches({
+            settled: queueResult.settled || [],
+            runId,
+            analysesFile: resolve("metabaseAnomalyAnalyses"),
+          });
+          if (!retryBatches.length) break;
+          batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "ai_analysis", {
+            status: "running",
+            detail: `正在重刷 ${retryBatches.length} 个未出结论的看板分析（第 ${attempt}/${MAX_METABASE_ANALYSIS_ATTEMPTS} 次）`,
+          });
+          const retryResult = await runBoundedInvestigationQueue({
+            batches: retryBatches,
+            limits,
+            deadlineAt,
+            submit: async (batch) => this.submitMetabaseInvestigationBatch(batch),
+            waitForSettlement: async (batch) => this.waitForMetabaseInvestigationBatch(batch, { deadlineAt }),
+            onProgress: (event) => { batchScheduleRunProgress = updateBatchScheduleAiBatchProgress(batchScheduleRunProgress, { ...event, retry: true, attempt }); },
+          });
+          queueResult = mergeBatchInvestigationResults(queueResult, retryResult);
+        }
+        for (const batch of queueResult.notSubmitted || []) {
           await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "巡检达到 45 分钟全局截止，未再投递 Dify" });
         }
-        queueResult = analysisResult;
      } else {
        const prepared = await this.prepareMetabaseInvestigationBatches({ runId, wattrelSummary, dsSchedulerSummary });
        for (const batch of prepared.batches) await this.markMetabaseInvestigationBatchTimedOut(batch, { reason: "Dify 批量取证未配置，已按保守策略通知" });
@@ -769,6 +815,15 @@ export function createPlatformApi({
           countryCode: item.countryCode,
           anomalyIndex: item.anomalyIndex,
           verificationStatus: "completed",
+          summary: item.analysis?.summary || "",
+          confidence: item.analysis?.confidence || "",
+          limitations: item.analysis?.limitations || "",
+          possibleCauses: item.analysis?.possibleCauses || [],
+          verificationSteps: item.analysis?.verificationSteps || [],
+          recommendedActions: item.analysis?.recommendedActions || [],
+          finalVerdict: item.analysis?.finalVerdict || item.analysis?.dataSideVerdict || "",
+          dataSideVerdict: item.analysis?.dataSideVerdict || "",
+          notificationAction: item.analysis?.notificationAction || "",
           chartVisibility: item.analysis?.chartVisibility === "hide_verified_normal" ? "hide_verified_normal" : "show",
           verificationReason: item.analysis?.chartVisibility === "hide_verified_normal" ? item.analysis?.verificationReason || "" : "",
         }));
@@ -1000,6 +1055,7 @@ export function createPlatformApi({
         return earlyCompleted;
       }
       if (existing.jobId && String(body.jobId || "") !== String(existing.jobId)) {
+        console.error(`[metabase-anomaly] callback jobId mismatch: key=${entryKey} expected=${existing.jobId} actual=${body.jobId || ""} batchId=${existing.batchId || ""}`);
         throw badRequest("Invalid Metabase anomaly analysis callback", ["回调任务编号与待处理任务不一致。"]);
       }
       const completed = buildCompletedMetabaseAnalysis({
@@ -1023,8 +1079,8 @@ export function createPlatformApi({
       const jobId = String(body.jobId || "").trim();
       const results = Array.isArray(body.results) ? body.results : [];
       console.error(`[metabase-anomaly] batch-callback received: runId=${runId} country=${countryCode} jobId=${jobId.slice(0,20)} results=${results.length}`);
-      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 30) {
-        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-30 条结果。"]);
+      if (!runId || !countryCode || !jobId || results.length === 0 || results.length > 100) {
+        throw badRequest("Invalid Metabase anomaly batch callback", ["批量回调必须包含 runId、countryCode、jobId 和 1-100 条结果。"]);
       }
       const indexes = results.map((item) => Number(item?.anomalyIndex));
       if (indexes.some((index) => !Number.isInteger(index) || index < 0) || new Set(indexes).size !== indexes.length) {
@@ -1472,7 +1528,7 @@ export function createPlatformApi({
         throw badRequest("Invalid dashboard", ["仅支持 Metabase 的 /public/dashboard/... 或 /dashboard/... 看板链接。"]);
       }
 
-      const sourcePath = panelSourceFilePath(rootDir, countryCode);
+      const sourcePath = runtimePanelSourceFilePath(rootDir, countryCode);
       const source = await readJsonFile(sourcePath, {});
       const panels = Array.isArray(source.panels) ? source.panels : [];
       const normalizedUrl = dashboardUrlIdentity(url);
@@ -1498,6 +1554,60 @@ export function createPlatformApi({
       }, panel);
     },
 
+    async deleteDashboard({ countryCode: countryCodeInput, dashboardUuid = "", sourcePanelId = "", dashboardId = "", url = "" } = {}) {
+      const countryCode = String(countryCodeInput || "").trim().toUpperCase();
+      if (!countryCode) {
+        throw badRequest("Invalid dashboard deletion", ["请选择需要删除的国家。"]);
+      }
+      const [countries, readyInventory] = await Promise.all([
+        readJsonFile(resolve("countries"), { countries: [] }),
+        readPlatformInventory(rootDir, resolve("inventory")),
+      ]);
+      const panelSources = await loadPanelSources(rootDir, countries.countries || [], { countryCode });
+      const inventory = mergeDashboardSources(readyInventory, panelSources);
+      const dashboard = (inventory.dashboards || []).find((item) => (
+        getDashboardCountryCode(item) === countryCode
+        && dashboardMatchesDeleteRequest(item, { countryCode, dashboardUuid, sourcePanelId, dashboardId, url })
+      ));
+      if (!dashboard) {
+        throw badRequest("Dashboard not found", ["未找到该看板，请刷新页面后重试。"]);
+      }
+
+      const deletion = buildDashboardDeletionRef(dashboard);
+      const sourcePath = runtimePanelSourceFilePath(rootDir, countryCode);
+      const source = await readJsonFile(sourcePath, {});
+      const panels = (source.panels || []).filter((panel) => !panelMatchesDeletion(panel, deletion));
+      const deletedDashboards = appendUniqueDashboardDeletions(source.deletedDashboards || [], [deletion]);
+      await writeJsonAtomic(sourcePath, {
+        ...source,
+        country: source.country || dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
+        panels,
+        deletedDashboards,
+      });
+
+      const inventoryPath = runtimeCountryInventoryFilePath(rootDir, countryCode);
+      const runtimeInventory = await readJsonFile(inventoryPath, {
+        country: dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
+        dashboards: [],
+      });
+      await writeJsonAtomic(inventoryPath, {
+        ...runtimeInventory,
+        country: runtimeInventory.country || dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
+        dashboards: (runtimeInventory.dashboards || []).filter((item) => !dashboardMatchesDeletion(item, deletion)),
+        deletedDashboards: appendUniqueDashboardDeletions(runtimeInventory.deletedDashboards || [], [deletion]),
+        updatedAt: new Date().toISOString(),
+      });
+
+      return {
+        ok: true,
+        countryCode,
+        dashboardUuid: dashboard.uuid || "",
+        dashboardId: dashboard.dashboardId || "",
+        sourcePanelId: dashboard.sourcePanelId || "",
+        title: dashboard.title || dashboard.sourcePanelTitle || "",
+      };
+    },
+
     async discoverManualDashboard({ countryCode: countryCodeInput, sourcePanelId } = {}) {
       const countryCode = String(countryCodeInput || "").trim().toUpperCase();
       const panelId = String(sourcePanelId || "").trim();
@@ -1506,7 +1616,7 @@ export function createPlatformApi({
       if (!country || !panelId) {
         throw badRequest("Invalid dashboard", ["请选择需要发现卡片的看板。"]);
       }
-      const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), { panels: [] });
+      const source = await readMergedPanelSource(rootDir, countryCode);
       const panel = (source.panels || []).find((item) => String(item.id) === panelId);
       if (!panel) {
         throw badRequest("Dashboard not found", ["未找到该看板的来源记录，请刷新页面后重试。"]);
@@ -1525,12 +1635,12 @@ export function createPlatformApi({
           sampleRows: 0,
         });
       } catch (error) {
-        throw badRequest("Dashboard discovery failed", [error.message || "Metabase 看板发现失败"]);
+        throw dashboardDiscoveryFailed(error);
       } finally {
         await fs.rm(temporaryInputFile, { force: true });
       }
       if ((rawDiscovered.sourceErrors || []).length > 0) {
-        throw badRequest("Dashboard discovery failed", rawDiscovered.sourceErrors.map((item) => item.error).filter(Boolean));
+        throw dashboardDiscoveryFailed(rawDiscovered.sourceErrors.map((item) => item.error).filter(Boolean).join("；"));
       }
 
       const discovered = (rawDiscovered.dashboards || []).map((dashboard) => ({
@@ -1543,6 +1653,12 @@ export function createPlatformApi({
         sourcePanelTitle: dashboard.sourcePanelTitle || panel.title,
         sourceUrl: dashboard.sourceUrl || panel.links?.[0]?.url || dashboard.url || "",
       }));
+      const executableDiscovered = discovered.filter((dashboard) => (dashboard.cards || []).length > 0);
+      if (executableDiscovered.length === 0) {
+        throw badRequest("Dashboard discovery failed", [
+          "错误类型：未发现可巡检卡片。请确认链接指向 Metabase 看板、当前服务账号有访问权限，且看板中至少有一张可查询卡片。",
+        ]);
+      }
       const current = await readPlatformInventory(rootDir, resolve("inventory"));
       const existingCountryDashboards = (current.dashboards || [])
         .filter((dashboard) => getDashboardCountryCode(dashboard) === countryCode);
@@ -1553,7 +1669,7 @@ export function createPlatformApi({
         country: { code: country.code, name: country.name, timezone: country.timezone },
         dashboards: discovered,
       }]);
-      const outputFile = path.join(rootDir, `config/discovered-public-dashboards.${countryCode.toLowerCase()}.json`);
+      const outputFile = runtimeCountryInventoryFilePath(rootDir, countryCode);
       const discoveredAt = new Date().toISOString();
       await writeJsonAtomic(outputFile, { ...merged, discoveredAt });
       return {
@@ -1562,7 +1678,7 @@ export function createPlatformApi({
         sourcePanelId: panel.id,
         discoveredAt,
         discoveredDashboardCount: discovered.length,
-        executableDashboardCount: discovered.filter((dashboard) => (dashboard.cards || []).length > 0).length,
+        executableDashboardCount: executableDiscovered.length,
       };
     },
 
@@ -1600,7 +1716,7 @@ export function createPlatformApi({
         const message = discovered.sourceErrors.map((item) => item.error).filter(Boolean).join("; ") || "Metabase 看板发现失败";
         throw badRequest("Dashboard discovery failed", [message]);
       }
-      const outputFile = path.join(rootDir, `config/discovered-public-dashboards.${countryCode.toLowerCase()}.json`);
+      const outputFile = runtimeCountryInventoryFilePath(rootDir, countryCode);
       await writeJsonAtomic(outputFile, { ...discovered, discoveredAt });
       return {
         ok: true,
@@ -3588,17 +3704,23 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   const total = Number(event.total ?? current.total ?? 0);
   const completed = Number(event.completed ?? current.completed ?? 0);
   const errors = Array.isArray(current.errors) ? [...current.errors] : [];
+  const details = upsertAiBatchProgressDetail(current.details || [], event);
   if (event.type === "batch_settled" && event.result?.status === "failed" && event.result?.error) {
     const dashTitle = event.batch?.dashboardTitle || event.batch?.dashboardUuid || event.batch?.groupKey || "?";
     errors.push(`${dashTitle}: ${event.result.error}`.slice(0, 200));
   }
+  if (event.type === "batch_settled" && event.result?.status === "timed_out") {
+    const dashTitle = event.batch?.dashboardTitle || event.batch?.dashboardUuid || event.batch?.groupKey || "?";
+    const reason = event.result?.entries?.[0]?.analysis?.limitations || "等待 Dify 回调超过等待窗口";
+    errors.push(`${dashTitle}: ${reason}`.slice(0, 200));
+  }
   let status = "running";
   let detail = `看板分析 ${completed}/${total}，最多同时运行 3 个请求`;
   if (event.type === "batch_submitted") {
-    detail = `看板分析已提交 ${Math.min(event.submitted || 0, total)}/${total}，等待 Dify 回写`;
+    detail = `${event.retry ? "重刷看板分析" : "看板分析"}已提交 ${Math.min(event.submitted || 0, total)}/${total}，等待 Dify 回写`;
   }
   if (event.type === "batch_settled") {
-    detail = `看板分析 ${completed}/${total}，等待 Dify 回写`;
+    detail = `${event.retry ? "重刷看板分析" : "看板分析"} ${completed}/${total}，等待 Dify 回写`;
     if (errors.length) detail += `；失败 ${errors.length}：${errors[errors.length - 1]}`;
   }
   if (event.type === "global_deadline") {
@@ -3610,9 +3732,79 @@ function updateBatchScheduleAiBatchProgress(progress, event = {}) {
     total,
     completed,
     errors: errors.slice(-5),
+    details,
     detail,
   });
   return { ...next, status: status === "partial_failed" ? "partial_failed" : "ai_analyzing" };
+}
+
+function upsertAiBatchProgressDetail(existing = [], event = {}) {
+  if (!event.batch) return Array.isArray(existing) ? existing : [];
+  const next = Array.isArray(existing) ? [...existing] : [];
+  const detail = buildAiBatchProgressDetail(event);
+  const index = next.findIndex((item) => item.key === detail.key);
+  if (index >= 0) {
+    next[index] = { ...next[index], ...detail };
+  } else {
+    next.push(detail);
+  }
+  return next.slice(-30);
+}
+
+function buildAiBatchProgressDetail(event = {}) {
+  const batch = event.batch || {};
+  const result = event.result || {};
+  const entries = Array.isArray(result.entries) ? result.entries : [];
+  const firstEntry = entries[0] || {};
+  const status = event.type === "batch_submitted"
+    ? "submitted"
+    : event.type === "batch_start"
+      ? "running"
+      : result.status || "running";
+  const reason = result.error
+    || firstEntry.analysis?.limitations
+    || (status === "timed_out" ? "等待 Dify 回调超过等待窗口" : "");
+  return {
+    key: String(batch.batchId || batch.groupKey || `${batch.countryCode || ""}:${batch.dashboardUuid || ""}`),
+    batchId: String(batch.batchId || ""),
+    groupKey: String(batch.groupKey || ""),
+    countryCode: normalizeCountryCode(batch.countryCode),
+    dashboardTitle: String(batch.dashboardTitle || batch.dashboardUuid || batch.groupKey || "-"),
+    dashboardUuid: String(batch.dashboardUuid || ""),
+    caseCount: Array.isArray(batch.cases) ? batch.cases.length : 0,
+    anomalyIndexes: (batch.cases || []).map((item) => Number(item.anomalyIndex)).filter(Number.isFinite),
+    status,
+    retry: Boolean(event.retry),
+    submitted: Number(event.submitted || 0),
+    total: Number(event.total || 0),
+    reason,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function mergeBatchInvestigationResults(initial = {}, retry = {}) {
+  const keyForBatch = (batch = {}) => String(batch.batchId || batch.groupKey || "");
+  const keyForSettled = (item = {}) => keyForBatch(item.batch);
+  const byBatch = new Map();
+  for (const item of initial.settled || []) byBatch.set(keyForSettled(item), item);
+  for (const item of retry.settled || []) byBatch.set(keyForSettled(item), item);
+  const settled = [...byBatch.values()];
+  const settledKeys = new Set(settled.map(keyForSettled));
+  const notSubmitted = [
+    ...(initial.notSubmitted || []),
+    ...(retry.notSubmitted || []),
+  ].filter((batch, index, all) => {
+    const key = keyForBatch(batch);
+    return key && !settledKeys.has(key) && all.findIndex((item) => keyForBatch(item) === key) === index;
+  });
+  return {
+    total: initial.total || retry.total || settled.length,
+    completed: settled.filter((item) => item.result?.status === "completed").length,
+    settled,
+    failed: settled.filter((item) => item.result?.status === "failed").length,
+    timedOut: settled.filter((item) => item.result?.status === "timed_out").length,
+    notSubmitted,
+  };
 }
 
 async function buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile }) {
@@ -3638,15 +3830,31 @@ async function buildAiFinalizedCountryRuns({ countryRuns, runId, analysesFile })
        verificationReason: entry?.analysis?.verificationReason || "",
        dashboardSummary: entry?.dashboardSummary || "",
        summary: entry?.analysis?.summary || "AI 未核验，请人工确认。",
+        confidence: entry?.analysis?.confidence || "low",
+        possibleCauses: entry?.analysis?.possibleCauses || [],
+        verificationSteps: entry?.analysis?.verificationSteps || [],
+        recommendedActions: entry?.analysis?.recommendedActions || [],
         limitations: entry?.analysis?.limitations || "AI 未返回完整结论。",
         statusLabel: verifiedNormal ? "AI 查数正常" : businessChange ? "AI 核验为业务变化" : entry?.status === "completed" ? "AI 已核验数据侧异常" : "AI 未核验",
         notifiable,
       };
     });
     const notifiableAnomalies = anomalies.filter((_item, index) => aiAudit[index].notifiable);
+    const aiVerdictCounts = aiAudit.reduce((counts, item) => {
+      const key = item.verdict || "insufficient_evidence";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
     return {
       ...countryRun,
-      result: { ...countryRun.result, aiAudit, notifiableAnomalies },
+      result: {
+        ...countryRun.result,
+        rawAnomalyCount: Number(countryRun.result.anomalyCount || anomalies.length || 0),
+        anomalyCount: notifiableAnomalies.length,
+        aiAudit,
+        aiVerdictCounts,
+        notifiableAnomalies,
+      },
     };
   });
 }
@@ -3687,6 +3895,25 @@ async function sendScheduledAggregateNotifications({ countryRuns, countryConfigs
       ...combineScheduledCountryResults(notificationRuns),
       wattrelSummary,
     };
+    if (Number(result.anomalyCount || 0) + Number(result.dataQualityAnomalyCount || 0) <= 0) {
+      const notification = {
+        sent: false,
+        skipped: true,
+        reason: "no data-side anomalies after AI verification",
+        sentMessages: 0,
+        results: [],
+        channel: group.alerts.channel,
+        botId: group.alerts.botId || "",
+        chatId: group.alerts.chatId || "",
+        recipientEmails: group.alerts.recipientEmails || "",
+        mentions: group.alerts.mentions || [],
+        webhookUrl: group.alerts.webhookUrl || "",
+        detailUrl: group.alerts.detailUrl || "",
+        sentAt: new Date().toISOString(),
+      };
+      for (const countryRun of group.countryRuns) countryRun.result.notification = notification;
+      continue;
+    }
     const messages = buildPublicCheckMessages(result, {
       ...group.alerts,
       countryDetailMode: "summary",
@@ -4020,6 +4247,7 @@ function buildCompletedMetabaseAnalysis({ key, runId, countryCode, anomalyIndex,
     provider: existing.provider || "n8n-evidence",
     model: String(body.model || existing.model || "n8n-configured-model"),
     analysis: normalizeMetabaseAnomalyAnalysis(body.analysis),
+    verdictMissing: isMetabaseVerdictMissingAnalysis(body.analysis),
     evidence: normalizeAgentEvidence(body.evidence),
     observability: body.observability && typeof body.observability === "object"
       ? body.observability
@@ -4065,7 +4293,7 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
   const primaryInventoryName = path.basename(primaryInventoryFile);
   const countryInventoryFiles = fileNames
     .filter((fileName) => fileName !== primaryInventoryName)
-    .filter((fileName) => /^discovered-public-dashboards\.[a-z]+\.json$/i.test(fileName))
+    .filter((fileName) => /^(?:runtime-)?discovered-public-dashboards\.[a-z]+\.json$/i.test(fileName))
     .map((fileName) => path.join(configDir, fileName));
   const countryInventories = [];
 
@@ -4084,20 +4312,24 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
       }
     : primary;
   const inventories = [filteredPrimary, ...countryInventories];
+  const deletedDashboards = await readRuntimeDashboardDeletions(configDir);
 
-  return mergeInventories(inventories);
+  return filterInventoryDeletedDashboards(mergeInventories(inventories), deletedDashboards);
 }
 
 async function filterInventoryByCurrentPanelSources(configDir, inventoryFilePath, inventory) {
   const sourceRefs = await readCurrentPanelSourceRefs(configDir, inventoryFilePath);
   if (sourceRefs.urls.size === 0 && sourceRefs.panelIds.size === 0) {
-    return inventory;
+    return filterInventoryDeletedDashboards(inventory, sourceRefs.deletedDashboards || []);
   }
 
   return {
     ...inventory,
     dashboards: (inventory.dashboards || []).filter((dashboard) => {
       if (isExcludedScanDashboard(dashboard)) {
+        return false;
+      }
+      if (dashboardMatchesAnyDeletion(dashboard, sourceRefs.deletedDashboards || [])) {
         return false;
       }
       const sourcePanelId = dashboard.sourcePanelId == null ? "" : String(dashboard.sourcePanelId);
@@ -4114,8 +4346,7 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
     return { urls: new Set(), panelIds: new Set() };
   }
 
-  const panelsFile = path.join(configDir, `discovered-panels.${match[1].toLowerCase()}.json`);
-  const panels = await readJsonFile(panelsFile, { panels: [] });
+  const panels = await readMergedPanelSource(path.dirname(configDir), match[1].toUpperCase());
   const panelItems = (panels?.panels || []).filter((panel) => !isExcludedScanDashboard(panel));
   return {
     urls: new Set(
@@ -4130,6 +4361,7 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
         .filter((id) => id != null)
         .map(String),
     ),
+    deletedDashboards: panels.deletedDashboards || [],
   };
 }
 
@@ -4138,7 +4370,7 @@ async function discoverCountryInventoryFromPanelSources(rootDir, countryCode, di
     return { dashboards: [] };
   }
 
-  const inputFile = panelSourceFilePath(rootDir, countryCode);
+  const inputFile = await writeTemporaryMergedPanelSource(rootDir, countryCode);
   try {
     return await discoverDashboardsFn({
       inputFile,
@@ -4158,6 +4390,8 @@ async function discoverCountryInventoryFromPanelSources(rootDir, countryCode, di
       ],
       dashboards: [],
     };
+  } finally {
+    await fs.rm(inputFile, { force: true });
   }
 }
 
@@ -4165,7 +4399,7 @@ async function hasCountryPanelSources(rootDir, countryCode) {
   if (!countryCode) {
     return false;
   }
-  const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
+  const source = await readMergedPanelSource(rootDir, countryCode);
   return Array.isArray(source.panels) && source.panels.length > 0;
 }
 
@@ -4176,8 +4410,8 @@ async function isCountryInventoryFullyDiscovered(rootDir, countryCode) {
     ? "config/discovered-public-dashboards.json"
     : `config/discovered-public-dashboards.${code}.json`;
   const [sources, inventory] = await Promise.all([
-    readJsonFile(panelSourceFilePath(rootDir, code.toUpperCase()), { panels: [] }),
-    readJsonFile(path.join(rootDir, inventoryFile), { dashboards: [] }),
+    readMergedPanelSource(rootDir, code.toUpperCase()),
+    readPlatformInventory(rootDir, path.join(rootDir, inventoryFile)),
   ]);
   const refs = extractPanelSourceRefs(sources);
   if (refs.length === 0) return false;
@@ -4890,9 +5124,20 @@ async function loadPanelSources(rootDir, countries, filters = {}) {
   const sources = [];
 
   for (const country of targetCountries) {
-    const filePath = panelSourceFilePath(rootDir, country.code);
-    const source = await readJsonFile(filePath, {});
+    const source = await readMergedPanelSource(rootDir, country.code);
     if (!source || !Array.isArray(source.panels) || source.panels.length === 0) {
+      continue;
+    }
+    const visiblePanels = source.panels.filter((panel) => (
+      !isExcludedScanDashboard(panel)
+      && !dashboardMatchesAnyDeletion(panelSourceToDashboard({
+        countryCode: country.code,
+        countryName: country.name,
+        timezone: country.timezone,
+      }, panel), source.deletedDashboards || [])
+      && !panelMatchesAnyDeletion(panel, source.deletedDashboards || [])
+    ));
+    if (visiblePanels.length === 0) {
       continue;
     }
 
@@ -4902,7 +5147,7 @@ async function loadPanelSources(rootDir, countries, filters = {}) {
       timezone: country.timezone,
       sourceTitle: source.title || "",
       sourceUid: source.uid || "",
-      panels: source.panels.map((panel) => ({
+      panels: visiblePanels.map((panel) => ({
         id: panel.id,
         title: panel.title || "-",
         type: panel.type || "",
@@ -4922,6 +5167,188 @@ function panelSourceFilePath(rootDir, countryCode) {
     return path.join(rootDir, "config/discovered-panels.json");
   }
   return path.join(rootDir, `config/discovered-panels.${String(countryCode || "").toLowerCase()}.json`);
+}
+
+function runtimePanelSourceFilePath(rootDir, countryCode) {
+  return path.join(rootDir, `config/runtime-discovered-panels.${String(countryCode || "").toLowerCase()}.json`);
+}
+
+function runtimeCountryInventoryFilePath(rootDir, countryCode) {
+  return path.join(rootDir, `config/runtime-discovered-public-dashboards.${String(countryCode || "").toLowerCase()}.json`);
+}
+
+async function readRuntimeDashboardDeletions(configDir) {
+  let fileNames = [];
+  try {
+    fileNames = await fs.readdir(configDir);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const deletions = [];
+  for (const fileName of fileNames) {
+    if (!/^runtime-discovered-(?:panels|public-dashboards)\.[a-z]+\.json$/i.test(fileName)) continue;
+    const source = await readJsonFile(path.join(configDir, fileName), {});
+    deletions.push(...(source.deletedDashboards || []));
+  }
+  return appendUniqueDashboardDeletions([], deletions);
+}
+
+function filterInventoryDeletedDashboards(inventory = {}, deletedDashboards = []) {
+  if (!deletedDashboards.length) return inventory;
+  return {
+    ...inventory,
+    dashboards: (inventory.dashboards || []).filter((dashboard) => !dashboardMatchesAnyDeletion(dashboard, deletedDashboards)),
+  };
+}
+
+function dashboardMatchesAnyDeletion(dashboard = {}, deletedDashboards = []) {
+  return deletedDashboards.some((deletion) => dashboardMatchesDeletion(dashboard, deletion));
+}
+
+function panelMatchesAnyDeletion(panel = {}, deletedDashboards = []) {
+  return deletedDashboards.some((deletion) => panelMatchesDeletion(panel, deletion));
+}
+
+function dashboardMatchesDeleteRequest(dashboard = {}, request = {}) {
+  const deletion = {
+    countryCode: request.countryCode || getDashboardCountryCode(dashboard),
+    uuid: request.dashboardUuid,
+    dashboardId: request.dashboardId,
+    sourcePanelId: request.sourcePanelId,
+    url: request.url,
+  };
+  return dashboardMatchesDeletion(dashboard, deletion);
+}
+
+function buildDashboardDeletionRef(dashboard = {}) {
+  return {
+    countryCode: getDashboardCountryCode(dashboard),
+    uuid: dashboard.uuid || "",
+    dashboardId: dashboard.dashboardId == null ? "" : String(dashboard.dashboardId),
+    sourcePanelId: dashboard.sourcePanelId == null ? "" : String(dashboard.sourcePanelId),
+    url: dashboard.url || "",
+    sourceUrl: dashboard.sourceUrl || "",
+    title: dashboard.title || dashboard.sourcePanelTitle || "",
+    deletedAt: new Date().toISOString(),
+  };
+}
+
+function appendUniqueDashboardDeletions(existing = [], additions = []) {
+  const result = [];
+  const seen = new Set();
+  for (const deletion of [...existing, ...additions]) {
+    const normalized = normalizeDashboardDeletion(deletion);
+    const key = dashboardDeletionKey(normalized);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function normalizeDashboardDeletion(deletion = {}) {
+  return {
+    ...deletion,
+    countryCode: String(deletion.countryCode || "").toUpperCase(),
+    uuid: String(deletion.uuid || deletion.dashboardUuid || ""),
+    dashboardId: deletion.dashboardId == null ? "" : String(deletion.dashboardId),
+    sourcePanelId: deletion.sourcePanelId == null ? "" : String(deletion.sourcePanelId),
+    url: deletion.url || "",
+    sourceUrl: deletion.sourceUrl || "",
+    title: deletion.title || "",
+  };
+}
+
+function dashboardDeletionKey(deletion = {}) {
+  const countryCode = String(deletion.countryCode || "").toUpperCase();
+  return [
+    deletion.dashboardId ? `id:${countryCode}:${deletion.dashboardId}` : "",
+    deletion.uuid ? `uuid:${countryCode}:${deletion.uuid}` : "",
+    deletion.sourcePanelId ? `panel:${countryCode}:${deletion.sourcePanelId}` : "",
+    deletion.url ? `url:${countryCode}:${dashboardUrlIdentity(deletion.url)}` : "",
+    deletion.sourceUrl ? `url:${countryCode}:${dashboardUrlIdentity(deletion.sourceUrl)}` : "",
+  ].filter(Boolean)[0] || "";
+}
+
+function dashboardMatchesDeletion(dashboard = {}, deletionInput = {}) {
+  const deletion = normalizeDashboardDeletion(deletionInput);
+  const countryCode = getDashboardCountryCode(dashboard);
+  if (deletion.countryCode && countryCode && deletion.countryCode !== countryCode) return false;
+  if (deletion.dashboardId && String(dashboard.dashboardId ?? "") === deletion.dashboardId) return true;
+  if (deletion.uuid && String(dashboard.uuid || "") === deletion.uuid) return true;
+  if (deletion.sourcePanelId && String(dashboard.sourcePanelId ?? "") === deletion.sourcePanelId) return true;
+  const deletedUrls = [deletion.url, deletion.sourceUrl].filter(Boolean).map(dashboardUrlIdentity);
+  const dashboardUrls = [dashboard.url, dashboard.sourceUrl].filter(Boolean).map(dashboardUrlIdentity);
+  return deletedUrls.some((deletedUrl) => dashboardUrls.includes(deletedUrl));
+}
+
+function panelMatchesDeletion(panel = {}, deletionInput = {}) {
+  const deletion = normalizeDashboardDeletion(deletionInput);
+  if (deletion.sourcePanelId && String(panel.id ?? "") === deletion.sourcePanelId) return true;
+  const deletedUrls = [deletion.url, deletion.sourceUrl].filter(Boolean).map(dashboardUrlIdentity);
+  const panelUrls = (panel.links || []).map((link) => dashboardUrlIdentity(link?.url || "")).filter(Boolean);
+  return deletedUrls.some((deletedUrl) => panelUrls.includes(deletedUrl));
+}
+
+async function readMergedPanelSource(rootDir, countryCode) {
+  const [base, runtime, countries] = await Promise.all([
+    readJsonFile(panelSourceFilePath(rootDir, countryCode), {}),
+    readJsonFile(runtimePanelSourceFilePath(rootDir, countryCode), {}),
+    readJsonFile(path.join(rootDir, FILES.countries), { countries: [] }),
+  ]);
+  const merged = mergePanelSources(base, runtime);
+  if (!merged.country) {
+    const code = String(countryCode || "").trim().toUpperCase();
+    const country = (countries.countries || []).find((item) => String(item.code || "").toUpperCase() === code) || {};
+    merged.country = {
+      code,
+      name: country.name || code,
+      timezone: country.timezone,
+    };
+  }
+  return merged;
+}
+
+function mergePanelSources(...sources) {
+  const panels = [];
+  const deletedDashboards = [];
+  const seen = new Set();
+  let country = null;
+  let title = "";
+  let uid = "";
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    country = country || source.country || null;
+    title = title || source.title || "";
+    uid = uid || source.uid || "";
+    deletedDashboards.push(...(source.deletedDashboards || []));
+    for (const panel of Array.isArray(source.panels) ? source.panels : []) {
+      const identities = panelSourceIdentities(panel);
+      const duplicate = identities.some((identity) => seen.has(identity));
+      if (duplicate) continue;
+      panels.push(panel);
+      identities.forEach((identity) => seen.add(identity));
+    }
+  }
+  return { country, title, uid, panels, deletedDashboards: appendUniqueDashboardDeletions([], deletedDashboards) };
+}
+
+function panelSourceIdentities(panel = {}) {
+  const values = [];
+  if (panel.id != null) values.push(`id:${String(panel.id)}`);
+  for (const link of panel.links || []) {
+    const identity = dashboardUrlIdentity(link?.url || "");
+    if (identity) values.push(`url:${identity}`);
+  }
+  if (!values.length && panel.title) values.push(`title:${canonicalDashboardTitle(panel.title)}`);
+  return values;
+}
+
+async function writeTemporaryMergedPanelSource(rootDir, countryCode) {
+  const source = await readMergedPanelSource(rootDir, countryCode);
+  const temporaryInputFile = path.join(rootDir, `config/.merged-discovery-${String(countryCode || "").toLowerCase()}-${randomUUID()}.json`);
+  await writeJsonAtomic(temporaryInputFile, source);
+  return temporaryInputFile;
 }
 
 async function explainUnavailableCountryInventory(rootDir, countryCode, countries = []) {
@@ -5036,6 +5463,21 @@ function badRequest(message, errors) {
   return error;
 }
 
+function dashboardDiscoveryFailed(error) {
+  const message = String(error?.message || error || "Metabase 看板发现失败").trim();
+  let type = "Metabase 接口或卡片发现失败";
+  if (/401|403|unauthori[sz]ed|forbidden/i.test(message)) {
+    type = "Metabase 访问权限或认证失败";
+  } else if (/404|not found/i.test(message)) {
+    type = "看板不存在或链接失效";
+  } else if (/timeout|timed out|abort/i.test(message)) {
+    type = "Metabase 请求超时";
+  } else if (/invalid|malformed|url/i.test(message)) {
+    type = "看板链接无效";
+  }
+  return badRequest("Dashboard discovery failed", [`错误类型：${type}。${message}`]);
+}
+
 // ---------------------------------------------------------------------------
 // Metabase AI-first single-stage anomaly analysis
 // ---------------------------------------------------------------------------
@@ -5069,8 +5511,8 @@ export async function completeMetabaseAnomalyBatch({ rootDir = process.cwd(), ba
   if (!Array.isArray(results)) {
     throw badRequest("results must be an array", ["results 必须是数组。"]);
   }
-  if (results.length > 30) {
-    throw badRequest("单个 batch 结果不能超过 30 条", ["单个 batch 结果不能超过 30 条。"]);
+  if (results.length > 100) {
+    throw badRequest("单个 batch 结果不能超过 100 条", ["单个 batch 结果不能超过 100 条。"]);
   }
 
   const filePath = path.join(rootDir, FILES.anomalyAnalyses);

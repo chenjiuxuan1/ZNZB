@@ -9,6 +9,7 @@ import {
   flattenInventory,
 } from "../src/platform-api.mjs";
 import { getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
+import { MAX_ANOMALIES_PER_DIFY_BATCH } from "../src/metabase-anomaly-batch.mjs";
 
 test("fluctuation history window ends on a delayed anomaly date", () => {
   assert.equal(
@@ -562,7 +563,7 @@ test("batch callback completes all verdicts from a single dashboard analysis", a
     runId: "pending-dashboard-analysis", countryCode: "PH", jobId: "analysis-job-1",
     results: [
       { anomalyIndex: 0, analysis: { summary: "底表值正常", confidence: "high", dataSideVerdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal", verificationReason: "实时查询确认正常" } },
-      { anomalyIndex: 1, analysis: { summary: "底表分区缺失", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send", chartVisibility: "show" } },
+      { anomalyIndex: 1, analysis: { summary: "底表分区缺失", confidence: "high", dataSideVerdict: "data_issue", notificationAction: "send", chartVisibility: "show", possibleCauses: ["ODS 分区未产出"], verificationSteps: ["检查底表分区"], recommendedActions: ["补跑 DS 任务"], limitations: "测试限制" } },
     ],
   });
 
@@ -573,9 +574,49 @@ test("batch callback completes all verdicts from a single dashboard analysis", a
   assert.equal(analyses.analyses.find((item) => item.anomalyIndex === 0).analysis.chartVisibility, "hide_verified_normal");
   assert.equal(analyses.analyses.find((item) => item.anomalyIndex === 1).analysis.dataSideVerdict, "data_issue");
   assert.equal(analyses.analyses.find((item) => item.anomalyIndex === 1).status, "completed");
+  const displayIndex = await api.getMetabaseAnomalyAnalysisDisplayIndex({ runId: "pending-dashboard-analysis" });
+  assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 0).dataSideVerdict, "verified_normal");
+  assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).notificationAction, "send");
+  assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).summary, "底表分区缺失");
+  assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).confidence, "high");
+  assert.deepEqual(displayIndex.items.find((item) => item.anomalyIndex === 1).possibleCauses, ["ODS 分区未产出"]);
+  assert.deepEqual(displayIndex.items.find((item) => item.anomalyIndex === 1).verificationSteps, ["检查底表分区"]);
+  assert.deepEqual(displayIndex.items.find((item) => item.anomalyIndex === 1).recommendedActions, ["补跑 DS 任务"]);
+  assert.equal(displayIndex.items.find((item) => item.anomalyIndex === 1).limitations, "测试限制");
 });
 
-test("platform prepares one analysis request containing every metric on a dashboard", async () => {
+test("batch callback accepts dashboards with forty anomaly verdicts", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    metabaseAnomalyBatchAgentFn: async () => ({ pending: true, jobId: "analysis-job-40", provider: "n8n-evidence" }),
+  });
+  await api.savePendingMetabasePatrolRun({
+    id: "pending-dashboard-forty",
+    runs: [{ countryCode: "CN", ok: true, result: { anomalies: Array.from({ length: 40 }, (_, anomalyIndex) => ({
+      dashboardUuid: "dash-40", dashboardTitle: "核心指标概览", cardTitle: `指标${anomalyIndex}`, message: `指标${anomalyIndex}异常`,
+    })) } }],
+  });
+  await api.submitMetabaseInvestigationBatch({
+    stage: "dashboard_analysis", batchId: "analysis-batch-40", runId: "pending-dashboard-forty",
+    countryCode: "CN", dashboardUuid: "dash-40", snapshotId: "analysis-snapshot-40",
+    cases: Array.from({ length: 40 }, (_, anomalyIndex) => ({ anomalyIndex })),
+  });
+
+  const completed = await api.completeMetabaseAnomalyBatch({
+    runId: "pending-dashboard-forty", countryCode: "CN", jobId: "analysis-job-40",
+    results: Array.from({ length: 40 }, (_, anomalyIndex) => ({
+      anomalyIndex, analysis: { summary: `指标${anomalyIndex}已核验`, confidence: "medium", dataSideVerdict: "data_issue", notificationAction: "send" },
+    })),
+  });
+
+  assert.equal(completed.success, true);
+  assert.equal(completed.results.length, 40);
+  const analyses = await api.getMetabaseAnomalyAnalysesForRun({ runId: "pending-dashboard-forty" });
+  assert.equal(analyses.analyses.filter((item) => item.status === "completed").length, 40);
+});
+
+test("platform splits oversized dashboard into capped Dify analysis requests", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });
   await api.savePendingMetabasePatrolRun({
@@ -586,10 +627,11 @@ test("platform prepares one analysis request containing every metric on a dashbo
   });
 
   const prepared = await api.prepareMetabaseInvestigationBatches({ runId: "pending-dashboard-all-metrics" });
-  assert.equal(prepared.batches.length, 1);
+  assert.ok(prepared.batches.length >= 2);
   assert.equal(prepared.batches[0].stage, "dashboard_analysis");
   assert.equal(prepared.batches[0].dashboardUuid, "dash-many");
-  assert.equal(prepared.batches[0].cases.length, 7);
+  assert.ok(prepared.batches.every((batch) => batch.cases.length <= MAX_ANOMALIES_PER_DIFY_BATCH));
+  assert.equal(prepared.batches.reduce((sum, batch) => sum + batch.cases.length, 0), 7);
 });
 
 test("platform api creates one source-table evidence snapshot for same-card patrol anomalies", async () => {
@@ -894,7 +936,7 @@ test("platform api explicitly discovers and persists one country inventory", asy
 
   assert.equal(result.ok, true);
   assert.equal(result.discoveredDashboardCount, 1);
-  const saved = JSON.parse(await fs.readFile(path.join(rootDir, "config/discovered-public-dashboards.ine.json"), "utf8"));
+  const saved = JSON.parse(await fs.readFile(path.join(rootDir, "config/runtime-discovered-public-dashboards.ine.json"), "utf8"));
   assert.equal(saved.dashboards[0].dashboardId, 1052);
 });
 
@@ -938,7 +980,8 @@ test("platform api discovers all configured countries and isolates failures", as
     rootDir,
     discoverDashboardsFn: async ({ inputFile }) => {
       attempts += 1;
-      if (inputFile.endsWith(".ph.json")) throw new Error("Metabase authentication failed");
+      const source = JSON.parse(await fs.readFile(inputFile, "utf8"));
+      if (source.country?.code === "PH") throw new Error("Metabase authentication failed");
       return { dashboards: [] };
     },
   });
@@ -1083,6 +1126,142 @@ test("platform api discovers only the selected manual dashboard and preserves ot
   assert.equal(result.executableDashboardCount, 1);
   assert.equal(inventory.dashboards.find((item) => item.title === "手动核心看板").executable, true);
   assert.ok(inventory.dashboards.find((item) => item.title === "OKR"));
+});
+
+test("platform api reports a discovery failure when a manual dashboard has no executable cards", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async () => ({ dashboards: [] }),
+  });
+  const added = await api.addManualDashboard({
+    countryCode: "INE",
+    title: "空看板",
+    url: "https://data.example/public/dashboard/empty-manual-dashboard",
+  });
+
+  await assert.rejects(
+    () => api.discoverManualDashboard({ countryCode: "INE", sourcePanelId: added.sourcePanelId }),
+    (error) => error.statusCode === 400 && error.errors.some((message) => message.includes("未发现可巡检卡片")),
+  );
+});
+
+test("platform api preserves manually discovered dashboards across tracked config resets", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async ({ inputFile }) => {
+      const source = JSON.parse(await fs.readFile(inputFile, "utf8"));
+      const panel = source.panels[0];
+      return {
+        dashboards: [{
+          countryCode: "PH",
+          countryName: "菲律宾",
+          sourcePanelId: panel.id,
+          sourcePanelTitle: panel.title,
+          title: panel.title,
+          dashboardId: "1056",
+          uuid: "internal-1056",
+          url: panel.links[0].url,
+          sourceUrl: panel.links[0].url,
+          cards: [{ title: "小时指标", cardId: 105, dashcardId: 106 }],
+        }],
+      };
+    },
+  });
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({ countries: [{ code: "PH", name: "菲律宾", timezone: "Asia/Manila", status: "ready" }] }),
+  );
+  const added = await api.addManualDashboard({
+    countryCode: "PH",
+    title: "每小时监控",
+    url: "https://data.kuainiu.io/dashboard/1056",
+  });
+
+  await api.discoverManualDashboard({ countryCode: "PH", sourcePanelId: added.sourcePanelId });
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.ph.json"),
+    JSON.stringify({ country: { code: "PH", name: "菲律宾" }, panels: [] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ph.json"),
+    JSON.stringify({ country: { code: "PH", name: "菲律宾" }, dashboards: [] }),
+  );
+
+  const inventory = await api.getInventory({ countryCode: "PH" });
+  const hourly = inventory.dashboards.find((item) => item.title === "每小时监控");
+
+  assert.equal(hourly?.executable, true);
+  assert.equal(hourly?.cards.length, 1);
+  assert.equal(hourly?.availability, "ready");
+});
+
+test("platform api deletes dashboards from inventory and scheduled scan scope", async () => {
+  const rootDir = await makeFixture();
+  let queryCount = 0;
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: async ({ inputFile }) => {
+      const source = JSON.parse(await fs.readFile(inputFile, "utf8"));
+      const panel = source.panels[0];
+      return {
+        dashboards: [{
+          countryCode: "INE",
+          sourcePanelId: panel.id,
+          sourcePanelTitle: panel.title,
+          title: panel.title,
+          uuid: "manual-uuid",
+          url: panel.links[0].url,
+          cards: [{ title: "手动卡片", cardId: 12, dashcardId: 13 }],
+        }],
+      };
+    },
+    metabaseClientFactory: () => ({
+      async queryDashcardJson() {
+        queryCount += 1;
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+  const added = await api.addManualDashboard({
+    countryCode: "INE",
+    title: "手动核心看板",
+    url: "https://data.example/public/dashboard/manual-uuid",
+  });
+  await api.discoverManualDashboard({ countryCode: "INE", sourcePanelId: added.sourcePanelId });
+
+  let inventory = await api.getInventory({ countryCode: "INE" });
+  assert.ok(inventory.dashboards.find((item) => item.title === "手动核心看板"));
+
+  const deleted = await api.deleteDashboard({
+    countryCode: "INE",
+    dashboardUuid: "manual-uuid",
+    sourcePanelId: added.sourcePanelId,
+    url: "https://data.example/public/dashboard/manual-uuid",
+  });
+  inventory = await api.getInventory({ countryCode: "INE" });
+  const result = await api.runBatchCheck({ countryCode: "INE" });
+
+  assert.equal(deleted.ok, true);
+  assert.equal(inventory.dashboards.some((item) => item.title === "手动核心看板"), false);
+  assert.equal(result.dashboardCount, 1);
+  assert.equal(result.checkedCardCount, 1);
+  assert.equal(queryCount, 1);
+});
+
+test("platform api deletion tombstone hides tracked dashboards after code resets", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+  const deleted = await api.deleteDashboard({
+    countryCode: "INE",
+    dashboardUuid: "dash-1",
+    url: "https://data.example/public/dashboard/dash-1",
+  });
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.equal(deleted.ok, true);
+  assert.equal(inventory.dashboards.some((item) => item.uuid === "dash-1"), false);
 });
 
 test("platform api does not duplicate a ready internal dashboard from panel sources", async () => {
@@ -1787,6 +1966,8 @@ test("platform api discovers internal dashboards from source list when country i
     rootDir,
     discoverDashboardsFn: async (options) => {
       discoveredInputs.push(options.inputFile);
+      const source = JSON.parse(await fs.readFile(options.inputFile, "utf8"));
+      assert.equal(source.panels[0].title, "业务概览-OKR");
       return {
         country: { code: "PH", name: "菲律宾", timezone: "Asia/Manila" },
         dashboardCount: 1,
@@ -1822,7 +2003,6 @@ test("platform api discovers internal dashboards from source list when country i
   assert.equal(result.checkedCardCount, 1);
   assert.equal(result.checkedCards[0].dashboardUuid, "internal-501");
   assert.equal(discoveredInputs.length, 1);
-  assert.match(discoveredInputs[0], /discovered-panels\.ph\.json$/);
 });
 
 test("platform api runs scoped batch check and sends TV notification", async () => {
@@ -2777,6 +2957,65 @@ test("AI-first patrol waits for batch verdicts before final notification and his
     const history = await api.getBatchHistory();
     assert.equal(history.runs.length, 1);
     assert.equal(history.runs[0].runs[0].result.aiAudit[0].verdict, "data_issue");
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
+test("AI-first patrol suppresses AI verified normal anomalies from final notification and history status", async () => {
+  const rootDir = await makeFixture();
+  const previous = {
+    METABASE_ANOMALY_BATCH_MODE: process.env.METABASE_ANOMALY_BATCH_MODE,
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: process.env.METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL,
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: process.env.METABASE_ANOMALY_AGENT_N8N_TOKEN,
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: process.env.METABASE_ANOMALY_AGENT_CALLBACK_TOKEN,
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: process.env.METABASE_ANOMALY_AGENT_N8N_ASYNC,
+    METABASE_ANOMALY_AGENT_ENABLED: process.env.METABASE_ANOMALY_AGENT_ENABLED,
+  };
+  Object.assign(process.env, {
+    METABASE_ANOMALY_BATCH_MODE: "1",
+    METABASE_ANOMALY_AGENT_N8N_WEBHOOK_URL: "https://n8n.example/webhook/batch",
+    METABASE_ANOMALY_AGENT_N8N_TOKEN: "token",
+    METABASE_ANOMALY_AGENT_CALLBACK_TOKEN: "callback",
+    METABASE_ANOMALY_AGENT_N8N_ASYNC: "true",
+    METABASE_ANOMALY_AGENT_ENABLED: "1",
+  });
+  const order = [];
+  let api;
+  api = createPlatformApi({
+    rootDir,
+    aiFirstMetabasePatrolEnabled: true,
+    metabaseClientFactory: () => ({ async queryDashcardJson() { return [{ "统计日期": "2026-07-05", "注册数": 10 }]; } }),
+    metabaseInternalClientFactory: () => ({ getCard: async () => ({ id: 1, dataset_query: { native: { query: "SELECT * FROM ads.loan_d" } } }) }),
+    metabaseAnomalyBatchAgentFn: async ({ batch }) => {
+      order.push(batch.stage);
+      const jobId = `analysis-callback-${batch.cases[0].anomalyIndex}`;
+      setTimeout(() => {
+        void api.completeMetabaseAnomalyBatch({
+          runId: batch.runId, countryCode: batch.countryCode, jobId, results: batch.cases.map((item) => ({
+            anomalyIndex: item.anomalyIndex,
+            analysis: { summary: "实时查询确认正常", confidence: "high", dataSideVerdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal", verificationReason: "底表已恢复" },
+          })),
+        }).catch((error) => order.push(`analysis-error:${error.message}`));
+      }, 50);
+      return { pending: true, jobId, provider: "n8n-evidence" };
+    },
+    notifyTextFn: async () => { order.push("notify"); return { sent: true, status: 200 }; },
+  });
+  try {
+    await api.saveBatchSchedule({ enabled: false, countryConfigs: [{ countryCode: "INE", enabled: true, dashboardUuids: ["dash-1"], notifyChannel: "tv", webhookUrl: "https://tv.example", botId: "bot" }] });
+    await api.runBatchScheduleNow(new Date());
+    assert.deepEqual(order, ["dashboard_analysis"]);
+    const history = await api.getBatchHistory();
+    const countryResult = history.runs[0].runs[0].result;
+    assert.equal(history.runs[0].notificationSentCount, 0);
+    assert.equal(history.runs[0].anomalyCount, 0);
+    assert.equal(countryResult.anomalyCount, 0);
+    assert.equal(countryResult.rawAnomalyCount, 1);
+    assert.equal(countryResult.aiAudit[0].statusLabel, "AI 查数正常");
+    assert.equal(countryResult.notification.skipped, true);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;

@@ -128,6 +128,14 @@ test("history anomaly detail exposes an AI analysis action", () => {
     runId: "run-ai", countryCode: "PH", anomalyIndex: 0,
     analysis: { summary: "已完成", confidence: "low", limitations: "测试" },
   }), /AI 数据侧分析[\s\S]*已完成[\s\S]*重新 AI 分析/);
+  assert.match(renderMetabaseAnomalyAnalysis({
+    runId: "run-ai", countryCode: "INE", anomalyIndex: 1,
+    analysis: { summary: "底表字段全量为 0", confidence: "high", limitations: "测试", dataSideVerdict: "data_issue", notificationAction: "send" },
+  }), /最终判定：有数据侧异常[\s\S]*AI 数据侧分析/);
+  assert.match(renderMetabaseAnomalyAnalysis({
+    runId: "run-ai", countryCode: "INE", anomalyIndex: 2,
+    analysis: { summary: "重跑后正常", confidence: "high", limitations: "测试", dataSideVerdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal" },
+  }), /最终判定：AI 分析后无异常/);
 });
 
 test("dashboard scan details put fluctuation charts in their own anomaly column", () => {
@@ -174,6 +182,31 @@ test("dashboard scan details hide retired marketing dashboards from saved histor
   assert.match(scanDetails, /业务概览-OKR/);
 });
 
+test("dashboard scan details show AI verified normal as no anomaly", () => {
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  state.routeQuery = { historyRunId: "run-ai-normal" };
+  state.batchHistory = { runs: [{
+    id: "run-ai-normal", startedAt: "2026-08-06T00:00:00.000Z", successCount: 1, countryCount: 1,
+    checkedCardCount: 1, anomalyCount: 0, dataQualityAnomalyCount: 0,
+    runs: [{ countryCode: "INE", countryName: "印尼", ok: true, result: {
+      checkedCardCount: 1,
+      dashboardCount: 1,
+      rawAnomalyCount: 1,
+      anomalyCount: 0,
+      checkedCards: [{ countryCode: "INE", countryName: "印尼", dashboardUuid: "dash-okr", dashboardTitle: "业务概览-OKR", dashboardUrl: "https://data.example/dashboard/okr", cardTitle: "新客放款量", ok: true }],
+      anomalies: [{ countryCode: "INE", countryName: "印尼", dashboardUuid: "dash-okr", dashboardTitle: "业务概览-OKR", dashboardUrl: "https://data.example/dashboard/okr", cardTitle: "新客放款量", type: "latestNonZeroToZero", message: "指标从 537 降为 0" }],
+      aiAudit: [{ anomalyIndex: 0, verdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal", notifiable: false }],
+      notifiableAnomalies: [],
+    } }],
+  }] };
+
+  renderBatchCheck(root);
+  const scanDetails = root.innerHTML.match(/<div class="sub-panel dashboard-scan-details">[\s\S]*?<\/table>/)?.[0] || "";
+  assert.match(scanDetails, /AI分析后无异常/);
+  assert.match(scanDetails, /AI 已核验 1 条原始异常无需最终播报/);
+  assert.doesNotMatch(scanDetails, /发现 1 条异常/);
+});
+
 test("scheduled run progress renders compact five-stage status and keeps country details collapsible", () => {
   const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
   state.routeQuery = {};
@@ -185,7 +218,9 @@ test("scheduled run progress renders compact five-stage status and keeps country
       { key: "country_scan", label: "国家巡检", status: "success", detail: "已完成 1/1 个国家巡检" },
       { key: "data_check", label: "DS 调度核查", status: "success", detail: "DS 调度核查完成" },
       { key: "notification", label: "告警通知", status: "success", detail: "已发送 1 条通知" },
-      { key: "ai_analysis", label: "AI 取证队列", status: "running", detail: "看板分析 1/3", total: 3, completed: 1 },
+      { key: "ai_analysis", label: "AI 取证队列", status: "running", detail: "看板分析 1/3", total: 3, completed: 1, details: [
+        { countryCode: "MX", dashboardTitle: "贷后催收-核心指标概览", status: "timed_out", retry: true, reason: "等待 Dify 回调超过 6 分钟", caseCount: 1, batchId: "batch-1", anomalyIndexes: [0] },
+      ] },
       { key: "finished", label: "巡检完成", status: "success", detail: "巡检和通知已完成" },
     ],
   };
@@ -193,6 +228,10 @@ test("scheduled run progress renders compact five-stage status and keeps country
   assert.match(root.innerHTML, /AI 取证队列/);
   assert.match(root.innerHTML, /查看国家巡检明细/);
   assert.match(root.innerHTML, /看板分析 1\/3/);
+  assert.match(root.innerHTML, /查看 AI 取证明细/);
+  assert.match(root.innerHTML, /贷后催收-核心指标概览/);
+  assert.match(root.innerHTML, /等待 Dify 回调超过 6 分钟/);
+  assert.match(root.innerHTML, /重刷/);
 });
 
 test("scheduled country progress details stay open across polling rerenders", () => {
@@ -386,6 +425,21 @@ test("filtered fluctuation route reloads its requested history run after in-app 
   }), false);
 });
 
+test("fluctuation visual auto loads saved AI display index once per run", () => {
+  assert.equal(fluctuationVisualTest.shouldLoadFluctuationAiDisplayIndex({
+    runId: "run-ai", loadedRunId: "", loadingRunId: "", displayIndex: {},
+  }), true);
+  assert.equal(fluctuationVisualTest.shouldLoadFluctuationAiDisplayIndex({
+    runId: "run-ai", loadedRunId: "run-ai", loadingRunId: "", displayIndex: {},
+  }), false);
+  assert.equal(fluctuationVisualTest.shouldLoadFluctuationAiDisplayIndex({
+    runId: "run-ai", loadedRunId: "", loadingRunId: "run-ai", displayIndex: {},
+  }), false);
+  assert.equal(fluctuationVisualTest.shouldLoadFluctuationAiDisplayIndex({
+    runId: "run-ai", loadedRunId: "", loadingRunId: "", displayIndex: { "run-ai:MX:0": { summary: "已加载" } },
+  }), false);
+});
+
 test("fluctuation visual prefers refreshed hourly data and keeps all 24 hours", () => {
   const savedSeries = [
     { date: "2026-08-02", value: 6650.72 },
@@ -545,6 +599,131 @@ test("fluctuation visual only uses runs updated today", () => {
   assert.equal(model.run.id, "today-run");
   assert.equal(model.anomalyCount, 1);
   assert.equal(model.countries[0].anomalies[0].dashboardTitle, "Today");
+});
+
+test("fluctuation visual hides AI suppressed business-change anomalies", () => {
+  const history = {
+    runs: [{
+      id: "ai-suppressed-run",
+      startedAt: "2026-07-28T01:00:00.000Z",
+      runs: [{
+        countryCode: "MX",
+        result: {
+          anomalies: [{
+            dashboardTitle: "Business change",
+            cardTitle: "Loan amount",
+            type: "completeDayChange",
+            message: "完整日指标「放款金额」从 10 到 0，变化 -100%",
+          }, {
+            dashboardTitle: "Data issue",
+            cardTitle: "Overdue rate",
+            type: "completeDayChange",
+            message: "完整日指标「逾期率」从 10% 到 30%，绝对变化 +20个百分点",
+          }],
+        },
+      }],
+    }],
+  };
+  const options = {
+    today: "2026-07-28",
+    displayIndex: {
+      "ai-suppressed-run:MX:0": {
+        dataSideVerdict: "business_change",
+        notificationAction: "downgrade",
+        chartVisibility: "show",
+      },
+      "ai-suppressed-run:MX:1": {
+        dataSideVerdict: "data_issue",
+        notificationAction: "send",
+        chartVisibility: "show",
+      },
+    },
+  };
+  const model = fluctuationVisualTest.buildFluctuationVisualModel(history, [], options);
+
+  assert.equal(model.hiddenVerifiedNormalCount, 1);
+  assert.equal(model.anomalyCount, 1);
+  assert.equal(model.countries[0].anomalies[0].dashboardTitle, "Data issue");
+
+  const expandedModel = fluctuationVisualTest.buildFluctuationVisualModel(history, [], { ...options, showAiSuppressed: true });
+  assert.equal(expandedModel.hiddenVerifiedNormalCount, 1);
+  assert.equal(expandedModel.anomalyCount, 2);
+  assert.equal(expandedModel.countries[0].anomalies[0].aiSuppressed, true);
+  assert.equal(expandedModel.countries[0].anomalies[0].aiSuppressedReason, "AI 判定业务变化/降级");
+});
+
+test("fluctuation visual renders AI conclusion for problem verdicts", () => {
+  const html = fluctuationVisualTest.renderAiProblemConclusion({
+    aiAnalysis: {
+      summary: "底表分区缺失导致指标异常升高",
+      confidence: "high",
+      dataSideVerdict: "data_issue",
+      notificationAction: "send",
+      status: "completed",
+      statusLabel: "AI 已核验数据侧异常",
+      possibleCauses: ["ODS 分区延迟"],
+      verificationSteps: ["查询底表分区"],
+      recommendedActions: ["通知数仓补数"],
+      limitations: "仅基于巡检保存数据",
+    },
+  });
+
+  assert.match(html, /AI 巡检过程与通知/);
+  assert.match(html, /有数据侧异常/);
+  assert.match(html, /底表分区缺失导致指标异常升高/);
+  assert.match(html, /巡检状态：AI 已核验数据侧异常/);
+  assert.match(html, /ODS 分区延迟/);
+  assert.match(html, /查询底表分区/);
+  assert.match(html, /通知数仓补数/);
+  assert.match(html, /限制说明/);
+  assert.match(html, /通知建议：播报/);
+  assert.match(html, /最终通知：播报/);
+});
+
+test("fluctuation visual reads AI conclusion from saved history audit", () => {
+  const model = fluctuationVisualTest.buildFluctuationVisualModel({
+    runs: [{
+      id: "history-ai-run",
+      startedAt: "2026-07-28T01:00:00.000Z",
+      runs: [{
+        countryCode: "CN",
+        result: {
+          anomalies: [{
+            dashboardTitle: "联系人信息 · 一级渠道=短信",
+            cardTitle: "一级渠道时间趋势",
+            type: "completeDayChange",
+            message: "完整日指标「投放获客-新客转化率:注册~放款」从 1 到 7，变化 +600%",
+          }],
+          aiAudit: [{
+            anomalyIndex: 0,
+            verdict: "data_issue",
+            notificationAction: "send",
+            summary: "AI 已确认渠道转化率存在数据侧异常",
+            statusLabel: "AI 已核验数据侧异常",
+            notifiable: true,
+          }],
+        },
+      }],
+    }],
+  }, [], { today: "2026-07-28", displayIndex: {} });
+
+  const anomaly = model.countries[0].anomalies[0];
+  assert.equal(anomaly.aiAnalysis.summary, "AI 已确认渠道转化率存在数据侧异常");
+  assert.equal(anomaly.aiAnalysis.dataSideVerdict, "data_issue");
+  assert.match(fluctuationVisualTest.renderAiProblemConclusion(anomaly), /AI 已确认渠道转化率存在数据侧异常/);
+});
+
+test("fluctuation visual does not render AI conclusion for verified normal verdicts", () => {
+  const html = fluctuationVisualTest.renderAiProblemConclusion({
+    aiAnalysis: {
+      summary: "底表查询正常",
+      confidence: "high",
+      dataSideVerdict: "verified_normal",
+      notificationAction: "enrich_only",
+    },
+  });
+
+  assert.equal(html, "");
 });
 
 test("fluctuation visual excludes China empty and zero-style anomalies", () => {
