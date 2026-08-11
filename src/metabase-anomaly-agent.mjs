@@ -144,7 +144,8 @@ export async function analyzeMetabaseAnomalyBatch({ batch = {}, env = process.en
     throw error;
   }
   return {
-    ...pendingN8nEvidenceJob({ jobId: String(payload.jobId || payload.executionId || jobId) }),
+    ...pendingN8nEvidenceJob({ jobId }),
+    n8nJobId: String(payload.jobId || payload.executionId || ""),
     batchId: String(batch.batchId),
   };
 }
@@ -541,6 +542,7 @@ export function normalizeMetabaseAnomalyAnalysis(value) {
     recommendedActions: textList(source.recommendedActions),
     confidence: ["low", "medium", "high"].includes(source.confidence) ? source.confidence : "low",
     limitations: text(source.limitations, "仅基于巡检记录分析，未直接查询 Metabase、数据仓库或调度系统。"),
+    verdictMissing: isMetabaseVerdictMissingAnalysis(source),
     dataSideVerdict: ["data_issue", "business_change", "verified_normal", "insufficient_evidence"].includes(source.dataSideVerdict)
       ? source.dataSideVerdict
       : "insufficient_evidence",
@@ -556,6 +558,15 @@ export function normalizeMetabaseAnomalyAnalysis(value) {
       ? text(source.verificationReason, "")
       : "",
   };
+}
+
+export function isMetabaseVerdictMissingAnalysis(analysis) {
+  const source = analysis && typeof analysis === "object" ? analysis : {};
+  if (source.verdictMissing === true) return true;
+  const summary = String(source.summary || "").trim();
+  const limitations = String(source.limitations || "").trim();
+  return summary.includes("Dify 未返回该指标判断")
+    || limitations.includes("Dify 响应缺少该指标 verdict");
 }
 
 function text(value, fallback) {

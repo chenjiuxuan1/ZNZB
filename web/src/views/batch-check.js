@@ -760,7 +760,55 @@ function renderScheduleRunProgress() {
 function renderAiStageCounters(stage = {}) {
   const total = Number(stage.total || 0);
   if (!total) return "";
-  return `<span class="schedule-ai-counters"><em>看板分析 ${escapeHtml(stage.completed || 0)}/${escapeHtml(total)}</em></span>`;
+  return `
+    <span class="schedule-ai-counters"><em>看板分析 ${escapeHtml(stage.completed || 0)}/${escapeHtml(total)}</em></span>
+    ${renderAiBatchDetails(stage)}
+  `;
+}
+
+function renderAiBatchDetails(stage = {}) {
+  const details = Array.isArray(stage.details) ? stage.details : [];
+  if (!details.length) return "";
+  const priority = { timed_out: 0, failed: 1, partial_failed: 2, running: 3, submitted: 4, completed: 5 };
+  const visible = [...details]
+    .sort((a, b) => (priority[a.status] ?? 9) - (priority[b.status] ?? 9) || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .slice(0, 12);
+  const problemCount = details.filter((item) => ["timed_out", "failed", "partial_failed"].includes(item.status)).length;
+  const summary = problemCount
+    ? `查看 AI 取证明细（异常 ${problemCount}/${details.length}）`
+    : `查看 AI 取证明细（${details.length} 个看板）`;
+  return `
+    <details class="schedule-ai-detail-list">
+      <summary>${escapeHtml(summary)}</summary>
+      <div class="schedule-ai-detail-items">
+        ${visible.map((item) => renderAiBatchDetailItem(item)).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function renderAiBatchDetailItem(item = {}) {
+  const status = String(item.status || "running");
+  const title = item.dashboardTitle || item.dashboardUuid || item.groupKey || "-";
+  const meta = [
+    item.countryCode ? `国家 ${item.countryCode}` : "",
+    item.caseCount ? `指标 ${item.caseCount} 个` : "",
+    item.retry ? "重刷" : "首次",
+    item.batchId ? `batch ${item.batchId}` : item.groupKey ? `分组 ${item.groupKey}` : "",
+  ].filter(Boolean).join(" · ");
+  const indexes = Array.isArray(item.anomalyIndexes) && item.anomalyIndexes.length ? `异常序号：${item.anomalyIndexes.join(", ")}` : "";
+  const reason = item.reason || (status === "timed_out" ? "等待 AI 回调超过等待窗口" : "");
+  return `
+    <article class="schedule-ai-detail-item ${escapeHtml(status)}">
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(meta || "-")}</span>
+        ${indexes ? `<small>${escapeHtml(indexes)}</small>` : ""}
+        ${reason ? `<small class="schedule-ai-detail-reason">${escapeHtml(reason)}</small>` : ""}
+      </div>
+      <span class="badge ${escapeHtml(scheduleProgressBadge(status))}">${escapeHtml(scheduleProgressLabel(status))}</span>
+    </article>
+  `;
 }
 
 function formatScheduleProgressStatus(progress, currentLabel) {
@@ -808,19 +856,23 @@ function scheduleProgressLabel(status) {
   const labels = {
     pending: "等待",
     running: "运行中",
+    submitted: "已提交",
     sending: "发送中",
     queued: "已排队",
     skipped: "已跳过",
     success: "完成",
+    completed: "完成",
     partial_failed: "部分失败",
     failed: "失败",
+    timed_out: "超时",
   };
   return labels[status] || "未开始";
 }
 
 function scheduleProgressBadge(status) {
   if (status === "success") return "ok";
-  if (status === "failed" || status === "partial_failed") return "danger";
+  if (status === "completed") return "ok";
+  if (status === "failed" || status === "partial_failed" || status === "timed_out") return "danger";
   if (status === "running" || status === "sending" || status === "queued") return "warn";
   return "idle";
 }
@@ -1128,17 +1180,18 @@ function renderHistoryCountryDetail(countryRun, runId = "") {
   }
   const result = countryRun.result || {};
   const anomalies = result.anomalies || [];
+  const effectiveAnomalyCount = Number(result.anomalyCount ?? anomalies.length ?? 0);
   const hasDashboardAnomalySummary = Number(result.anomalyCount || 0) > 0;
   return `
     <div class="sub-panel history-country-detail">
       <div class="detail-header compact-header">
         <h2 class="panel-title">${escapeHtml(label)}</h2>
-        <span class="badge ${anomalies.length || result.dataQualityAnomalyCount ? "warn" : "ok"}">${anomalies.length || result.dataQualityAnomalyCount ? "有异常" : "正常"}</span>
+        <span class="badge ${effectiveAnomalyCount || result.dataQualityAnomalyCount ? "warn" : "ok"}">${effectiveAnomalyCount || result.dataQualityAnomalyCount ? "有异常" : (anomalies.length ? "AI 分析后无异常" : "正常")}</span>
       </div>
       <div class="auto-summary small-summary">
         ${summaryItem("检查卡片", result.checkedCardCount || 0)}
         ${summaryItem("覆盖看板", result.dashboardCount || 0)}
-        ${summaryItem("规则异常", result.anomalyCount || 0)}
+        ${summaryItem(result.rawAnomalyCount && result.rawAnomalyCount !== effectiveAnomalyCount ? "AI后异常" : "规则异常", effectiveAnomalyCount)}
         ${summaryItem("数据质量异常", result.dataQualityAnomalyCount || 0)}
       </div>
       ${renderDashboardScanDetails(result, { runId, countryCode: countryRun.countryCode || "" }) || renderHistoryDashboardSummary(result, { runId, countryCode: countryRun.countryCode || "" })}
@@ -1327,14 +1380,21 @@ export function renderMetabaseAnomalyAnalysis(response) {
     return `<div class="sandbox-status info"><strong>数据侧取证进行中</strong><span>任务 ${escapeHtml(response.jobId || "-")} 已提交；完成后可查看 StarRocks、血缘和 DS 的核查结论。</span></div>`;
   }
   const analysis = response?.analysis || {};
+  const finalVerdict = formatMetabaseFinalVerdict(analysis);
   return `
+    <div class="sandbox-status ai-final-verdict ${escapeHtml(finalVerdict.className)}">
+      <strong>最终判定：${escapeHtml(finalVerdict.title)}</strong>
+      <span>${escapeHtml(finalVerdict.detail)}</span>
+    </div>
     <div class="sandbox-status info">
       <strong>AI 数据侧分析${response.cached ? "（缓存）" : ""}</strong>
       <span>${escapeHtml(analysis.summary || "-")}</span>
     </div>
-    ${renderMetabaseAnalysisList("可能原因", analysis.possibleCauses)}
-    ${renderMetabaseAnalysisList("核查步骤", analysis.verificationSteps)}
-    ${renderMetabaseAnalysisList("建议处理", analysis.recommendedActions)}
+    <div class="ai-analysis-supporting ${escapeHtml(finalVerdict.supportClass)}">
+      ${renderMetabaseAnalysisList("可能原因", analysis.possibleCauses)}
+      ${renderMetabaseAnalysisList("核查步骤", analysis.verificationSteps)}
+      ${renderMetabaseAnalysisList("建议处理", analysis.recommendedActions)}
+    </div>
     ${analysis.dataSideVerdict ? `<p class="muted">数据侧判定：${escapeHtml(analysis.dataSideVerdict)}；通知建议：${escapeHtml(analysis.notificationAction || "enrich_only")}</p>` : ""}
     ${analysis.chartVisibility === "hide_verified_normal" ? `<div class="sandbox-status success"><strong>AI 已核验正常（不展示于波动图谱）</strong><span>${escapeHtml(analysis.verificationReason || "本轮查询已确认该点不属于当前数据异常。")}</span></div>` : ""}
     <p class="muted">置信度：${escapeHtml(analysis.confidence || "low")}；限制：${escapeHtml(analysis.limitations || "仅基于本次巡检记录分析。")}</p>
@@ -1342,6 +1402,41 @@ export function renderMetabaseAnomalyAnalysis(response) {
       <button class="secondary" type="button" data-metabase-anomaly-retry data-run-id="${escapeHtml(response.runId || "")}" data-country-code="${escapeHtml(response.countryCode || "")}" data-anomaly-index="${escapeHtml(response.anomalyIndex ?? "")}" data-analysis-result-id="metabase-ai-analysis-${encodeURIComponent(`${response.runId || ""}-${response.countryCode || ""}-${response.anomalyIndex ?? ""}`).replace(/%/g, "")}">重新 AI 分析</button>
     </div>
   `;
+}
+
+function formatMetabaseFinalVerdict(analysis = {}) {
+  const verdict = String(analysis.dataSideVerdict || "").trim();
+  const action = String(analysis.notificationAction || "").trim();
+  if (verdict === "verified_normal" || analysis.chartVisibility === "hide_verified_normal") {
+    return {
+      className: "success ai-verdict-normal",
+      supportClass: "ai-support-normal",
+      title: "AI 分析后无异常",
+      detail: analysis.verificationReason || "实时取证已确认该原始告警不属于当前数据异常，最终播报会跳过。",
+    };
+  }
+  if (verdict === "business_change" || action === "downgrade") {
+    return {
+      className: "success ai-verdict-business",
+      supportClass: "ai-support-business",
+      title: "业务变化，不作为数据侧异常播报",
+      detail: "AI 判断数据链路未发现故障证据，最终播报会跳过或降级。",
+    };
+  }
+  if (verdict === "data_issue" || action === "send") {
+    return {
+      className: "error ai-verdict-issue",
+      supportClass: "ai-support-issue",
+      title: "有数据侧异常",
+      detail: "AI 取证认为需要进入最终异常播报或人工处理。",
+    };
+  }
+  return {
+    className: "warn ai-verdict-unknown",
+    supportClass: "ai-support-unknown",
+    title: "证据不足，按异常保守处理",
+    detail: "AI 未取得足够证据排除异常，最终播报会保留该项。",
+  };
 }
 
 
@@ -1890,6 +1985,7 @@ function buildDashboardScanRows(result) {
         checkedCardCount: 0,
         failedCardCount: 0,
         anomalyCount: 0,
+        aiSuppressedCount: 0,
         cards: [],
         anomalySamples: [],
       });
@@ -1903,7 +1999,7 @@ function buildDashboardScanRows(result) {
       group.cards.push(card.cardTitle);
     }
   }
-  for (const anomaly of result.anomalies || []) {
+  for (const [anomalyIndex, anomaly] of (result.anomalies || []).entries()) {
     if (isExcludedScanDashboardRow(anomaly)) {
       continue;
     }
@@ -1917,11 +2013,17 @@ function buildDashboardScanRows(result) {
         checkedCardCount: 0,
         failedCardCount: 0,
         anomalyCount: 0,
+        aiSuppressedCount: 0,
         cards: [],
         anomalySamples: [],
       });
     }
     const group = groups.get(key);
+    const audit = Array.isArray(result.aiAudit) ? result.aiAudit[anomalyIndex] : null;
+    if (audit && audit.notifiable === false) {
+      group.aiSuppressedCount += 1;
+      continue;
+    }
     group.anomalyCount += 1;
     if (!group.dashboardUrl && anomaly.dashboardUrl) {
       group.dashboardUrl = anomaly.dashboardUrl;
@@ -1934,6 +2036,8 @@ function buildDashboardScanRows(result) {
   return [...groups.values()].map((group) => {
     const statusText = group.anomalyCount > 0
       ? "有异常"
+      : group.aiSuppressedCount > 0
+        ? "AI分析后无异常"
       : group.failedCardCount > 0
         ? "查询失败"
         : "正常";
@@ -1963,6 +2067,9 @@ function summarizeDashboardIssue(group) {
   if (group.anomalyCount > 0) {
     const sampleText = group.anomalySamples.length ? `：${group.anomalySamples.join("；")}` : "";
     parts.push(`发现 ${group.anomalyCount} 条异常${sampleText}`);
+  }
+  if (group.aiSuppressedCount > 0) {
+    parts.push(`AI 已核验 ${group.aiSuppressedCount} 条原始异常无需最终播报`);
   }
   if (!parts.length) {
     return `无异常，已扫描 ${group.checkedCardCount || 0} 张卡片`;

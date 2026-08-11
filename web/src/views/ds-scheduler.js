@@ -4,7 +4,7 @@ import { escapeHtml } from "../view-utils.js";
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const COUNTRY_FLAGS = { cn: "🇨🇳", ine: "🇮🇩", ph: "🇵🇭", th: "🇹🇭", pk: "🇵🇰", mx: "🇲🇽" };
-let model = { config: {}, result: null, status: null, history: null };
+let model = { config: {}, result: null, status: null, history: null, saving: false };
 
 export function summarizeDsCountryCheck(country = {}) {
   const stuck = Number(country.stuckCount || 0);
@@ -93,6 +93,24 @@ function paint(root) {
   root.querySelector("#ds-run-test")?.addEventListener("click", () => runTest(root));
 }
 
+function setButtonBusy(btn, busy, busyLabel) {
+  if (!btn) return;
+  if (busy) {
+    btn.dataset.prevLabel = btn.textContent;
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.innerHTML = `<span class="btn-spinner"></span>${busyLabel}`;
+  } else {
+    btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    btn.textContent = btn.dataset.prevLabel || busyLabel;
+  }
+}
+
+function scrollStatusIntoView(root) {
+  root.querySelector(".sandbox-status")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function renderProjectCard(code) {
   const country = model.config.countries?.[code] || {};
   const status = model.config.projectStatus?.[code] || {};
@@ -173,6 +191,10 @@ function renderResult() {
 }
 
 async function saveProjects(root) {
+  if (model.saving) return;
+  model.saving = true;
+  setButtonBusy(root.querySelector("#ds-save-projects"), true, "保存中…");
+  setButtonBusy(root.querySelector("#ds-run-test"), true, "测试中…");
   try {
     const countries = {};
     const projectNames = {};
@@ -195,23 +217,28 @@ async function saveProjects(root) {
       : { type: "success", text: "DS 项目配置已保存。" };
   } catch (error) {
     model.status = { type: "error", text: `项目配置保存失败：${error.message}` };
+  } finally {
+    model.saving = false;
   }
   paint(root);
+  scrollStatusIntoView(root);
 }
 
 async function runTest(root) {
-  const button = root.querySelector("#ds-run-test");
-  if (button) {
-    button.disabled = true;
-    button.textContent = "测试中…";
-  }
+  if (model.saving) return;
+  model.saving = true;
+  setButtonBusy(root.querySelector("#ds-save-projects"), true, "保存中…");
+  setButtonBusy(root.querySelector("#ds-run-test"), true, "测试中…");
   try {
     model.result = await apiPost("/api/ds-scheduler/check", {});
     model.status = { type: "success", text: `DS 测试完成：检查 ${model.result.totalChecked || 0} 个工作流，本次未发送通知。` };
   } catch (error) {
     model.status = { type: "error", text: `DS 测试失败：${error.message}` };
+  } finally {
+    model.saving = false;
   }
   paint(root);
+  scrollStatusIntoView(root);
 }
 
 function renderHistory() {

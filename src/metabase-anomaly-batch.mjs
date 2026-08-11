@@ -3,6 +3,7 @@ const DEFAULT_TIMEOUT_MS = 6 * 60 * 1000;
 const TARGET_DURATION_MS = 20 * 60 * 1000;
 const DEADLINE_MS = 45 * 60 * 1000;
 export const MAX_DASHBOARD_ANALYSIS_BYTES = 512 * 1024;
+export const MAX_ANOMALIES_PER_DIFY_BATCH = 5;
 
 export function getBatchInvestigationLimits() {
   return {
@@ -13,7 +14,7 @@ export function getBatchInvestigationLimits() {
   };
 }
 
-export function buildDashboardAnalysisJobs(cases = []) {
+export function buildDashboardAnalysisJobs(cases = [], maxCasesPerBatch = 0) {
   const groups = new Map();
   for (const item of Array.isArray(cases) ? cases : []) {
     const countryCode = String(item.countryCode || "").trim().toUpperCase();
@@ -32,7 +33,17 @@ export function buildDashboardAnalysisJobs(cases = []) {
     group.cases.push({ ...item, countryCode, dashboardUuid, anomalyIndex });
     groups.set(groupKey, group);
   }
-  return [...groups.values()];
+  const grouped = [...groups.values()];
+  const max = Number(maxCasesPerBatch);
+  if (!(max > 0)) return grouped;
+  const out = [];
+  for (const group of grouped) {
+    for (let start = 0; start < group.cases.length; start += max) {
+      const chunk = group.cases.slice(start, start + max);
+      out.push({ ...group, cases: chunk, groupKey: `${group.groupKey}#${Math.floor(start / max) + 1}` });
+    }
+  }
+  return out;
 }
 
 export async function runBoundedInvestigationQueue({

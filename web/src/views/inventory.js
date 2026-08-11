@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "../api.js";
+import { apiDelete, apiGet, apiPost } from "../api.js";
 import { getDashboards, isDashboardExecutable, state } from "../state.js";
 import { compactDashboardUrl, compactList, countryLabel, escapeHtml, json } from "../view-utils.js";
 
@@ -12,7 +12,11 @@ export function renderInventory(root) {
   const inventoryCountryCodes = dashboards.map((dashboard) => dashboard.countryCode || dashboard.country?.code).filter(Boolean);
   const countryCodes = [...new Set([...configuredCountryCodes, ...inventoryCountryCodes])];
   const selectedCountry = state.selected.countryCode || countryCodes[0] || "";
-  const countryDashboards = dashboards.filter((dashboard) => (dashboard.countryCode || dashboard.country?.code) === selectedCountry);
+  const countryDashboards = dashboards
+    .filter((dashboard) => (dashboard.countryCode || dashboard.country?.code) === selectedCountry)
+    // Keep manually added, not-yet-discovered dashboards at the bottom. This
+    // makes the next user action unambiguous without changing scan ordering.
+    .sort((left, right) => Number(!isDashboardExecutable(left)) - Number(!isDashboardExecutable(right)));
   const selectedDashboard = countryDashboards.find((dashboard) => dashboard.uuid === state.selected.dashboardUuid) || countryDashboards[0] || null;
   const cards = selectedDashboard?.cards || [];
 
@@ -100,15 +104,19 @@ export function renderInventory(root) {
       state.inventory = await apiGet("/api/inventory");
       state.selected.countryCode = added.countryCode;
       state.selected.dashboardUuid = added.uuid;
-      discoveryStatus = { type: "success", title: "已添加为待发现", detail: "请选择该看板并点击“发现卡片”，完成后才会纳入巡检。" };
+      discoveryStatus = { type: "success", title: "已添加为待发现", detail: "该看板已出现在当前国家列表底部；选中后点击“发现看板”。" };
     } catch (error) {
-      discoveryStatus = { type: "error", title: "添加看板失败", detail: error.payload?.errors?.join("；") || error.message };
+      discoveryStatus = { type: "error", title: "添加看板失败", detail: formatDiscoveryError(error) };
     }
     renderInventory(root);
   });
   root.querySelector("#discover-one-dashboard")?.addEventListener("click", async () => {
-    if (!selectedDashboard?.sourcePanelId) return;
-    discoveryStatus = { type: "loading", title: "正在发现卡片", detail: `仅发现“${selectedDashboard.title || selectedDashboard.sourcePanelTitle}”，不会扫描其他看板。` };
+    if (selectedDashboard?.sourcePanelId == null) {
+      discoveryStatus = { type: "error", title: "发现看板失败", detail: "错误类型：来源记录缺失。请刷新页面后重新添加该看板。" };
+      renderInventory(root);
+      return;
+    }
+    discoveryStatus = { type: "loading", title: "正在发现看板", detail: `仅发现“${selectedDashboard.title || selectedDashboard.sourcePanelTitle}”，不会扫描其他看板。` };
     renderInventory(root);
     try {
       const result = await apiPost("/api/inventory/discover-one", {
@@ -116,13 +124,42 @@ export function renderInventory(root) {
         sourcePanelId: selectedDashboard.sourcePanelId,
       });
       state.inventory = await apiGet("/api/inventory");
+      const discoveredDashboard = getDashboards().find((dashboard) => (
+        dashboard.countryCode === result.countryCode
+        && String(dashboard.sourcePanelId ?? "") === String(result.sourcePanelId ?? "")
+        && isDashboardExecutable(dashboard)
+      ));
+      state.selected.countryCode = result.countryCode || selectedDashboard.countryCode;
+      state.selected.dashboardUuid = discoveredDashboard?.uuid || selectedDashboard.uuid;
       discoveryStatus = {
         type: "success",
-        title: "卡片发现完成",
-        detail: `已发现 ${result.discoveredDashboardCount || 0} 个看板，其中 ${result.executableDashboardCount || 0} 个可执行。`,
+        title: "发现看板完成",
+        detail: `已发现 ${result.discoveredDashboardCount || 0} 个看板、${result.executableDashboardCount || 0} 个可执行；已加入后续手动和定时巡检，巡检执行后会出现在历史明细中。`,
       };
     } catch (error) {
-      discoveryStatus = { type: "error", title: "卡片发现失败", detail: error.payload?.errors?.join("；") || error.message };
+      discoveryStatus = { type: "error", title: "发现看板失败", detail: formatDiscoveryError(error) };
+    }
+    renderInventory(root);
+  });
+  root.querySelector("#delete-dashboard")?.addEventListener("click", async () => {
+    if (!selectedDashboard) return;
+    const title = selectedDashboard.title || selectedDashboard.sourcePanelTitle || "该看板";
+    if (!window.confirm(`确定删除“${title}”吗？删除后不会再展示，也不会进入手动或定时巡检。`)) return;
+    discoveryStatus = { type: "loading", title: "正在删除看板", detail: "正在从运行时巡检范围中移除该看板。" };
+    renderInventory(root);
+    try {
+      await apiDelete("/api/inventory/dashboard", {
+        countryCode: selectedDashboard.countryCode || selectedDashboard.country?.code || "",
+        dashboardUuid: selectedDashboard.uuid || "",
+        sourcePanelId: selectedDashboard.sourcePanelId || "",
+        dashboardId: selectedDashboard.dashboardId || "",
+        url: selectedDashboard.url || selectedDashboard.sourceUrl || "",
+      });
+      state.inventory = await apiGet("/api/inventory");
+      state.selected.dashboardUuid = "";
+      discoveryStatus = { type: "success", title: "看板已删除", detail: "该看板已从展示清单和巡检范围中移除；后续定时巡检不会扫描它。" };
+    } catch (error) {
+      discoveryStatus = { type: "error", title: "删除看板失败", detail: error.payload?.errors?.join("；") || error.message };
     }
     renderInventory(root);
   });
@@ -237,13 +274,16 @@ function renderDashboardDetail(dashboard, cards) {
         <h2 class="panel-title">${escapeHtml(dashboard.title || dashboard.sourcePanelTitle || "-")}</h2>
         <p class="muted">${escapeHtml(dashboard.countryName || dashboard.countryCode || "-")} · ${executable ? `${cards.length} 张卡片` : "待发现卡片"}</p>
       </div>
-      ${dashboard.url ? `<a class="link-button" href="${escapeHtml(dashboard.url)}" target="_blank" rel="noreferrer">打开 Metabase</a>` : ""}
+      <div class="button-group">
+        ${dashboard.url ? `<a class="link-button" href="${escapeHtml(dashboard.url)}" target="_blank" rel="noreferrer">打开 Metabase</a>` : ""}
+        <button class="danger" id="delete-dashboard" type="button">删除看板</button>
+      </div>
     </div>
     ${executable ? `<div class="card-list">${cards.map((card) => renderCard(card)).join("")}</div>` : `
       <div class="source-notice">
         <span class="badge warn">已纳入巡检范围 · 待发现</span>
         <p>${escapeHtml(dashboard.pendingReason || "尚未取得 Metabase 卡片清单")}。完成内部 Metabase 发现后会自动变为可执行，无需再次录入看板。</p>
-        ${dashboard.sourcePanelId != null ? `<button class="primary" id="discover-one-dashboard">发现卡片</button>` : ""}
+        ${dashboard.sourcePanelId != null ? `<div class="source-notice-actions"><button class="primary" id="discover-one-dashboard" type="button">发现看板</button></div>` : ""}
       </div>
     `}
     ${executable ? `<details class="advanced compact">
@@ -251,6 +291,23 @@ function renderDashboardDetail(dashboard, cards) {
       <pre class="code">${escapeHtml(json(cards[0]?.sampleRows || []))}</pre>
     </details>` : ""}
   `;
+}
+
+function formatDiscoveryError(error) {
+  const details = error?.payload?.errors?.filter(Boolean) || [];
+  if (details.length) return details.join("；");
+
+  const message = String(error?.message || "未知错误");
+  if (/401|403|unauthori[sz]ed|forbidden/i.test(message)) {
+    return `错误类型：Metabase 访问权限或认证失败。${message}`;
+  }
+  if (/404|not found/i.test(message)) {
+    return `错误类型：看板不存在或链接失效。${message}`;
+  }
+  if (/timeout|timed out|abort/i.test(message)) {
+    return `错误类型：Metabase 请求超时。${message}`;
+  }
+  return `错误类型：看板发现请求失败。${message}`;
 }
 
 function renderCard(card) {
