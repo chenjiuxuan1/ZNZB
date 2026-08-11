@@ -10,6 +10,10 @@ export async function apiPost(path, body = {}, options = {}) {
   return request(path, { method: "POST", body: JSON.stringify(body), ...options });
 }
 
+export async function apiDelete(path, body = {}, options = {}) {
+  return request(path, { method: "DELETE", body: JSON.stringify(body), ...options });
+}
+
 async function request(path, options) {
   const timeoutMs = Number(options.timeoutMs || 0);
   const controller = timeoutMs > 0 ? new AbortController() : null;
