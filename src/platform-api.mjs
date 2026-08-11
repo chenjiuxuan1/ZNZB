@@ -1635,12 +1635,12 @@ export function createPlatformApi({
           sampleRows: 0,
         });
       } catch (error) {
-        throw badRequest("Dashboard discovery failed", [error.message || "Metabase 看板发现失败"]);
+        throw dashboardDiscoveryFailed(error);
       } finally {
         await fs.rm(temporaryInputFile, { force: true });
       }
       if ((rawDiscovered.sourceErrors || []).length > 0) {
-        throw badRequest("Dashboard discovery failed", rawDiscovered.sourceErrors.map((item) => item.error).filter(Boolean));
+        throw dashboardDiscoveryFailed(rawDiscovered.sourceErrors.map((item) => item.error).filter(Boolean).join("；"));
       }
 
       const discovered = (rawDiscovered.dashboards || []).map((dashboard) => ({
@@ -1653,6 +1653,12 @@ export function createPlatformApi({
         sourcePanelTitle: dashboard.sourcePanelTitle || panel.title,
         sourceUrl: dashboard.sourceUrl || panel.links?.[0]?.url || dashboard.url || "",
       }));
+      const executableDiscovered = discovered.filter((dashboard) => (dashboard.cards || []).length > 0);
+      if (executableDiscovered.length === 0) {
+        throw badRequest("Dashboard discovery failed", [
+          "错误类型：未发现可巡检卡片。请确认链接指向 Metabase 看板、当前服务账号有访问权限，且看板中至少有一张可查询卡片。",
+        ]);
+      }
       const current = await readPlatformInventory(rootDir, resolve("inventory"));
       const existingCountryDashboards = (current.dashboards || [])
         .filter((dashboard) => getDashboardCountryCode(dashboard) === countryCode);
@@ -1672,7 +1678,7 @@ export function createPlatformApi({
         sourcePanelId: panel.id,
         discoveredAt,
         discoveredDashboardCount: discovered.length,
-        executableDashboardCount: discovered.filter((dashboard) => (dashboard.cards || []).length > 0).length,
+        executableDashboardCount: executableDiscovered.length,
       };
     },
 
@@ -5455,6 +5461,21 @@ function badRequest(message, errors) {
   error.statusCode = 400;
   error.errors = errors;
   return error;
+}
+
+function dashboardDiscoveryFailed(error) {
+  const message = String(error?.message || error || "Metabase 看板发现失败").trim();
+  let type = "Metabase 接口或卡片发现失败";
+  if (/401|403|unauthori[sz]ed|forbidden/i.test(message)) {
+    type = "Metabase 访问权限或认证失败";
+  } else if (/404|not found/i.test(message)) {
+    type = "看板不存在或链接失效";
+  } else if (/timeout|timed out|abort/i.test(message)) {
+    type = "Metabase 请求超时";
+  } else if (/invalid|malformed|url/i.test(message)) {
+    type = "看板链接无效";
+  }
+  return badRequest("Dashboard discovery failed", [`错误类型：${type}。${message}`]);
 }
 
 // ---------------------------------------------------------------------------
