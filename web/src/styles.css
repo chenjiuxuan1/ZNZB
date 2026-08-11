@@ -411,18 +411,31 @@ th {
   gap: 12px;
   grid-template-columns: 1fr 1fr;
   grid-template-areas:
-    "auto-trigger ds-scheduler"
+    "switches switches"
     "run-times run-times"
     "next-run last-run";
   margin-bottom: 12px;
   padding: 16px;
 }
 
-.schedule-config-card > :nth-child(1) { grid-area: auto-trigger; }
-.schedule-config-card > :nth-child(2) { grid-area: ds-scheduler; }
-.schedule-config-card > :nth-child(3) { grid-area: run-times; }
-.schedule-config-card > :nth-child(4) { grid-area: next-run; }
-.schedule-config-card > :nth-child(5) { grid-area: last-run; }
+.schedule-switch-row {
+  display: grid;
+  gap: 12px;
+  grid-area: switches;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.schedule-run-times-field { grid-area: run-times; }
+.schedule-next-run-field { grid-area: next-run; }
+.schedule-last-run-field { grid-area: last-run; }
+.schedule-switch-row .switch-field { min-width: 0; }
+.schedule-switch-row .switch-field > span:last-child { min-width: 0; }
+.schedule-switch-row .switch-field small {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .schedule-progress-panel {
   background: #fbfdff;
@@ -2134,11 +2147,13 @@ a.dashboard-row {
   }
   .schedule-config-card {
     grid-template-areas:
-      "auto-trigger"
-      "ds-scheduler"
+      "switches"
       "run-times"
       "next-run"
       "last-run";
+  }
+  .schedule-switch-row {
+    grid-template-columns: 1fr;
   }
   .schedule-title-row,
   .schedule-country-card-header {
@@ -3256,7 +3271,7 @@ button.wattrel-country-card.is-selected {
   background:
     linear-gradient(135deg, #f8fafc, #eef6ff);
   border-color: #dbe7f8;
-  grid-template-columns: minmax(250px, 0.95fr) minmax(320px, 1.15fr) repeat(2, minmax(160px, 0.65fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .switch-field {
