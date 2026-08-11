@@ -284,20 +284,19 @@ function formatDutyDsScheduleSummary(summary) {
   const lines = [];
   for (const country of countries) {
     const label = formatDutyCountryLabel(country, country.countryName || country.country || "未知国家");
-    const stuckCount = Number(country.stuckCount || 0);
     const staleCount = Number(country.staleCount || 0);
     const failedCount = Number(country.failedCount || 0);
     const failedProjects = formatDutyDsFailedProjects(country.projects || []);
-    if (country.success && failedProjects.length === 0 && stuckCount === 0 && staleCount === 0 && failedCount === 0) {
+    if (country.success && failedProjects.length === 0 && staleCount === 0 && failedCount === 0) {
       lines.push(`${label}：正常`);
       continue;
     }
     if (!country.success) {
       lines.push(`${label}：检查失败（项目失败 ${failedProjects.length}）`);
-    } else if (failedProjects.length && stuckCount === 0 && staleCount === 0 && failedCount === 0) {
+    } else if (failedProjects.length && staleCount === 0 && failedCount === 0) {
       lines.push(`${label}：部分失败（项目失败 ${failedProjects.length}）`);
     } else {
-      lines.push(`${label}：异常（卡死 ${stuckCount}、离线 ${staleCount}、执行失败 ${failedCount}、项目失败 ${failedProjects.length}）`);
+      lines.push(`${label}：异常（未运行 ${staleCount}、状态异常 ${failedCount}、项目失败 ${failedProjects.length}）`);
     }
     lines.push(...formatDutyDsIssueDetails(country));
   }
@@ -318,14 +317,11 @@ function formatDutyDsIssueDetails(country = {}) {
   if (!country.success && failedProjects.length === 0 && country.error) {
     entries.push(`巡检失败（${compactDutyDsReason(country.error)}）`);
   }
-  for (const workflow of country.stuckWorkflows || []) {
-    entries.push(formatDutyDsWorkflowIssue(workflow, "卡死", workflow.staleMessage || workflow.failureMessage));
-  }
   for (const workflow of country.staleWorkflows || []) {
-    entries.push(formatDutyDsWorkflowIssue(workflow, "离线", workflow.staleMessage || workflow.staleReason));
+    entries.push(formatDutyDsWorkflowIssue(workflow, "未运行", workflow.staleMessage || workflow.staleReason));
   }
   for (const workflow of country.failedWorkflows || []) {
-    entries.push(formatDutyDsWorkflowIssue(workflow, "执行失败", workflow.failureMessage || workflow.failureReason));
+    entries.push(formatDutyDsWorkflowIssue(workflow, "状态异常", workflow.failureMessage || workflow.failureReason));
   }
   const unique = [...new Set(entries.filter(Boolean))];
   const samples = unique.slice(0, 3);
