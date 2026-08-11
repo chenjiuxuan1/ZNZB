@@ -1540,18 +1540,35 @@ export function createPlatformApi({
         manual: true,
         links: [{ url }],
       };
-      if (!existing) {
-        await writeJsonAtomic(sourcePath, {
-          ...source,
-          country: source.country || { code: country.code, name: country.name, timezone: country.timezone },
-          panels: [...panels, panel],
-        });
-      }
-      return panelSourceToDashboard({
+      const pendingDashboard = panelSourceToDashboard({
         countryCode: country.code,
         countryName: country.name,
         timezone: country.timezone,
       }, panel);
+      const remainingSourceDeletions = removeDashboardDeletionForDashboard(source.deletedDashboards || [], pendingDashboard);
+      if (!existing || remainingSourceDeletions.length !== (source.deletedDashboards || []).length) {
+        await writeJsonAtomic(sourcePath, {
+          ...source,
+          country: source.country || { code: country.code, name: country.name, timezone: country.timezone },
+          panels: existing ? panels : [...panels, panel],
+          deletedDashboards: remainingSourceDeletions,
+        });
+      }
+
+      // Deletion tombstones keep removed dashboards out of future scans. A
+      // deliberate re-add of the same URL is an explicit opt-in, so clear
+      // only the tombstone matching this dashboard from both runtime stores.
+      const inventoryPath = runtimeCountryInventoryFilePath(rootDir, countryCode);
+      const runtimeInventory = await readJsonFile(inventoryPath, {});
+      const remainingInventoryDeletions = removeDashboardDeletionForDashboard(runtimeInventory.deletedDashboards || [], pendingDashboard);
+      if (remainingInventoryDeletions.length !== (runtimeInventory.deletedDashboards || []).length) {
+        await writeJsonAtomic(inventoryPath, {
+          ...runtimeInventory,
+          deletedDashboards: remainingInventoryDeletions,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      return pendingDashboard;
     },
 
     async deleteDashboard({ countryCode: countryCodeInput, dashboardUuid = "", sourcePanelId = "", dashboardId = "", url = "" } = {}) {
@@ -5244,6 +5261,10 @@ function appendUniqueDashboardDeletions(existing = [], additions = []) {
     result.push(normalized);
   }
   return result;
+}
+
+function removeDashboardDeletionForDashboard(deletions = [], dashboard = {}) {
+  return deletions.filter((deletion) => !dashboardMatchesDeletion(dashboard, deletion));
 }
 
 function normalizeDashboardDeletion(deletion = {}) {
