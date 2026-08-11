@@ -39,6 +39,7 @@ server.listen(port, host, () => {
   console.log(`Duty platform running at http://${host}:${port}`);
 });
 startBatchScheduler();
+startHiveScheduler();
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";
@@ -208,6 +209,27 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/notify-test") {
     return sendJson(response, 200, await api.sendNotifyTest(await readBody(request, {})));
   }
+  if (method === "GET" && url.pathname === "/api/hive-scheduler/config") {
+    return sendJson(response, 200, await api.getHiveSchedulerConfig());
+  }
+  if (method === "PUT" && url.pathname === "/api/hive-scheduler/config") {
+    return sendJson(response, 200, await api.saveHiveSchedulerConfig(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/hive-scheduler/check") {
+    return sendJson(response, 200, await api.checkAllHiveCountries());
+  }
+  if (method === "GET" && url.pathname === "/api/hive-scheduler/schedule") {
+    return sendJson(response, 200, await api.getHiveSchedule());
+  }
+  if (method === "PUT" && url.pathname === "/api/hive-scheduler/schedule") {
+    return sendJson(response, 200, await api.saveHiveSchedule(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/hive-scheduler/schedule/run-now") {
+    return sendJson(response, 200, await api.runHiveScheduleNow());
+  }
+  if (method === "GET" && url.pathname === "/api/hive-scheduler/history") {
+    return sendJson(response, 200, await api.getHiveHistory(Object.fromEntries(url.searchParams.entries())));
+  }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/config") {
     return sendJson(response, 200, await api.getDsSchedulerConfig());
   }
@@ -286,6 +308,25 @@ function startDsScheduler() {
   const timer = setInterval(tick, 60_000);
   timer.unref?.();
   setTimeout(tick, 8_000).unref?.();
+}
+
+function startHiveScheduler() {
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const result = await api.runDueHiveSchedule();
+      if (result.ran) console.log(`HIVE scheduler check ran at ${new Date().toISOString()}`);
+    } catch (error) {
+      console.error("HIVE scheduler check failed:", error);
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(tick, 60_000);
+  timer.unref?.();
+  setTimeout(tick, 10_000).unref?.();
 }
 
 async function readBody(request, fallback = null) {

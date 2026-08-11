@@ -13,5 +13,5 @@ test("DS result summary treats a failed scheduled execution as an anomaly", () =
 
   assert.equal(result.hasIssue, true);
   assert.equal(result.badgeClass, "warn");
-  assert.match(result.summary, /状态异常 1/);
+  assert.match(result.summary, /执行失败 1/);
 });
