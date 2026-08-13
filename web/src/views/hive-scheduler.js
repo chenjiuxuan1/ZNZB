@@ -4,7 +4,9 @@ import { escapeHtml } from "../view-utils.js";
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const COUNTRY_FLAGS = { cn: "🇨🇳", ine: "🇮🇩", ph: "🇵🇭", th: "🇹🇭", pk: "🇵🇰", mx: "🇲🇽" };
-let model = { config: {}, schedule: {}, history: {}, result: null, status: null, busy: false };
+let model = { config: {}, history: {}, result: null, status: null, busy: false };
+let loadPromise = null;
+let loaded = false;
 
 export function summarizeHiveCountryCheck(country = {}) {
   const notRun = Number(country.notRunCount || 0);
@@ -20,25 +22,35 @@ export function summarizeHiveCountryCheck(country = {}) {
 }
 
 export function renderHiveScheduler(root) {
+  if (loaded) {
+    paint(root);
+    return;
+  }
   root.innerHTML = `<section class="panel"><p class="muted">正在加载 HIVE 调度监控配置…</p></section>`;
   void load(root);
 }
 
 async function load(root) {
-  try {
-    [model.config, model.schedule, model.history] = await Promise.all([
+  if (!loadPromise) {
+    loadPromise = Promise.all([
       apiGet("/api/hive-scheduler/config"),
-      apiGet("/api/hive-scheduler/schedule"),
       apiGet("/api/hive-scheduler/history?limit=20"),
-    ]);
-  } catch (error) {
-    model.status = { type: "error", text: `HIVE 配置加载失败：${error.message}` };
+    ]).then(([config, history]) => {
+      model.config = config;
+      model.history = history;
+      loaded = true;
+    }).catch((error) => {
+      model.status = { type: "error", text: `HIVE 配置加载失败：${error.message}` };
+    }).finally(() => {
+      loadPromise = null;
+    });
   }
-  paint(root);
+  await loadPromise;
+  if (root.isConnected !== false) paint(root);
 }
 
 function paint(root) {
-  const result = model.result || model.schedule.lastResult;
+  const result = model.result || model.history?.runs?.[0]?.result || null;
   root.innerHTML = `
     <div class="page-header batch-hero">
       <div>
@@ -55,10 +67,10 @@ function paint(root) {
     ${renderStatus()}
     <section class="panel ds-config-section">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">项目配置</h2><p class="muted">勾选要监控的国家，并填写该国家需要监控的项目；一个国家下的全部项目只提醒该国负责人。</p></div>
+        <div><h2 class="panel-title">项目配置</h2><p class="muted">勾选要监控的国家，并填写该国家的 HIVE 项目范围，例如 ods、dwb、tdm；一个国家下的全部项目只提醒该国负责人。</p></div>
         <div class="button-group"><button id="hive-save">保存项目配置</button><button class="primary" id="hive-test">执行 HIVE 测试</button></div>
       </div>
-      <div class="notice compact-notice"><strong>模块隔离</strong><span>此处配置、巡检、通知和历史记录均独立运行，不会改变“定时巡检”或“DS 调度监控”。测试按钮只读取状态，不发送通知。</span></div>
+      <div class="notice compact-notice"><strong>项目名称说明</strong><span>这里填写 DolphinScheduler 中承载 HIVE 任务的项目名称，例如 ods、dwb、tdm、dm_feature；系统保存时会逐个匹配内部项目编码，不需要手动填写项目编码。多个名称可用逗号、分号或换行分隔。</span></div>
       <div class="schedule-country-grid ds-project-grid">${COUNTRY_ORDER.map(renderCountryCard).join("")}</div>
       <details class="advanced compact ds-token-details">
         <summary>高级：HIVE 巡检网关、各国 Token 与通知机器人</summary>
@@ -70,34 +82,22 @@ function paint(root) {
         </div>
       </details>
     </section>
-    <section class="panel ds-config-section">
-      <div class="detail-header compact-header">
-        <div><h2 class="panel-title">独立定时巡检</h2><p class="muted">按固定间隔运行 HIVE 巡检；每轮每个项目只请求一次，不复检、不重试。</p></div>
-        <div class="button-group"><button id="hive-save-schedule">保存定时配置</button><button class="primary" id="hive-run-now">立即巡检并通知</button></div>
-      </div>
-      <div class="schedule-inline-fields">
-        <label class="toggle-row"><input id="hive-schedule-enabled" type="checkbox" ${model.schedule.enabled ? "checked" : ""}><span>开启 HIVE 定时巡检</span></label>
-        <label>巡检间隔（分钟）<input id="hive-interval" type="number" min="5" value="${escapeHtml(model.schedule.intervalMinutes || 60)}"></label>
-        <div class="muted">下次巡检：${formatTime(model.schedule.nextRunAt)}　上次巡检：${formatTime(model.schedule.lastRunAt)}</div>
-      </div>
-    </section>
     ${renderResult(result)}
     ${renderHistory()}
   `;
   root.querySelector("#hive-save")?.addEventListener("click", () => saveConfig(root));
   root.querySelector("#hive-test")?.addEventListener("click", () => runTest(root));
-  root.querySelector("#hive-save-schedule")?.addEventListener("click", () => saveSchedule(root));
-  root.querySelector("#hive-run-now")?.addEventListener("click", () => runNow(root));
+  root.querySelectorAll(".hive-enabled").forEach((input) => input.addEventListener("change", () => updateCountrySwitch(input)));
 }
 
 function renderCountryCard(code) {
   const country = model.config.countries?.[code] || {};
   const status = model.config.projectStatus?.[code] || {};
   const owner = (model.config.alertRouting?.countryMentions?.[code] || []).join("，");
-  return `<article class="schedule-country-card ds-project-card" data-country="${code}">
-    <div class="schedule-country-card-header"><div><strong>${COUNTRY_FLAGS[code]} ${COUNTRY_LABELS[code]}</strong> <span class="badge ${country.enabled ? "ok" : ""}">${country.enabled ? "监控中" : "未选择"}</span></div><label class="toggle-row"><input class="hive-enabled" type="checkbox" ${country.enabled ? "checked" : ""}><span>监控该国家</span></label></div>
+  return `<article class="schedule-country-card ds-project-card ${country.enabled ? "is-enabled" : ""}" data-country="${code}">
+    <div class="schedule-country-card-header"><div><strong>${COUNTRY_FLAGS[code]} ${COUNTRY_LABELS[code]}</strong> <span class="badge hive-country-state ${country.enabled ? "ok" : "danger"}">${country.enabled ? "监控中" : "未监控"}</span></div><label class="mini-switch"><input class="hive-enabled" type="checkbox" ${country.enabled ? "checked" : ""}><span></span><em>${country.enabled ? "已开启" : "开启监控"}</em></label></div>
     <div class="ds-project-fields ds-project-name-only">
-      <label>项目名称（可多个）<input class="hive-projects" value="${escapeHtml(model.config.projectNames?.[code] || "")}" placeholder="用逗号、分号或换行分隔"></label>
+      <label>HIVE 项目范围（可多个）<input class="hive-projects" value="${escapeHtml(model.config.projectNames?.[code] || "")}" placeholder="如：ods，dwb，tdm；用逗号、分号或换行分隔"></label>
       <label>国家负责人邮箱<input class="hive-owner" value="${escapeHtml(owner)}" placeholder="异常时精准 @，可填写多个"></label>
     </div>
     ${(status.projects || []).length ? `<div class="project-match-list">${status.projects.map((item) => `<span class="badge ${item.code ? "ok" : "warn"}">${escapeHtml(item.name)} · ${item.code ? "已匹配" : "待匹配"}</span>`).join("")}</div>` : ""}
@@ -148,24 +148,16 @@ async function runTest(root) {
   });
 }
 
-async function saveSchedule(root) {
-  await perform(root, async () => {
-    model.schedule = await apiPut("/api/hive-scheduler/schedule", {
-      enabled: Boolean(root.querySelector("#hive-schedule-enabled")?.checked),
-      intervalMinutes: Number(root.querySelector("#hive-interval")?.value || 60),
-    });
-    model.status = { type: "success", text: "HIVE 独立定时巡检配置已保存。" };
-  });
-}
-
-async function runNow(root) {
-  await perform(root, async () => {
-    const response = await apiPost("/api/hive-scheduler/schedule/run-now", {});
-    model.result = response.result;
-    model.schedule = response.schedule;
-    model.history = await apiGet("/api/hive-scheduler/history?limit=20");
-    model.status = { type: "success", text: `HIVE 巡检完成，已发送 ${response.result?.notification?.sentMessages || 0} 条异常通知。` };
-  });
+function updateCountrySwitch(input) {
+  const card = input.closest(".ds-project-card");
+  const enabled = Boolean(input.checked);
+  card?.classList.toggle("is-enabled", enabled);
+  const badge = card?.querySelector(".hive-country-state");
+  badge?.classList.toggle("ok", enabled);
+  badge?.classList.toggle("danger", !enabled);
+  if (badge) badge.textContent = enabled ? "监控中" : "未监控";
+  const label = input.closest(".mini-switch")?.querySelector("em");
+  if (label) label.textContent = enabled ? "已开启" : "开启监控";
 }
 
 async function perform(root, action) {

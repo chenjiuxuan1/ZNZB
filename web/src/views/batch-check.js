@@ -631,33 +631,43 @@ function renderBatchSchedulePanel() {
       ${renderScheduleOverview(schedule)}
       ${renderScheduleRunProgress()}
       <div class="schedule-config-card">
-        <label class="switch-field">
-          <input id="batch-schedule-enabled" type="checkbox" ${enabled ? "checked" : ""}>
-          <span class="switch-track"></span>
-          <span>
-            <strong>自动触发</strong>
-            <small id="batch-schedule-enabled-copy">${enabled ? "已开启，到点会自动巡检已上线国家" : "已关闭，不会自动触发；仍可手动测试"}</small>
-          </span>
-        </label>
-        <label class="switch-field">
-          <input id="batch-include-ds-scheduler" type="checkbox" ${schedule.includeDsScheduler ? "checked" : ""}>
-          <span class="switch-track"></span>
-          <span>
-            <strong>同时执行 DS 调度巡检</strong>
-            <small>开启后，每次定时巡检会检查所有已配置 DS 项目的国家，并共用本页通知配置。</small>
-          </span>
-        </label>
-        <div class="field">
+        <div class="schedule-switch-row">
+          <label class="switch-field">
+            <input id="batch-schedule-enabled" type="checkbox" ${enabled ? "checked" : ""}>
+            <span class="switch-track"></span>
+            <span>
+              <strong>自动触发</strong>
+              <small id="batch-schedule-enabled-copy">${enabled ? "已开启，到点会自动巡检已上线国家" : "已关闭，不会自动触发；仍可手动测试"}</small>
+            </span>
+          </label>
+          <label class="switch-field">
+            <input id="batch-include-ds-scheduler" type="checkbox" ${schedule.includeDsScheduler ? "checked" : ""}>
+            <span class="switch-track"></span>
+            <span>
+              <strong>同时执行 DS 调度巡检</strong>
+              <small>开启后检查所有已配置的 DS 项目，并共用本页通知配置。</small>
+            </span>
+          </label>
+          <label class="switch-field">
+            <input id="batch-include-hive-scheduler" type="checkbox" ${schedule.includeHiveScheduler ? "checked" : ""}>
+            <span class="switch-track"></span>
+            <span>
+              <strong>同时执行 HIVE 调度巡检</strong>
+              <small>开启后检查 HIVE 页面中已启用国家和项目，并按国家精准提醒。</small>
+            </span>
+          </label>
+        </div>
+        <div class="field schedule-run-times-field">
           <label>每日运行时间（北京时间，可多个）</label>
           <input id="batch-schedule-daily-run-times" value="${escapeHtml(formatDailyRunTimes(schedule))}" placeholder="例如：09:00, 14:30, 20:00">
           <div id="batch-schedule-time-preview" class="time-chip-row">${renderTimeChips(parseDailyRunTimes(formatDailyRunTimes(schedule)))}</div>
           <small class="muted">多个时间用逗号、空格或换行分隔；服务每天会在这些时间点各运行一次。</small>
         </div>
-        <div class="field">
+        <div class="field schedule-next-run-field">
           <label>下次运行</label>
           <input value="${escapeHtml(schedule.enabled ? formatDisplayTime(schedule.nextRunAt) : "未启用")}" readonly>
         </div>
-        <div class="field">
+        <div class="field schedule-last-run-field">
           <label>上次运行</label>
           <input value="${escapeHtml(formatDisplayTime(schedule.lastRunAt))}" readonly>
         </div>
@@ -1709,6 +1719,7 @@ function buildBatchSchedulePayload(root, scope) {
   return {
     enabled: Boolean(root.querySelector("#batch-schedule-enabled")?.checked),
     includeDsScheduler: Boolean(root.querySelector("#batch-include-ds-scheduler")?.checked),
+    includeHiveScheduler: Boolean(root.querySelector("#batch-include-hive-scheduler")?.checked),
     dailyRunTimes: parseDailyRunTimes(root.querySelector("#batch-schedule-daily-run-times")?.value || "09:00"),
     intervalMinutes: 1440,
     countryCode: scope.countryCode || "",

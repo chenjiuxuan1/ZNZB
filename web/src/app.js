@@ -88,7 +88,7 @@ async function loadInitialData() {
       detail: critical[2].reason?.message || "请稍后刷新重试。",
     };
   }
-  render();
+  if (state.route !== "/hive-scheduler") render();
 
   const deferred = await Promise.allSettled([
     apiGet("/api/summary"),
@@ -99,7 +99,7 @@ async function loadInitialData() {
   if (deferred[0].status === "fulfilled") state.summary = deferred[0].value;
   if (deferred[1].status === "fulfilled") state.inventory = deferred[1].value;
   if (deferred[2].status === "fulfilled") state.rulesConfig = deferred[2].value;
-  render();
+  if (state.route !== "/hive-scheduler") render();
 }
 
 function applyBatchSchedule(batchSchedule) {
