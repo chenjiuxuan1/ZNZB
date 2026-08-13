@@ -2019,8 +2019,12 @@ export function createPlatformApi({
       let filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
       if (countryCode) {
         const discoveredInventory = await discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn);
+        const deletedDashboards = await readRuntimeDashboardDeletions(path.join(rootDir, "config"));
         filteredInventory = filterBatchInventory(
-          mergeInventories([filteredInventory, discoveredInventory]),
+          filterInventoryDeletedDashboards(
+            mergeInventories([filteredInventory, discoveredInventory]),
+            deletedDashboards,
+          ),
           { countryCode, dashboardUuid, dashboardUuids },
         );
       }

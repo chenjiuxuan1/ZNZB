@@ -1250,6 +1250,52 @@ test("platform api deletes dashboards from inventory and scheduled scan scope", 
   assert.equal(queryCount, 1);
 });
 
+test("platform api keeps deleted dashboards out of rediscovered patrol inventory", async () => {
+  const rootDir = await makeFixture();
+  const inventoryPath = path.join(rootDir, "config/discovered-public-dashboards.ready.json");
+  const survivingDashboard = {
+    countryCode: "INE",
+    countryName: "印尼",
+    title: "保留看板",
+    uuid: "dash-1",
+    url: "https://data.example/public/dashboard/dash-1",
+    cards: [{ title: "规模", cardId: 1, dashcardId: 2 }],
+  };
+  const deletedDashboard = {
+    countryCode: "INE",
+    countryName: "印尼",
+    title: "已删除看板",
+    uuid: "dash-deleted",
+    url: "https://data.example/public/dashboard/dash-deleted",
+    cards: [{ title: "规模", cardId: 3, dashcardId: 4 }],
+  };
+  await fs.writeFile(
+    inventoryPath,
+    JSON.stringify({ dashboards: [survivingDashboard, deletedDashboard] }),
+  );
+
+  const queriedDashboards = [];
+  const api = createPlatformApi({
+    rootDir,
+    // Simulate a stale discovery response that still returns the dashboard
+    // after the user has removed it from "看板与卡片".
+    discoverDashboardsFn: async () => ({ dashboards: [survivingDashboard, deletedDashboard] }),
+    metabaseClientFactory: (dashboard) => ({
+      async queryDashcardJson() {
+        queriedDashboards.push(dashboard.uuid);
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+
+  await api.deleteDashboard({ countryCode: "INE", dashboardUuid: "dash-deleted" });
+  const result = await api.runBatchCheck({ countryCode: "INE" });
+
+  assert.equal(result.dashboardCount, 1);
+  assert.deepEqual(queriedDashboards, ["dash-1"]);
+  assert.equal(result.checkedCards.some((card) => card.dashboardUuid === "dash-deleted"), false);
+});
+
 test("platform api allows a deleted manual dashboard to be added again", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });
