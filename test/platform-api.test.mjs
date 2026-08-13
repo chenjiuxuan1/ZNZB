@@ -7,6 +7,7 @@ import {
   createPlatformApi,
   buildAnchoredHistoryWindow,
   flattenInventory,
+  updateJsonAtomic,
 } from "../src/platform-api.mjs";
 import { getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
 import { MAX_ANOMALIES_PER_DIFY_BATCH } from "../src/metabase-anomaly-batch.mjs";
@@ -102,6 +103,20 @@ test("flattenInventory returns dashboard and card counts", () => {
 
   assert.equal(flat.dashboardCount, 2);
   assert.equal(flat.cardCount, 2);
+});
+
+test("platform JSON updater serializes concurrent read-modify-write operations", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "platform-json-update-"));
+  const filePath = path.join(rootDir, "state.json");
+
+  await Promise.all(Array.from({ length: 50 }, (_, index) => updateJsonAtomic(
+    filePath,
+    { items: [] },
+    (current) => ({ items: [...current.items, index] }),
+  )));
+
+  const saved = JSON.parse(await fs.readFile(filePath, "utf8"));
+  assert.deepEqual(saved.items.sort((left, right) => left - right), Array.from({ length: 50 }, (_, index) => index));
 });
 
 test("platform api returns summary and inventory", async () => {
@@ -1843,6 +1858,132 @@ test("DS scheduler schedule rejects an enabled country without project code", as
     }),
     /project code/i,
   );
+});
+
+test("DS scheduler skips an overlapping due run", async () => {
+  const rootDir = await makeFixture();
+  const dueAt = "2026-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { ine: { name: "印尼", token: "token" } },
+    projectCodes: { ine: "1001" },
+    projects: { ine: [{ name: "数据平台", code: "1001" }] },
+  }));
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler-schedule.json"), JSON.stringify({
+    enabled: true, intervalMinutes: 60, nextRunAt: dueAt,
+    countryConfigs: [{ countryCode: "ine", enabled: true, projectCode: "1001" }],
+  }));
+  const originalFetch = globalThis.fetch;
+  let release;
+  let calls = 0;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = async () => {
+    calls += 1;
+    await blocked;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { checked_workflows: [] } }) };
+  };
+  try {
+    const api = createPlatformApi({ rootDir });
+    const first = api.runDueDsSchedule(new Date("2026-08-13T00:01:00.000Z"));
+    while (calls === 0) await new Promise((resolve) => setImmediate(resolve));
+    const second = await Promise.race([
+      api.runDueDsSchedule(new Date("2026-08-13T00:01:00.000Z")),
+      new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 30)),
+    ]);
+    assert.equal(second.reason, "already running");
+    assert.equal(calls, 1);
+    release();
+    await first;
+  } finally {
+    release?.();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("HIVE scheduler skips an overlapping due run", async () => {
+  const rootDir = await makeFixture();
+  const dueAt = "2026-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/hive",
+    countries: { ine: { name: "印尼", enabled: true, token: "token" } },
+    projects: { ine: [{ name: "ods", code: "1001" }] },
+  }));
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), JSON.stringify({ enabled: true, intervalMinutes: 60, nextRunAt: dueAt }));
+  const originalFetch = globalThis.fetch;
+  let release;
+  let calls = 0;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = async () => {
+    calls += 1;
+    await blocked;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { checked_workflows: [] } }) };
+  };
+  try {
+    const api = createPlatformApi({ rootDir });
+    const first = api.runDueHiveSchedule(new Date("2026-08-13T00:01:00.000Z"));
+    while (calls === 0) await new Promise((resolve) => setImmediate(resolve));
+    const second = await Promise.race([
+      api.runDueHiveSchedule(new Date("2026-08-13T00:01:00.000Z")),
+      new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 30)),
+    ]);
+    assert.equal(second.reason, "already running");
+    assert.equal(calls, 1);
+    release();
+    await first;
+  } finally {
+    release?.();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DS scheduled failure advances the next run and records one history entry", async () => {
+  const rootDir = await makeFixture();
+  const dueAt = "2026-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({ countries: {} }));
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler-schedule.json"), JSON.stringify({
+    enabled: true, intervalMinutes: 60, nextRunAt: dueAt, countryConfigs: [],
+  }));
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(() => api.runDueDsSchedule(new Date("2026-08-13T00:01:00.000Z")), /No DS countries enabled/);
+
+  const schedule = JSON.parse(await fs.readFile(path.join(rootDir, "config/ds-scheduler-schedule.json"), "utf8"));
+  const history = JSON.parse(await fs.readFile(path.join(rootDir, "config/ds-scheduler-history.json"), "utf8"));
+  assert.ok(Date.parse(schedule.nextRunAt) > Date.parse(dueAt));
+  assert.match(schedule.lastError, /No DS countries enabled/);
+  assert.equal(history.runs.length, 1);
+  assert.equal(history.runs[0].ok, false);
+});
+
+test("HIVE scheduled failure advances the next run and records one history entry", async () => {
+  const rootDir = await makeFixture();
+  const dueAt = "2026-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler.config.json"), JSON.stringify({ countries: {} }));
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), JSON.stringify({ enabled: true, intervalMinutes: 60, nextRunAt: dueAt }));
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(() => api.runDueHiveSchedule(new Date("2026-08-13T00:01:00.000Z")), /No HIVE countries enabled/);
+
+  const schedule = JSON.parse(await fs.readFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), "utf8"));
+  const history = JSON.parse(await fs.readFile(path.join(rootDir, "config/hive-scheduler-history.json"), "utf8"));
+  assert.ok(Date.parse(schedule.nextRunAt) > Date.parse(dueAt));
+  assert.match(schedule.lastError, /No HIVE countries enabled/);
+  assert.equal(history.runs.length, 1);
+  assert.equal(history.runs[0].ok, false);
+});
+
+test("HIVE manual failure preserves the automatic next run", async () => {
+  const rootDir = await makeFixture();
+  const futureAt = "2099-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler.config.json"), JSON.stringify({ countries: {} }));
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), JSON.stringify({ enabled: true, intervalMinutes: 60, nextRunAt: futureAt }));
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(() => api.runHiveScheduleNow(), /No HIVE countries enabled/);
+
+  const schedule = JSON.parse(await fs.readFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), "utf8"));
+  assert.equal(schedule.nextRunAt, futureAt);
+  assert.match(schedule.lastError, /No HIVE countries enabled/);
 });
 
 test("DS notification inherits Metabase defaults until an override is saved", async () => {

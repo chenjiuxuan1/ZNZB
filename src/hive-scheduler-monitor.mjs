@@ -1,8 +1,7 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { fetchCompatible } from "./fetch-compatible.mjs";
 import { notifyText } from "./notifier.mjs";
-import { readJsonFile } from "./utils.mjs";
+import { readJsonFile, writeJsonFileAtomic } from "./utils.mjs";
 
 const CONFIG_PATH = "config/hive-scheduler.config.json";
 const DEFAULT_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/ds-scheduler";
@@ -156,8 +155,7 @@ export async function saveHiveSchedulerConfig(rootDir, input = {}) {
     projects,
     alertRouting: normalizeRouting(input.alertRouting || previous.alertRouting),
   };
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, JSON.stringify(config, null, 2), "utf8");
+  await writeJsonFileAtomic(filePath, config);
   return { ...config, resolved: Object.values(projects).flat().filter((item) => item.code).length, resolveErrors };
 }
 
