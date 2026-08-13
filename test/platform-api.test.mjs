@@ -1250,7 +1250,7 @@ test("platform api deletes dashboards from inventory and scheduled scan scope", 
   assert.equal(queryCount, 1);
 });
 
-test("platform api keeps deleted dashboards out of rediscovered patrol inventory", async () => {
+test("platform api keeps deleted dashboards out of the patrol inventory", async () => {
   const rootDir = await makeFixture();
   const inventoryPath = path.join(rootDir, "config/discovered-public-dashboards.ready.json");
   const survivingDashboard = {
@@ -1275,11 +1275,13 @@ test("platform api keeps deleted dashboards out of rediscovered patrol inventory
   );
 
   const queriedDashboards = [];
+  let discoveryCount = 0;
   const api = createPlatformApi({
     rootDir,
-    // Simulate a stale discovery response that still returns the dashboard
-    // after the user has removed it from "看板与卡片".
-    discoverDashboardsFn: async () => ({ dashboards: [survivingDashboard, deletedDashboard] }),
+    discoverDashboardsFn: async () => {
+      discoveryCount += 1;
+      return { dashboards: [survivingDashboard, deletedDashboard] };
+    },
     metabaseClientFactory: (dashboard) => ({
       async queryDashcardJson() {
         queriedDashboards.push(dashboard.uuid);
@@ -1293,6 +1295,7 @@ test("platform api keeps deleted dashboards out of rediscovered patrol inventory
 
   assert.equal(result.dashboardCount, 1);
   assert.deepEqual(queriedDashboards, ["dash-1"]);
+  assert.equal(discoveryCount, 0);
   assert.equal(result.checkedCards.some((card) => card.dashboardUuid === "dash-deleted"), false);
 });
 
@@ -1669,22 +1672,26 @@ test("platform api runs scoped batch check", async () => {
   assert.ok(result.anomalyCount >= 1);
 });
 
-test("platform api merges newly discovered dashboards into an existing country during scheduled checks", async () => {
+test("platform api only scans dashboards already discovered in the inventory module", async () => {
   const rootDir = await makeFixture();
+  let discoveryCount = 0;
   const api = createPlatformApi({
     rootDir,
-    discoverDashboardsFn: async () => ({
-      dashboards: [{
-        countryCode: "INE",
-        countryName: "印尼",
-        title: "提前还款监控",
-        access: "internal",
-        dashboardId: 1052,
-        uuid: "internal:1052",
-        url: "https://data.kuainiu.io/dashboard/1052",
-        cards: [{ title: "提前还款", cardId: 10521, dashcardId: 10522 }],
-      }],
-    }),
+    discoverDashboardsFn: async () => {
+      discoveryCount += 1;
+      return {
+        dashboards: [{
+          countryCode: "INE",
+          countryName: "印尼",
+          title: "清单外看板",
+          access: "internal",
+          dashboardId: 1052,
+          uuid: "internal:1052",
+          url: "https://data.kuainiu.io/dashboard/1052",
+          cards: [{ title: "清单外卡片", cardId: 10521, dashcardId: 10522 }],
+        }],
+      };
+    },
     metabaseClientFactory: () => ({
       async queryDashcardJson() {
         return [{ "统计日期": "2026-07-24", "注册数": 10 }];
@@ -1694,8 +1701,9 @@ test("platform api merges newly discovered dashboards into an existing country d
 
   const result = await api.runBatchCheck({ countryCode: "INE" });
 
-  assert.equal(result.dashboardCount, 2);
-  assert.equal(result.checkedCardCount, 2);
+  assert.equal(result.dashboardCount, 1);
+  assert.equal(result.checkedCardCount, 1);
+  assert.equal(discoveryCount, 0);
 });
 
 test("DS scheduler config inherits Metabase recipients", async () => {
@@ -1987,7 +1995,7 @@ test("platform api explains countries that only have internal source dashboards"
   );
 });
 
-test("platform api discovers internal dashboards from source list when country inventory is stale", async () => {
+test("platform api requires internal dashboards to be discovered before patrol", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
     path.join(rootDir, "config/countries.config.json"),
@@ -2067,12 +2075,14 @@ test("platform api discovers internal dashboards from source list when country i
     }),
   });
 
-  const result = await api.runBatchCheck({ countryCode: "PH" });
-
-  assert.equal(result.dashboardCount, 1);
-  assert.equal(result.checkedCardCount, 1);
-  assert.equal(result.checkedCards[0].dashboardUuid, "internal-501");
-  assert.equal(discoveredInputs.length, 1);
+  await assert.rejects(
+    () => api.runBatchCheck({ countryCode: "PH" }),
+    (error) => {
+      assert.equal(error.message, "No public dashboard for country");
+      return true;
+    },
+  );
+  assert.equal(discoveredInputs.length, 0);
 });
 
 test("platform api runs scoped batch check and sends TV notification", async () => {
