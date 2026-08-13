@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fetchCompatible } from "./fetch-compatible.mjs";
-import { readJsonFile } from "./utils.mjs";
+import { readJsonFile, writeJsonFileAtomic } from "./utils.mjs";
 import { notifyText } from "./notifier.mjs";
 
 const DS_FETCH_TIMEOUT_MS = 60_000;
@@ -284,7 +284,6 @@ export async function resolveProjectName(webhookUrl, countryCode, token, project
 }
 
 export async function saveDsSchedulerConfig(rootDir, config) {
-  const fs = await import("node:fs/promises");
   const filePath = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_CONFIG_PATH);
   const previous = await readJsonFile(filePath, {});
 
@@ -341,7 +340,7 @@ export async function saveDsSchedulerConfig(rootDir, config) {
     alerts: config.alerts || {},
   };
 
-  await fs.writeFile(filePath, JSON.stringify(fullConfig, null, 2), "utf8");
+  await writeJsonFileAtomic(filePath, fullConfig);
   return { ...fullConfig, resolved: resolveResults.filter((r) => r.ok).length, resolveErrors: resolveResults.filter((r) => !r.ok) };
 }
 

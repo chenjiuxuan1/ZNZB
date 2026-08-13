@@ -31,6 +31,7 @@ import {
   loadDsSchedulerConfig,
   saveDsSchedulerConfig,
   checkAllCountries,
+  notifyDsSchedulerCheck,
 } from "./ds-scheduler-monitor.mjs";
 import {
   loadHiveSchedulerConfig,
@@ -137,6 +138,22 @@ const DEFAULT_HIVE_SCHEDULE = {
   lastResult: null,
 };
 const DEFAULT_HIVE_HISTORY = { runs: [] };
+const jsonUpdateTails = new Map();
+
+export async function updateJsonAtomic(filePath, fallback, transform) {
+  const previous = jsonUpdateTails.get(filePath) || Promise.resolve();
+  const operation = previous.catch(() => {}).then(async () => {
+    const current = await readJsonFile(filePath, fallback);
+    const next = await transform(current);
+    await writeJsonAtomic(filePath, next);
+    return next;
+  });
+  const tail = operation.catch(() => {}).finally(() => {
+    if (jsonUpdateTails.get(filePath) === tail) jsonUpdateTails.delete(filePath);
+  });
+  jsonUpdateTails.set(filePath, tail);
+  return operation;
+}
 
 export function createPlatformApi({
   rootDir = process.cwd(),
@@ -154,6 +171,8 @@ export function createPlatformApi({
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
   let batchScheduleRunning = false;
+  let dsScheduleRunning = false;
+  let hiveScheduleRunning = false;
   // Prevent repeated UI clicks from dispatching several evidence jobs for the
   // same historical anomaly before the first request has persisted its cache.
   const metabaseAnalysisInFlight = new Set();
@@ -314,7 +333,6 @@ export function createPlatformApi({
       if (!id || !Array.isArray(entry.runs)) {
         throw badRequest("Invalid pending Metabase patrol run", ["待取证巡检必须包含运行 ID 和国家结果。"]);
       }
-      const store = await readJsonFile(resolve("metabaseAnomalyPendingRuns"), DEFAULT_METABASE_ANOMALY_PENDING_RUNS);
       const saved = {
         ...entry,
         id,
@@ -322,19 +340,23 @@ export function createPlatformApi({
         createdAt: entry.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      const runs = [saved, ...(store.runs || []).filter((item) => String(item.id || "") !== id)].slice(0, MAX_BATCH_HISTORY_RUNS);
-      await writeJsonAtomic(resolve("metabaseAnomalyPendingRuns"), { updatedAt: saved.updatedAt, runs });
+      await updateJsonAtomic(resolve("metabaseAnomalyPendingRuns"), DEFAULT_METABASE_ANOMALY_PENDING_RUNS, (store) => ({
+        updatedAt: saved.updatedAt,
+        runs: [saved, ...(store.runs || []).filter((item) => String(item.id || "") !== id)].slice(0, MAX_BATCH_HISTORY_RUNS),
+      }));
       return saved;
     },
 
     async removePendingMetabasePatrolRun(runId) {
       const id = String(runId || "").trim();
       if (!id) return false;
-      const store = await readJsonFile(resolve("metabaseAnomalyPendingRuns"), DEFAULT_METABASE_ANOMALY_PENDING_RUNS);
-      const runs = (store.runs || []).filter((item) => String(item.id || "") !== id);
-      if (runs.length === (store.runs || []).length) return false;
-      await writeJsonAtomic(resolve("metabaseAnomalyPendingRuns"), { updatedAt: new Date().toISOString(), runs });
-      return true;
+      let removed = false;
+      await updateJsonAtomic(resolve("metabaseAnomalyPendingRuns"), DEFAULT_METABASE_ANOMALY_PENDING_RUNS, (store) => {
+        const runs = (store.runs || []).filter((item) => String(item.id || "") !== id);
+        removed = runs.length !== (store.runs || []).length;
+        return removed ? { updatedAt: new Date().toISOString(), runs } : store;
+      });
+      return removed;
     },
 
     async prepareMetabaseInvestigationBatches({ runId, wattrelSummary = null, dsSchedulerSummary = null } = {}) {
@@ -374,8 +396,7 @@ export function createPlatformApi({
         }
       }
       const groups = buildDashboardAnalysisJobs(cases, MAX_ANOMALIES_PER_DIFY_BATCH);
-      const store = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
-      const snapshots = [...(store.snapshots || [])];
+      const pendingSnapshots = [];
       const batches = groups.map((group) => {
         const snapshotId = `snapshot-${randomUUID()}`;
         const snapshot = {
@@ -397,7 +418,7 @@ export function createPlatformApi({
           },
           missing: [],
         };
-        snapshots.unshift(snapshot);
+        pendingSnapshots.unshift(snapshot);
         return {
           ...group,
           sourceTable: group.cases.every((item) => item.sourceTable === group.cases[0]?.sourceTable) ? group.cases[0]?.sourceTable || "" : "",
@@ -407,7 +428,10 @@ export function createPlatformApi({
           cases: group.cases.map(({ cardSql, sourceTables, ...item }) => item),
         };
       });
-      await writeJsonAtomic(resolve("metabaseAnomalyEvidenceSnapshots"), { updatedAt: new Date().toISOString(), snapshots: snapshots.slice(0, 500) });
+      await updateJsonAtomic(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS, (store) => ({
+        updatedAt: new Date().toISOString(),
+        snapshots: [...pendingSnapshots, ...(store.snapshots || [])].slice(0, 500),
+      }));
       return { runId: normalizedRunId, batches };
     },
 
@@ -439,7 +463,6 @@ export function createPlatformApi({
         error.statusCode = 502;
         throw error;
       }
-      const store = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
       const createdAt = new Date().toISOString();
       const entries = normalizedCases.map((item) => ({
         key: `${runId}:${countryCode}:${item.anomalyIndex}`,
@@ -460,14 +483,16 @@ export function createPlatformApi({
        observability: generated.observability || { enabled: false, written: false, reason: "n8n 批量任务已受理，等待回调" },
      }));
      const keys = new Set(entries.map((item) => item.key));
-     const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
-      const finalEntries = entries.map((entry) => {
-        const existing = existingByKey.get(entry.key);
-        if (existing?.status === "completed" && String(existing.jobId || "") === String(entry.jobId || "")) return existing;
-        return entry;
+      await updateJsonAtomic(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES, (store) => {
+        const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
+        const finalEntries = entries.map((entry) => {
+          const existing = existingByKey.get(entry.key);
+          if (existing?.status === "completed" && String(existing.jobId || "") === String(entry.jobId || "")) return existing;
+          return entry;
+        });
+        const analyses = keepRecentMetabaseAnalyses([...finalEntries, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
+        return { updatedAt: createdAt, analyses };
       });
-      const analyses = keepRecentMetabaseAnalyses([...finalEntries, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
-      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: createdAt, analyses });
       return { ...generated, batchId, runId, countryCode, cases: normalizedCases };
     },
 
@@ -493,7 +518,6 @@ export function createPlatformApi({
       const runId = String(batch.runId || "").trim();
       const countryCode = normalizeCountryCode(batch.countryCode);
       const cases = Array.isArray(batch.cases) ? batch.cases : [];
-      const store = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
       const now = new Date().toISOString();
       const keys = new Set(cases.map((item) => `${runId}:${countryCode}:${Number(item.anomalyIndex)}`));
       const timedOut = cases.map((item) => ({
@@ -519,13 +543,16 @@ export function createPlatformApi({
         }),
         evidence: {},
       }));
-      const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
-      const replacements = timedOut.map((item) => {
-        const existing = existingByKey.get(item.key);
-        return existing?.status === "completed" ? existing : { ...existing, ...item };
+      let replacements = timedOut;
+      await updateJsonAtomic(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES, (store) => {
+        const existingByKey = new Map((store.analyses || []).map((item) => [item.key, item]));
+        replacements = timedOut.map((item) => {
+          const existing = existingByKey.get(item.key);
+          return existing?.status === "completed" ? existing : { ...existing, ...item };
+        });
+        const analyses = keepRecentMetabaseAnalyses([...replacements, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
+        return { updatedAt: now, analyses };
       });
-      const analyses = keepRecentMetabaseAnalyses([...replacements, ...(store.analyses || []).filter((item) => !keys.has(item.key))]);
-      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: now, analyses });
       return { status: "timed_out", entries: replacements };
     },
 
@@ -781,9 +808,10 @@ export function createPlatformApi({
             error: String(dispatchError.message || dispatchError),
             observability: { enabled: false, written: false, reason: String(dispatchError.message || dispatchError) },
           };
-          const failStore = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
-          const failAnalyses = keepRecentMetabaseAnalyses([failedEntry, ...(failStore.analyses || []).filter((item) => item.key !== cacheKey)]);
-          await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses: failAnalyses });
+          await updateJsonAtomic(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES, (failStore) => ({
+            updatedAt: new Date().toISOString(),
+            analyses: keepRecentMetabaseAnalyses([failedEntry, ...(failStore.analyses || []).filter((item) => item.key !== cacheKey)]),
+          }));
           return { ...failedEntry, cached: false };
         }
         const refreshedCache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
@@ -821,18 +849,23 @@ export function createPlatformApi({
       // n8n can finish a short evidence job before its webhook acceptance
       // response reaches this process. Keep that earlier callback instead of
       // overwriting it with a later pending marker.
-      const refreshedCache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
-      const earlyCompletion = (refreshedCache.analyses || []).find((item) => (
-        item.key === cacheKey
-        && item.status === "completed"
-        && entry.jobId
-        && String(item.jobId || "") === String(entry.jobId)
-      ));
+      let earlyCompletion = null;
+      await updateJsonAtomic(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES, (refreshedCache) => {
+        earlyCompletion = (refreshedCache.analyses || []).find((item) => (
+          item.key === cacheKey
+          && item.status === "completed"
+          && entry.jobId
+          && String(item.jobId || "") === String(entry.jobId)
+        ));
+        if (earlyCompletion) return refreshedCache;
+        return {
+          updatedAt: new Date().toISOString(),
+          analyses: keepRecentMetabaseAnalyses([entry, ...(refreshedCache.analyses || []).filter((item) => item.key !== cacheKey)]),
+        };
+      });
       if (earlyCompletion) {
         return { ...earlyCompletion, cached: false };
       }
-      const analyses = keepRecentMetabaseAnalyses([entry, ...(refreshedCache.analyses || [])]);
-      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
       return { ...entry, cached: false };
       } finally {
         metabaseAnalysisInFlight.delete(cacheKey);
@@ -1035,7 +1068,6 @@ export function createPlatformApi({
       if (!anomaly) {
         throw badRequest("Invalid Metabase anomaly evidence snapshot", ["快照必须绑定现有巡检异常。"]);
       }
-      const store = await readJsonFile(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS);
       const snapshot = {
         snapshotId, runId, countryCode, anomalyIndex,
         collectedAt: new Date().toISOString(),
@@ -1043,8 +1075,10 @@ export function createPlatformApi({
         evidence: body.evidence && typeof body.evidence === "object" ? body.evidence : {},
         missing: Array.isArray(body.missing) ? body.missing.filter((item) => typeof item === "string").slice(0, 20) : [],
       };
-      const snapshots = [snapshot, ...(store.snapshots || []).filter((item) => item.snapshotId !== snapshotId)].slice(0, 500);
-      await writeJsonAtomic(resolve("metabaseAnomalyEvidenceSnapshots"), { updatedAt: snapshot.collectedAt, snapshots });
+      await updateJsonAtomic(resolve("metabaseAnomalyEvidenceSnapshots"), DEFAULT_METABASE_ANOMALY_EVIDENCE_SNAPSHOTS, (store) => ({
+        updatedAt: snapshot.collectedAt,
+        snapshots: [snapshot, ...(store.snapshots || []).filter((item) => item.snapshotId !== snapshotId)].slice(0, 500),
+      }));
       return { success: true, snapshotId, complete: snapshot.complete };
     },
 
@@ -1075,49 +1109,37 @@ export function createPlatformApi({
       if (!body.analysis || typeof body.analysis !== "object") {
         throw badRequest("Invalid Metabase anomaly analysis callback", ["回调必须包含结构化 analysis 结果。"]);
       }
-      const cache = await readJsonFile(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES);
       const entryKey = key || `${runId}:${countryCode}:${anomalyIndex}`;
-      const existing = (cache.analyses || []).find((item) => item.key === entryKey);
-      if (!existing) {
-        // A fast n8n workflow can post its result before analyzeMetabaseAnomaly
-        // persists the pending record. Accept only callbacks tied to a retained
-        // history anomaly, then let the initiating request merge it by job ID.
-        const { anomaly } = await findMetabasePatrolAnomaly({ runId, countryCode, anomalyIndex });
-        if (!anomaly) {
-          const error = new Error("分析任务不存在或历史记录已清理。");
-          error.statusCode = 404;
-          throw error;
+      let completed = null;
+      await updateJsonAtomic(resolve("metabaseAnomalyAnalyses"), DEFAULT_METABASE_ANOMALY_ANALYSES, async (cache) => {
+        const existing = (cache.analyses || []).find((item) => item.key === entryKey);
+        if (!existing) {
+          // A fast n8n workflow can post its result before the pending record.
+          const { anomaly } = await findMetabasePatrolAnomaly({ runId, countryCode, anomalyIndex });
+          if (!anomaly) {
+            const error = new Error("分析任务不存在或历史记录已清理。");
+            error.statusCode = 404;
+            throw error;
+          }
+          completed = buildCompletedMetabaseAnalysis({
+            key: entryKey, runId, countryCode, anomalyIndex, jobId: body.jobId, body,
+            createdAt: new Date().toISOString(), callbackReceivedBeforePending: true,
+          });
+        } else {
+          if (existing.jobId && String(body.jobId || "") !== String(existing.jobId)) {
+            console.error(`[metabase-anomaly] callback jobId mismatch: key=${entryKey} expected=${existing.jobId} actual=${body.jobId || ""} batchId=${existing.batchId || ""}`);
+            throw badRequest("Invalid Metabase anomaly analysis callback", ["回调任务编号与待处理任务不一致。"]);
+          }
+          completed = buildCompletedMetabaseAnalysis({
+            ...existing, key: entryKey, runId, countryCode, anomalyIndex,
+            jobId: body.jobId || existing.jobId, body, createdAt: existing.createdAt,
+          });
         }
-        const earlyCompleted = buildCompletedMetabaseAnalysis({
-          key: entryKey,
-          runId,
-          countryCode,
-          anomalyIndex,
-          jobId: body.jobId,
-          body,
-          createdAt: new Date().toISOString(),
-          callbackReceivedBeforePending: true,
-        });
-        const analyses = keepRecentMetabaseAnalyses([earlyCompleted, ...(cache.analyses || [])]);
-        await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
-        return earlyCompleted;
-      }
-      if (existing.jobId && String(body.jobId || "") !== String(existing.jobId)) {
-        console.error(`[metabase-anomaly] callback jobId mismatch: key=${entryKey} expected=${existing.jobId} actual=${body.jobId || ""} batchId=${existing.batchId || ""}`);
-        throw badRequest("Invalid Metabase anomaly analysis callback", ["回调任务编号与待处理任务不一致。"]);
-      }
-      const completed = buildCompletedMetabaseAnalysis({
-        ...existing,
-        key: entryKey,
-        runId,
-        countryCode,
-        anomalyIndex,
-        jobId: body.jobId || existing.jobId,
-        body,
-        createdAt: existing.createdAt,
+        return {
+          updatedAt: new Date().toISOString(),
+          analyses: keepRecentMetabaseAnalyses([completed, ...(cache.analyses || []).filter((item) => item.key !== entryKey)]),
+        };
       });
-      const analyses = keepRecentMetabaseAnalyses([completed, ...(cache.analyses || []).filter((item) => item.key !== entryKey)]);
-      await writeJsonAtomic(resolve("metabaseAnomalyAnalyses"), { updatedAt: new Date().toISOString(), analyses });
       return completed;
     },
 
@@ -2493,13 +2515,28 @@ export function createPlatformApi({
     },
 
     async runHiveScheduleNow() {
-      return runHiveSchedule({ api: this, schedule: await this.getHiveSchedule(), trigger: "manual", scheduleFile: resolve("hiveSchedule"), historyFile: resolve("hiveHistory") });
+      if (hiveScheduleRunning || batchScheduleRunning) {
+        throw badRequest("HIVE schedule already running", ["HIVE 或定时巡检正在运行中，请等待完成后再试。"]);
+      }
+      hiveScheduleRunning = true;
+      try {
+        return await runHiveSchedule({ api: this, schedule: await this.getHiveSchedule(), trigger: "manual", scheduleFile: resolve("hiveSchedule"), historyFile: resolve("hiveHistory") });
+      } finally {
+        hiveScheduleRunning = false;
+      }
     },
 
     async runDueHiveSchedule(now = new Date()) {
       const schedule = await this.getHiveSchedule();
       if (!schedule.enabled || !schedule.nextRunAt || new Date(schedule.nextRunAt) > now) return { ran: false, schedule };
-      return runHiveSchedule({ api: this, schedule, trigger: "schedule", scheduleFile: resolve("hiveSchedule"), historyFile: resolve("hiveHistory"), now });
+      if (hiveScheduleRunning) return { ran: false, reason: "already running", schedule };
+      if (batchScheduleRunning) return { ran: false, reason: "batch check running", schedule };
+      hiveScheduleRunning = true;
+      try {
+        return await runHiveSchedule({ api: this, schedule, trigger: "schedule", scheduleFile: resolve("hiveSchedule"), historyFile: resolve("hiveHistory"), now });
+      } finally {
+        hiveScheduleRunning = false;
+      }
     },
 
     async getDsSchedulerConfig() {
@@ -2609,8 +2646,16 @@ export function createPlatformApi({
     },
 
     async runDsScheduleNow() {
-      const schedule = await this.getDsSchedule();
-      return runDsSchedule({ api: this, schedule, trigger: "manual", rootDir, scheduleFile: resolve("dsSchedule"), historyFile: resolve("dsHistory") });
+      if (dsScheduleRunning || batchScheduleRunning) {
+        throw badRequest("DS schedule already running", ["DS 或定时巡检正在运行中，请等待完成后再试。"]);
+      }
+      dsScheduleRunning = true;
+      try {
+        const schedule = await this.getDsSchedule();
+        return await runDsSchedule({ api: this, schedule, trigger: "manual", rootDir, scheduleFile: resolve("dsSchedule"), historyFile: resolve("dsHistory") });
+      } finally {
+        dsScheduleRunning = false;
+      }
     },
 
     async runDueDsSchedule(now = new Date()) {
@@ -2621,7 +2666,15 @@ export function createPlatformApi({
       if (batchScheduleRunning) {
         return { ran: false, reason: "batch check running", schedule };
       }
-      return runDsSchedule({ api: this, schedule, trigger: "schedule", rootDir, scheduleFile: resolve("dsSchedule"), historyFile: resolve("dsHistory"), now });
+      if (dsScheduleRunning) {
+        return { ran: false, reason: "already running", schedule };
+      }
+      dsScheduleRunning = true;
+      try {
+        return await runDsSchedule({ api: this, schedule, trigger: "schedule", rootDir, scheduleFile: resolve("dsSchedule"), historyFile: resolve("dsHistory"), now });
+      } finally {
+        dsScheduleRunning = false;
+      }
     },
   };
 }
@@ -2641,17 +2694,17 @@ function normalizeHiveSchedule(input = {}, { preserveNextRunAt = false } = {}) {
 }
 
 async function runHiveSchedule({ api, schedule, trigger, scheduleFile, historyFile, now = new Date() }) {
-  const config = await api.getHiveSchedulerConfig();
-  const enabledCountries = Object.values(config.countries || {}).filter((item) => item.enabled);
-  if (!enabledCountries.length) throw badRequest("No HIVE countries enabled", ["请至少选择一个需要监控的国家，并配置项目。"]);
   const startedAt = now.toISOString();
   try {
+    const config = await api.getHiveSchedulerConfig();
+    const enabledCountries = Object.values(config.countries || {}).filter((item) => item.enabled);
+    if (!enabledCountries.length) throw badRequest("No HIVE countries enabled", ["请至少选择一个需要监控的国家，并配置项目。"]);
     const result = await checkAllHiveCountries(null, config);
     result.notification = await notifyHiveSchedulerCheck(config, result);
     const finishedAt = new Date().toISOString();
     const next = {
       ...schedule,
-      nextRunAt: schedule.enabled ? new Date(Date.now() + schedule.intervalMinutes * 60_000).toISOString() : null,
+      nextRunAt: nextIntervalRunAt(schedule, trigger),
       lastRunAt: finishedAt,
       lastError: null,
       lastResult: result,
@@ -2661,18 +2714,17 @@ async function runHiveSchedule({ api, schedule, trigger, scheduleFile, historyFi
     return { ran: true, schedule: next, result };
   } catch (error) {
     const finishedAt = new Date().toISOString();
-    await writeJsonAtomic(scheduleFile, { ...schedule, lastRunAt: finishedAt, lastError: error.message });
+    await writeJsonAtomic(scheduleFile, { ...schedule, nextRunAt: nextIntervalRunAt(schedule, trigger), lastRunAt: finishedAt, lastError: error.message });
     await appendHiveHistory(historyFile, { id: randomUUID(), trigger, startedAt, finishedAt, ok: false, error: error.message });
     throw error;
   }
 }
 
 async function appendHiveHistory(filePath, entry) {
-  const history = await readJsonFile(filePath, DEFAULT_HIVE_HISTORY);
-  await writeJsonAtomic(filePath, {
+  await updateJsonAtomic(filePath, DEFAULT_HIVE_HISTORY, (history) => ({
     updatedAt: new Date().toISOString(),
     runs: keepRecentHistoryRuns([entry, ...(history.runs || [])]),
-  });
+  }));
 }
 
 function normalizeDsSchedule(input = {}, config = {}, { preserveNextRunAt = false } = {}) {
@@ -2703,24 +2755,24 @@ function normalizeDsSchedule(input = {}, config = {}, { preserveNextRunAt = fals
 }
 
 async function runDsSchedule({ api, schedule, trigger, rootDir, scheduleFile, historyFile, now = new Date() }) {
-  const config = await api.getDsSchedulerConfig();
-  const enabled = schedule.countryConfigs.filter((item) => item.enabled);
-  if (enabled.length === 0) {
-    throw badRequest("No DS countries enabled", ["请至少启用一个已配置项目的国家。"]);
-  }
-  const scopedConfig = {
-    ...config,
-    countries: Object.fromEntries(enabled.map((item) => [item.countryCode, config.countries?.[item.countryCode] || {}])),
-    projectCodes: Object.fromEntries(enabled.map((item) => [item.countryCode, item.projectCode])),
-  };
   const startedAt = now.toISOString();
   try {
+    const config = await api.getDsSchedulerConfig();
+    const enabled = schedule.countryConfigs.filter((item) => item.enabled);
+    if (enabled.length === 0) {
+      throw badRequest("No DS countries enabled", ["请至少启用一个已配置项目的国家。"]);
+    }
+    const scopedConfig = {
+      ...config,
+      countries: Object.fromEntries(enabled.map((item) => [item.countryCode, config.countries?.[item.countryCode] || {}])),
+      projectCodes: Object.fromEntries(enabled.map((item) => [item.countryCode, item.projectCode])),
+    };
     const result = await checkAllCountries(rootDir, scopedConfig);
     result.notification = await notifyDsSchedulerCheck(scopedConfig, result);
     const finishedAt = new Date().toISOString();
     const next = {
       ...schedule,
-      nextRunAt: schedule.enabled ? new Date(Date.now() + schedule.intervalMinutes * 60_000).toISOString() : null,
+      nextRunAt: nextIntervalRunAt(schedule, trigger),
       lastRunAt: finishedAt,
       lastError: null,
       lastResult: result,
@@ -2730,19 +2782,24 @@ async function runDsSchedule({ api, schedule, trigger, rootDir, scheduleFile, hi
     return { ran: true, schedule: { ...next, alerts: config.alerts || {} }, result };
   } catch (error) {
     const finishedAt = new Date().toISOString();
-    const next = { ...schedule, lastRunAt: finishedAt, lastError: error.message };
+    const next = { ...schedule, nextRunAt: nextIntervalRunAt(schedule, trigger), lastRunAt: finishedAt, lastError: error.message };
     await writeJsonAtomic(scheduleFile, next);
     await appendDsHistory(historyFile, { id: randomUUID(), trigger, startedAt, finishedAt, ok: false, error: error.message });
     throw error;
   }
 }
 
+function nextIntervalRunAt(schedule, trigger) {
+  if (!schedule.enabled) return null;
+  if (trigger !== "schedule") return schedule.nextRunAt || null;
+  return new Date(Date.now() + schedule.intervalMinutes * 60_000).toISOString();
+}
+
 async function appendDsHistory(filePath, entry) {
-  const history = await readJsonFile(filePath, DEFAULT_DS_HISTORY);
-  await writeJsonAtomic(filePath, {
+  await updateJsonAtomic(filePath, DEFAULT_DS_HISTORY, (history) => ({
     updatedAt: new Date().toISOString(),
     runs: keepRecentHistoryRuns([entry, ...(history.runs || [])]),
-  });
+  }));
 }
 
 function keepRecentHistoryRuns(runs, nowMs = Date.now()) {
@@ -4359,9 +4416,10 @@ function buildBatchHistoryEntry({
 }
 
 async function appendBatchHistoryRun(historyFile, entry) {
-  const history = await readJsonFile(historyFile, DEFAULT_BATCH_HISTORY);
-  const runs = keepRecentHistoryRuns([entry, ...(history.runs || [])]);
-  await writeJsonAtomic(historyFile, { updatedAt: new Date().toISOString(), runs });
+  await updateJsonAtomic(historyFile, DEFAULT_BATCH_HISTORY, (history) => ({
+    updatedAt: new Date().toISOString(),
+    runs: keepRecentHistoryRuns([entry, ...(history.runs || [])]),
+  }));
 }
 
 function normalizeMetabaseAnalysisIdentity(body = {}) {
@@ -5331,9 +5389,15 @@ function canonicalDashboardTitle(value) {
 }
 
 export async function writeJsonAtomic(filePath, value) {
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`);
-  await fs.rename(tempPath, filePath);
+  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`);
+    await fs.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 function filterInventory(inventory, filters = {}) {
