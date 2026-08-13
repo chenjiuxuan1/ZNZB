@@ -48,6 +48,7 @@ server.listen(port, host, () => {
   console.log(`Duty platform running at http://${host}:${port}`);
 });
 startBatchScheduler();
+startDsScheduler();
 startHiveScheduler();
 
 async function handleApi(request, response, url) {
