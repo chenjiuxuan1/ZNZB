@@ -1398,11 +1398,12 @@ test("platform api scans a physical dashboard only once when saved and fresh URL
       dashboards: [{
         countryCode: "INE",
         countryName: "印尼",
-        access: "public",
+        access: "internal",
         title: "OKR",
         sourcePanelTitle: "OKR",
-        uuid: "public-okr",
-        url: "https://data.example/public/dashboard/shared-okr",
+        dashboardId: "999",
+        uuid: "internal-999",
+        url: "https://data.example/dashboard/999",
         cards: [{ title: "规模", cardId: 1, dashcardId: 2, parameterMappings: [] }],
       }],
     }),
@@ -1455,10 +1456,11 @@ test("platform api lets country inventory override stale ready inventory", async
         {
           countryCode: "INE",
           countryName: "印尼",
-          access: "public",
+          access: "internal",
           title: "OKR",
+          dashboardId: "121",
           uuid: "dash-ine",
-          url: "https://data.kuainiu.io/public/dashboard/dash-ine",
+          url: "https://data.kuainiu.io/dashboard/121",
           cards: [{ title: "规模", cardId: 3, dashcardId: 4 }],
         },
       ],
@@ -1518,6 +1520,57 @@ test("platform api lets country inventory override stale ready inventory", async
     ),
     false,
   );
+});
+
+test("platform api never patrols public dashboards", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          access: "public",
+          title: "OKR",
+          uuid: "public-okr",
+          url: "https://data.example/public/dashboard/public-okr",
+          cards: [{ title: "规模", cardId: 1, dashcardId: 2, parameterMappings: [] }],
+        },
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          access: "internal",
+          title: "OKR",
+          dashboardId: "121",
+          uuid: "internal-121",
+          url: "https://data.example/dashboard/121",
+          cards: [{ title: "规模", cardId: 3, dashcardId: 4, parameterMappings: [] }],
+        },
+      ],
+    }),
+  );
+
+  const queried = [];
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: null,
+    metabaseClientFactory: (dashboard) => ({
+      async queryDashcardJson() {
+        queried.push(dashboard.uuid);
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+
+  const inventory = await api.getInventory();
+  const result = await api.runBatchCheck({ countryCode: "INE" });
+
+  // The public entry is dropped before the patrol, so it is never queried and
+  // never contributes a 404 anomaly.
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal-121"]);
+  assert.deepEqual(queried, ["internal-121"]);
+  assert.equal(result.dashboardCount, 1);
 });
 
 test("platform api excludes stale public runtime inventory after panel source switches to internal URL", async () => {
@@ -2289,7 +2342,7 @@ test("platform api explains countries that only have internal source dashboards"
       assert.equal(error.message, "No public dashboard for country");
       assert.match(
         error.errors?.[0] || "",
-        /中国 \/ CN 当前有 1 个来源看板.*尚未发现可巡检的 \/public\/dashboard UUID/,
+        /中国 \/ CN 当前有 1 个来源看板.*尚未发现可巡检的卡片.*METABASE_SESSION/,
       );
       return true;
     },
