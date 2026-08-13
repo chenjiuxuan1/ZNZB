@@ -5,6 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
+import { cleanupLegacyDashboardUrls } from "./history-dashboard-url-cleanup.mjs";
 import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
 import { assertWarehouseLineageToolAuthorized, proxyWarehouseLineageRequest } from "./warehouse-lineage-proxy.mjs";
 import { assertMetabaseAgentCallbackAuthorized } from "./metabase-agent-callback-auth.mjs";
@@ -14,6 +15,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const webDir = path.join(rootDir, "web");
 await loadEnvFile(path.join(rootDir, ".env"));
+try {
+  const cleanup = await cleanupLegacyDashboardUrls({ rootDir });
+  if (cleanup.changedFileCount > 0) {
+    console.log(`[history-url-cleanup] removed ${cleanup.removedFieldCount} legacy dashboardUrl fields from ${cleanup.changedFileCount} files; backups saved under config/history-url-backups`);
+  }
+} catch (error) {
+  console.error("[history-url-cleanup] failed:", error);
+}
 const api = createPlatformApi({ rootDir });
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";

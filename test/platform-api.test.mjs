@@ -370,6 +370,7 @@ test("platform api hydrates hourly fluctuation series with dashboard timezone", 
   });
 
   const result = await api.getFluctuationVisualSeries({
+    now: "2026-07-31T08:00:00.000Z",
     anomaly: {
       countryCode: "PK",
       dashboardUuid: "dash-pk-hourly",
