@@ -1589,8 +1589,14 @@ test("platform api excludes stale public runtime inventory after panel source sw
   assert.equal(inventory.dashboards[0].access, "internal");
 });
 
-test("platform api keeps country inventory dashboards matched by source panel id", async () => {
+test("platform api rejects stale internal inventory when a source panel points to another dashboard id", async () => {
   const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({
+      countries: [{ code: "MX", name: "墨西哥", timezone: "America/Mexico_City", status: "ready" }],
+    }),
+  );
   await fs.writeFile(
     path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
     JSON.stringify({ dashboardCount: 0, dashboards: [] }),
@@ -1632,8 +1638,91 @@ test("platform api keeps country inventory dashboards matched by source panel id
   const api = createPlatformApi({ rootDir });
   const inventory = await api.getInventory({ countryCode: "MX" });
 
-  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal:465"]);
-  assert.equal(inventory.totalCardCount, 1);
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal:464"]);
+  assert.equal(inventory.dashboards[0].url, "https://data.kuainiu.io/dashboard/464");
+  assert.equal(inventory.dashboards[0].availability, "pending_discovery");
+  assert.equal(inventory.dashboards[0].executable, false);
+  assert.equal(inventory.totalCardCount, 0);
+});
+
+test("platform api does not merge an INE source panel into a stale ready dashboard id", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [{
+        countryCode: "INE",
+        countryName: "印尼",
+        access: "internal",
+        sourcePanelId: 11,
+        sourcePanelTitle: "每小时监控",
+        title: "每小时监控",
+        dashboardId: 1052,
+        uuid: "internal:1052",
+        url: "https://data.kuainiu.io/dashboard/1052",
+        cards: [{ title: "小时指标", cardId: 1, dashcardId: 2 }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({
+      panels: [{
+        id: 11,
+        title: "每小时监控",
+        links: [{ url: "https://data.kuainiu.io/dashboard/1053" }],
+      }],
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal:1053"]);
+  assert.equal(inventory.dashboards[0].url, "https://data.kuainiu.io/dashboard/1053");
+  assert.equal(inventory.dashboards[0].availability, "pending_discovery");
+  assert.equal(inventory.dashboards[0].executable, false);
+  assert.equal(inventory.totalCardCount, 0);
+});
+
+test("platform api keeps same-title internal dashboards with different dashboard ids", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [1052, 1053].map((dashboardId, index) => ({
+        countryCode: "INE",
+        countryName: "印尼",
+        access: "internal",
+        sourcePanelId: 20 + index,
+        sourcePanelTitle: "核心指标概览",
+        title: "核心指标概览",
+        dashboardId,
+        uuid: `internal:${dashboardId}`,
+        url: `https://data.kuainiu.io/dashboard/${dashboardId}`,
+        cards: [{ title: `指标${index + 1}`, cardId: 100 + index, dashcardId: 200 + index }],
+      })),
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({
+      panels: [1052, 1053].map((dashboardId, index) => ({
+        id: 20 + index,
+        title: "核心指标概览",
+        links: [{ url: `https://data.kuainiu.io/dashboard/${dashboardId}` }],
+      })),
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.deepEqual(
+    inventory.dashboards.map((dashboard) => String(dashboard.dashboardId)).sort(),
+    ["1052", "1053"],
+  );
+  assert.equal(inventory.totalCardCount, 2);
 });
 
 test("platform api evaluates sandbox rules", async () => {
