@@ -1665,15 +1665,20 @@ export function createPlatformApi({
       });
 
       const inventoryPath = runtimeCountryInventoryFilePath(rootDir, countryCode);
-      const runtimeInventory = await readJsonFile(inventoryPath, {
-        country: dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
-        dashboards: [],
-      });
+      let runtimeInventory = null;
+      try {
+        runtimeInventory = await readJsonFile(inventoryPath, null);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      const runtimeDashboards = runtimeInventory
+        ? (runtimeInventory.dashboards || [])
+        : (readyInventory.dashboards || []).filter((item) => getDashboardCountryCode(item) === countryCode);
       await writeJsonAtomic(inventoryPath, {
-        ...runtimeInventory,
-        country: runtimeInventory.country || dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
-        dashboards: (runtimeInventory.dashboards || []).filter((item) => !dashboardMatchesDeletion(item, deletion)),
-        deletedDashboards: appendUniqueDashboardDeletions(runtimeInventory.deletedDashboards || [], [deletion]),
+        ...(runtimeInventory || {}),
+        country: runtimeInventory?.country || dashboard.country || { code: countryCode, name: dashboard.countryName || countryCode, timezone: dashboard.timezone },
+        dashboards: runtimeDashboards.filter((item) => !dashboardMatchesDeletion(item, deletion)),
+        deletedDashboards: appendUniqueDashboardDeletions(runtimeInventory?.deletedDashboards || [], [deletion]),
         updatedAt: new Date().toISOString(),
       });
 
@@ -2016,18 +2021,7 @@ export function createPlatformApi({
       const countryCode = String(body.countryCode || "").trim();
       const dashboardUuid = String(body.dashboardUuid || "").trim();
       const dashboardUuids = normalizeDashboardUuids(body.dashboardUuids);
-      let filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
-      if (countryCode) {
-        const discoveredInventory = await discoverCountryInventoryFromPanelSources(rootDir, countryCode, discoverDashboardsFn);
-        const deletedDashboards = await readRuntimeDashboardDeletions(path.join(rootDir, "config"));
-        filteredInventory = filterBatchInventory(
-          filterInventoryDeletedDashboards(
-            mergeInventories([filteredInventory, discoveredInventory]),
-            deletedDashboards,
-          ),
-          { countryCode, dashboardUuid, dashboardUuids },
-        );
-      }
+      const filteredInventory = filterBatchInventory(inventory, { countryCode, dashboardUuid, dashboardUuids });
       if (countryCode && filteredInventory.dashboardCount === 0) {
         const countries = await readJsonFile(resolve("countries"), { countries: [] });
         throw badRequest("No public dashboard for country", [
