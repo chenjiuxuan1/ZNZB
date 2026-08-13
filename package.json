@@ -35,6 +35,8 @@
     "notify-test": "node ./src/cli.mjs notify-test --config ./config/public-monitor.config.json",
     "check": "node ./src/cli.mjs check --config ./config/monitor.config.json",
     "watch": "node ./src/cli.mjs watch --config ./config/monitor.config.json",
+    "history-urls:check": "node ./scripts/cleanup-legacy-dashboard-urls.mjs --check",
+    "history-urls:cleanup": "node ./scripts/cleanup-legacy-dashboard-urls.mjs --apply",
     "platform": "node ./src/server.mjs",
     "test": "node --test test/*.test.mjs"
   },
