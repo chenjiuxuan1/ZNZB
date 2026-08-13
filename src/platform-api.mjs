@@ -4600,9 +4600,32 @@ async function filterInventoryByCurrentPanelSources(configDir, inventoryFilePath
       if (matchesPanel && sourceRefs.internalPanelIds.has(sourcePanelId) && !isInternalInventoryDashboard(dashboard)) {
         return false;
       }
+      if (matchesPanel && sourceRefs.internalPanelIds.has(sourcePanelId)) {
+        const expectedDashboardIds = sourceRefs.internalDashboardIdsByPanelId.get(sourcePanelId);
+        const actualDashboardId = getInternalInventoryDashboardId(dashboard);
+        if (expectedDashboardIds?.size && (!actualDashboardId || !expectedDashboardIds.has(actualDashboardId))) {
+          return false;
+        }
+      }
       return matchesUrl || matchesPanel || isRuntimeInventory;
     }),
   };
+}
+
+function getInternalInventoryDashboardId(dashboard = {}) {
+  if (dashboard.dashboardId != null && dashboard.dashboardId !== "") {
+    return String(dashboard.dashboardId);
+  }
+  for (const rawUrl of [dashboard.url, dashboard.sourceUrl]) {
+    if (!rawUrl) continue;
+    try {
+      const parsed = parseInternalMetabaseUrl(rawUrl);
+      if (parsed?.type === "dashboard") return String(parsed.id);
+    } catch {
+      // Ignore malformed legacy URLs; they cannot establish dashboard identity.
+    }
+  }
+  return "";
 }
 
 function isInternalInventoryDashboard(dashboard = {}) {
@@ -4640,6 +4663,19 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
 
   const panels = await readMergedPanelSource(path.dirname(configDir), match[1].toUpperCase());
   const panelItems = (panels?.panels || []).filter((panel) => !isExcludedScanDashboard(panel));
+  const internalDashboardIdsByPanelId = new Map();
+  for (const panel of panelItems) {
+    if (panel.id == null) continue;
+    const dashboardIds = new Set((panel.links || []).flatMap((link) => {
+      try {
+        const parsed = parseInternalMetabaseUrl(link.url || "");
+        return parsed?.type === "dashboard" ? [String(parsed.id)] : [];
+      } catch {
+        return [];
+      }
+    }));
+    if (dashboardIds.size) internalDashboardIdsByPanelId.set(String(panel.id), dashboardIds);
+  }
   return {
     urls: new Set(
       panelItems
@@ -4666,6 +4702,7 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
         .filter((id) => id != null)
         .map(String),
     ),
+    internalDashboardIdsByPanelId,
     hasPublicDashboardSources: panelItems.some((panel) => (panel.links || []).some((link) => {
       try {
         return Boolean(parsePublicDashboardUrl(link.url || ""));
@@ -5232,16 +5269,24 @@ function mergeDashboardSources(inventory, panelSources = []) {
         const pendingTitle = canonicalDashboardTitle(pending.sourcePanelTitle || pending.title);
         match = dashboards.findIndex((dashboard) => (
           getDashboardCountryCode(dashboard) === pending.countryCode
+          && !hasConflictingInternalDashboardIds(dashboard, pending)
           && canonicalDashboardTitle(dashboard.sourcePanelTitle || dashboard.title) === pendingTitle
         ));
         if (match < 0) match = undefined;
       }
       if (match !== undefined) {
+        const matchedDashboard = dashboards[match];
+        const sameSourcePanel = String(matchedDashboard.sourcePanelId ?? "") === String(pending.sourcePanelId ?? "");
+        if (sameSourcePanel && hasConflictingInternalDashboardIds(matchedDashboard, pending)) {
+          dashboards[match] = pending;
+          dashboardIdentities(pending).forEach((identity) => identities.set(identity, match));
+          continue;
+        }
         dashboards[match] = {
           ...pending,
-          ...dashboards[match],
-          sourcePanelId: dashboards[match].sourcePanelId ?? panel.id,
-          sourcePanelTitle: dashboards[match].sourcePanelTitle || panel.title,
+          ...matchedDashboard,
+          sourcePanelId: matchedDashboard.sourcePanelId ?? panel.id,
+          sourcePanelTitle: matchedDashboard.sourcePanelTitle || panel.title,
         };
         dashboardIdentities(dashboards[match]).forEach((identity) => identities.set(identity, match));
         continue;
@@ -5254,6 +5299,12 @@ function mergeDashboardSources(inventory, panelSources = []) {
   const deduped = deduplicateDashboards(dashboards);
 
   return { ...inventory, dashboards: deduped };
+}
+
+function hasConflictingInternalDashboardIds(left = {}, right = {}) {
+  const leftId = getInternalInventoryDashboardId(left);
+  const rightId = getInternalInventoryDashboardId(right);
+  return Boolean(leftId && rightId && leftId !== rightId);
 }
 
 function isExcludedScanDashboard(item = {}) {
@@ -5272,7 +5323,15 @@ function deduplicateDashboards(dashboards) {
   for (const dashboard of dashboards) {
     const countryCode = getDashboardCountryCode(dashboard);
     const urlKey = dashboard.url ? `${countryCode}:${dashboardUrlIdentity(dashboard.url)}` : null;
-    const titleKey = `${countryCode}:${canonicalDashboardTitle(dashboard.sourcePanelTitle || dashboard.title)}`;
+    const hasStableIdentity = Boolean(
+      dashboard.dashboardId != null && dashboard.dashboardId !== ""
+      || dashboard.uuid
+      || dashboard.url
+      || dashboard.sourceUrl
+    );
+    const titleKey = hasStableIdentity
+      ? null
+      : `${countryCode}:${canonicalDashboardTitle(dashboard.sourcePanelTitle || dashboard.title)}`;
     const cardSetKey = dashboardCardSetIdentity(dashboard);
     const keys = [urlKey, titleKey, cardSetKey && `${countryCode}:cards:${cardSetKey}`].filter(Boolean);
     let duplicateIndex = -1;
