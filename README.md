@@ -169,6 +169,29 @@ npm run check-public-gateway-notify:ready
 
 Gateway API 契约见 `./docs/bi-monitor-gateway.md`。注意：Skill 本身不能绕过网络隔离，必须有 Gateway 服务端在公司网络内代查报表。
 
+### 清理历史巡检中的旧公开看板链接
+
+当前巡检以“看板与卡片”模块发现的内部 `/dashboard/{id}` 链接为准。旧的
+`config/public-check-result*.json` 和 `config/batch-check-run-history.json`
+可能仍保存 `/public/dashboard/{uuid}`。UUID 不能可靠换算为内部数字 ID，因此迁移只删除旧记录中的
+`dashboardUrl` 字段，不修改其他字段。
+
+先检查影响范围，不写文件：
+
+```bash
+npm run history-urls:check
+```
+
+确认输出中的文件数和字段数后执行清理：
+
+```bash
+npm run history-urls:cleanup
+```
+
+发生修改时，原文件会先备份到 `config/history-url-backups/<时间戳>/`，随后原子写回。
+命令可重复执行；再次检查应显示 `changedFileCount: 0`。平台启动时也会执行同一幂等迁移，
+因此部署最新代码并重启服务可以自动处理生产机上未纳入 Git 的历史文件。
+
 ### n8n 部署与 Wattrel 多国家连接
 
 Wattrel 告警页面需要直接查询各国 `wattrel_quality_result`。因为每个国家的 Wattrel 数据库不同，推荐把本项目部署在 n8n 能 SSH 到、并且能访问各国数据库的服务器上；n8n 只负责拉代码、启动服务或触发接口。
