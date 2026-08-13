@@ -4518,6 +4518,7 @@ async function readPlatformInventory(rootDir, primaryInventoryFile) {
 
 async function filterInventoryByCurrentPanelSources(configDir, inventoryFilePath, inventory) {
   const sourceRefs = await readCurrentPanelSourceRefs(configDir, inventoryFilePath);
+  const isRuntimeInventory = /^runtime-discovered-public-dashboards\./i.test(path.basename(inventoryFilePath));
   if (sourceRefs.urls.size === 0 && sourceRefs.panelIds.size === 0) {
     return filterInventoryDeletedDashboards(inventory, sourceRefs.deletedDashboards || []);
   }
@@ -4531,18 +4532,52 @@ async function filterInventoryByCurrentPanelSources(configDir, inventoryFilePath
       if (dashboardMatchesAnyDeletion(dashboard, sourceRefs.deletedDashboards || [])) {
         return false;
       }
+      if (isRuntimeInventory && !sourceRefs.hasPublicDashboardSources && isPublicInventoryDashboard(dashboard)) {
+        return false;
+      }
       const sourcePanelId = dashboard.sourcePanelId == null ? "" : String(dashboard.sourcePanelId);
-      return sourceRefs.urls.has(dashboard.sourceUrl || "")
-        || sourceRefs.urls.has(dashboard.url || "")
-        || (sourcePanelId && sourceRefs.panelIds.has(sourcePanelId));
+      const matchesUrl = sourceRefs.urls.has(dashboard.sourceUrl || "")
+        || sourceRefs.urls.has(dashboard.url || "");
+      const matchesPanel = sourcePanelId && sourceRefs.panelIds.has(sourcePanelId);
+      if (matchesPanel && sourceRefs.internalPanelIds.has(sourcePanelId) && !isInternalInventoryDashboard(dashboard)) {
+        return false;
+      }
+      return matchesUrl || matchesPanel || isRuntimeInventory;
     }),
   };
 }
 
+function isInternalInventoryDashboard(dashboard = {}) {
+  if (dashboard.access === "internal") return true;
+  if (dashboard.access === "public") return false;
+  for (const rawUrl of [dashboard.url, dashboard.sourceUrl]) {
+    if (!rawUrl) continue;
+    try {
+      if (parseInternalMetabaseUrl(rawUrl)?.type === "dashboard") return true;
+    } catch {
+      // Fall through to the dashboard ID used by older discovery records.
+    }
+  }
+  return dashboard.dashboardId != null && dashboard.dashboardId !== "";
+}
+
+function isPublicInventoryDashboard(dashboard = {}) {
+  if (dashboard.access === "public") return true;
+  if (dashboard.access === "internal") return false;
+  return [dashboard.url, dashboard.sourceUrl].some((rawUrl) => {
+    if (!rawUrl) return false;
+    try {
+      return Boolean(parsePublicDashboardUrl(rawUrl));
+    } catch {
+      return false;
+    }
+  });
+}
+
 async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
-  const match = path.basename(inventoryFilePath).match(/^discovered-public-dashboards\.([a-z]+)\.json$/i);
+  const match = path.basename(inventoryFilePath).match(/^(?:runtime-)?discovered-public-dashboards\.([a-z]+)\.json$/i);
   if (!match) {
-    return { urls: new Set(), panelIds: new Set() };
+    return { urls: new Set(), panelIds: new Set(), internalPanelIds: new Set(), hasPublicDashboardSources: false };
   }
 
   const panels = await readMergedPanelSource(path.dirname(configDir), match[1].toUpperCase());
@@ -4560,6 +4595,26 @@ async function readCurrentPanelSourceRefs(configDir, inventoryFilePath) {
         .filter((id) => id != null)
         .map(String),
     ),
+    internalPanelIds: new Set(
+      panelItems
+        .filter((panel) => (panel.links || []).some((link) => {
+          try {
+            return parseInternalMetabaseUrl(link.url || "")?.type === "dashboard";
+          } catch {
+            return false;
+          }
+        }))
+        .map((panel) => panel.id)
+        .filter((id) => id != null)
+        .map(String),
+    ),
+    hasPublicDashboardSources: panelItems.some((panel) => (panel.links || []).some((link) => {
+      try {
+        return Boolean(parsePublicDashboardUrl(link.url || ""));
+      } catch {
+        return false;
+      }
+    })),
     deletedDashboards: panels.deletedDashboards || [],
   };
 }

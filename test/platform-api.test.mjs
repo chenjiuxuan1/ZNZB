@@ -1505,6 +1505,75 @@ test("platform api lets country inventory override stale ready inventory", async
   );
 });
 
+test("platform api excludes stale public runtime inventory after panel source switches to internal URL", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({ dashboardCount: 0, dashboards: [] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾" },
+      dashboards: [{
+        countryCode: "PH",
+        countryName: "菲律宾",
+        access: "internal",
+        sourcePanelId: 8,
+        sourcePanelTitle: "核心指标概览",
+        title: "核心指标概览",
+        dashboardId: 1056,
+        uuid: "internal:1056",
+        url: "https://data.kuainiu.io/dashboard/1056",
+        sourceUrl: "https://data.kuainiu.io/dashboard/1056",
+        cards: [{ title: "未还占比", cardId: 10, dashcardId: 20 }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/runtime-discovered-public-dashboards.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾" },
+      dashboards: [{
+        countryCode: "PH",
+        countryName: "菲律宾",
+        access: "public",
+        sourcePanelId: 8,
+        sourcePanelTitle: "旧公开核心指标概览",
+        title: "旧公开核心指标概览",
+        uuid: "stale-public-ph-core",
+        url: "https://data.kuainiu.io/public/dashboard/stale-public-ph-core",
+        cards: [{ title: "未还占比", cardId: 11, dashcardId: 21 }],
+      }, {
+        countryCode: "PH",
+        countryName: "菲律宾",
+        access: "public",
+        title: "无来源 ID 的旧公开看板",
+        uuid: "orphaned-stale-public-ph",
+        url: "https://data.kuainiu.io/public/dashboard/orphaned-stale-public-ph",
+        cards: [{ title: "旧卡片", cardId: 12, dashcardId: 22 }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾" },
+      panels: [{
+        id: 8,
+        title: "核心指标概览",
+        links: [{ url: "https://data.kuainiu.io/dashboard/1056" }],
+      }],
+    }),
+  );
+
+  const api = createPlatformApi({ rootDir });
+  const inventory = await api.getInventory({ countryCode: "PH" });
+
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal:1056"]);
+  assert.equal(inventory.dashboards[0].access, "internal");
+});
+
 test("platform api keeps country inventory dashboards matched by source panel id", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
@@ -1519,12 +1588,13 @@ test("platform api keeps country inventory dashboards matched by source panel id
         {
           countryCode: "MX",
           countryName: "墨西哥",
-          access: "public",
+          access: "internal",
           sourcePanelId: 2,
           sourcePanelTitle: "核心链路准实时监控",
           title: "核心链路准实时监控",
-          uuid: "mx-core",
-          url: "https://data.kuainiu.io/public/dashboard/mx-core",
+          dashboardId: 465,
+          uuid: "internal:465",
+          url: "https://data.kuainiu.io/dashboard/465",
           cards: [{ title: "新客-启动次数", cardId: 1, dashcardId: 2 }],
         },
       ],
@@ -1547,7 +1617,7 @@ test("platform api keeps country inventory dashboards matched by source panel id
   const api = createPlatformApi({ rootDir });
   const inventory = await api.getInventory({ countryCode: "MX" });
 
-  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["mx-core"]);
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal:465"]);
   assert.equal(inventory.totalCardCount, 1);
 });
 
