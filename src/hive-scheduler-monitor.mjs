@@ -7,6 +7,11 @@ import { readJsonFile } from "./utils.mjs";
 const CONFIG_PATH = "config/hive-scheduler.config.json";
 const DEFAULT_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/ds-scheduler";
 const REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_HIVE_PROJECT_NAMES = {
+  ine: "ods，dwb，tdm，dm_feature，temp，market，dwd，rpt，dws，privacy，dim",
+  th: "ods，dwb，tdm，dm_feature，temp，market，dwd，rpt，dws，privacy，dim，dwt",
+  cn: "ods，dwb，tdm，dm_feature，temp，market，dwd，rpt，dws，privacy，dim，dm_n，ext，dwt",
+};
 
 export const DEFAULT_HIVE_ALERT_ROUTING = {
   channel: "tv",
@@ -49,13 +54,21 @@ function normalizeRouting(value = {}) {
   };
 }
 
+function withDefaultProjectNames(value = {}) {
+  const result = { ...value };
+  for (const [code, names] of Object.entries(DEFAULT_HIVE_PROJECT_NAMES)) {
+    if (!String(result[code] || "").trim()) result[code] = names;
+  }
+  return result;
+}
+
 export async function loadHiveSchedulerConfig(rootDir) {
   const filePath = path.resolve(rootDir || process.cwd(), CONFIG_PATH);
   const stored = await readJsonFile(filePath, {});
   return {
     n8nWebhookUrl: resolveEnv(stored.n8nWebhookUrl) || resolveEnv(process.env.HIVE_SCHEDULER_WEBHOOK_URL) || DEFAULT_WEBHOOK_URL,
     countries: stored.countries || {},
-    projectNames: stored.projectNames || {},
+    projectNames: withDefaultProjectNames(stored.projectNames || {}),
     projects: stored.projects || {},
     alertRouting: normalizeRouting(stored.alertRouting),
   };

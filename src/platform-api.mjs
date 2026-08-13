@@ -103,6 +103,7 @@ const DEFAULT_BATCH_SCHEDULE = {
   recipientEmails: "",
   mentions: "",
   includeDsScheduler: false,
+  includeHiveScheduler: false,
   countryConfigs: [],
   nextRunAt: null,
   lastRunAt: null,
@@ -214,6 +215,35 @@ export function createPlatformApi({
       skipped: true,
       reason: "included in duty summary",
     };
+    return result;
+  };
+  const runIntegratedHiveCheck = async (schedule) => {
+    if (!schedule.includeHiveScheduler) return null;
+    const config = await loadHiveSchedulerConfig(rootDir);
+    const eligibleCodes = Object.keys(config.countries || {}).filter((code) => (
+      config.countries?.[code]?.enabled
+      && String(config.countries?.[code]?.token || "").trim()
+      && (config.projects?.[code] || []).some((item) => String(item.code || "").trim())
+    ));
+    if (!eligibleCodes.length) {
+      return {
+        checkedAt: new Date().toISOString(),
+        skipped: true,
+        reason: "HIVE 页面没有已启用且项目匹配成功的国家",
+        totalChecked: 0,
+        totalNotRun: 0,
+        totalAbnormal: 0,
+        failedCountries: 0,
+        countries: [],
+      };
+    }
+    const scoped = {
+      ...config,
+      countries: Object.fromEntries(eligibleCodes.map((code) => [code, config.countries[code]])),
+      projects: Object.fromEntries(eligibleCodes.map((code) => [code, config.projects?.[code] || []])),
+    };
+    const result = await checkAllHiveCountries(rootDir, scoped);
+    result.notification = await notifyHiveSchedulerCheck(scoped, result);
     return result;
   };
 
@@ -1375,9 +1405,19 @@ export function createPlatformApi({
         } catch (error) {
           dsSchedulerError = error.message;
         }
+        let hiveSchedulerSummary = null;
+        let hiveSchedulerError = null;
+        try {
+          hiveSchedulerSummary = await runIntegratedHiveCheck(schedule);
+        } catch (error) {
+          hiveSchedulerError = error.message;
+        }
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "data_check", {
-          status: dsSchedulerError ? "partial_failed" : "success",
-          detail: dsSchedulerError ? `DS 调度核查失败：${dsSchedulerError}` : schedule.includeDsScheduler ? "DS 调度核查完成" : "未启用 DS 调度核查",
+          status: dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success",
+          detail: [
+            dsSchedulerError ? `DS 失败：${dsSchedulerError}` : schedule.includeDsScheduler ? "DS 调度核查完成" : "未启用 DS",
+            hiveSchedulerError ? `HIVE 失败：${hiveSchedulerError}` : schedule.includeHiveScheduler ? "HIVE 调度核查完成" : "未启用 HIVE",
+          ].join("；"),
         });
         if (aiFirstMetabasePatrolEnabled) {
           const aiFirst = await this.finalizeAiFirstMetabasePatrol({
@@ -1386,20 +1426,20 @@ export function createPlatformApi({
           });
           const finalizedRuns = aiFirst.countryRuns;
           const failedRuns = finalizedRuns.filter((item) => !item.ok);
-          const lastResult = { ...summarizeCountryScheduleRuns(finalizedRuns, { wattrelSummary }), dsSchedulerSummary, dsSchedulerError };
+          const lastResult = { ...summarizeCountryScheduleRuns(finalizedRuns, { wattrelSummary }), dsSchedulerSummary, dsSchedulerError, hiveSchedulerSummary, hiveSchedulerError };
           const saved = {
             ...schedule, lastRunAt: startedAt, nextRunAt,
-            lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
+            lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : "", hiveSchedulerError ? `HIVE: ${hiveSchedulerError}` : ""].filter(Boolean).join("; ") || null,
             lastResult,
           };
           await writeJsonAtomic(resolve("batchSchedule"), saved);
           await appendHistoryEntry(buildBatchHistoryEntry({
             trigger: "manual_test", id: historyRunId, startedAt, finishedAt: new Date().toISOString(), nextRunAt, schedule,
-            countryRuns: finalizedRuns, notificationSentCount: aiFirst.notificationSentCount, wattrelSummary, dsSchedulerSummary, dsSchedulerError,
+            countryRuns: finalizedRuns, notificationSentCount: aiFirst.notificationSentCount, wattrelSummary, dsSchedulerSummary, dsSchedulerError, hiveSchedulerSummary, hiveSchedulerError,
           }));
           await this.removePendingMetabasePatrolRun(historyRunId);
-          batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "finished", { status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success", detail: "AI 取证、最终通知和历史记录已完成" });
-          batchScheduleRunProgress = { ...batchScheduleRunProgress, status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success", finishedAt: new Date().toISOString(), result: lastResult, notificationSentCount: aiFirst.notificationSentCount };
+          batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "finished", { status: failedRuns.length || dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success", detail: "AI 取证、最终通知和历史记录已完成" });
+          batchScheduleRunProgress = { ...batchScheduleRunProgress, status: failedRuns.length || dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success", finishedAt: new Date().toISOString(), result: lastResult, notificationSentCount: aiFirst.notificationSentCount };
           return { ran: true, schedule: saved, result: lastResult, agentTriggerResult: aiFirst.queueResult };
         }
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
@@ -1421,12 +1461,14 @@ export function createPlatformApi({
           ...summarizeCountryScheduleRuns(countryRuns, { wattrelSummary }),
           dsSchedulerSummary,
           dsSchedulerError,
+          hiveSchedulerSummary,
+          hiveSchedulerError,
         };
         const saved = {
           ...schedule,
           lastRunAt: startedAt,
           nextRunAt,
-          lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
+          lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : "", hiveSchedulerError ? `HIVE: ${hiveSchedulerError}` : ""].filter(Boolean).join("; ") || null,
           lastResult,
         };
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
@@ -1436,7 +1478,7 @@ export function createPlatformApi({
         batchScheduleRunProgress = {
           ...batchScheduleRunProgress,
           status: "ai_analyzing",
-          finalStatus: failedRuns.length || dsSchedulerError ? "partial_failed" : "success",
+          finalStatus: failedRuns.length || dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success",
           finishedAt: new Date().toISOString(),
           result: saved.lastResult,
           notificationSentCount,
@@ -1454,6 +1496,8 @@ export function createPlatformApi({
           wattrelSummary,
           dsSchedulerSummary,
           dsSchedulerError,
+          hiveSchedulerSummary,
+          hiveSchedulerError,
         }));
         const agentTriggerResult = await this.dispatchDashboardGroupedAnalysis(historyRunId, countryRuns, (event) => {
           batchScheduleRunProgress = updateBatchScheduleAiProgress(batchScheduleRunProgress, event);
@@ -2240,9 +2284,19 @@ export function createPlatformApi({
         } catch (error) {
           dsSchedulerError = error.message;
         }
+        let hiveSchedulerSummary = null;
+        let hiveSchedulerError = null;
+        try {
+          hiveSchedulerSummary = await runIntegratedHiveCheck(schedule);
+        } catch (error) {
+          hiveSchedulerError = error.message;
+        }
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "data_check", {
-          status: dsSchedulerError ? "partial_failed" : "success",
-          detail: dsSchedulerError ? `DS 调度核查失败：${dsSchedulerError}` : schedule.includeDsScheduler ? "DS 调度核查完成" : "未启用 DS 调度核查",
+          status: dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success",
+          detail: [
+            dsSchedulerError ? `DS 失败：${dsSchedulerError}` : schedule.includeDsScheduler ? "DS 调度核查完成" : "未启用 DS",
+            hiveSchedulerError ? `HIVE 失败：${hiveSchedulerError}` : schedule.includeHiveScheduler ? "HIVE 调度核查完成" : "未启用 HIVE",
+          ].join("；"),
         });
         if (aiFirstMetabasePatrolEnabled) {
           const aiFirst = await this.finalizeAiFirstMetabasePatrol({
@@ -2251,20 +2305,20 @@ export function createPlatformApi({
           });
           const finalizedRuns = aiFirst.countryRuns;
           const failedRuns = finalizedRuns.filter((item) => !item.ok);
-          const lastResult = { ...summarizeCountryScheduleRuns(finalizedRuns, { wattrelSummary }), dsSchedulerSummary, dsSchedulerError };
+          const lastResult = { ...summarizeCountryScheduleRuns(finalizedRuns, { wattrelSummary }), dsSchedulerSummary, dsSchedulerError, hiveSchedulerSummary, hiveSchedulerError };
           const saved = {
             ...schedule, lastRunAt: startedAt, nextRunAt,
-            lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
+            lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : "", hiveSchedulerError ? `HIVE: ${hiveSchedulerError}` : ""].filter(Boolean).join("; ") || null,
             lastResult,
           };
           await writeJsonAtomic(resolve("batchSchedule"), saved);
           await appendHistoryEntry(buildBatchHistoryEntry({
             trigger: "schedule", id: historyRunId, startedAt, finishedAt: new Date().toISOString(), nextRunAt, schedule,
-            countryRuns: finalizedRuns, notificationSentCount: aiFirst.notificationSentCount, wattrelSummary, dsSchedulerSummary, dsSchedulerError,
+            countryRuns: finalizedRuns, notificationSentCount: aiFirst.notificationSentCount, wattrelSummary, dsSchedulerSummary, dsSchedulerError, hiveSchedulerSummary, hiveSchedulerError,
           }));
           await this.removePendingMetabasePatrolRun(historyRunId);
-          batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "finished", { status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success", detail: "AI 取证、最终通知和历史记录已完成" });
-          batchScheduleRunProgress = { ...batchScheduleRunProgress, status: failedRuns.length || dsSchedulerError ? "partial_failed" : "success", finishedAt: new Date().toISOString(), result: lastResult, notificationSentCount: aiFirst.notificationSentCount };
+          batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "finished", { status: failedRuns.length || dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success", detail: "AI 取证、最终通知和历史记录已完成" });
+          batchScheduleRunProgress = { ...batchScheduleRunProgress, status: failedRuns.length || dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success", finishedAt: new Date().toISOString(), result: lastResult, notificationSentCount: aiFirst.notificationSentCount };
           return { ran: true, schedule: saved, result: lastResult, agentTriggerResult: aiFirst.queueResult };
         }
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
@@ -2286,12 +2340,14 @@ export function createPlatformApi({
           ...summarizeCountryScheduleRuns(countryRuns, { wattrelSummary }),
           dsSchedulerSummary,
           dsSchedulerError,
+          hiveSchedulerSummary,
+          hiveSchedulerError,
         };
         const saved = {
           ...schedule,
           lastRunAt: startedAt,
           nextRunAt,
-          lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : ""].filter(Boolean).join("; ") || null,
+          lastError: [failedRuns.map((item) => `${item.countryCode}: ${item.error}`).join("; "), dsSchedulerError ? `DS: ${dsSchedulerError}` : "", hiveSchedulerError ? `HIVE: ${hiveSchedulerError}` : ""].filter(Boolean).join("; ") || null,
           lastResult,
         };
         batchScheduleRunProgress = updateBatchScheduleRunProgressStage(batchScheduleRunProgress, "notification", {
@@ -2301,7 +2357,7 @@ export function createPlatformApi({
         batchScheduleRunProgress = {
           ...batchScheduleRunProgress,
           status: "ai_analyzing",
-          finalStatus: failedRuns.length || dsSchedulerError ? "partial_failed" : "success",
+          finalStatus: failedRuns.length || dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success",
           finishedAt: new Date().toISOString(),
           result: saved.lastResult,
           notificationSentCount,
@@ -2319,6 +2375,8 @@ export function createPlatformApi({
           wattrelSummary,
           dsSchedulerSummary,
           dsSchedulerError,
+          hiveSchedulerSummary,
+          hiveSchedulerError,
         }));
         const agentTriggerResult = await this.dispatchDashboardGroupedAnalysis(historyRunId, countryRuns, (event) => {
           batchScheduleRunProgress = updateBatchScheduleAiProgress(batchScheduleRunProgress, event);
@@ -2913,6 +2971,7 @@ function normalizeBatchSchedule(input = {}, previous = {}, options = {}) {
     recipientEmails: String(input.recipientEmails ?? previousSchedule.recipientEmails ?? "").trim(),
     mentions: normalizeMentions(input.mentions ?? previousSchedule.mentions).join(","),
     includeDsScheduler: Boolean(input.includeDsScheduler ?? previousSchedule.includeDsScheduler),
+    includeHiveScheduler: Boolean(input.includeHiveScheduler ?? previousSchedule.includeHiveScheduler),
     countryConfigs,
     lastRunAt: previousSchedule.lastRunAt || null,
     lastError: previousSchedule.lastError || null,
@@ -4267,6 +4326,8 @@ function buildBatchHistoryEntry({
   wattrelSummary = null,
   dsSchedulerSummary = null,
   dsSchedulerError = null,
+  hiveSchedulerSummary = null,
+  hiveSchedulerError = null,
 }) {
   const summary = summarizeCountryScheduleRuns(countryRuns, { wattrelSummary });
   const sentCount = notificationSentCount ?? countryRuns.reduce((sum, run) => {
@@ -4280,8 +4341,8 @@ function buildBatchHistoryEntry({
     finishedAt,
     nextRunAt,
     intervalMinutes: schedule.intervalMinutes || null,
-    status: summary.failedCount > 0 || dsSchedulerError ? "partial_failed" : "success",
-    ok: summary.failedCount === 0 && !dsSchedulerError,
+    status: summary.failedCount > 0 || dsSchedulerError || hiveSchedulerError ? "partial_failed" : "success",
+    ok: summary.failedCount === 0 && !dsSchedulerError && !hiveSchedulerError,
     countryCount: summary.countryCount,
     successCount: summary.successCount,
     failedCount: summary.failedCount,
@@ -4293,6 +4354,8 @@ function buildBatchHistoryEntry({
     notificationSentCount: sentCount,
     dsSchedulerSummary,
     dsSchedulerError,
+    hiveSchedulerSummary,
+    hiveSchedulerError,
     runs: countryRuns,
   };
 }
