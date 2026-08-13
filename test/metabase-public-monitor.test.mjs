@@ -221,6 +221,89 @@ test("checkPublicDashboards queries internal dashboards by dashboardId", async (
   ]);
 });
 
+test("checkPublicDashboards remaps a stale dashcard id by card id after a 404", async () => {
+  const queriedRequests = [];
+  let dashboardFetches = 0;
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [
+        {
+          access: "internal",
+          dashboardId: "158",
+          uuid: "internal-158",
+          title: "每期逾期率",
+          url: "https://data.kuainiu.io/dashboard/158",
+          cards: [
+            { title: "到期数", cardId: 3604, dashcardId: 4250, parameterMappings: [] },
+            { title: "逾期数", cardId: 3605, dashcardId: 4251, parameterMappings: [] },
+          ],
+        },
+      ],
+    },
+    ruleConfig: { builtInChecks: { queryError: true, noData: true }, rules: [] },
+    metabaseClientFactory: () => ({
+      async getDashboard(id) {
+        dashboardFetches += 1;
+        assert.equal(id, "158");
+        return {
+          dashcards: [
+            { id: 9001, card_id: 3604 },
+            { id: 9002, card_id: 3605 },
+          ],
+        };
+      },
+      async queryDashcardJson(request) {
+        queriedRequests.push(request);
+        if (request.dashcardId === 4250 || request.dashcardId === 4251) {
+          throw new Error("Metabase internal request failed (404 Not Found): Not found.");
+        }
+        return [{ "统计日期": "2026-08-13", "到期数": 7441515 }];
+      },
+    }),
+  });
+
+  assert.equal(result.anomalyCount, 0);
+  // Both cards recover, but the live dashboard is fetched once and reused.
+  assert.equal(dashboardFetches, 1);
+  assert.deepEqual(queriedRequests.map((request) => request.dashcardId), [4250, 4251, 9001, 9002]);
+  assert.deepEqual(
+    result.checkedCards.map((card) => [card.dashcardId, card.staleDashcardId, card.dashcardRemapped]),
+    [[9001, 4250, true], [9002, 4251, true]],
+  );
+});
+
+test("checkPublicDashboards keeps the 404 when the card is gone from the dashboard", async () => {
+  const result = await checkPublicDashboards({
+    inventory: {
+      dashboardCount: 1,
+      dashboards: [
+        {
+          access: "internal",
+          dashboardId: "158",
+          uuid: "internal-158",
+          title: "每期逾期率",
+          url: "https://data.kuainiu.io/dashboard/158",
+          cards: [{ title: "到期数", cardId: 3604, dashcardId: 4250, parameterMappings: [] }],
+        },
+      ],
+    },
+    ruleConfig: { builtInChecks: { queryError: true, noData: true }, rules: [] },
+    metabaseClientFactory: () => ({
+      async getDashboard() {
+        return { dashcards: [{ id: 9001, card_id: 7777 }] };
+      },
+      async queryDashcardJson() {
+        throw new Error("Metabase internal request failed (404 Not Found): Not found.");
+      },
+    }),
+  });
+
+  assert.equal(result.anomalyCount, 1);
+  assert.equal(result.checkedCards[0].dashcardRemapped, false);
+  assert.match(result.checkedCards[0].error, /404 Not Found/);
+});
+
 test("checkPublicDashboards detects metric charts with rows but no metric values", async () => {
   const result = await checkPublicDashboards({
     inventory: {
