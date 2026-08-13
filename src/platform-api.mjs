@@ -2053,33 +2053,10 @@ export function createPlatformApi({
       if ((dashboardUuid || dashboardUuids.length) && filteredInventory.dashboardCount === 0) {
         throw badRequest("Dashboard not found", ["选择的看板不在当前国家范围内，请重新选择看板。"]);
       }
-      const queryCardFn = async (_client, dashboard, card, parameters = []) => {
-        const client = metabaseClientFactory(dashboard);
-        try {
-          const request = {
-            cardId: card.cardId,
-            dashcardId: card.dashcardId,
-            parameters,
-          };
-          if (dashboard.access === "internal") {
-            request.dashboardId = dashboard.dashboardId;
-          } else {
-            request.dashboardUuid = dashboard.uuid;
-          }
-          const rows = await client.queryDashcardJson(request);
-          return {
-            ok: true,
-            rows: Array.isArray(rows) ? rows : [],
-            error: null,
-          };
-        } catch (error) {
-          return {
-            ok: false,
-            rows: [],
-            error: error.message,
-          };
-        }
-      };
+      // Pass the client factory rather than a private queryCardFn: this used to
+      // duplicate the monitor's query logic, which meant the stale-dashcard
+      // remap never ran on the batch-check path and the missing-auth check
+      // compared against the wrong factory.
       const result = await checkPublicDashboards({
         inventory: filteredInventory,
         ruleConfig: {
@@ -2092,7 +2069,7 @@ export function createPlatformApi({
         },
         baselineCacheFile: resolve("baselineCache"),
         observationCacheFile: resolve("observationCache"),
-        queryCardFn,
+        metabaseClientFactory,
       });
       // Persist default tags as soon as a scan finds a drawable fluctuation.
       // History persistence repeats this safely, but manual checks do not always
@@ -4803,10 +4780,25 @@ function getDashboardCountryCode(dashboard) {
 function mergeInventories(inventories) {
   const dashboardsByKey = new Map();
   const sourceErrors = [];
+  const skippedPublic = [];
 
   for (const inventory of inventories) {
     sourceErrors.push(...(inventory.sourceErrors || []));
     for (const dashboard of inventory.dashboards || []) {
+      // Public sharing is turned off on the Metabase instance, so every
+      // /public/dashboard link is dead and only produces 404 noise. Drop these
+      // before they reach runBatchCheck. Runtime discovery can still write them
+      // into its inventory file, which is why the filter lives here rather than
+      // in the saved config.
+      if (isPublicDashboard(dashboard)) {
+        skippedPublic.push({
+          countryCode: getDashboardCountryCode(dashboard),
+          title: dashboard.sourcePanelTitle || dashboard.title || "",
+          uuid: dashboard.uuid || "",
+          url: dashboard.url || "",
+        });
+        continue;
+      }
       const key = [
         dashboard.countryCode || dashboard.country?.code || "",
         dashboard.access || "public",
@@ -4828,7 +4820,15 @@ function mergeInventories(inventories) {
     sourceErrorCount: sourceErrors.length,
     sourceErrors,
     dashboards,
+    ...(skippedPublic.length ? { skippedPublicDashboards: skippedPublic } : {}),
   };
+}
+
+// Keyed on the access field alone. Discovery always sets it explicitly
+// (metabase-discovery.mjs writes "public" or "internal"), so a url heuristic
+// would only add false positives for entries whose access is already known.
+function isPublicDashboard(dashboard) {
+  return String(dashboard?.access || "").toLowerCase() === "public";
 }
 
 function filterBatchHistory(history = DEFAULT_BATCH_HISTORY, filters = {}) {
@@ -5738,9 +5738,9 @@ async function explainUnavailableCountryInventory(rootDir, countryCode, countrie
   const source = await readJsonFile(panelSourceFilePath(rootDir, countryCode), {});
   const sourceCount = Array.isArray(source.panels) ? source.panels.length : 0;
   if (sourceCount > 0) {
-    return `${label} 当前有 ${sourceCount} 个来源看板，但都是 Metabase 内部 collection/dashboard 链接，尚未发现可巡检的 /public/dashboard UUID；请先在 Metabase 开启 public sharing 并重新发现后再上线巡检。`;
+    return `${label} 当前有 ${sourceCount} 个来源看板，但尚未发现可巡检的卡片；请确认已配置 Metabase 登录态（METABASE_SESSION / METABASE_COOKIE）并重新发现后再上线巡检。`;
   }
-  return `${label} 当前没有可巡检的 public dashboard 清单，请先补充 /public/dashboard UUID 并重新发现。`;
+  return `${label} 当前没有可巡检的看板清单，请先补充 Metabase collection/dashboard 链接并重新发现。`;
 }
 
 function summarizeCountries(countries, inventory, result) {
