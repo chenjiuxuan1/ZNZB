@@ -24,8 +24,8 @@
       "sourcePanelId": 1,
       "sourcePanelTitle": "OKR",
       "title": "Dashboard",
-      "uuid": "2a587423-5279-49b7-824f-7b62a8c884a3",
-      "url": "https://data.kuainiu.io/public/dashboard/2a587423-5279-49b7-824f-7b62a8c884a3",
+      "uuid": "internal:83",
+      "url": "https://data.kuainiu.io/dashboard/83-dashboard?%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&app=",
       "parameters": [
         {
           "id": "77eadb70",
@@ -1112,7 +1112,10 @@
           ],
           "queryStatus": "ok"
         }
-      ]
+      ],
+      "sourceUrl": "https://data.kuainiu.io/dashboard/83-dashboard?%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&app=",
+      "access": "internal",
+      "dashboardId": 83
     },
     {
       "country": {
@@ -1126,8 +1129,8 @@
       "sourcePanelId": 2,
       "sourcePanelTitle": "核心链路准实时监控",
       "title": "核心链路监控",
-      "uuid": "6a609dee-5bf7-4798-8d58-f90d5d41097e",
-      "url": "https://data.kuainiu.io/public/dashboard/6a609dee-5bf7-4798-8d58-f90d5d41097e",
+      "uuid": "internal:467",
+      "url": "https://data.kuainiu.io/dashboard/467?%25E6%2597%25A5%25E6%259C%259F=past1days~",
       "parameters": [
         {
           "id": "db4b00fb",
@@ -1776,7 +1779,10 @@
           ],
           "queryStatus": "ok"
         }
-      ]
+      ],
+      "sourceUrl": "https://data.kuainiu.io/dashboard/467?%25E6%2597%25A5%25E6%259C%259F=past1days~",
+      "access": "internal",
+      "dashboardId": 467
     },
     {
       "country": {
@@ -1790,8 +1796,8 @@
       "sourcePanelId": 3,
       "sourcePanelTitle": "新客转化率(注册~放款)",
       "title": "新客转化率：注册-放款",
-      "uuid": "f5212c72-c04f-474c-9d3a-043c89e95530",
-      "url": "https://data.kuainiu.io/public/dashboard/f5212c72-c04f-474c-9d3a-043c89e95530",
+      "uuid": "internal:244",
+      "url": "https://data.kuainiu.io/dashboard/244?%25E4%25B8%2580%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25B8%2589%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25BA%258C%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E6%2598%25AF%25E5%2590%25A6%25E5%2580%259F%25E8%25BF%2587%25E6%25AC%25BE=&%25E7%25BB%259F%25E8%25AE%25A1%25E7%25BB%25B4%25E5%25BA%25A6=%E6%95%B0%E5%80%BC&%25E8%25A2%25AB%25E6%258B%2592%25E7%2594%25A8%25E6%2588%25B7=&%25E8%25BD%25AC%25E5%258C%2596%25E5%2591%25A8%25E6%259C%259F=1&app=&tab=358-%E6%A6%82%E8%A7%88",
       "parameters": [
         {
           "id": "7a3aad7a",
@@ -4204,7 +4210,10 @@
           ],
           "queryStatus": "ok"
         }
-      ]
+      ],
+      "sourceUrl": "https://data.kuainiu.io/dashboard/244?%25E4%25B8%2580%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25B8%2589%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E4%25BA%258C%25E7%25BA%25A7%25E6%25B8%25A0%25E9%2581%2593=&%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E6%2598%25AF%25E5%2590%25A6%25E5%2580%259F%25E8%25BF%2587%25E6%25AC%25BE=&%25E7%25BB%259F%25E8%25AE%25A1%25E7%25BB%25B4%25E5%25BA%25A6=%E6%95%B0%E5%80%BC&%25E8%25A2%25AB%25E6%258B%2592%25E7%2594%25A8%25E6%2588%25B7=&%25E8%25BD%25AC%25E5%258C%2596%25E5%2591%25A8%25E6%259C%259F=1&app=&tab=358-%E6%A6%82%E8%A7%88",
+      "access": "internal",
+      "dashboardId": 244
     },
     {
       "country": {
@@ -4218,8 +4227,8 @@
       "sourcePanelId": 4,
       "sourcePanelTitle": "营销数据统计",
       "title": "营销结果数据统计",
-      "uuid": "50a4ee68-79fb-4053-90c0-55e39f4d560b",
-      "url": "https://data.kuainiu.io/public/dashboard/50a4ee68-79fb-4053-90c0-55e39f4d560b",
+      "uuid": "internal:180",
+      "url": "https://data.kuainiu.io/dashboard/180?%25E4%25BE%259B%25E5%25BA%2594%25E5%2595%2586=&%25E5%2585%25A5%25E5%25BA%2593%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E6%96%B0%E5%AE%A2&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E8%80%81%E5%AE%A2&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E8%87%AA%E6%9C%89%E7%99%BD%E5%90%8D%E5%8D%95&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E6%9C%AA%E5%88%86%E7%B1%BB&%25E5%2590%258D%25E5%258D%2595%25E4%25BA%258C%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=&%25E5%2590%258D%25E5%258D%2595code=&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B%28%25E4%25BB%2585%25E9%2599%2590%25E7%2599%25BD%25E5%2590%258D%25E5%258D%2595%29=&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=fox&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=TMK&%25E8%25BD%25AC%25E5%258C%2596%25E8%258A%2582%25E7%2582%25B9=%E9%BB%98%E8%AE%A4&app=",
       "parameters": [
         {
           "id": "66fa29f4",
@@ -5098,7 +5107,10 @@
           ],
           "queryStatus": "ok"
         }
-      ]
+      ],
+      "sourceUrl": "https://data.kuainiu.io/dashboard/180?%25E4%25BE%259B%25E5%25BA%2594%25E5%2595%2586=&%25E5%2585%25A5%25E5%25BA%2593%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E6%96%B0%E5%AE%A2&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E8%80%81%E5%AE%A2&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E8%87%AA%E6%9C%89%E7%99%BD%E5%90%8D%E5%8D%95&%25E5%2590%258D%25E5%258D%2595%25E4%25B8%2580%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=%E6%9C%AA%E5%88%86%E7%B1%BB&%25E5%2590%258D%25E5%258D%2595%25E4%25BA%258C%25E7%25BA%25A7%25E7%25B1%25BB%25E5%2588%25AB=&%25E5%2590%258D%25E5%258D%2595code=&%25E6%2597%25A5%25E6%259C%259F%25E7%25B1%25BB%25E5%259E%258B=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B%28%25E4%25BB%2585%25E9%2599%2590%25E7%2599%25BD%25E5%2590%258D%25E5%258D%2595%29=&%25E8%2590%25A5%25E9%2594%2580%25E7%25B3%25BB%25E7%25BB%259F=fox&%25E8%2590%25A5%25E9%2594%2580%25E7%25BB%2584%25E5%2588%25AB=TMK&%25E8%25BD%25AC%25E5%258C%2596%25E8%258A%2582%25E7%2582%25B9=%E9%BB%98%E8%AE%A4&app=",
+      "access": "internal",
+      "dashboardId": 180
     },
     {
       "country": {
@@ -5112,8 +5124,8 @@
       "sourcePanelId": 6,
       "sourcePanelTitle": "营销过程数据统计",
       "title": "营销过程数据统计",
-      "uuid": "15ee3492-f700-45be-959c-122962047c7b",
-      "url": "https://data.kuainiu.io/public/dashboard/15ee3492-f700-45be-959c-122962047c7b",
+      "uuid": "internal:665",
+      "url": "https://data.kuainiu.io/dashboard/665?%25E4%25BA%25A7%25E5%2593%2581%25E7%25B1%25BB%25E5%259E%258B=&%25E5%2588%25B0%25E6%259C%259F%25E6%2597%25A5%25E6%259C%259F=past35days-from-15days&%25E6%2594%25BE%25E6%25AC%25BE%25E6%2597%25A5%25E6%259C%259F=past30days&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%25AC%25ACn%25E6%259C%259F=1&%25E7%25BB%259F%25E8%25AE%25A1%25E5%258F%25A3%25E5%25BE%2584=%E6%94%BE%E6%AC%BE%E6%97%A5%E6%9C%9F&%25E9%2587%2591%25E9%25A2%259Dor%25E4%25BB%25B6%25E6%2595%25B0=%E9%87%91%E9%A2%9D&%25E9%25AB%2598%25E4%25BD%258E%25E8%25B4%25B9=&app=&tab=877-%E6%A6%82%E8%A7%88",
       "parameters": [
         {
           "id": "66fa29f4",
@@ -5663,7 +5675,10 @@
           "sampleRows": [],
           "queryStatus": "ok"
         }
-      ]
+      ],
+      "sourceUrl": "https://data.kuainiu.io/dashboard/665?%25E4%25BA%25A7%25E5%2593%2581%25E7%25B1%25BB%25E5%259E%258B=&%25E5%2588%25B0%25E6%259C%259F%25E6%2597%25A5%25E6%259C%259F=past35days-from-15days&%25E6%2594%25BE%25E6%25AC%25BE%25E6%2597%25A5%25E6%259C%259F=past30days&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%25AC%25ACn%25E6%259C%259F=1&%25E7%25BB%259F%25E8%25AE%25A1%25E5%258F%25A3%25E5%25BE%2584=%E6%94%BE%E6%AC%BE%E6%97%A5%E6%9C%9F&%25E9%2587%2591%25E9%25A2%259Dor%25E4%25BB%25B6%25E6%2595%25B0=%E9%87%91%E9%A2%9D&%25E9%25AB%2598%25E4%25BD%258E%25E8%25B4%25B9=&app=&tab=877-%E6%A6%82%E8%A7%88",
+      "access": "internal",
+      "dashboardId": 665
     },
     {
       "country": {
@@ -5677,8 +5692,8 @@
       "sourcePanelId": 5,
       "sourcePanelTitle": "放款统计",
       "title": "放款统计 ",
-      "uuid": "be9e2e00-6d37-458e-974c-af5d14015fb5",
-      "url": "https://data.kuainiu.io/public/dashboard/be9e2e00-6d37-458e-974c-af5d14015fb5",
+      "uuid": "internal:281",
+      "url": "https://data.kuainiu.io/dashboard/281?%25E4%25BA%25A7%25E5%2593%2581%25E6%259C%259F%25E9%2599%2590=&%25E6%2594%25BE%25E6%25AC%25BE%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%2594%25A8%25E6%2588%25B7%25E8%25B4%25B9%25E7%258E%2587%25E7%25B1%25BB%25E5%259E%258B=&app=&tab=424-by-%E6%97%A5%E6%9C%9F",
       "parameters": [
         {
           "id": "d99d148d",
@@ -9031,7 +9046,10 @@
           ],
           "queryStatus": "ok"
         }
-      ]
+      ],
+      "sourceUrl": "https://data.kuainiu.io/dashboard/281?%25E4%25BA%25A7%25E5%2593%2581%25E6%259C%259F%25E9%2599%2590=&%25E6%2594%25BE%25E6%25AC%25BE%25E6%2597%25A5%25E6%259C%259F=past30days~&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E6%97%A5&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%2594%25A8%25E6%2588%25B7%25E8%25B4%25B9%25E7%258E%2587%25E7%25B1%25BB%25E5%259E%258B=&app=&tab=424-by-%E6%97%A5%E6%9C%9F",
+      "access": "internal",
+      "dashboardId": 281
     },
     {
       "country": {
@@ -9045,8 +9063,8 @@
       "sourcePanelId": 7,
       "sourcePanelTitle": "每期逾期率",
       "title": "每期逾期率",
-      "uuid": "e53f5415-f43b-4b43-9db0-ee90794ec583",
-      "url": "https://data.kuainiu.io/public/dashboard/e53f5415-f43b-4b43-9db0-ee90794ec583",
+      "uuid": "internal:197",
+      "url": "https://data.kuainiu.io/dashboard/197?%25E4%25BA%25A7%25E5%2593%2581%25E7%25B1%25BB%25E5%259E%258B=&%25E5%2588%25B0%25E6%259C%259F%25E6%2597%25A5=past42days~&%25E6%2596%25B0%25E5%25A2%259E%25E5%2585%25A5%25E5%2582%25AC=%E6%98%AF&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E5%91%A8&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B-%25E7%25BB%2586%25E5%2588%2586=&%25E7%25AC%25ACn%25E6%259C%259F=&%25E9%2587%2591%25E9%25A2%259Dor%25E4%25BB%25B6%25E6%2595%25B0=%E9%87%91%E9%A2%9D&app=",
       "parameters": [
         {
           "id": "c28a0a",
@@ -12171,7 +12189,10 @@
           ],
           "queryStatus": "ok"
         }
-      ]
+      ],
+      "sourceUrl": "https://data.kuainiu.io/dashboard/197?%25E4%25BA%25A7%25E5%2593%2581%25E7%25B1%25BB%25E5%259E%258B=&%25E5%2588%25B0%25E6%259C%259F%25E6%2597%25A5=past42days~&%25E6%2596%25B0%25E5%25A2%259E%25E5%2585%25A5%25E5%2582%25AC=%E6%98%AF&%25E6%2597%25A5%25E6%259C%259F%25E6%25B1%2587%25E6%2580%25BB=%E5%91%A8&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B=&%25E7%2594%25A8%25E6%2588%25B7%25E7%25B1%25BB%25E5%259E%258B-%25E7%25BB%2586%25E5%2588%2586=&%25E7%25AC%25ACn%25E6%259C%259F=&%25E9%2587%2591%25E9%25A2%259Dor%25E4%25BB%25B6%25E6%2595%25B0=%E9%87%91%E9%A2%9D&app=",
+      "access": "internal",
+      "dashboardId": 197
     },
     {
       "country": {
@@ -12185,8 +12206,8 @@
       "sourcePanelId": 8,
       "sourcePanelTitle": "核心指标概览",
       "title": "核心指标概览 ",
-      "uuid": "12ccc679-e0a7-4f58-aa98-5bedada672e5",
-      "url": "https://data.kuainiu.io/public/dashboard/12ccc679-e0a7-4f58-aa98-5bedada672e5",
+      "uuid": "internal:1054",
+      "url": "https://data.kuainiu.io/dashboard/1054",
       "parameters": [
         {
           "id": "bd823c7c",
@@ -12936,7 +12957,10 @@
           ],
           "queryStatus": "ok"
         }
-      ]
+      ],
+      "sourceUrl": "https://data.kuainiu.io/dashboard/1054",
+      "access": "internal",
+      "dashboardId": 1054
     }
   ]
 }
