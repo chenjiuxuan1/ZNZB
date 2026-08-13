@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 globalThis.window = { location: { hash: "" } };
 const {
@@ -232,6 +233,16 @@ test("scheduled run progress renders compact five-stage status and keeps country
   assert.match(root.innerHTML, /贷后催收-核心指标概览/);
   assert.match(root.innerHTML, /等待 Dify 回调超过 6 分钟/);
   assert.match(root.innerHTML, /重刷/);
+});
+
+test("scheduled patrol renders three equal switch controls with HIVE after DS", () => {
+  const source = fs.readFileSync(new URL("../web/src/views/batch-check.js", import.meta.url), "utf8");
+  const auto = source.indexOf("batch-schedule-enabled");
+  const ds = source.indexOf("batch-include-ds-scheduler");
+  const hive = source.indexOf("batch-include-hive-scheduler");
+  assert.ok(auto >= 0 && auto < ds && ds < hive);
+  assert.match(source, /同时执行 HIVE 调度巡检/);
+  assert.match(source, /includeHiveScheduler:/);
 });
 
 test("scheduled country progress details stay open across polling rerenders", () => {

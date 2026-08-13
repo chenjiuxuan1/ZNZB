@@ -1,9 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkAllHiveCountries, parseHiveProjectNames } from "../src/hive-scheduler-monitor.mjs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { checkAllHiveCountries, loadHiveSchedulerConfig, parseHiveProjectNames } from "../src/hive-scheduler-monitor.mjs";
 
 test("HIVE project names accept common separators and remove duplicates", () => {
   assert.deepEqual(parseHiveProjectNames("DW_DM，DW_ADS; DW_DM\nDW_DWD"), ["DW_DM", "DW_ADS", "DW_DWD"]);
+});
+
+test("HIVE config preloads the requested China Indonesia and Thailand project ranges", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "hive-default-projects-"));
+  await fs.mkdir(path.join(rootDir, "config"));
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler.config.json"), JSON.stringify({ projectNames: { cn: "", ine: "", th: "" } }));
+  const config = await loadHiveSchedulerConfig(rootDir);
+  assert.deepEqual(parseHiveProjectNames(config.projectNames.ine), ["ods", "dwb", "tdm", "dm_feature", "temp", "market", "dwd", "rpt", "dws", "privacy", "dim"]);
+  assert.deepEqual(parseHiveProjectNames(config.projectNames.th).slice(-2), ["dim", "dwt"]);
+  assert.deepEqual(parseHiveProjectNames(config.projectNames.cn).slice(-3), ["dm_n", "ext", "dwt"]);
 });
 
 test("HIVE patrol checks each selected project exactly once with today-due policy", async () => {

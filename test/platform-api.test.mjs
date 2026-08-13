@@ -2185,6 +2185,21 @@ test("platform api persists the global DS switch on Metabase schedule", async ()
   assert.equal((await api.getBatchSchedule()).includeDsScheduler, true);
 });
 
+test("platform api persists the global HIVE switch on Metabase schedule", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  const defaults = await api.getBatchSchedule();
+  assert.equal(defaults.includeHiveScheduler, false);
+
+  const saved = await api.saveBatchSchedule({
+    ...defaults,
+    includeHiveScheduler: true,
+  });
+  assert.equal(saved.includeHiveScheduler, true);
+  assert.equal((await api.getBatchSchedule()).includeHiveScheduler, true);
+});
+
 test("platform api saves schedule with internal source inventory without discovering during save", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
