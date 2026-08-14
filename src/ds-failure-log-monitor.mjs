@@ -294,6 +294,10 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       page_size: 100,
     });
     const failedTask = recordList(tasks)
+      .filter((item) => {
+        const ownerInstanceId = String(item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || "").trim();
+        return !ownerInstanceId || ownerInstanceId === String(failure.instanceId);
+      })
       .filter((item) => FAILED_STATES.has(stateOf(item)))
       .sort((a, b) => timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)))[0];
     if (!failedTask) return { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
@@ -361,16 +365,6 @@ function buildDsInstanceUrl(country, projectCode, instanceId, configuredBaseUrl 
   const baseUrl = String(configuredBaseUrl || COUNTRY_DS_UI_BASE_URLS[country] || "").trim().replace(/\/+$/, "");
   if (!baseUrl || !projectCode || !instanceId) return "";
   return `${baseUrl}/projects/${encodeURIComponent(projectCode)}/workflow/instances/${encodeURIComponent(instanceId)}`;
-}
-
-function buildDsTaskUrl(country, projectCode, failure = {}, configuredBaseUrl = "") {
-  const baseUrl = String(configuredBaseUrl || COUNTRY_DS_UI_BASE_URLS[country] || "").trim().replace(/\/+$/, "");
-  const workflowInstanceId = String(failure.instanceId || "").trim();
-  if (!baseUrl || !projectCode || !workflowInstanceId) return "";
-  const query = new URLSearchParams({ workflowInstanceId });
-  if (failure.taskName) query.set("taskName", String(failure.taskName));
-  if (failure.taskCode) query.set("taskCode", String(failure.taskCode));
-  return `${baseUrl}/projects/${encodeURIComponent(projectCode)}/task/instances?${query.toString()}`;
 }
 
 export function normalizeGatewayFailures(data = {}, { projectName = "", projectCode = "", targetDate = "", timeZone = "UTC" } = {}) {
@@ -487,11 +481,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
       }));
     const enriched = await mapWithConcurrency(failures, FAILURE_ENRICH_CONCURRENCY,
       (failure) => enrichFailure(failure, { webhookUrl, country, token }));
-    const linked = enriched.map((failure) => ({
-      ...failure,
-      dsTaskUrl: buildDsTaskUrl(country, project.code, failure, dsUiBaseUrl),
-    }));
-    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: instances.length, failures: linked };
+    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: instances.length, failures: enriched };
   } catch (error) {
     return { projectName: project.name, projectCode: project.code, success: false, error: error.message, checkedInstances: 0, failures: [] };
   }

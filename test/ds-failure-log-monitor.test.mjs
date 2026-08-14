@@ -116,7 +116,8 @@ test("DS failure log queries today's instances before reading failed task logs",
       },
       list_task_instances: {
         totalList: [
-          { taskInstanceId: "t-1", taskCode: "task-1", name: "dwd_orders", state: "FAILURE", endTime: "2026-08-14 08:09:59" },
+          { taskInstanceId: "t-wrong", workflowInstanceId: "i-other", taskCode: "wrong-task", name: "unrelated_failure", state: "FAILURE", endTime: "2026-08-14 09:09:59" },
+          { taskInstanceId: "t-1", workflowInstanceId: "i-1", taskCode: "task-1", name: "dwd_orders", state: "FAILURE", endTime: "2026-08-14 08:09:59" },
         ],
       },
       get_task_log: {
@@ -153,10 +154,6 @@ test("DS failure log queries today's instances before reading failed task logs",
     assert.equal(
       result.countries[0].failures[0].dsInstanceUrl,
       "https://dolphin.kuainiujinke.com/dolphinscheduler/ui/projects/1001/workflow/instances/i-1",
-    );
-    assert.equal(
-      result.countries[0].failures[0].dsTaskUrl,
-      "https://dolphin.kuainiujinke.com/dolphinscheduler/ui/projects/1001/task/instances?workflowInstanceId=i-1&taskName=dwd_orders&taskCode=task-1",
     );
   } finally {
     globalThis.fetch = originalFetch;
