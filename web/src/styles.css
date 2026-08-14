@@ -22,7 +22,7 @@
 .ds-failure-filter-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: 180px minmax(260px, 1fr);
+  grid-template-columns: 180px 180px minmax(260px, 1fr);
 }
 
 .ds-failure-filter-grid label {
@@ -30,48 +30,6 @@
   display: grid;
   font-size: 13px;
   gap: 6px;
-}
-
-.ds-failure-country-picker {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(6, minmax(110px, 1fr));
-  margin: 16px 0 14px;
-}
-
-.ds-country-choice {
-  align-items: center;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  font-size: 13px;
-  gap: 8px;
-  justify-content: center;
-  min-height: 42px;
-  padding: 8px 10px;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
-}
-
-.ds-country-choice input {
-  accent-color: #16a34a;
-  height: 16px;
-  margin: 0;
-  width: 16px;
-}
-
-.ds-country-choice.selected {
-  background: #ecfdf3;
-  border-color: #86efac;
-  color: #166534;
-  font-weight: 600;
-}
-
-.ds-country-choice:has(input:disabled) {
-  cursor: wait;
-  opacity: 0.72;
 }
 
 .ds-failure-legend {
@@ -205,10 +163,6 @@
 }
 
 @media (max-width: 900px) {
-  .ds-failure-country-picker {
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
-  }
-
   .ds-failure-filter-grid {
     grid-template-columns: 1fr;
   }
