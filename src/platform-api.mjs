@@ -2560,8 +2560,8 @@ export function createPlatformApi({
       return checkAllCountries(rootDir, config);
     },
 
-    async getDsFailureLogs(filters = {}) {
-      return inspectDsFailureLogs(rootDir, { date: String(filters.date || "").trim() });
+    async getDsFailureLogs() {
+      return inspectDsFailureLogs(rootDir);
     },
 
     async getDsNotificationConfig() {
