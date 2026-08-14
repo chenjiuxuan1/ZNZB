@@ -679,16 +679,15 @@ test("fluctuation visual renders AI conclusion for problem verdicts", () => {
     },
   });
 
-  assert.match(html, /AI 巡检过程与通知/);
+  assert.match(html, /最终判定：有数据侧异常/);
+  assert.match(html, /AI 数据侧分析/);
   assert.match(html, /有数据侧异常/);
   assert.match(html, /底表分区缺失导致指标异常升高/);
-  assert.match(html, /巡检状态：AI 已核验数据侧异常/);
   assert.match(html, /ODS 分区延迟/);
   assert.match(html, /查询底表分区/);
   assert.match(html, /通知数仓补数/);
-  assert.match(html, /限制说明/);
-  assert.match(html, /通知建议：播报/);
-  assert.match(html, /最终通知：播报/);
+  assert.match(html, /数据侧判定：data_issue；通知建议：send/);
+  assert.match(html, /置信度：high；限制：仅基于巡检保存数据/);
 });
 
 test("fluctuation visual reads AI conclusion from saved history audit", () => {
@@ -716,15 +715,34 @@ test("fluctuation visual reads AI conclusion from saved history audit", () => {
         },
       }],
     }],
-  }, [], { today: "2026-07-28", displayIndex: {} });
+  }, [], {
+    today: "2026-07-28",
+    displayIndex: {
+      "history-ai-run:CN:0": {
+        runId: "history-ai-run",
+        countryCode: "CN",
+        anomalyIndex: 0,
+        status: "completed",
+        analysis: {
+          summary: "full persisted analysis",
+          dataSideVerdict: "data_issue",
+          notificationAction: "send",
+          possibleCauses: ["partition delayed"],
+          verificationSteps: ["verify partition"],
+          recommendedActions: ["backfill data"],
+        },
+      },
+    },
+  });
 
   const anomaly = model.countries[0].anomalies[0];
-  assert.equal(anomaly.aiAnalysis.summary, "AI 已确认渠道转化率存在数据侧异常");
+  assert.equal(anomaly.aiAnalysis.summary, "full persisted analysis");
   assert.equal(anomaly.aiAnalysis.dataSideVerdict, "data_issue");
-  assert.match(fluctuationVisualTest.renderAiProblemConclusion(anomaly), /AI 已确认渠道转化率存在数据侧异常/);
+  assert.match(fluctuationVisualTest.renderAiProblemConclusion(anomaly), /full persisted analysis/);
+  assert.match(fluctuationVisualTest.renderAiProblemConclusion(anomaly), /partition delayed/);
 });
 
-test("fluctuation visual does not render AI conclusion for verified normal verdicts", () => {
+test("fluctuation visual renders the saved detailed AI conclusion for verified normal verdicts", () => {
   const html = fluctuationVisualTest.renderAiProblemConclusion({
     aiAnalysis: {
       summary: "底表查询正常",
@@ -734,7 +752,9 @@ test("fluctuation visual does not render AI conclusion for verified normal verdi
     },
   });
 
-  assert.equal(html, "");
+  assert.match(html, /最终判定：AI 分析后无异常/);
+  assert.match(html, /底表查询正常/);
+  assert.match(html, /数据侧判定：verified_normal；通知建议：enrich_only/);
 });
 
 test("fluctuation visual excludes China empty and zero-style anomalies", () => {

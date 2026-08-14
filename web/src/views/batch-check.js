@@ -298,7 +298,7 @@ export function renderBatchCheck(root) {
   });
 }
 
-function bindMetabaseAnalysisRetryButtons(root) {
+export function bindMetabaseAnalysisRetryButtons(root) {
   root.querySelectorAll("[data-metabase-anomaly-retry]").forEach((button) => {
     if (button.dataset.bound === "true") return;
     button.dataset.bound = "true";
