@@ -12,6 +12,11 @@ test("DS project names accept common separators and remove duplicates", () => {
   );
 });
 
+test("DS configuration uses atomic JSON persistence", async () => {
+  const source = await fs.readFile(new URL("../src/ds-scheduler-monitor.mjs", import.meta.url), "utf8");
+  assert.match(source, /writeJsonFileAtomic\(filePath, fullConfig\)/);
+});
+
 test("DS webhook URL defaults to the local n8n gateway when unset", () => {
   assert.equal(resolveDsWebhookUrl(""), "http://127.0.0.1:5678/webhook/ds-scheduler");
   assert.equal(resolveDsWebhookUrl(undefined), "http://127.0.0.1:5678/webhook/ds-scheduler");

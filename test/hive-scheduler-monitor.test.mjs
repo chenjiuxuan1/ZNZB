@@ -9,6 +9,11 @@ test("HIVE project names accept common separators and remove duplicates", () => 
   assert.deepEqual(parseHiveProjectNames("DW_DM，DW_ADS; DW_DM\nDW_DWD"), ["DW_DM", "DW_ADS", "DW_DWD"]);
 });
 
+test("HIVE configuration uses atomic JSON persistence", async () => {
+  const source = await fs.readFile(new URL("../src/hive-scheduler-monitor.mjs", import.meta.url), "utf8");
+  assert.match(source, /writeJsonFileAtomic\(filePath, config\)/);
+});
+
 test("HIVE config preloads the requested China Indonesia and Thailand project ranges", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "hive-default-projects-"));
   await fs.mkdir(path.join(rootDir, "config"));
