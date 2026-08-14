@@ -249,6 +249,9 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/ds-scheduler/check") {
     return sendJson(response, 200, await api.checkAllDsCountries());
   }
+  if (method === "GET" && url.pathname === "/api/ds-failure-logs") {
+    return sendJson(response, 200, await api.getDsFailureLogs(Object.fromEntries(url.searchParams.entries())));
+  }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/notification") {
     return sendJson(response, 200, await api.getDsNotificationConfig());
   }
