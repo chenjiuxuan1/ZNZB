@@ -1399,6 +1399,8 @@ test("platform api lets a manual dashboard title override a stale ready inventor
   assert.equal(inventory.dashboards.length, 1);
   assert.equal(inventory.dashboards[0].title, "逾期率看板");
   assert.equal(inventory.dashboards[0].sourcePanelTitle, "逾期率看板");
+  assert.equal(inventory.dashboards[0].availability, "pending_discovery");
+  assert.equal(inventory.dashboards[0].executable, false);
 });
 
 test("platform api deletion tombstone hides tracked dashboards after code resets", async () => {
