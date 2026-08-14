@@ -2,6 +2,8 @@ import { fetchCompatible } from "./fetch-compatible.mjs";
 import { loadDsSchedulerConfig } from "./ds-scheduler-monitor.mjs";
 
 const REQUEST_TIMEOUT_MS = 60_000;
+const INSTANCE_PAGE_SIZE = 100;
+const MAX_INSTANCE_PAGES = 50;
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const COUNTRY_TIMEZONES = {
@@ -31,9 +33,10 @@ function stateOf(item = {}) {
 
 function recordList(data) {
   if (Array.isArray(data)) return data;
-  for (const key of ["records", "list", "instances", "task_instances", "taskInstances"]) {
+  for (const key of ["records", "list", "instances", "workflow_instances", "workflowInstances", "totalList", "task_instances", "taskInstances"]) {
     if (Array.isArray(data?.[key])) return data[key];
   }
+  if (data?.data && data.data !== data) return recordList(data.data);
   return [];
 }
 
@@ -64,6 +67,9 @@ function timestamp(value) {
 
 function localDate(value, timeZone) {
   if (!value) return "";
+  const text = String(value).trim();
+  const localTimestamp = text.match(/^(\d{4}-\d{2}-\d{2})[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/);
+  if (localTimestamp) return localTimestamp[1];
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return dateKey(date, timeZone);
@@ -255,20 +261,72 @@ export function normalizeGatewayFailures(data = {}, { projectName = "", projectC
   }).sort((a, b) => timestamp(b.startTime) - timestamp(a.startTime));
 }
 
+function pageTotal(data = {}) {
+  const source = data?.data && typeof data.data === "object" ? data.data : data;
+  for (const key of ["total", "totalCount", "total_count"]) {
+    const raw = source?.[key];
+    if (raw == null || raw === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
+function totalPages(data = {}) {
+  const source = data?.data && typeof data.data === "object" ? data.data : data;
+  for (const key of ["totalPage", "totalPages", "total_page", "total_pages", "pages"]) {
+    const raw = source?.[key];
+    if (raw == null || raw === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
+async function listProjectInstances({ webhookUrl, country, token, projectCode, targetDate, timeZone }) {
+  const instances = [];
+  const seen = new Set();
+  for (let pageNo = 1; pageNo <= MAX_INSTANCE_PAGES; pageNo += 1) {
+    const data = await postAction(webhookUrl, country, token, "list_instances", {
+      project_code: projectCode,
+      state_type: "",
+      search_val: "",
+      page_no: pageNo,
+      page_size: INSTANCE_PAGE_SIZE,
+      start_time: `${targetDate} 00:00:00`,
+      end_time: `${targetDate} 23:59:59`,
+      timezone_id: timeZone,
+    });
+    const records = recordList(data);
+    for (const item of records) {
+      const key = instanceId(item) || `${workflowCode(item)}:${instanceTime(item)}:${stateOf(item)}`;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      instances.push(item);
+    }
+    const count = pageTotal(data);
+    const pages = totalPages(data);
+    if (!records.length || (count != null && instances.length >= count) || (pages != null && pageNo >= pages) || records.length < INSTANCE_PAGE_SIZE) break;
+  }
+  return instances.filter((item) => {
+    const start = instanceTime(item);
+    return Boolean(start) && localDate(start, timeZone) === targetDate;
+  });
+}
+
 async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone }) {
   try {
-    const data = await postAction(webhookUrl, country, token, "check_failed_instances", {
-      project_code: project.code,
-      page_size: 100,
-      consecutive_failures: 1,
-      stale_policy: "one_full_schedule_cycle",
-      failure_policy: "scheduled_today_final_failure",
-      include_checked_workflows: false,
-      include_failed_workflows: true,
+    const instances = await listProjectInstances({
+      webhookUrl,
+      country,
+      token,
+      projectCode: project.code,
+      targetDate,
+      timeZone,
     });
-    const failures = normalizeGatewayFailures(data, { projectName: project.name, projectCode: project.code, targetDate, timeZone });
+    const failures = classifyWorkflowFailures(instances, { projectName: project.name, projectCode: project.code });
     const enriched = await Promise.all(failures.map((failure) => enrichFailure(failure, { webhookUrl, country, token })));
-    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: Number(data.total_checked || data.totalChecked || recordList(data).length), failures: enriched };
+    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: instances.length, failures: enriched };
   } catch (error) {
     return { projectName: project.name, projectCode: project.code, success: false, error: error.message, checkedInstances: 0, failures: [] };
   }
