@@ -12,6 +12,7 @@ config/public-check-cadence-observations.json
 config/cadence-validation-report.json
 config/batch-check-schedule.json
 config/batch-check-run-history.json
+config/history-url-backups/
 config/metabase-anomaly-analyses.json
 config/metabase.auth.json
 config/runtime-discovered-panels*.json
