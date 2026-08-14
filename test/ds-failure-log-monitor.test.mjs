@@ -150,7 +150,10 @@ test("DS failure log queries today's instances before reading failed task logs",
     assert.equal(result.countries[0].failures[0].failureMessage, "Table 'dw.dwd_orders' does not exist");
     assert.equal(result.countries[0].failures[0].taskType, "SQL");
     assert.equal(result.countries[0].failures[0].taskScript, "select * from dw.dwd_orders");
-    assert.match(result.countries[0].failures[0].dsInstanceUrl, /\/projects\/1001\/workflow\/instances\/i-1$/);
+    assert.equal(
+      result.countries[0].failures[0].dsInstanceUrl,
+      "https://dolphin.kuainiujinke.com/dolphinscheduler/ui/projects/1001/workflow/instances/i-1",
+    );
   } finally {
     globalThis.fetch = originalFetch;
     await fs.rm(rootDir, { recursive: true, force: true });
