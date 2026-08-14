@@ -1623,6 +1623,7 @@ export function createPlatformApi({
         title,
         type: "manual_metabase",
         manual: true,
+        pendingDiscovery: true,
         links: [{ url }],
       };
       const pendingDashboard = panelSourceToDashboard({
@@ -1779,6 +1780,19 @@ export function createPlatformApi({
       const outputFile = runtimeCountryInventoryFilePath(rootDir, countryCode);
       const discoveredAt = new Date().toISOString();
       await writeJsonAtomic(outputFile, { ...merged, discoveredAt });
+      const runtimeSourcePath = runtimePanelSourceFilePath(rootDir, countryCode);
+      const runtimeSource = await readJsonFile(runtimeSourcePath, {});
+      const runtimePanels = Array.isArray(runtimeSource.panels) ? runtimeSource.panels : [];
+      const pendingPanelIndex = runtimePanels.findIndex((item) => String(item.id) === panelId);
+      if (pendingPanelIndex >= 0 && runtimePanels[pendingPanelIndex].pendingDiscovery === true) {
+        await writeJsonAtomic(runtimeSourcePath, {
+          ...runtimeSource,
+          panels: runtimePanels.map((item, index) => index === pendingPanelIndex ? {
+            ...item,
+            pendingDiscovery: false,
+          } : item),
+        });
+      }
       return {
         ok: true,
         countryCode,
@@ -5279,6 +5293,11 @@ function mergeDashboardSources(inventory, panelSources = []) {
         const matchedDashboard = dashboards[match];
         const sameSourcePanel = String(matchedDashboard.sourcePanelId ?? "") === String(pending.sourcePanelId ?? "");
         const manualOverride = panel.manual === true || panel.type === "manual_metabase";
+        if (manualOverride && panel.pendingDiscovery === true) {
+          dashboards[match] = pending;
+          dashboardIdentities(pending).forEach((identity) => identities.set(identity, match));
+          continue;
+        }
         if (sameSourcePanel && hasConflictingInternalDashboardIds(matchedDashboard, pending)) {
           dashboards[match] = pending;
           dashboardIdentities(pending).forEach((identity) => identities.set(identity, match));
@@ -5535,6 +5554,8 @@ async function loadPanelSources(rootDir, countries, filters = {}) {
         id: panel.id,
         title: panel.title || "-",
         type: panel.type || "",
+        manual: panel.manual === true,
+        pendingDiscovery: panel.pendingDiscovery === true,
         datasource: panel.datasource || "",
         targetCount: Number(panel.targetCount || 0),
         textPreview: panel.textPreview || "",
