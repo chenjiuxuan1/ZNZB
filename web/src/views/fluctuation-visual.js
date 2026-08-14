@@ -1,7 +1,11 @@
 import { apiGet, apiPost, apiPut } from "../api.js";
 import { state } from "../state.js";
 import { escapeHtml } from "../view-utils.js";
-import { parseAnomalyMessage } from "./batch-check.js";
+import {
+  bindMetabaseAnalysisRetryButtons,
+  parseAnomalyMessage,
+  renderMetabaseAnomalyAnalysis,
+} from "./batch-check.js";
 
 const FLUCTUATION_TYPES = new Set([
   "completeDayChange",
@@ -83,6 +87,7 @@ export function renderFluctuationVisual(root) {
     });
   });
   bindFluctuationChartTooltips(root);
+  bindMetabaseAnalysisRetryButtons(root);
 
   // History is intentionally user-triggered: this view must not slow app startup.
   const selectedCountry = getSelectedFluctuationCountry(model.countries || []);
@@ -125,8 +130,8 @@ async function reloadFluctuationHistory(root) {
     if (runId) {
       state.fluctuationVisualRefreshProgress = { stage: "display-index" };
       renderFluctuationVisual(root);
-      const index = await apiGet(`/api/metabase-anomaly-analysis/display-index?runId=${encodeURIComponent(runId)}`);
-      state.fluctuationVisualDisplayIndex = Object.fromEntries((index.items || []).map((item) => [
+      const analyses = await apiGet(`/api/metabase-anomaly-analyses?runId=${encodeURIComponent(runId)}`);
+      state.fluctuationVisualDisplayIndex = Object.fromEntries((analyses.analyses || []).map((item) => [
         `${runId}:${String(item.countryCode || "").toUpperCase()}:${item.anomalyIndex}`,
         item,
       ]));
@@ -163,10 +168,10 @@ async function ensureFluctuationAiDisplayIndex(root, runIdInput = "") {
   }
   state.fluctuationVisualDisplayIndexLoadingRunId = runId;
   try {
-    const index = await apiGet(`/api/metabase-anomaly-analysis/display-index?runId=${encodeURIComponent(runId)}`);
+    const analyses = await apiGet(`/api/metabase-anomaly-analyses?runId=${encodeURIComponent(runId)}`);
     state.fluctuationVisualDisplayIndex = {
       ...(state.fluctuationVisualDisplayIndex || {}),
-      ...Object.fromEntries((index.items || []).map((item) => [
+      ...Object.fromEntries((analyses.analyses || []).map((item) => [
         `${runId}:${String(item.countryCode || "").toUpperCase()}:${item.anomalyIndex}`,
         item,
       ])),
@@ -654,6 +659,7 @@ function buildFluctuationVisualModel(history, countries = [], options = {}) {
       aiSuppressed: isAiSuppressedFluctuationPoint(aiAnalysis),
       aiSuppressedReason: describeAiSuppressedFluctuationPoint(aiAnalysis),
       aiAnalysis,
+      aiAnalysisRecord: displayItem || null,
     };
   });
   const anomalies = showAiSuppressed
@@ -705,9 +711,12 @@ function normalizeFluctuationAiAnalysis(...candidates) {
   const merged = {};
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;
-    for (const [key, value] of Object.entries(candidate)) {
-      if (value === undefined || value === null || value === "") continue;
-      merged[key] = value;
+    for (const source of [candidate, candidate.analysis]) {
+      if (!source || typeof source !== "object") continue;
+      for (const [key, value] of Object.entries(source)) {
+        if (value === undefined || value === null || value === "") continue;
+        merged[key] = value;
+      }
     }
   }
   if (!Object.keys(merged).length) return null;
@@ -758,37 +767,19 @@ function describeActualAnomalyProblem(anomaly = {}) {
 
 function renderAiProblemConclusion(anomaly = {}) {
   const analysis = anomaly.aiAnalysis || {};
-  if (!isAiProblemFluctuationPoint(analysis)) return "";
-  const summary = String(analysis.summary || "").trim();
-  const confidence = String(analysis.confidence || "").trim();
-  const verdict = describeAiProblemVerdict(analysis);
-  const genericFallback = isGenericAiFallbackAnalysis(analysis);
-  const actualProblem = describeActualAnomalyProblem(anomaly);
-  const processItems = [
-    analysis.statusLabel ? `巡检状态：${analysis.statusLabel}` : "",
-    analysis.verificationReason ? `核验说明：${analysis.verificationReason}` : "",
-    analysis.dashboardSummary ? `看板结论：${analysis.dashboardSummary}` : "",
-  ].filter(Boolean);
+  const savedResponse = anomaly.aiAnalysisRecord;
+  if (!savedResponse && !Object.keys(analysis).length) return "";
+  const response = savedResponse || {
+    status: analysis.status || "completed",
+    runId: anomaly.runId,
+    countryCode: anomaly.countryCode,
+    anomalyIndex: anomaly.anomalyIndex,
+    analysis,
+  };
+  const resultId = `metabase-ai-analysis-${encodeURIComponent(`${response.runId || ""}-${response.countryCode || ""}-${response.anomalyIndex ?? ""}`).replace(/%/g, "")}`;
   return `
-    <aside class="fluctuation-ai-conclusion">
-      <div class="fluctuation-ai-conclusion-head">
-        <span>AI 巡检过程与通知</span>
-        <strong>${escapeHtml(verdict)}</strong>
-      </div>
-      ${genericFallback
-        ? `<div class="fluctuation-ai-actual-problem"><span>实际异常</span><p>${escapeHtml(actualProblem || summary || "AI 未能返回该指标的判断，请人工核查。")}</p></div>`
-        : `<p>${escapeHtml(summary || "AI 已判定该波动需要关注，但本次结果未返回摘要。")}</p>`}
-      ${renderAiProcessList("巡检过程", processItems)}
-      ${renderAiProcessList("可能原因", analysis.possibleCauses)}
-      ${renderAiProcessList("核查步骤", analysis.verificationSteps)}
-      ${renderAiProcessList("建议处理", analysis.recommendedActions)}
-      ${analysis.limitations ? `<div class="fluctuation-ai-limitation"><span>限制说明</span><p>${escapeHtml(analysis.limitations)}</p></div>` : ""}
-      <div class="fluctuation-ai-conclusion-meta">
-        ${analysis.status ? `<em>任务状态：${escapeHtml(describeAiTaskStatus(analysis.status))}</em>` : ""}
-        ${confidence ? `<em>置信度：${escapeHtml(confidence)}</em>` : ""}
-        ${analysis.notificationAction ? `<em>通知建议：${escapeHtml(describeNotificationAction(analysis.notificationAction))}</em>` : ""}
-        ${analysis.notifiable === false ? `<em>最终通知：不播报</em>` : `<em>最终通知：${escapeHtml(describeNotificationAction(analysis.notificationAction || "send"))}</em>`}
-      </div>
+    <aside class="fluctuation-ai-conclusion fluctuation-ai-analysis-full">
+      <div id="${escapeHtml(resultId)}">${renderMetabaseAnomalyAnalysis(response)}</div>
     </aside>
   `;
 }
