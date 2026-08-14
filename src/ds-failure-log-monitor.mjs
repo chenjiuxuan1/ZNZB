@@ -214,7 +214,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
   }
 }
 
-export async function inspectDsFailureLogs(rootDir, { date = "", now = new Date() } = {}) {
+export async function inspectDsFailureLogs(rootDir, { now = new Date() } = {}) {
   const config = await loadDsSchedulerConfig(rootDir);
   const countries = [];
   for (const country of COUNTRY_ORDER) {
@@ -223,7 +223,7 @@ export async function inspectDsFailureLogs(rootDir, { date = "", now = new Date(
     const token = String(countryConfig.token || "").trim();
     const projects = projectTargets(config, country);
     const timeZone = COUNTRY_TIMEZONES[country];
-    const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayInTimeZone(timeZone, now);
+    const targetDate = todayInTimeZone(timeZone, now);
     if (!token || !projects.length) {
       countries.push({
         country,
@@ -263,7 +263,7 @@ export async function inspectDsFailureLogs(rootDir, { date = "", now = new Date(
   const failures = countries.flatMap((item) => item.failures || []);
   return {
     checkedAt: new Date().toISOString(),
-    date: date || null,
+    dateMode: "country-local-today",
     totalCountries: COUNTRY_ORDER.length,
     configuredCountries: countries.filter((item) => item.configured).length,
     checkedProjects: countries.reduce((sum, item) => sum + item.checkedProjects, 0),
