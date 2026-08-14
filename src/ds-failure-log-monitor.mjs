@@ -289,7 +289,7 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
   for (let pageNo = 1; pageNo <= MAX_INSTANCE_PAGES; pageNo += 1) {
     const data = await postAction(webhookUrl, country, token, "list_instances", {
       project_code: projectCode,
-      state_type: "",
+      state_type: "FAILURE",
       search_val: "",
       page_no: pageNo,
       page_size: INSTANCE_PAGE_SIZE,
@@ -298,6 +298,10 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
       timezone_id: timeZone,
     });
     const records = recordList(data);
+    const reachedOlderRecords = records.some((item) => {
+      const start = instanceTime(item);
+      return Boolean(start) && localDate(start, timeZone) < targetDate;
+    });
     for (const item of records) {
       const key = instanceId(item) || `${workflowCode(item)}:${instanceTime(item)}:${stateOf(item)}`;
       if (!key || seen.has(key)) continue;
@@ -306,7 +310,7 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
     }
     const count = pageTotal(data);
     const pages = totalPages(data);
-    if (!records.length || (count != null && instances.length >= count) || (pages != null && pageNo >= pages) || records.length < INSTANCE_PAGE_SIZE) break;
+    if (!records.length || reachedOlderRecords || (count != null && instances.length >= count) || (pages != null && pageNo >= pages) || records.length < INSTANCE_PAGE_SIZE) break;
   }
   return instances.filter((item) => {
     const start = instanceTime(item);

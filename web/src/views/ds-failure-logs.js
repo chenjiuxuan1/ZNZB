@@ -25,7 +25,7 @@ let model = {
   completed: 0,
   total: 0,
   runId: 0,
-  selectedCountries: new Set(COUNTRY_OPTIONS.map((item) => item.code)),
+  country: "",
 };
 
 export function renderDsFailureLogs(root) {
@@ -34,12 +34,7 @@ export function renderDsFailureLogs(root) {
 
 async function load(root) {
   if (model.loading) return;
-  const selected = COUNTRY_OPTIONS.filter((item) => model.selectedCountries.has(item.code));
-  if (!selected.length) {
-    model.error = "请至少勾选一个需要观察的国家";
-    paint(root);
-    return;
-  }
+  const selected = COUNTRY_OPTIONS.filter((item) => !model.country || item.code === model.country);
 
   const runId = ++model.runId;
   model.loading = true;
@@ -52,10 +47,10 @@ async function load(root) {
   await Promise.all(selected.map(async (option) => {
     let country;
     try {
-      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}`);
+      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}`, { timeoutMs: 55_000 });
       country = response.countries?.[0] || failedCountry(option, "接口未返回该国家的检查结果");
     } catch (error) {
-      country = failedCountry(option, error.message);
+      country = failedCountry(option, readableQueryError(error));
     }
     if (runId !== model.runId) return;
     const countries = (model.result?.countries || []).map((item) => item.country === option.code ? country : item);
@@ -67,6 +62,13 @@ async function load(root) {
   if (runId !== model.runId) return;
   model.loading = false;
   if (isCurrentView()) paint(root);
+}
+
+function readableQueryError(error) {
+  const message = String(error?.message || "查询失败");
+  if (/failed to fetch/i.test(message)) return "平台未收到服务器响应，可能是查询超时、服务重启或 DS 网关连接中断";
+  if (/timeout|timed out|abort/i.test(message)) return "查询超过 55 秒，DS 网关或目标国家响应过慢";
+  return message;
 }
 
 function queryingCountry(option) {
@@ -124,15 +126,15 @@ function isCurrentView() {
 
 function paint(root) {
   const result = model.result
-    ? aggregateResult(model.result.countries.filter((item) => model.selectedCountries.has(item.country)))
+    ? aggregateResult(model.result.countries.filter((item) => !model.country || item.country === model.country))
     : {};
   const hasResult = Boolean(model.result);
-  const selectedCount = model.selectedCountries.size;
+  const selectedCount = model.country ? 1 : COUNTRY_OPTIONS.length;
   root.innerHTML = `
     <div class="page-header batch-hero ds-failure-hero">
       <div>
         <h1 class="page-title">DS 失败任务日志</h1>
-        <p class="page-note">按勾选国家并行查询当天失败实例；任意国家查询完成后立即显示，不必等待其他国家。</p>
+        <p class="page-note">按国家查询当天失败实例；选择全部国家时，各国并行查询并在完成后立即显示。</p>
       </div>
       <div class="hero-stats">
         ${stat("查询进度", model.loading ? `${model.completed} / ${model.total}` : hasResult ? `${result.totalCountries || 0} / ${selectedCount}` : "—")}
@@ -144,37 +146,30 @@ function paint(root) {
     ${model.error ? `<div class="sandbox-status error"><strong>无法查询</strong><span>${escapeHtml(model.error)}</span></div>` : ""}
     <section class="panel ds-failure-toolbar">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">当天失败任务</h2><p class="muted">勾选需要观察的国家后点击查询。每个国家独立返回，查询中的国家不会阻塞已完成国家的结果。</p></div>
-        <button class="primary" id="ds-failure-query" ${model.loading || !selectedCount ? "disabled" : ""}>${model.loading ? `正在查询 ${model.completed}/${model.total}` : hasResult ? "重新查询所选国家" : "查询所选国家"}</button>
-      </div>
-      <div class="ds-failure-country-picker" role="group" aria-label="选择观察国家">
-        ${COUNTRY_OPTIONS.map((item) => `<label class="ds-country-choice ${model.selectedCountries.has(item.code) ? "selected" : ""}"><input type="checkbox" value="${item.code}" ${model.selectedCountries.has(item.code) ? "checked" : ""} ${model.loading ? "disabled" : ""}><span>${item.flag} ${item.name}</span></label>`).join("")}
+        <div><h2 class="panel-title">当天失败任务</h2><p class="muted">选择需要观察的国家后点击查询。每个国家独立返回，查询中的国家不会阻塞已完成国家的结果。</p></div>
+        <button class="primary" id="ds-failure-query" ${model.loading ? "disabled" : ""}>${model.loading ? `正在查询 ${model.completed}/${model.total}` : hasResult ? "重新查询" : "查询"}</button>
       </div>
       <div class="ds-failure-filter-grid">
+        <label>国家<select id="ds-failure-country" ${model.loading ? "disabled" : ""}><option value="">全部国家</option>${COUNTRY_OPTIONS.map((item) => `<option value="${item.code}" ${model.country === item.code ? "selected" : ""}>${item.flag} ${item.name}</option>`).join("")}</select></label>
         <label>修复状态<select id="ds-failure-status"><option value="">全部状态</option>${Object.entries(STATUS_LABELS).map(([value, item]) => `<option value="${value}" ${model.status === value ? "selected" : ""}>${item.label}</option>`).join("")}</select></label>
         <label>搜索项目或任务<input id="ds-failure-keyword" value="${escapeHtml(model.keyword)}" placeholder="项目、工作流、失败任务或原因"></label>
       </div>
       <div class="ds-failure-legend"><span class="badge ok">已自动修复</span><span>最新失败实例后出现成功实例</span><span class="badge warn">修复中</span><span>最新失败实例后出现运行中实例</span><span class="badge danger">待修复</span><span>最新失败实例后没有成功或运行中实例</span></div>
     </section>
     <section class="ds-failure-country-list">
-      ${hasResult ? renderCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">选择需要观察的国家，然后点击“查询所选国家”。</p></section>`}
+      ${hasResult ? renderCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">选择需要观察的国家，然后点击“查询”。</p></section>`}
     </section>
   `;
 
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
-  root.querySelectorAll(".ds-country-choice input").forEach((input) => input.addEventListener("change", (event) => {
-    if (event.target.checked) model.selectedCountries.add(event.target.value);
-    else model.selectedCountries.delete(event.target.value);
-    model.error = model.selectedCountries.size ? "" : "请至少勾选一个需要观察的国家";
-    paint(root);
-  }));
+  root.querySelector("#ds-failure-country")?.addEventListener("change", (event) => { model.country = event.target.value; paint(root); });
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
 }
 
 function renderCountries(countries) {
-  const visible = countries.filter((country) => model.selectedCountries.has(country.country));
-  if (!visible.length) return `<section class="panel"><p class="muted">所选国家尚未查询，请点击“重新查询所选国家”。</p></section>`;
+  const visible = countries.filter((country) => !model.country || model.country === country.country);
+  if (!visible.length) return `<section class="panel"><p class="muted">所选国家尚未查询，请点击“重新查询”。</p></section>`;
   return visible.map((country) => renderCountry(country)).join("");
 }
 
