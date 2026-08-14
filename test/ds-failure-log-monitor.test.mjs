@@ -59,7 +59,7 @@ test("DS failure reason extracts the concrete final error line", () => {
   assert.equal(reason, "StarRocks query failed: Table 'dw.dwd_orders' does not exist");
 });
 
-test("DS failure log follows the skill instance-task-log chain and keeps recovered failures", async () => {
+test("DS failure log queries only today's failed instances before reading task logs", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-failure-skill-chain-"));
   await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
   await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
@@ -77,10 +77,9 @@ test("DS failure log follows the skill instance-task-log chain and keeps recover
       list_instances: {
         totalList: [
           { workflowDefinitionCode: "wf-1", workflowInstanceName: "daily_orders", workflowInstanceId: "i-1", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-14 08:00:00", workflowEndTime: "2026-08-14 08:10:00" },
-          { workflowDefinitionCode: "wf-1", workflowInstanceName: "daily_orders", workflowInstanceId: "i-2", commandType: "START_FAILURE_TASK_PROCESS", workflowExecutionStatus: "SUCCESS", workflowStartTime: "2026-08-14 08:15:00", workflowEndTime: "2026-08-14 08:20:00" },
           { workflowDefinitionCode: "wf-old", workflowInstanceName: "yesterday_job", workflowInstanceId: "i-old", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-13 23:59:00" },
         ],
-        total: 3,
+        total: 2,
       },
       list_task_instances: {
         totalList: [
@@ -104,12 +103,12 @@ test("DS failure log follows the skill instance-task-log chain and keeps recover
   try {
     const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-14T09:00:00+08:00"), countries: ["cn"] });
     assert.deepEqual(actions.map((item) => item.action), ["list_instances", "list_task_instances", "get_task_log"]);
-    assert.equal(actions[0].payload.state_type, "");
+    assert.equal(actions[0].payload.state_type, "FAILURE");
     assert.equal(actions[0].payload.start_time, "2026-08-14 00:00:00");
     assert.equal(actions[0].payload.end_time, "2026-08-14 23:59:59");
     assert.equal(result.totalFailures, 1);
     assert.equal(result.countries[0].failures[0].instanceId, "i-1");
-    assert.equal(result.countries[0].failures[0].repairStatus, "recovered");
+    assert.equal(result.countries[0].failures[0].repairStatus, "unresolved");
     assert.equal(result.countries[0].failures[0].taskInstanceId, "t-1");
     assert.equal(result.countries[0].failures[0].failureMessage, "Table 'dw.dwd_orders' does not exist");
   } finally {
