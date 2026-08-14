@@ -33,6 +33,7 @@ import {
   checkAllCountries,
   notifyDsSchedulerCheck,
 } from "./ds-scheduler-monitor.mjs";
+import { inspectDsFailureLogs } from "./ds-failure-log-monitor.mjs";
 import {
   loadHiveSchedulerConfig,
   saveHiveSchedulerConfig,
@@ -2557,6 +2558,10 @@ export function createPlatformApi({
     async checkAllDsCountries() {
       const config = await this.getDsSchedulerConfig();
       return checkAllCountries(rootDir, config);
+    },
+
+    async getDsFailureLogs(filters = {}) {
+      return inspectDsFailureLogs(rootDir, { date: String(filters.date || "").trim() });
     },
 
     async getDsNotificationConfig() {
