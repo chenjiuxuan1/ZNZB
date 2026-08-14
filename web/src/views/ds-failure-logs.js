@@ -220,8 +220,7 @@ function renderFailure(item) {
       <div><span class="badge ${status.className}">${status.label}</span><strong>${escapeHtml(item.workflowName || item.workflowCode || "未命名工作流")}</strong></div>
       <div class="ds-failure-item-actions">
         <time>${formatTime(item.startTime)}</time>
-        ${item.dsTaskUrl ? `<a class="ds-instance-link" href="${escapeHtml(item.dsTaskUrl)}" target="_blank" rel="noopener noreferrer">定位失败任务 ↗</a>` : ""}
-        ${item.dsInstanceUrl ? `<a class="ds-instance-link secondary" href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">工作流实例 ↗</a>` : ""}
+        ${item.dsInstanceUrl ? `<a class="ds-instance-link" href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">工作流实例 ↗</a>` : ""}
       </div>
     </div>
     <div class="ds-failure-levels">
