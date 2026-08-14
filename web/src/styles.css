@@ -135,6 +135,52 @@
   font-size: 12px;
 }
 
+.ds-failure-item-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.ds-instance-link {
+  background: var(--accent-soft);
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 9px;
+  text-decoration: none;
+}
+
+.ds-failure-levels {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ds-failure-levels > div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+}
+
+.ds-failure-levels span,
+.ds-failure-levels small,
+.ds-failure-sql-missing span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ds-failure-levels strong {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ds-failure-reason {
   display: grid;
   gap: 6px;
@@ -162,6 +208,44 @@
   word-break: break-word;
 }
 
+.ds-failure-sql {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ds-failure-sql summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 9px 12px;
+}
+
+.ds-failure-sql pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ds-failure-sql-missing {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 9px 12px;
+}
+
 @media (max-width: 900px) {
   .ds-failure-filter-grid {
     grid-template-columns: 1fr;
@@ -170,6 +254,10 @@
   .ds-failure-item-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .ds-failure-levels {
+    grid-template-columns: 1fr;
   }
 }
 

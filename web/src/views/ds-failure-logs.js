@@ -213,18 +213,25 @@ function filteredFailures(failures) {
 
 function renderFailure(item) {
   const status = STATUS_LABELS[item.repairStatus] || STATUS_LABELS.unresolved;
+  const taskLabel = item.taskName || item.taskCode || "未定位到失败任务";
+  const scriptLabel = item.taskType === "SQL" ? "出错 SQL" : "任务执行脚本";
   return `<article class="ds-failure-item ${escapeHtml(item.repairStatus || "unresolved")}">
     <div class="ds-failure-item-head">
-      <div><span class="badge ${status.className}">${status.label}</span><strong>${escapeHtml(item.projectName || item.projectCode || "未命名项目")} / ${escapeHtml(item.workflowName || item.workflowCode || "未命名工作流")}</strong></div>
-      <time>${formatTime(item.startTime)}</time>
+      <div><span class="badge ${status.className}">${status.label}</span><strong>${escapeHtml(item.workflowName || item.workflowCode || "未命名工作流")}</strong></div>
+      <div class="ds-failure-item-actions"><time>${formatTime(item.startTime)}</time>${item.dsInstanceUrl ? `<a class="ds-instance-link" href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">打开 DS 实例 ↗</a>` : ""}</div>
+    </div>
+    <div class="ds-failure-levels">
+      <div><span>失败项目</span><strong>${escapeHtml(item.projectName || item.projectCode || "未命名项目")}</strong><small>${escapeHtml(item.projectCode || "-")}</small></div>
+      <div><span>失败工作流</span><strong>${escapeHtml(item.workflowName || item.workflowCode || "未命名工作流")}</strong><small>${escapeHtml(item.workflowCode || "-")}</small></div>
+      <div><span>失败任务</span><strong>${escapeHtml(taskLabel)}</strong><small>${escapeHtml([item.taskType, item.taskCode].filter(Boolean).join(" · ") || "任务信息未返回")}</small></div>
     </div>
     <div class="ds-failure-meta">
       <span>失败实例：${escapeHtml(item.instanceId || "-")}</span>
       <span>失败状态：${escapeHtml(item.instanceState || "FAILURE")}</span>
       <span>当天失败次数：${item.failureCount || 1}</span>
-      ${item.taskName ? `<span>失败任务：${escapeHtml(item.taskName)}</span>` : ""}
     </div>
     <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(item.failureMessage || "任务日志未返回明确失败原因")}</pre></div>
+    ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
     ${item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${item.repairStatus === "recovered" ? "修复结果" : "修复进度"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
