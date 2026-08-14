@@ -154,6 +154,10 @@ test("DS failure log queries today's instances before reading failed task logs",
       result.countries[0].failures[0].dsInstanceUrl,
       "https://dolphin.kuainiujinke.com/dolphinscheduler/ui/projects/1001/workflow/instances/i-1",
     );
+    assert.equal(
+      result.countries[0].failures[0].dsTaskUrl,
+      "https://dolphin.kuainiujinke.com/dolphinscheduler/ui/projects/1001/task/instances?workflowInstanceId=i-1&taskName=dwd_orders&taskCode=task-1",
+    );
   } finally {
     globalThis.fetch = originalFetch;
     await fs.rm(rootDir, { recursive: true, force: true });

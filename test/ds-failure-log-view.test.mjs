@@ -13,7 +13,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /修复中/);
   assert.match(source, /待修复/);
   assert.match(source, /失败原因/);
-  assert.match(source, /打开 DS 实例/);
+  assert.match(source, /定位失败任务/);
+  assert.match(source, /工作流实例/);
   assert.match(source, /失败项目/);
   assert.match(source, /失败工作流/);
   assert.match(source, /失败任务/);
