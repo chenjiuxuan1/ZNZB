@@ -7,6 +7,7 @@ import {
   createPlatformApi,
   buildAnchoredHistoryWindow,
   flattenInventory,
+  updateJsonAtomic,
 } from "../src/platform-api.mjs";
 import { getMetabaseAnomalyAgentSettings } from "../src/metabase-anomaly-agent.mjs";
 import { MAX_ANOMALIES_PER_DIFY_BATCH } from "../src/metabase-anomaly-batch.mjs";
@@ -102,6 +103,20 @@ test("flattenInventory returns dashboard and card counts", () => {
 
   assert.equal(flat.dashboardCount, 2);
   assert.equal(flat.cardCount, 2);
+});
+
+test("platform JSON updater serializes concurrent read-modify-write operations", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "platform-json-update-"));
+  const filePath = path.join(rootDir, "state.json");
+
+  await Promise.all(Array.from({ length: 50 }, (_, index) => updateJsonAtomic(
+    filePath,
+    { items: [] },
+    (current) => ({ items: [...current.items, index] }),
+  )));
+
+  const saved = JSON.parse(await fs.readFile(filePath, "utf8"));
+  assert.deepEqual(saved.items.sort((left, right) => left - right), Array.from({ length: 50 }, (_, index) => index));
 });
 
 test("platform api returns summary and inventory", async () => {
@@ -370,6 +385,7 @@ test("platform api hydrates hourly fluctuation series with dashboard timezone", 
   });
 
   const result = await api.getFluctuationVisualSeries({
+    now: "2026-07-31T08:00:00.000Z",
     anomaly: {
       countryCode: "PK",
       dashboardUuid: "dash-pk-hourly",
@@ -1417,11 +1433,12 @@ test("platform api scans a physical dashboard only once when saved and fresh URL
       dashboards: [{
         countryCode: "INE",
         countryName: "印尼",
-        access: "public",
+        access: "internal",
         title: "OKR",
         sourcePanelTitle: "OKR",
-        uuid: "public-okr",
-        url: "https://data.example/public/dashboard/shared-okr",
+        dashboardId: "999",
+        uuid: "internal-999",
+        url: "https://data.example/dashboard/999",
         cards: [{ title: "规模", cardId: 1, dashcardId: 2, parameterMappings: [] }],
       }],
     }),
@@ -1474,10 +1491,11 @@ test("platform api lets country inventory override stale ready inventory", async
         {
           countryCode: "INE",
           countryName: "印尼",
-          access: "public",
+          access: "internal",
           title: "OKR",
+          dashboardId: "121",
           uuid: "dash-ine",
-          url: "https://data.kuainiu.io/public/dashboard/dash-ine",
+          url: "https://data.kuainiu.io/dashboard/121",
           cards: [{ title: "规模", cardId: 3, dashcardId: 4 }],
         },
       ],
@@ -1539,8 +1557,134 @@ test("platform api lets country inventory override stale ready inventory", async
   );
 });
 
-test("platform api keeps country inventory dashboards matched by source panel id", async () => {
+test("platform api never patrols public dashboards", async () => {
   const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          access: "public",
+          title: "OKR",
+          uuid: "public-okr",
+          url: "https://data.example/public/dashboard/public-okr",
+          cards: [{ title: "规模", cardId: 1, dashcardId: 2, parameterMappings: [] }],
+        },
+        {
+          countryCode: "INE",
+          countryName: "印尼",
+          access: "internal",
+          title: "OKR",
+          dashboardId: "121",
+          uuid: "internal-121",
+          url: "https://data.example/dashboard/121",
+          cards: [{ title: "规模", cardId: 3, dashcardId: 4, parameterMappings: [] }],
+        },
+      ],
+    }),
+  );
+
+  const queried = [];
+  const api = createPlatformApi({
+    rootDir,
+    discoverDashboardsFn: null,
+    metabaseClientFactory: (dashboard) => ({
+      async queryDashcardJson() {
+        queried.push(dashboard.uuid);
+        return [{ "统计日期": "2026-07-06", "注册数": 10 }];
+      },
+    }),
+  });
+
+  const inventory = await api.getInventory();
+  const result = await api.runBatchCheck({ countryCode: "INE" });
+
+  // The public entry is dropped before the patrol, so it is never queried and
+  // never contributes a 404 anomaly.
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal-121"]);
+  assert.deepEqual(queried, ["internal-121"]);
+  assert.equal(result.dashboardCount, 1);
+});
+
+test("platform api excludes stale public runtime inventory after panel source switches to internal URL", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({ dashboardCount: 0, dashboards: [] }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾" },
+      dashboards: [{
+        countryCode: "PH",
+        countryName: "菲律宾",
+        access: "internal",
+        sourcePanelId: 8,
+        sourcePanelTitle: "核心指标概览",
+        title: "核心指标概览",
+        dashboardId: 1056,
+        uuid: "internal:1056",
+        url: "https://data.kuainiu.io/dashboard/1056",
+        sourceUrl: "https://data.kuainiu.io/dashboard/1056",
+        cards: [{ title: "未还占比", cardId: 10, dashcardId: 20 }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/runtime-discovered-public-dashboards.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾" },
+      dashboards: [{
+        countryCode: "PH",
+        countryName: "菲律宾",
+        access: "public",
+        sourcePanelId: 8,
+        sourcePanelTitle: "旧公开核心指标概览",
+        title: "旧公开核心指标概览",
+        uuid: "stale-public-ph-core",
+        url: "https://data.kuainiu.io/public/dashboard/stale-public-ph-core",
+        cards: [{ title: "未还占比", cardId: 11, dashcardId: 21 }],
+      }, {
+        countryCode: "PH",
+        countryName: "菲律宾",
+        access: "public",
+        title: "无来源 ID 的旧公开看板",
+        uuid: "orphaned-stale-public-ph",
+        url: "https://data.kuainiu.io/public/dashboard/orphaned-stale-public-ph",
+        cards: [{ title: "旧卡片", cardId: 12, dashcardId: 22 }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.ph.json"),
+    JSON.stringify({
+      country: { code: "PH", name: "菲律宾" },
+      panels: [{
+        id: 8,
+        title: "核心指标概览",
+        links: [{ url: "https://data.kuainiu.io/dashboard/1056" }],
+      }],
+    }),
+  );
+
+  const api = createPlatformApi({ rootDir });
+  const inventory = await api.getInventory({ countryCode: "PH" });
+
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal:1056"]);
+  assert.equal(inventory.dashboards[0].access, "internal");
+});
+
+test("platform api rejects stale internal inventory when a source panel points to another dashboard id", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/countries.config.json"),
+    JSON.stringify({
+      countries: [{ code: "MX", name: "墨西哥", timezone: "America/Mexico_City", status: "ready" }],
+    }),
+  );
   await fs.writeFile(
     path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
     JSON.stringify({ dashboardCount: 0, dashboards: [] }),
@@ -1553,12 +1697,13 @@ test("platform api keeps country inventory dashboards matched by source panel id
         {
           countryCode: "MX",
           countryName: "墨西哥",
-          access: "public",
+          access: "internal",
           sourcePanelId: 2,
           sourcePanelTitle: "核心链路准实时监控",
           title: "核心链路准实时监控",
-          uuid: "mx-core",
-          url: "https://data.kuainiu.io/public/dashboard/mx-core",
+          dashboardId: 465,
+          uuid: "internal:465",
+          url: "https://data.kuainiu.io/dashboard/465",
           cards: [{ title: "新客-启动次数", cardId: 1, dashcardId: 2 }],
         },
       ],
@@ -1581,8 +1726,91 @@ test("platform api keeps country inventory dashboards matched by source panel id
   const api = createPlatformApi({ rootDir });
   const inventory = await api.getInventory({ countryCode: "MX" });
 
-  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["mx-core"]);
-  assert.equal(inventory.totalCardCount, 1);
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal:464"]);
+  assert.equal(inventory.dashboards[0].url, "https://data.kuainiu.io/dashboard/464");
+  assert.equal(inventory.dashboards[0].availability, "pending_discovery");
+  assert.equal(inventory.dashboards[0].executable, false);
+  assert.equal(inventory.totalCardCount, 0);
+});
+
+test("platform api does not merge an INE source panel into a stale ready dashboard id", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [{
+        countryCode: "INE",
+        countryName: "印尼",
+        access: "internal",
+        sourcePanelId: 11,
+        sourcePanelTitle: "每小时监控",
+        title: "每小时监控",
+        dashboardId: 1052,
+        uuid: "internal:1052",
+        url: "https://data.kuainiu.io/dashboard/1052",
+        cards: [{ title: "小时指标", cardId: 1, dashcardId: 2 }],
+      }],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({
+      panels: [{
+        id: 11,
+        title: "每小时监控",
+        links: [{ url: "https://data.kuainiu.io/dashboard/1053" }],
+      }],
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.deepEqual(inventory.dashboards.map((dashboard) => dashboard.uuid), ["internal:1053"]);
+  assert.equal(inventory.dashboards[0].url, "https://data.kuainiu.io/dashboard/1053");
+  assert.equal(inventory.dashboards[0].availability, "pending_discovery");
+  assert.equal(inventory.dashboards[0].executable, false);
+  assert.equal(inventory.totalCardCount, 0);
+});
+
+test("platform api keeps same-title internal dashboards with different dashboard ids", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [1052, 1053].map((dashboardId, index) => ({
+        countryCode: "INE",
+        countryName: "印尼",
+        access: "internal",
+        sourcePanelId: 20 + index,
+        sourcePanelTitle: "核心指标概览",
+        title: "核心指标概览",
+        dashboardId,
+        uuid: `internal:${dashboardId}`,
+        url: `https://data.kuainiu.io/dashboard/${dashboardId}`,
+        cards: [{ title: `指标${index + 1}`, cardId: 100 + index, dashcardId: 200 + index }],
+      })),
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-panels.json"),
+    JSON.stringify({
+      panels: [1052, 1053].map((dashboardId, index) => ({
+        id: 20 + index,
+        title: "核心指标概览",
+        links: [{ url: `https://data.kuainiu.io/dashboard/${dashboardId}` }],
+      })),
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.deepEqual(
+    inventory.dashboards.map((dashboard) => String(dashboard.dashboardId)).sort(),
+    ["1052", "1053"],
+  );
+  assert.equal(inventory.totalCardCount, 2);
 });
 
 test("platform api evaluates sandbox rules", async () => {
@@ -1809,6 +2037,132 @@ test("DS scheduler schedule rejects an enabled country without project code", as
   );
 });
 
+test("DS scheduler skips an overlapping due run", async () => {
+  const rootDir = await makeFixture();
+  const dueAt = "2026-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { ine: { name: "印尼", token: "token" } },
+    projectCodes: { ine: "1001" },
+    projects: { ine: [{ name: "数据平台", code: "1001" }] },
+  }));
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler-schedule.json"), JSON.stringify({
+    enabled: true, intervalMinutes: 60, nextRunAt: dueAt,
+    countryConfigs: [{ countryCode: "ine", enabled: true, projectCode: "1001" }],
+  }));
+  const originalFetch = globalThis.fetch;
+  let release;
+  let calls = 0;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = async () => {
+    calls += 1;
+    await blocked;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { checked_workflows: [] } }) };
+  };
+  try {
+    const api = createPlatformApi({ rootDir });
+    const first = api.runDueDsSchedule(new Date("2026-08-13T00:01:00.000Z"));
+    while (calls === 0) await new Promise((resolve) => setImmediate(resolve));
+    const second = await Promise.race([
+      api.runDueDsSchedule(new Date("2026-08-13T00:01:00.000Z")),
+      new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 30)),
+    ]);
+    assert.equal(second.reason, "already running");
+    assert.equal(calls, 1);
+    release();
+    await first;
+  } finally {
+    release?.();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("HIVE scheduler skips an overlapping due run", async () => {
+  const rootDir = await makeFixture();
+  const dueAt = "2026-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/hive",
+    countries: { ine: { name: "印尼", enabled: true, token: "token" } },
+    projects: { ine: [{ name: "ods", code: "1001" }] },
+  }));
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), JSON.stringify({ enabled: true, intervalMinutes: 60, nextRunAt: dueAt }));
+  const originalFetch = globalThis.fetch;
+  let release;
+  let calls = 0;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = async () => {
+    calls += 1;
+    await blocked;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { checked_workflows: [] } }) };
+  };
+  try {
+    const api = createPlatformApi({ rootDir });
+    const first = api.runDueHiveSchedule(new Date("2026-08-13T00:01:00.000Z"));
+    while (calls === 0) await new Promise((resolve) => setImmediate(resolve));
+    const second = await Promise.race([
+      api.runDueHiveSchedule(new Date("2026-08-13T00:01:00.000Z")),
+      new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 30)),
+    ]);
+    assert.equal(second.reason, "already running");
+    assert.equal(calls, 1);
+    release();
+    await first;
+  } finally {
+    release?.();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DS scheduled failure advances the next run and records one history entry", async () => {
+  const rootDir = await makeFixture();
+  const dueAt = "2026-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({ countries: {} }));
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler-schedule.json"), JSON.stringify({
+    enabled: true, intervalMinutes: 60, nextRunAt: dueAt, countryConfigs: [],
+  }));
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(() => api.runDueDsSchedule(new Date("2026-08-13T00:01:00.000Z")), /No DS countries enabled/);
+
+  const schedule = JSON.parse(await fs.readFile(path.join(rootDir, "config/ds-scheduler-schedule.json"), "utf8"));
+  const history = JSON.parse(await fs.readFile(path.join(rootDir, "config/ds-scheduler-history.json"), "utf8"));
+  assert.ok(Date.parse(schedule.nextRunAt) > Date.parse(dueAt));
+  assert.match(schedule.lastError, /No DS countries enabled/);
+  assert.equal(history.runs.length, 1);
+  assert.equal(history.runs[0].ok, false);
+});
+
+test("HIVE scheduled failure advances the next run and records one history entry", async () => {
+  const rootDir = await makeFixture();
+  const dueAt = "2026-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler.config.json"), JSON.stringify({ countries: {} }));
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), JSON.stringify({ enabled: true, intervalMinutes: 60, nextRunAt: dueAt }));
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(() => api.runDueHiveSchedule(new Date("2026-08-13T00:01:00.000Z")), /No HIVE countries enabled/);
+
+  const schedule = JSON.parse(await fs.readFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), "utf8"));
+  const history = JSON.parse(await fs.readFile(path.join(rootDir, "config/hive-scheduler-history.json"), "utf8"));
+  assert.ok(Date.parse(schedule.nextRunAt) > Date.parse(dueAt));
+  assert.match(schedule.lastError, /No HIVE countries enabled/);
+  assert.equal(history.runs.length, 1);
+  assert.equal(history.runs[0].ok, false);
+});
+
+test("HIVE manual failure preserves the automatic next run", async () => {
+  const rootDir = await makeFixture();
+  const futureAt = "2099-08-13T00:00:00.000Z";
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler.config.json"), JSON.stringify({ countries: {} }));
+  await fs.writeFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), JSON.stringify({ enabled: true, intervalMinutes: 60, nextRunAt: futureAt }));
+  const api = createPlatformApi({ rootDir });
+
+  await assert.rejects(() => api.runHiveScheduleNow(), /No HIVE countries enabled/);
+
+  const schedule = JSON.parse(await fs.readFile(path.join(rootDir, "config/hive-scheduler-schedule.json"), "utf8"));
+  assert.equal(schedule.nextRunAt, futureAt);
+  assert.match(schedule.lastError, /No HIVE countries enabled/);
+});
+
 test("DS notification inherits Metabase defaults until an override is saved", async () => {
   const rootDir = await makeFixture();
   await fs.writeFile(
@@ -2023,7 +2377,7 @@ test("platform api explains countries that only have internal source dashboards"
       assert.equal(error.message, "No public dashboard for country");
       assert.match(
         error.errors?.[0] || "",
-        /中国 \/ CN 当前有 1 个来源看板.*尚未发现可巡检的 \/public\/dashboard UUID/,
+        /中国 \/ CN 当前有 1 个来源看板.*尚未发现可巡检的卡片.*METABASE_SESSION/,
       );
       return true;
     },

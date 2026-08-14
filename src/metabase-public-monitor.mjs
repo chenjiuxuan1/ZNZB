@@ -525,30 +525,82 @@ function parameterTargetKey(parameter) {
   return parameter.target ? JSON.stringify(parameter.target) : "";
 }
 
+// A dashcard id is only a card's placement on a dashboard; rebuilding a
+// dashboard regenerates it while the card id (the saved question) survives. Once
+// the stored placement is stale every query 404s, so remap card id -> current
+// dashcard id from the live dashboard. Cached per client+dashboard so a 12-card
+// dashboard costs one extra fetch, not twelve.
+const dashcardRemapCache = new WeakMap();
+
+async function loadDashcardRemap(client, dashboardId) {
+  let byDashboard = dashcardRemapCache.get(client);
+  if (!byDashboard) {
+    byDashboard = new Map();
+    dashcardRemapCache.set(client, byDashboard);
+  }
+  const key = String(dashboardId);
+  if (!byDashboard.has(key)) {
+    byDashboard.set(key, (async () => {
+      const dashboard = await client.getDashboard(dashboardId);
+      const remap = new Map();
+      for (const dashcard of dashboard?.dashcards || []) {
+        if (dashcard?.card_id != null && dashcard?.id != null) {
+          remap.set(String(dashcard.card_id), dashcard.id);
+        }
+      }
+      return remap;
+    })().catch(() => null));
+  }
+  return byDashboard.get(key);
+}
+
+function isStaleDashcardError(error) {
+  return /Metabase internal request failed \(404\b/i.test(String(error?.message || error));
+}
+
 async function queryCard(client, dashboard, card, parameters = []) {
+  const request = {
+    cardId: card.cardId,
+    dashcardId: card.dashcardId,
+    parameters,
+  };
+  if (dashboard.access === "internal") {
+    request.dashboardId = dashboard.dashboardId;
+  } else {
+    request.dashboardUuid = dashboard.uuid;
+  }
+
   try {
-    const request = {
-      cardId: card.cardId,
-      dashcardId: card.dashcardId,
-      parameters,
-    };
-    if (dashboard.access === "internal") {
-      request.dashboardId = dashboard.dashboardId;
-    } else {
-      request.dashboardUuid = dashboard.uuid;
-    }
     const rows = await client.queryDashcardJson(request);
-    return {
-      ok: true,
-      rows: Array.isArray(rows) ? rows : [],
-      error: null,
-    };
+    return { ok: true, rows: Array.isArray(rows) ? rows : [], error: null };
   } catch (error) {
-    return {
-      ok: false,
-      rows: [],
-      error: error.message,
-    };
+    const canRemap = dashboard.access === "internal"
+      && isStaleDashcardError(error)
+      && typeof client.getDashboard === "function";
+    if (!canRemap) {
+      return { ok: false, rows: [], error: error.message };
+    }
+
+    const remap = await loadDashcardRemap(client, dashboard.dashboardId);
+    const dashcardId = remap?.get(String(card.cardId));
+    // No entry means the card itself is gone from the dashboard, not merely
+    // moved; re-discovery is the only fix, so report the original 404.
+    if (dashcardId == null || String(dashcardId) === String(card.dashcardId)) {
+      return { ok: false, rows: [], error: error.message };
+    }
+
+    try {
+      const rows = await client.queryDashcardJson({ ...request, dashcardId });
+      return {
+        ok: true,
+        rows: Array.isArray(rows) ? rows : [],
+        error: null,
+        remappedDashcardId: dashcardId,
+        staleDashcardId: card.dashcardId,
+      };
+    } catch (retryError) {
+      return { ok: false, rows: [], error: retryError.message };
+    }
   }
 }
 
@@ -562,7 +614,11 @@ function summarizeCardResult(dashboard, card, result, context = null, rules = []
     dashboardUrl: dashboard.url,
     cardTitle: card.title,
     cardId: card.cardId ?? null,
-    dashcardId: card.dashcardId ?? null,
+    // Report the dashcard id that actually served the query, keeping the stale
+    // one alongside it so the inventory can be corrected.
+    dashcardId: result.remappedDashcardId ?? card.dashcardId ?? null,
+    staleDashcardId: result.remappedDashcardId ? (result.staleDashcardId ?? null) : null,
+    dashcardRemapped: Boolean(result.remappedDashcardId),
     context,
     rowCount: result.rows.length,
     ok: result.ok,
