@@ -28,8 +28,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(monitor, /const targetDate = todayInTimeZone\(timeZone, now\)/);
   assert.match(monitor, /dateMode: "country-local-today"/);
   assert.match(monitor, /Promise\.all\(projects\.map/);
-  assert.match(monitor, /"check_failed_instances"/);
-  assert.match(monitor, /failure_policy: "scheduled_today_final_failure"/);
+  assert.match(monitor, /"list_instances"/);
+  assert.match(monitor, /"list_task_instances"/);
+  assert.match(monitor, /"get_task_log"/);
+  assert.doesNotMatch(monitor, /failure_policy: "scheduled_today_final_failure"/);
   assert.match(platformApi, /getDsFailureLogs\(filters = \{\}\)/);
   assert.match(platformApi, /countries: country \|\| undefined/);
 });

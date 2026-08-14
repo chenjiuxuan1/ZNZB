@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyWorkflowFailures, extractDsFailureReason, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { classifyWorkflowFailures, extractDsFailureReason, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
 
 test("DS failure log accepts a unique subset of supported countries", () => {
   assert.deepEqual(normalizeCountrySelection("th,cn,th,unknown"), ["cn", "th"]);
@@ -54,4 +57,63 @@ test("DS failure reason extracts the concrete final error line", () => {
     "Caused by: StarRocks query failed: Table 'dw.dwd_orders' does not exist",
   ].join("\n"));
   assert.equal(reason, "StarRocks query failed: Table 'dw.dwd_orders' does not exist");
+});
+
+test("DS failure log follows the skill instance-task-log chain and keeps recovered failures", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-failure-skill-chain-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { cn: { name: "中国", token: "test-token" } },
+    projects: { cn: [{ name: "DW_DM", code: "1001" }] },
+  }));
+
+  const originalFetch = globalThis.fetch;
+  const actions = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    actions.push(request);
+    const responses = {
+      list_instances: {
+        totalList: [
+          { workflowDefinitionCode: "wf-1", workflowInstanceName: "daily_orders", workflowInstanceId: "i-1", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-14 08:00:00", workflowEndTime: "2026-08-14 08:10:00" },
+          { workflowDefinitionCode: "wf-1", workflowInstanceName: "daily_orders", workflowInstanceId: "i-2", commandType: "START_FAILURE_TASK_PROCESS", workflowExecutionStatus: "SUCCESS", workflowStartTime: "2026-08-14 08:15:00", workflowEndTime: "2026-08-14 08:20:00" },
+          { workflowDefinitionCode: "wf-old", workflowInstanceName: "yesterday_job", workflowInstanceId: "i-old", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-13 23:59:00" },
+        ],
+        total: 3,
+      },
+      list_task_instances: {
+        totalList: [
+          { taskInstanceId: "t-1", taskCode: "task-1", name: "dwd_orders", state: "FAILURE", endTime: "2026-08-14 08:09:59" },
+        ],
+      },
+      get_task_log: {
+        task_name: "dwd_orders",
+        task_instance_id: "t-1",
+        state: "FAILURE",
+        log: "INFO begin\nERROR wrapper failed\nCaused by: Table 'dw.dwd_orders' does not exist",
+      },
+    };
+    return {
+      ok: true,
+      status: 200,
+      async text() { return JSON.stringify({ success: true, data: responses[request.action] }); },
+    };
+  };
+
+  try {
+    const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-14T09:00:00+08:00"), countries: ["cn"] });
+    assert.deepEqual(actions.map((item) => item.action), ["list_instances", "list_task_instances", "get_task_log"]);
+    assert.equal(actions[0].payload.state_type, "");
+    assert.equal(actions[0].payload.start_time, "2026-08-14 00:00:00");
+    assert.equal(actions[0].payload.end_time, "2026-08-14 23:59:59");
+    assert.equal(result.totalFailures, 1);
+    assert.equal(result.countries[0].failures[0].instanceId, "i-1");
+    assert.equal(result.countries[0].failures[0].repairStatus, "recovered");
+    assert.equal(result.countries[0].failures[0].taskInstanceId, "t-1");
+    assert.equal(result.countries[0].failures[0].failureMessage, "Table 'dw.dwd_orders' does not exist");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
 });
