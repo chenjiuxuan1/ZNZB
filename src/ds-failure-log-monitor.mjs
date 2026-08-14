@@ -17,6 +17,14 @@ const FAILED_STATES = new Set(["FAILURE", "KILL", "STOP", "STOPPED", "6", "9", "
 const SUCCESS_STATES = new Set(["SUCCESS", "7"]);
 const RUNNING_STATES = new Set(["SUBMITTED_SUCCESS", "RUNNING_EXECUTION", "WAITING_THREAD", "WAITING_DEPEND", "DELAY_EXECUTION", "0", "1", "10", "11", "12"]);
 
+export function normalizeCountrySelection(value) {
+  if (value == null || value === "") return [...COUNTRY_ORDER];
+  const requested = (Array.isArray(value) ? value : String(value).split(","))
+    .map((item) => String(item || "").trim().toLowerCase())
+    .filter(Boolean);
+  return COUNTRY_ORDER.filter((country) => requested.includes(country));
+}
+
 function stateOf(item = {}) {
   return String(item.state ?? item.instance_state ?? item.instanceState ?? item.workflow_execution_status ?? item.workflowExecutionStatus ?? "").trim().toUpperCase();
 }
@@ -161,6 +169,16 @@ export function extractDsFailureReason(log, fallback = "") {
 async function enrichFailure(failure, { webhookUrl, country, token }) {
   if (!failure.instanceId) return { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
   try {
+    if (failure.taskInstanceId) {
+      const logData = await postAction(webhookUrl, country, token, "get_task_log", {
+        project_code: failure.projectCode,
+        task_instance_id: failure.taskInstanceId,
+      });
+      return {
+        ...failure,
+        failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
+      };
+    }
     const tasks = await postAction(webhookUrl, country, token, "list_task_instances", {
       project_code: failure.projectCode,
       instance_id: failure.instanceId,
@@ -197,74 +215,121 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
   }
 }
 
+export function normalizeGatewayFailures(data = {}, { projectName = "", projectCode = "", targetDate = "", timeZone = "UTC" } = {}) {
+  const documented = Array.isArray(data.failed_workflows) ? data.failed_workflows : null;
+  const records = documented || recordList(data);
+  return records.filter((item) => {
+    const scheduleStatus = String(item.schedule_status || item.scheduleStatus || "ONLINE").toUpperCase();
+    const failureReason = String(item.failure_reason || item.failureReason || "").toLowerCase();
+    const commandType = String(item.command_type || item.commandType || "").toUpperCase();
+    const scheduledFailure = documented
+      ? failureReason === "scheduled_instance_failed"
+      : commandType === "SCHEDULER" && FAILED_STATES.has(stateOf(item));
+    const start = instanceTime(item);
+    const isTargetDate = !targetDate || !start || localDate(start, timeZone) === targetDate;
+    return scheduleStatus === "ONLINE" && scheduledFailure && isTargetDate;
+  }).map((item) => {
+    const hasLaterSuccess = item.has_later_success === true || item.hasLaterSuccess === true || String(item.recovery || "").toUpperCase() === "YES";
+    const recoveryState = String(item.recovery_state || item.recoveryState || item.later_instance_state || item.laterInstanceState || "").toUpperCase();
+    const hasLaterRunning = item.has_later_running === true || item.hasLaterRunning === true || RUNNING_STATES.has(recoveryState);
+    return {
+      projectName,
+      projectCode,
+      workflowCode: workflowCode(item),
+      workflowName: workflowName(item),
+      instanceId: instanceId(item),
+      instanceState: stateOf(item) || "FAILURE",
+      startTime: instanceTime(item),
+      endTime: endTime(item),
+      repairStatus: hasLaterSuccess ? "recovered" : hasLaterRunning ? "repairing" : "unresolved",
+      recoveryInstanceId: String(item.recovery_instance_id || item.recoveryInstanceId || item.later_instance_id || item.laterInstanceId || ""),
+      recoveryState: hasLaterSuccess ? recoveryState || "SUCCESS" : recoveryState,
+      recoveryTime: item.recovery_time || item.recoveryTime || item.later_instance_time || item.laterInstanceTime || null,
+      failureMessage: String(item.failure_message || item.failureMessage || item.error_message || item.errorMessage || "").trim(),
+      failureCount: Number(item.failure_count || item.failureCount || item.consecutive_failures || item.consecutiveFailures || 1),
+      taskInstanceId: String(item.task_instance_id || item.taskInstanceId || item.failed_task_instance_id || "").trim(),
+      taskName: String(item.task_name || item.taskName || item.failed_task_name || "").trim(),
+      taskCode: String(item.task_code || item.taskCode || item.failed_task_code || "").trim(),
+      taskState: String(item.task_state || item.taskState || item.failed_task_state || "").trim(),
+    };
+  }).sort((a, b) => timestamp(b.startTime) - timestamp(a.startTime));
+}
+
 async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone }) {
   try {
-    const data = await postAction(webhookUrl, country, token, "list_instances", {
+    const data = await postAction(webhookUrl, country, token, "check_failed_instances", {
       project_code: project.code,
-      page_no: 1,
       page_size: 100,
+      consecutive_failures: 1,
+      stale_policy: "one_full_schedule_cycle",
+      failure_policy: "scheduled_today_final_failure",
+      include_checked_workflows: false,
+      include_failed_workflows: true,
     });
-    const all = recordList(data);
-    const dated = all.filter((item) => localDate(instanceTime(item), timeZone) === targetDate);
-    const failures = classifyWorkflowFailures(dated, { projectName: project.name, projectCode: project.code });
+    const failures = normalizeGatewayFailures(data, { projectName: project.name, projectCode: project.code, targetDate, timeZone });
     const enriched = await Promise.all(failures.map((failure) => enrichFailure(failure, { webhookUrl, country, token })));
-    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: dated.length, failures: enriched };
+    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: Number(data.total_checked || data.totalChecked || recordList(data).length), failures: enriched };
   } catch (error) {
     return { projectName: project.name, projectCode: project.code, success: false, error: error.message, checkedInstances: 0, failures: [] };
   }
 }
 
-export async function inspectDsFailureLogs(rootDir, { now = new Date() } = {}) {
-  const config = await loadDsSchedulerConfig(rootDir);
-  const countries = [];
-  for (const country of COUNTRY_ORDER) {
-    const countryConfig = config.countries?.[country] || {};
-    const countryName = countryConfig.name || COUNTRY_LABELS[country];
-    const token = String(countryConfig.token || "").trim();
-    const projects = projectTargets(config, country);
-    const timeZone = COUNTRY_TIMEZONES[country];
-    const targetDate = todayInTimeZone(timeZone, now);
-    if (!token || !projects.length) {
-      countries.push({
-        country,
-        countryName,
-        timeZone,
-        targetDate,
-        configured: false,
-        success: false,
-        error: !token ? "DS Token 未配置" : "DS 项目尚未匹配",
-        checkedProjects: 0,
-        checkedInstances: 0,
-        failures: [],
-        projects: [],
-      });
-      continue;
-    }
-    const projectResults = [];
-    for (const project of projects) {
-      projectResults.push(await inspectProject({ webhookUrl: config.n8nWebhookUrl, country, token, project, targetDate, timeZone }));
-    }
-    const failures = projectResults.flatMap((item) => item.failures || []);
-    countries.push({
+async function inspectCountry(config, country, now) {
+  const countryConfig = config.countries?.[country] || {};
+  const countryName = countryConfig.name || COUNTRY_LABELS[country];
+  const token = String(countryConfig.token || "").trim();
+  const projects = projectTargets(config, country);
+  const timeZone = COUNTRY_TIMEZONES[country];
+  const targetDate = todayInTimeZone(timeZone, now);
+  if (!token || !projects.length) {
+    return {
       country,
       countryName,
       timeZone,
       targetDate,
-      configured: true,
-      success: projectResults.some((item) => item.success),
-      partialFailure: projectResults.some((item) => !item.success),
-      error: projectResults.filter((item) => !item.success).map((item) => `${item.projectName || item.projectCode}：${item.error}`).join("；") || null,
-      checkedProjects: projectResults.filter((item) => item.success).length,
-      checkedInstances: projectResults.reduce((sum, item) => sum + Number(item.checkedInstances || 0), 0),
-      failures,
-      projects: projectResults,
-    });
+      configured: false,
+      success: false,
+      error: !token ? "DS Token 未配置" : "DS 项目尚未匹配",
+      checkedProjects: 0,
+      checkedInstances: 0,
+      failures: [],
+      projects: [],
+    };
   }
+  const projectResults = await Promise.all(projects.map((project) => inspectProject({
+    webhookUrl: config.n8nWebhookUrl,
+    country,
+    token,
+    project,
+    targetDate,
+    timeZone,
+  })));
+  const failures = projectResults.flatMap((item) => item.failures || []);
+  return {
+    country,
+    countryName,
+    timeZone,
+    targetDate,
+    configured: true,
+    success: projectResults.some((item) => item.success),
+    partialFailure: projectResults.some((item) => !item.success),
+    error: projectResults.filter((item) => !item.success).map((item) => `${item.projectName || item.projectCode}：${item.error}`).join("；") || null,
+    checkedProjects: projectResults.filter((item) => item.success).length,
+    checkedInstances: projectResults.reduce((sum, item) => sum + Number(item.checkedInstances || 0), 0),
+    failures,
+    projects: projectResults,
+  };
+}
+
+export async function inspectDsFailureLogs(rootDir, { now = new Date(), countries: requestedCountries } = {}) {
+  const config = await loadDsSchedulerConfig(rootDir);
+  const selectedCountries = normalizeCountrySelection(requestedCountries);
+  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now)));
   const failures = countries.flatMap((item) => item.failures || []);
   return {
     checkedAt: new Date().toISOString(),
     dateMode: "country-local-today",
-    totalCountries: COUNTRY_ORDER.length,
+    totalCountries: selectedCountries.length,
     configuredCountries: countries.filter((item) => item.configured).length,
     checkedProjects: countries.reduce((sum, item) => sum + item.checkedProjects, 0),
     checkedInstances: countries.reduce((sum, item) => sum + item.checkedInstances, 0),

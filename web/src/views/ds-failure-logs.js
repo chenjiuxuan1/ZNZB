@@ -1,14 +1,32 @@
 import { apiGet } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
-const COUNTRY_FLAGS = { cn: "🇨🇳", ine: "🇮🇩", ph: "🇵🇭", th: "🇹🇭", pk: "🇵🇰", mx: "🇲🇽" };
+const COUNTRY_OPTIONS = [
+  { code: "cn", name: "中国", flag: "🇨🇳" },
+  { code: "ine", name: "印尼", flag: "🇮🇩" },
+  { code: "ph", name: "菲律宾", flag: "🇵🇭" },
+  { code: "th", name: "泰国", flag: "🇹🇭" },
+  { code: "pk", name: "巴基斯坦", flag: "🇵🇰" },
+  { code: "mx", name: "墨西哥", flag: "🇲🇽" },
+];
+const COUNTRY_META = Object.fromEntries(COUNTRY_OPTIONS.map((item) => [item.code, item]));
 const STATUS_LABELS = {
   recovered: { label: "已自动修复", className: "ok" },
   repairing: { label: "修复中", className: "warn" },
   unresolved: { label: "待修复", className: "danger" },
 };
 
-let model = { result: null, loading: false, error: "", country: "", status: "", keyword: "" };
+let model = {
+  result: null,
+  loading: false,
+  error: "",
+  status: "",
+  keyword: "",
+  completed: 0,
+  total: 0,
+  runId: 0,
+  selectedCountries: new Set(COUNTRY_OPTIONS.map((item) => item.code)),
+};
 
 export function renderDsFailureLogs(root) {
   paint(root);
@@ -16,66 +34,157 @@ export function renderDsFailureLogs(root) {
 
 async function load(root) {
   if (model.loading) return;
+  const selected = COUNTRY_OPTIONS.filter((item) => model.selectedCountries.has(item.code));
+  if (!selected.length) {
+    model.error = "请至少勾选一个需要观察的国家";
+    paint(root);
+    return;
+  }
+
+  const runId = ++model.runId;
   model.loading = true;
   model.error = "";
+  model.completed = 0;
+  model.total = selected.length;
+  model.result = aggregateResult(selected.map(queryingCountry));
   paint(root);
-  try {
-    model.result = await apiGet("/api/ds-failure-logs");
-  } catch (error) {
-    model.error = error.message;
-  } finally {
-    model.loading = false;
-  }
-  paint(root);
+
+  await Promise.all(selected.map(async (option) => {
+    let country;
+    try {
+      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}`);
+      country = response.countries?.[0] || failedCountry(option, "接口未返回该国家的检查结果");
+    } catch (error) {
+      country = failedCountry(option, error.message);
+    }
+    if (runId !== model.runId) return;
+    const countries = (model.result?.countries || []).map((item) => item.country === option.code ? country : item);
+    model.completed += 1;
+    model.result = aggregateResult(countries);
+    if (isCurrentView()) paint(root);
+  }));
+
+  if (runId !== model.runId) return;
+  model.loading = false;
+  if (isCurrentView()) paint(root);
+}
+
+function queryingCountry(option) {
+  return {
+    country: option.code,
+    countryName: option.name,
+    querying: true,
+    configured: true,
+    success: false,
+    failures: [],
+    projects: [],
+    checkedProjects: 0,
+    checkedInstances: 0,
+  };
+}
+
+function failedCountry(option, message) {
+  return {
+    country: option.code,
+    countryName: option.name,
+    queryFailed: true,
+    configured: true,
+    success: false,
+    error: message || "查询失败",
+    failures: [],
+    projects: [],
+    checkedProjects: 0,
+    checkedInstances: 0,
+  };
+}
+
+function aggregateResult(countries) {
+  const completedCountries = countries.filter((item) => !item.querying);
+  const failures = completedCountries.flatMap((item) => item.failures || []);
+  return {
+    checkedAt: new Date().toISOString(),
+    dateMode: "country-local-today",
+    totalCountries: countries.length,
+    configuredCountries: completedCountries.filter((item) => item.configured).length,
+    checkedProjects: completedCountries.reduce((sum, item) => sum + Number(item.checkedProjects || 0), 0),
+    checkedInstances: completedCountries.reduce((sum, item) => sum + Number(item.checkedInstances || 0), 0),
+    totalFailures: failures.length,
+    recoveredCount: failures.filter((item) => item.repairStatus === "recovered").length,
+    repairingCount: failures.filter((item) => item.repairStatus === "repairing").length,
+    unresolvedCount: failures.filter((item) => item.repairStatus === "unresolved").length,
+    failedCountries: completedCountries.filter((item) => item.configured && !item.success).length,
+    countries,
+  };
+}
+
+function isCurrentView() {
+  if (typeof window === "undefined") return true;
+  return window.location.hash.replace(/^#/, "").split("?")[0] === "/ds-failure-logs";
 }
 
 function paint(root) {
-  const result = model.result || {};
+  const result = model.result
+    ? aggregateResult(model.result.countries.filter((item) => model.selectedCountries.has(item.country)))
+    : {};
   const hasResult = Boolean(model.result);
+  const selectedCount = model.selectedCountries.size;
   root.innerHTML = `
     <div class="page-header batch-hero ds-failure-hero">
       <div>
         <h1 class="page-title">DS 失败任务日志</h1>
-        <p class="page-note">点击查询后读取六个国家当天的失败实例，判断失败后是否出现成功实例，并展示底层失败任务日志原因。</p>
+        <p class="page-note">按勾选国家并行查询当天失败实例；任意国家查询完成后立即显示，不必等待其他国家。</p>
       </div>
       <div class="hero-stats">
-        ${stat("已接入国家", hasResult ? `${result.configuredCountries || 0} / 6` : "—")}
+        ${stat("查询进度", model.loading ? `${model.completed} / ${model.total}` : hasResult ? `${result.totalCountries || 0} / ${selectedCount}` : "—")}
         ${stat("失败任务", hasResult ? result.totalFailures || 0 : "—")}
         ${stat("已自动修复", hasResult ? result.recoveredCount || 0 : "—")}
         ${stat("修复中 / 待修复", hasResult ? `${result.repairingCount || 0} / ${result.unresolvedCount || 0}` : "—")}
       </div>
     </div>
-    ${model.error ? `<div class="sandbox-status error"><strong>读取失败</strong><span>${escapeHtml(model.error)}</span></div>` : ""}
+    ${model.error ? `<div class="sandbox-status error"><strong>无法查询</strong><span>${escapeHtml(model.error)}</span></div>` : ""}
     <section class="panel ds-failure-toolbar">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">当天失败任务</h2><p class="muted">不会自动查询。点击右侧按钮后，只读取六个国家各自当地当天的数据。</p></div>
-        <button class="primary" id="ds-failure-query" ${model.loading ? "disabled" : ""}>${model.loading ? "正在查询…" : hasResult ? "重新查询当天" : "查询当天失败任务"}</button>
+        <div><h2 class="panel-title">当天失败任务</h2><p class="muted">勾选需要观察的国家后点击查询。每个国家独立返回，查询中的国家不会阻塞已完成国家的结果。</p></div>
+        <button class="primary" id="ds-failure-query" ${model.loading || !selectedCount ? "disabled" : ""}>${model.loading ? `正在查询 ${model.completed}/${model.total}` : hasResult ? "重新查询所选国家" : "查询所选国家"}</button>
+      </div>
+      <div class="ds-failure-country-picker" role="group" aria-label="选择观察国家">
+        ${COUNTRY_OPTIONS.map((item) => `<label class="ds-country-choice ${model.selectedCountries.has(item.code) ? "selected" : ""}"><input type="checkbox" value="${item.code}" ${model.selectedCountries.has(item.code) ? "checked" : ""} ${model.loading ? "disabled" : ""}><span>${item.flag} ${item.name}</span></label>`).join("")}
       </div>
       <div class="ds-failure-filter-grid">
-        <label>国家<select id="ds-failure-country"><option value="">全部国家</option>${(result.countries || []).map((item) => `<option value="${escapeHtml(item.country)}" ${model.country === item.country ? "selected" : ""}>${escapeHtml(item.countryName)}</option>`).join("")}</select></label>
         <label>修复状态<select id="ds-failure-status"><option value="">全部状态</option>${Object.entries(STATUS_LABELS).map(([value, item]) => `<option value="${value}" ${model.status === value ? "selected" : ""}>${item.label}</option>`).join("")}</select></label>
         <label>搜索项目或任务<input id="ds-failure-keyword" value="${escapeHtml(model.keyword)}" placeholder="项目、工作流、失败任务或原因"></label>
       </div>
-      <div class="ds-failure-legend"><span class="badge ok">已自动修复</span><span>失败后已有成功实例</span><span class="badge warn">修复中</span><span>失败后已有新实例正在运行</span><span class="badge danger">待修复</span><span>尚未发现后续成功实例</span></div>
+      <div class="ds-failure-legend"><span class="badge ok">已自动修复</span><span>最新失败实例后出现成功实例</span><span class="badge warn">修复中</span><span>最新失败实例后出现运行中实例</span><span class="badge danger">待修复</span><span>最新失败实例后没有成功或运行中实例</span></div>
     </section>
     <section class="ds-failure-country-list">
-      ${hasResult ? renderCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">点击“查询当天失败任务”后显示六个国家当天的失败任务、自动修复状态和失败原因。</p></section>`}
+      ${hasResult ? renderCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">选择需要观察的国家，然后点击“查询所选国家”。</p></section>`}
     </section>
   `;
 
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
-  root.querySelector("#ds-failure-country")?.addEventListener("change", (event) => { model.country = event.target.value; paint(root); });
+  root.querySelectorAll(".ds-country-choice input").forEach((input) => input.addEventListener("change", (event) => {
+    if (event.target.checked) model.selectedCountries.add(event.target.value);
+    else model.selectedCountries.delete(event.target.value);
+    model.error = model.selectedCountries.size ? "" : "请至少勾选一个需要观察的国家";
+    paint(root);
+  }));
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
 }
 
 function renderCountries(countries) {
-  const visible = countries.filter((country) => !model.country || country.country === model.country);
-  if (!visible.length) return `<section class="panel"><p class="muted">没有符合筛选条件的国家。</p></section>`;
+  const visible = countries.filter((country) => model.selectedCountries.has(country.country));
+  if (!visible.length) return `<section class="panel"><p class="muted">所选国家尚未查询，请点击“重新查询所选国家”。</p></section>`;
   return visible.map((country) => renderCountry(country)).join("");
 }
 
 function renderCountry(country) {
+  const meta = COUNTRY_META[country.country] || {};
+  if (country.querying) {
+    return `<section class="panel ds-failure-country-card ds-failure-querying">
+      <div class="detail-header compact-header"><div><h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)}</h2><p class="muted">正在读取当天实例、失败任务和日志…</p></div><span class="badge warn">查询中</span></div>
+    </section>`;
+  }
   const failures = filteredFailures(country.failures || []);
   const allFailureCount = (country.failures || []).length;
   const configuredBadge = country.configured
@@ -85,14 +194,14 @@ function renderCountry(country) {
   return `<section class="panel ds-failure-country-card">
     <div class="detail-header compact-header">
       <div>
-        <h2 class="panel-title">${COUNTRY_FLAGS[country.country] || ""} ${escapeHtml(country.countryName || country.country)} ${configuredBadge}</h2>
+        <h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)} ${configuredBadge}</h2>
         <p class="muted">监控项目：${escapeHtml(projects || "尚未配置")} · 当地日期：${escapeHtml(country.targetDate || "-")} · 已读取实例：${country.checkedInstances || 0}</p>
       </div>
       <div class="ds-failure-country-count"><strong>${allFailureCount}</strong><span>个失败工作流</span></div>
     </div>
-    ${country.error ? `<div class="sandbox-status ${country.configured ? "error" : "warn"}"><strong>${country.configured ? "部分项目读取失败" : "尚未接入"}</strong><span>${escapeHtml(country.error)}${country.configured ? "" : '，请先前往 <a href="#/ds-scheduler">DS调度监控</a> 完成 Token 和项目配置。'}</span></div>` : ""}
-    ${country.configured && failures.length === 0
-      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : "当前日期没有失败任务。"}</div>`
+    ${country.error ? `<div class="sandbox-status ${country.configured ? "error" : "warn"}"><strong>${country.queryFailed ? "国家查询失败" : country.configured ? "部分项目读取失败" : "尚未接入"}</strong><span>${escapeHtml(country.error)}${country.configured ? "" : '，请先前往 <a href="#/ds-scheduler">DS调度监控</a> 完成 Token 和项目配置。'}</span></div>` : ""}
+    ${country.configured && country.success && failures.length === 0
+      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : "该国家当天没有失败任务。"}</div>`
       : failures.map(renderFailure).join("")}
   </section>`;
 }
@@ -117,7 +226,7 @@ function renderFailure(item) {
     <div class="ds-failure-meta">
       <span>失败实例：${escapeHtml(item.instanceId || "-")}</span>
       <span>失败状态：${escapeHtml(item.instanceState || "FAILURE")}</span>
-      <span>失败次数：${item.failureCount || 1}</span>
+      <span>当天失败次数：${item.failureCount || 1}</span>
       ${item.taskName ? `<span>失败任务：${escapeHtml(item.taskName)}</span>` : ""}
     </div>
     <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(item.failureMessage || "任务日志未返回明确失败原因")}</pre></div>
