@@ -1374,6 +1374,33 @@ test("platform api lets a re-added dashboard replace a deleted source title", as
   assert.equal(inventory.dashboards[0].availability, "pending_discovery");
 });
 
+test("platform api lets a manual dashboard title override a stale ready inventory title", async () => {
+  const rootDir = await makeFixture();
+  const url = "https://data.example/public/dashboard/overdue-rate";
+  await fs.writeFile(
+    path.join(rootDir, "config/discovered-public-dashboards.ready.json"),
+    JSON.stringify({
+      dashboards: [{
+        countryCode: "INE",
+        countryName: "印尼",
+        title: "核心指标概览",
+        sourcePanelTitle: "核心指标概览",
+        uuid: "overdue-rate",
+        url,
+        cards: [{ title: "逾期率", cardId: 11, dashcardId: 12 }],
+      }],
+    }),
+  );
+  const api = createPlatformApi({ rootDir });
+
+  await api.addManualDashboard({ countryCode: "INE", title: "逾期率看板", url });
+  const inventory = await api.getInventory({ countryCode: "INE" });
+
+  assert.equal(inventory.dashboards.length, 1);
+  assert.equal(inventory.dashboards[0].title, "逾期率看板");
+  assert.equal(inventory.dashboards[0].sourcePanelTitle, "逾期率看板");
+});
+
 test("platform api deletion tombstone hides tracked dashboards after code resets", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });

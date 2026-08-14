@@ -5278,6 +5278,7 @@ function mergeDashboardSources(inventory, panelSources = []) {
       if (match !== undefined) {
         const matchedDashboard = dashboards[match];
         const sameSourcePanel = String(matchedDashboard.sourcePanelId ?? "") === String(pending.sourcePanelId ?? "");
+        const manualOverride = panel.manual === true || panel.type === "manual_metabase";
         if (sameSourcePanel && hasConflictingInternalDashboardIds(matchedDashboard, pending)) {
           dashboards[match] = pending;
           dashboardIdentities(pending).forEach((identity) => identities.set(identity, match));
@@ -5287,7 +5288,12 @@ function mergeDashboardSources(inventory, panelSources = []) {
           ...pending,
           ...matchedDashboard,
           sourcePanelId: matchedDashboard.sourcePanelId ?? panel.id,
-          sourcePanelTitle: matchedDashboard.sourcePanelTitle || panel.title,
+          ...(manualOverride ? {
+            title: pending.title,
+            sourcePanelTitle: pending.sourcePanelTitle,
+          } : {
+            sourcePanelTitle: matchedDashboard.sourcePanelTitle || panel.title,
+          }),
         };
         dashboardIdentities(dashboards[match]).forEach((identity) => identities.set(identity, match));
         continue;
