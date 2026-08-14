@@ -17,12 +17,12 @@ const COUNTRY_TIMEZONES = {
   mx: "America/Mexico_City",
 };
 const COUNTRY_DS_UI_BASE_URLS = {
-  cn: "http://10.20.47.14:12345/dolphinscheduler/ui/#",
-  ine: "http://192.168.21.236:12345/dolphinscheduler/ui/#",
-  ph: "http://10.20.10.12:12345/dolphinscheduler/ui/#",
-  th: "http://192.168.20.236:12345/dolphinscheduler/ui/#",
-  pk: "http://10.20.84.176:12345/dolphinscheduler/ui/#",
-  mx: "http://172.20.220.165:12345/dolphinscheduler/ui/#",
+  cn: "https://dolphin.kuainiujinke.com/dolphinscheduler/ui",
+  ine: "https://ds.empoweroceanin.com/dolphinscheduler/ui",
+  ph: "https://ds.iloanmotor.com/dolphinscheduler/ui",
+  th: "https://ds.jsxjdk.com/dolphinscheduler/ui",
+  pk: "https://dolphin.wealthleaptech.com/dolphinscheduler/ui",
+  mx: "https://ds.mxgbus.com/dolphinscheduler/ui",
 };
 
 const FAILED_STATES = new Set(["FAILURE", "KILL", "STOP", "STOPPED", "6", "9", "5"]);
