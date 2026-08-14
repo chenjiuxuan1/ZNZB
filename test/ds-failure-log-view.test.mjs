@@ -31,7 +31,9 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(monitor, /dateMode: "country-local-today"/);
   assert.match(monitor, /Promise\.all\(projects\.map/);
   assert.match(monitor, /"list_instances"/);
-  assert.match(monitor, /state_type: "FAILURE"/);
+  assert.match(monitor, /state_type: ""/);
+  assert.match(monitor, /START_FAILURE_TASK_PROCESS/);
+  assert.match(monitor, /runTimes/);
   assert.match(monitor, /"list_task_instances"/);
   assert.match(monitor, /"get_task_log"/);
   assert.doesNotMatch(monitor, /failure_policy: "scheduled_today_final_failure"/);
