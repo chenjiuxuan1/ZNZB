@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyWorkflowFailures, extractDsFailureReason, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
+import { classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
 
 test("DS failure log accepts a unique subset of supported countries", () => {
   assert.deepEqual(normalizeCountrySelection("th,cn,th,unknown"), ["cn", "th"]);
@@ -80,6 +80,18 @@ test("DS failure reason extracts the concrete final error line", () => {
   assert.equal(reason, "StarRocks query failed: Table 'dw.dwd_orders' does not exist");
 });
 
+test("DS failure reason ignores Java stack frames and task runtime exposes SQL", () => {
+  const reason = extractDsFailureReason([
+    "ERROR java.sql.SQLException",
+    "s.SQLError.createSQLException(SQLError.java:130)",
+    "Caused by: errCode = 2, detailMessage = Unknown column 'loan_id'",
+    "at org.apache.dolphinscheduler.plugin.task.sql.SqlTask.handle(SqlTask.java:184)",
+  ].join("\n"));
+  assert.equal(reason, "errCode = 2, detailMessage = Unknown column 'loan_id'");
+  assert.equal(extractDsFailureReason("s.SQLError.createSQLException(SQLError.java:130)"), "任务日志只返回了程序调用栈，未解析到明确业务失败原因");
+  assert.equal(extractTaskScript({ runtime_config: { sql: "select * from dw.orders" } }), "select * from dw.orders");
+});
+
 test("DS failure log queries today's instances before reading failed task logs", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-failure-skill-chain-"));
   await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
@@ -113,6 +125,10 @@ test("DS failure log queries today's instances before reading failed task logs",
         state: "FAILURE",
         log: "INFO begin\nERROR wrapper failed\nCaused by: Table 'dw.dwd_orders' does not exist",
       },
+      extract_task_runtime_config: {
+        task_type: "SQL",
+        runtime_config: { sql: "select * from dw.dwd_orders" },
+      },
     };
     return {
       ok: true,
@@ -123,7 +139,7 @@ test("DS failure log queries today's instances before reading failed task logs",
 
   try {
     const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-14T09:00:00+08:00"), countries: ["cn"] });
-    assert.deepEqual(actions.map((item) => item.action), ["list_instances", "list_task_instances", "get_task_log"]);
+    assert.deepEqual(actions.map((item) => item.action), ["list_instances", "list_task_instances", "get_task_log", "extract_task_runtime_config"]);
     assert.equal(actions[0].payload.state_type, "");
     assert.equal(actions[0].payload.start_time, "2026-08-14 00:00:00");
     assert.equal(actions[0].payload.end_time, "2026-08-14 23:59:59");
@@ -132,6 +148,9 @@ test("DS failure log queries today's instances before reading failed task logs",
     assert.equal(result.countries[0].failures[0].repairStatus, "unresolved");
     assert.equal(result.countries[0].failures[0].taskInstanceId, "t-1");
     assert.equal(result.countries[0].failures[0].failureMessage, "Table 'dw.dwd_orders' does not exist");
+    assert.equal(result.countries[0].failures[0].taskType, "SQL");
+    assert.equal(result.countries[0].failures[0].taskScript, "select * from dw.dwd_orders");
+    assert.match(result.countries[0].failures[0].dsInstanceUrl, /\/projects\/1001\/workflow\/instances\/i-1$/);
   } finally {
     globalThis.fetch = originalFetch;
     await fs.rm(rootDir, { recursive: true, force: true });

@@ -4,6 +4,8 @@ import { loadDsSchedulerConfig } from "./ds-scheduler-monitor.mjs";
 const REQUEST_TIMEOUT_MS = 60_000;
 const INSTANCE_PAGE_SIZE = 100;
 const MAX_INSTANCE_PAGES = 50;
+const PROJECT_QUERY_CONCURRENCY = 3;
+const FAILURE_ENRICH_CONCURRENCY = 2;
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const COUNTRY_TIMEZONES = {
@@ -13,6 +15,14 @@ const COUNTRY_TIMEZONES = {
   th: "Asia/Bangkok",
   pk: "Asia/Karachi",
   mx: "America/Mexico_City",
+};
+const COUNTRY_DS_UI_BASE_URLS = {
+  cn: "http://10.20.47.14:12345/dolphinscheduler/ui/#",
+  ine: "http://192.168.21.236:12345/dolphinscheduler/ui/#",
+  ph: "http://10.20.10.12:12345/dolphinscheduler/ui/#",
+  th: "http://192.168.20.236:12345/dolphinscheduler/ui/#",
+  pk: "http://10.20.84.176:12345/dolphinscheduler/ui/#",
+  mx: "http://172.20.220.165:12345/dolphinscheduler/ui/#",
 };
 
 const FAILED_STATES = new Set(["FAILURE", "KILL", "STOP", "STOPPED", "6", "9", "5"]);
@@ -108,7 +118,7 @@ function projectTargets(config, countryCode) {
   return code ? [{ name: String(config.projectNames?.[countryCode] || "").trim(), code }] : [];
 }
 
-async function postAction(webhookUrl, country, token, action, payload = {}) {
+async function postActionOnce(webhookUrl, country, token, action, payload = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -204,10 +214,56 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
 
 export function extractDsFailureReason(log, fallback = "") {
   const lines = String(log || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const meaningful = lines.filter((line) => /(?:ERROR|Exception|Caused by|SQLSTATE|FAILED|failure|No such|does not exist|Permission denied)/i.test(line));
-  const candidate = meaningful.at(-1) || String(fallback || "").trim();
+  const stackFrame = (line) => /(?:^|\s)(?:at\s+)?[\w$<>.]+\([^)]*\.(?:java|scala|kt|py):\d+\)\s*$/i.test(line)
+    || /^\s*\.\.\.\s+\d+\s+more\s*$/i.test(line);
+  const candidates = lines.map((line, index) => {
+    if (stackFrame(line)) return null;
+    let score = 0;
+    if (/Caused by\s*:/i.test(line)) score = 100;
+    else if (/(?:SQLSTATE|detailMessage|errCode|does not exist|unknown (?:column|table)|permission denied|syntax error|unsupported operand|no such)/i.test(line)) score = 90;
+    else if (/(?:Exception|SQLException|Error)\s*[:：]/i.test(line)) score = 80;
+    else if (/(?:\bERROR\b|\bFAILED\b|\bfailure\b)/i.test(line)) score = 60;
+    return score ? { line, score, index } : null;
+  }).filter(Boolean).sort((a, b) => b.score - a.score || b.index - a.index);
+  if (!candidates.length && lines.some(stackFrame) && !String(fallback || "").trim()) {
+    return "任务日志只返回了程序调用栈，未解析到明确业务失败原因";
+  }
+  const candidate = candidates[0]?.line || String(fallback || "").trim();
   if (!candidate) return "任务日志未返回明确失败原因";
-  return candidate.replace(/^.*?(?:ERROR|Exception|Caused by)\s*[-:：]?\s*/i, "").trim().slice(0, 600) || candidate.slice(0, 600);
+  if (stackFrame(candidate)) return "任务日志只返回了程序调用栈，未解析到明确业务失败原因";
+  return candidate
+    .replace(/^.*?Caused by\s*:\s*/i, "")
+    .replace(/^.*?\bERROR\b\s*[-:：]?\s*/i, "")
+    .trim().slice(0, 1000) || candidate.slice(0, 1000);
+}
+
+export function extractTaskScript(data = {}) {
+  const runtime = data.runtime_config || data.runtimeConfig || {};
+  const taskParams = data.task_params || data.taskParams || {};
+  for (const value of [runtime.sql, runtime.raw_script, runtime.rawScript, taskParams.sql, taskParams.raw_script, taskParams.rawScript, data.sql, data.raw_script, data.rawScript]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+async function loadTaskRuntime(failure, task, { webhookUrl, country, token }) {
+  const taskName = String(task.taskName || failure.taskName || "").trim();
+  const taskCode = String(task.taskCode || failure.taskCode || "").trim();
+  if (!failure.workflowCode || (!taskName && !taskCode)) return {};
+  try {
+    const runtime = await postAction(webhookUrl, country, token, "extract_task_runtime_config", {
+      project_code: failure.projectCode,
+      workflow_code: failure.workflowCode,
+      task_name: taskName,
+      task_code: taskCode,
+    });
+    return {
+      taskType: String(runtime.task_type || runtime.taskType || task.taskType || "").trim().toUpperCase(),
+      taskScript: extractTaskScript(runtime),
+    };
+  } catch (error) {
+    return { taskConfigError: error.message };
+  }
 }
 
 async function enrichFailure(failure, { webhookUrl, country, token }) {
@@ -218,8 +274,14 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
         project_code: failure.projectCode,
         task_instance_id: failure.taskInstanceId,
       });
+      const runtime = await loadTaskRuntime(failure, {
+        taskName: failure.taskName,
+        taskCode: failure.taskCode,
+        taskType: failure.taskType,
+      }, { webhookUrl, country, token });
       return {
         ...failure,
+        ...runtime,
         failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
       };
     }
@@ -238,15 +300,19 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
     const taskInstanceId = String(failedTask.task_instance_id || failedTask.taskInstanceId || failedTask.id || "").trim();
     const taskName = String(failedTask.task_name || failedTask.taskName || failedTask.name || "").trim();
     const taskCode = String(failedTask.task_code || failedTask.taskCode || failedTask.code || "").trim();
+    const taskType = String(failedTask.task_type || failedTask.taskType || failedTask.type || "").trim().toUpperCase();
     const logData = taskInstanceId ? await postAction(webhookUrl, country, token, "get_task_log", {
       project_code: failure.projectCode,
       task_instance_id: taskInstanceId,
     }) : {};
+    const runtime = await loadTaskRuntime(failure, { taskName, taskCode, taskType }, { webhookUrl, country, token });
     return {
       ...failure,
+      ...runtime,
       taskInstanceId,
       taskName,
       taskCode,
+      taskType: runtime.taskType || taskType,
       taskState: stateOf(failedTask),
       failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
     };
@@ -257,6 +323,44 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       logError: error.message,
     };
   }
+}
+
+function isTransientGatewayError(error) {
+  return /(?:connection (?:closed|reset)|closed by remote host|port 22|econnreset|socket hang up|fetch failed|request timeout|请求超时|网关返回非 JSON（HTTP 200）)/i.test(String(error?.message || error || ""));
+}
+
+async function postAction(webhookUrl, country, token, action, payload = {}) {
+  try {
+    return await postActionOnce(webhookUrl, country, token, action, payload);
+  } catch (error) {
+    if (!isTransientGatewayError(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      return await postActionOnce(webhookUrl, country, token, action, payload);
+    } catch (retryError) {
+      throw new Error(`网关瞬时连接失败，自动重试 1 次后仍未恢复：${retryError.message}`);
+    }
+  }
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker));
+  return results;
+}
+
+function buildDsInstanceUrl(country, projectCode, instanceId, configuredBaseUrl = "") {
+  const baseUrl = String(configuredBaseUrl || COUNTRY_DS_UI_BASE_URLS[country] || "").trim().replace(/\/+$/, "");
+  if (!baseUrl || !projectCode || !instanceId) return "";
+  return `${baseUrl}/projects/${encodeURIComponent(projectCode)}/workflow/instances/${encodeURIComponent(instanceId)}`;
 }
 
 export function normalizeGatewayFailures(data = {}, { projectName = "", projectCode = "", targetDate = "", timeZone = "UTC" } = {}) {
@@ -356,7 +460,7 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
   });
 }
 
-async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone }) {
+async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl }) {
   try {
     const instances = await listProjectInstances({
       webhookUrl,
@@ -366,8 +470,13 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
       targetDate,
       timeZone,
     });
-    const failures = classifyWorkflowFailures(instances, { projectName: project.name, projectCode: project.code });
-    const enriched = await Promise.all(failures.map((failure) => enrichFailure(failure, { webhookUrl, country, token })));
+    const failures = classifyWorkflowFailures(instances, { projectName: project.name, projectCode: project.code })
+      .map((failure) => ({
+        ...failure,
+        dsInstanceUrl: buildDsInstanceUrl(country, project.code, failure.instanceId, dsUiBaseUrl),
+      }));
+    const enriched = await mapWithConcurrency(failures, FAILURE_ENRICH_CONCURRENCY,
+      (failure) => enrichFailure(failure, { webhookUrl, country, token }));
     return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: instances.length, failures: enriched };
   } catch (error) {
     return { projectName: project.name, projectCode: project.code, success: false, error: error.message, checkedInstances: 0, failures: [] };
@@ -381,6 +490,7 @@ async function inspectCountry(config, country, now) {
   const projects = projectTargets(config, country);
   const timeZone = COUNTRY_TIMEZONES[country];
   const targetDate = todayInTimeZone(timeZone, now);
+  const dsUiBaseUrl = String(countryConfig.dsUiUrl || countryConfig.ds_ui_url || "").trim();
   if (!token || !projects.length) {
     return {
       country,
@@ -396,14 +506,15 @@ async function inspectCountry(config, country, now) {
       projects: [],
     };
   }
-  const projectResults = await Promise.all(projects.map((project) => inspectProject({
+  const projectResults = await mapWithConcurrency(projects, PROJECT_QUERY_CONCURRENCY, (project) => inspectProject({
     webhookUrl: config.n8nWebhookUrl,
     country,
     token,
     project,
     targetDate,
     timeZone,
-  })));
+    dsUiBaseUrl,
+  }));
   const failures = projectResults.flatMap((item) => item.failures || []);
   return {
     country,
