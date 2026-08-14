@@ -363,6 +363,16 @@ function buildDsInstanceUrl(country, projectCode, instanceId, configuredBaseUrl 
   return `${baseUrl}/projects/${encodeURIComponent(projectCode)}/workflow/instances/${encodeURIComponent(instanceId)}`;
 }
 
+function buildDsTaskUrl(country, projectCode, failure = {}, configuredBaseUrl = "") {
+  const baseUrl = String(configuredBaseUrl || COUNTRY_DS_UI_BASE_URLS[country] || "").trim().replace(/\/+$/, "");
+  const workflowInstanceId = String(failure.instanceId || "").trim();
+  if (!baseUrl || !projectCode || !workflowInstanceId) return "";
+  const query = new URLSearchParams({ workflowInstanceId });
+  if (failure.taskName) query.set("taskName", String(failure.taskName));
+  if (failure.taskCode) query.set("taskCode", String(failure.taskCode));
+  return `${baseUrl}/projects/${encodeURIComponent(projectCode)}/task/instances?${query.toString()}`;
+}
+
 export function normalizeGatewayFailures(data = {}, { projectName = "", projectCode = "", targetDate = "", timeZone = "UTC" } = {}) {
   const documented = Array.isArray(data.failed_workflows) ? data.failed_workflows : null;
   const records = documented || recordList(data);
@@ -477,7 +487,11 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
       }));
     const enriched = await mapWithConcurrency(failures, FAILURE_ENRICH_CONCURRENCY,
       (failure) => enrichFailure(failure, { webhookUrl, country, token }));
-    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: instances.length, failures: enriched };
+    const linked = enriched.map((failure) => ({
+      ...failure,
+      dsTaskUrl: buildDsTaskUrl(country, project.code, failure, dsUiBaseUrl),
+    }));
+    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: instances.length, failures: linked };
   } catch (error) {
     return { projectName: project.name, projectCode: project.code, success: false, error: error.message, checkedInstances: 0, failures: [] };
   }
