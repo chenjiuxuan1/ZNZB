@@ -60,6 +60,19 @@ function instanceId(item = {}) {
   return String(item.instance_id || item.instanceId || item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || item.id || "").trim();
 }
 
+function commandTypeOf(item = {}) {
+  return String(item.command_type || item.commandType || "").trim().toUpperCase();
+}
+
+function runTimesOf(item = {}) {
+  const value = Number(item.run_times ?? item.runTimes ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function isFailureRetry(item = {}) {
+  return commandTypeOf(item) === "START_FAILURE_TASK_PROCESS" || runTimesOf(item) > 1;
+}
+
 function timestamp(value) {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
@@ -138,7 +151,32 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
   for (const records of groups.values()) {
     const ordered = [...records].sort((a, b) => timestamp(instanceTime(a)) - timestamp(instanceTime(b)));
     const failed = ordered.filter((item) => FAILED_STATES.has(stateOf(item)));
-    if (!failed.length) continue;
+    if (!failed.length) {
+      const retried = ordered.filter(isFailureRetry);
+      if (!retried.length) continue;
+      const recoveredInstance = retried.at(-1);
+      const recoveredState = stateOf(recoveredInstance);
+      const recovered = SUCCESS_STATES.has(recoveredState);
+      const repairing = RUNNING_STATES.has(recoveredState);
+      failures.push({
+        projectName,
+        projectCode,
+        workflowCode: workflowCode(recoveredInstance),
+        workflowName: workflowName(recoveredInstance),
+        instanceId: instanceId(recoveredInstance),
+        instanceState: "FAILURE",
+        startTime: instanceTime(recoveredInstance),
+        endTime: endTime(recoveredInstance),
+        repairStatus: recovered ? "recovered" : repairing ? "repairing" : "unresolved",
+        recoveryInstanceId: instanceId(recoveredInstance),
+        recoveryState: recoveredState,
+        recoveryTime: endTime(recoveredInstance) || instanceTime(recoveredInstance),
+        failureMessage: String(recoveredInstance.failure_message || recoveredInstance.failureMessage || recoveredInstance.error_message || recoveredInstance.errorMessage || "").trim(),
+        failureCount: Math.max(1, runTimesOf(recoveredInstance) - 1),
+        inferredFromRetry: true,
+      });
+      continue;
+    }
     const latestFailure = failed.at(-1);
     const failedAt = timestamp(instanceTime(latestFailure));
     const later = ordered.filter((item) => timestamp(instanceTime(item)) > failedAt);
@@ -289,7 +327,7 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
   for (let pageNo = 1; pageNo <= MAX_INSTANCE_PAGES; pageNo += 1) {
     const data = await postAction(webhookUrl, country, token, "list_instances", {
       project_code: projectCode,
-      state_type: "FAILURE",
+      state_type: "",
       search_val: "",
       page_no: pageNo,
       page_size: INSTANCE_PAGE_SIZE,
