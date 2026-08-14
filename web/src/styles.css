@@ -14,6 +14,211 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* DS failure log workspace */
+.ds-failure-toolbar {
+  margin-bottom: 16px;
+}
+
+.ds-failure-filter-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 180px minmax(260px, 1fr);
+}
+
+.ds-failure-filter-grid label {
+  color: var(--muted);
+  display: grid;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.ds-failure-country-picker {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  margin: 16px 0 14px;
+}
+
+.ds-country-choice {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.ds-country-choice input {
+  accent-color: #16a34a;
+  height: 16px;
+  margin: 0;
+  width: 16px;
+}
+
+.ds-country-choice.selected {
+  background: #ecfdf3;
+  border-color: #86efac;
+  color: #166534;
+  font-weight: 600;
+}
+
+.ds-country-choice:has(input:disabled) {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.ds-failure-legend {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ds-failure-country-list {
+  display: grid;
+  gap: 16px;
+}
+
+.ds-failure-country-card {
+  display: grid;
+  gap: 12px;
+}
+
+.ds-failure-querying {
+  background: linear-gradient(90deg, #ffffff 25%, #f8fafc 50%, #ffffff 75%);
+  background-size: 200% 100%;
+  animation: ds-failure-loading 1.4s linear infinite;
+}
+
+@keyframes ds-failure-loading {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.ds-failure-country-card .panel-title {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.ds-failure-country-count {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+}
+
+.ds-failure-country-count strong {
+  color: var(--text);
+  font-size: 28px;
+}
+
+.ds-failure-country-count span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ds-failure-empty {
+  background: #f8fafc;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 24px;
+  text-align: center;
+}
+
+.ds-failure-item {
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #dc2626;
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.ds-failure-item.recovered {
+  border-color: #bbf7d0;
+  border-left-color: #16a34a;
+}
+
+.ds-failure-item.repairing {
+  border-color: #fde68a;
+  border-left-color: #d97706;
+}
+
+.ds-failure-item-head,
+.ds-failure-item-head > div,
+.ds-failure-meta,
+.ds-failure-recovery {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.ds-failure-item-head {
+  justify-content: space-between;
+}
+
+.ds-failure-item-head time,
+.ds-failure-meta,
+.ds-failure-recovery {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ds-failure-reason {
+  display: grid;
+  gap: 6px;
+}
+
+.ds-failure-reason strong,
+.ds-failure-recovery strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.ds-failure-reason pre {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  color: #9a3412;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 900px) {
+  .ds-failure-country-picker {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .ds-failure-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ds-failure-item-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

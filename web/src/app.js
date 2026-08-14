@@ -12,6 +12,7 @@ import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattre
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
 import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
+import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260814-v3";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
@@ -25,6 +26,7 @@ const routes = [
   { path: "/quality-rule-generation", label: "智能告警生成", short: "生", render: renderQualityRuleGeneration },
   { path: "/notify-preview", label: "通知预览", short: "通", render: renderNotifyPreview },
   { path: "/ds-scheduler", label: "DS调度监控", short: "度", render: renderDsScheduler },
+  { path: "/ds-failure-logs", label: "DS失败任务日志", short: "错", render: renderDsFailureLogs },
   { path: "/hive-scheduler", label: "HIVE调度监控", short: "仓", render: renderHiveScheduler },
 ];
 
