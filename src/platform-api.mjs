@@ -1595,8 +1595,9 @@ export function createPlatformApi({
       const panels = Array.isArray(source.panels) ? source.panels : [];
       const normalizedUrl = dashboardUrlIdentity(url);
       const existing = panels.find((panel) => (panel.links || []).some((link) => dashboardUrlIdentity(link.url) === normalizedUrl));
-      const panel = existing || {
-        id: `manual:${randomUUID()}`,
+      const panel = {
+        ...(existing || {}),
+        id: existing?.id || `manual:${randomUUID()}`,
         title,
         type: "manual_metabase",
         manual: true,
@@ -1608,11 +1609,11 @@ export function createPlatformApi({
         timezone: country.timezone,
       }, panel);
       const remainingSourceDeletions = removeDashboardDeletionForDashboard(source.deletedDashboards || [], pendingDashboard);
-      if (!existing || remainingSourceDeletions.length !== (source.deletedDashboards || []).length) {
+      if (!existing || existing.title !== panel.title || remainingSourceDeletions.length !== (source.deletedDashboards || []).length) {
         await writeJsonAtomic(sourcePath, {
           ...source,
           country: source.country || { code: country.code, name: country.name, timezone: country.timezone },
-          panels: existing ? panels : [...panels, panel],
+          panels: existing ? panels.map((item) => item === existing ? panel : item) : [...panels, panel],
           deletedDashboards: remainingSourceDeletions,
         });
       }
@@ -5501,7 +5502,7 @@ async function readMergedPanelSource(rootDir, countryCode) {
     readJsonFile(runtimePanelSourceFilePath(rootDir, countryCode), {}),
     readJsonFile(path.join(rootDir, FILES.countries), { countries: [] }),
   ]);
-  const merged = mergePanelSources(base, runtime);
+  const merged = mergePanelSources(runtime, base);
   if (!merged.country) {
     const code = String(countryCode || "").trim().toUpperCase();
     const country = (countries.countries || []).find((item) => String(item.code || "").toUpperCase() === code) || {};
