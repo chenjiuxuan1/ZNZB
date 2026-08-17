@@ -163,3 +163,89 @@ test("DS failure log queries today's instances before reading failed task logs",
     await fs.rm(rootDir, { recursive: true, force: true });
   }
 });
+
+test("DS failure log follows SUB_WORKFLOW tasks to the leaf SQL failure", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-failure-sub-workflow-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { ph: { name: "PH", token: "test-token" } },
+    projects: { ph: [{ name: "warehouse", code: "1001" }] },
+  }));
+
+  const originalFetch = globalThis.fetch;
+  const actions = [];
+  let taskListCalls = 0;
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    actions.push(request.action);
+    let data = {};
+    if (request.action === "list_instances") {
+      data = { totalList: [{ workflowDefinitionCode: "parent-wf", workflowInstanceId: "parent-i", workflowInstanceName: "parent", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-14 08:00:00" }], total: 1 };
+    } else if (request.action === "list_task_instances") {
+      taskListCalls += 1;
+      data = taskListCalls === 1
+        ? { taskList: [{ id: "parent-task-i", workflowInstanceId: "parent-i", taskCode: "sub-task", name: "DWD", taskType: "SUB_WORKFLOW", state: "FAILURE" }] }
+        : { taskList: [{ id: "leaf-task-i", workflowInstanceId: "child-i", taskCode: "sql-task", name: "dwd_orders", taskType: "SQL", state: "FAILURE" }] };
+    } else if (request.action === "get_task_log" && request.payload.task_type === "SUB_WORKFLOW") {
+      data = { sub_workflow_instance_id: "child-i" };
+    } else if (request.action === "get_instance") {
+      data = { data: { workflowDefinitionCode: "child-wf" } };
+    } else if (request.action === "get_task_log") {
+      data = { log: "ERROR query failed\nCaused by: Unknown column 'loan_id'" };
+    } else if (request.action === "extract_task_runtime_config") {
+      assert.equal(request.payload.workflow_code, "child-wf");
+      data = { task_type: "SQL", runtime_config: { sql: "select loan_id from dwd_orders" } };
+    }
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data }); } };
+  };
+
+  try {
+    const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-14T09:00:00+08:00"), countries: ["ph"] });
+    assert.deepEqual(actions, ["list_instances", "list_task_instances", "get_task_log", "get_instance", "list_task_instances", "get_task_log", "extract_task_runtime_config"]);
+    const [failure] = result.countries[0].failures;
+    assert.equal(failure.taskInstanceId, "leaf-task-i");
+    assert.equal(failure.taskName, "dwd_orders");
+    assert.equal(failure.taskType, "SQL");
+    assert.equal(failure.resolvedWorkflowInstanceId, "child-i");
+    assert.equal(failure.resolvedWorkflowCode, "child-wf");
+    assert.equal(failure.failureMessage, "Unknown column 'loan_id'");
+    assert.equal(failure.taskScript, "select loan_id from dwd_orders");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("DS failure log recovers failure evidence from a retried task in the same instance", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-failure-same-instance-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { ph: { name: "PH", token: "test-token" } },
+    projects: { ph: [{ name: "warehouse", code: "1001" }] },
+  }));
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    const responses = {
+      list_instances: { totalList: [{ workflowDefinitionCode: "wf-1", workflowInstanceId: "same-i", workflowInstanceName: "hourly", commandType: "START_FAILURE_TASK_PROCESS", workflowExecutionStatus: "SUCCESS", runTimes: 2, workflowStartTime: "2026-08-14 08:00:00" }], total: 1 },
+      list_task_instances: { taskList: [{ id: "retried-task-i", workflowInstanceId: "same-i", taskCode: "sql-task", name: "hourly_sql", taskType: "SQL", state: "SUCCESS", retryTimes: 1 }] },
+      get_task_log: { log: "INFO retry started\nCaused by: SQLSTATE 42S22 unknown column loan_id\nINFO retry success" },
+      extract_task_runtime_config: { task_type: "SQL", runtime_config: { sql: "select loan_id from source" } },
+    };
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data: responses[request.action] }); } };
+  };
+
+  try {
+    const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-14T09:00:00+08:00"), countries: ["ph"] });
+    const [failure] = result.countries[0].failures;
+    assert.equal(failure.taskInstanceId, "retried-task-i");
+    assert.equal(failure.taskState, "SUCCESS");
+    assert.equal(failure.failureMessage, "SQLSTATE 42S22 unknown column loan_id");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});

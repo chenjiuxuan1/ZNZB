@@ -6,6 +6,7 @@ const INSTANCE_PAGE_SIZE = 100;
 const MAX_INSTANCE_PAGES = 50;
 const PROJECT_QUERY_CONCURRENCY = 3;
 const FAILURE_ENRICH_CONCURRENCY = 2;
+const MAX_SUB_WORKFLOW_DEPTH = 8;
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const COUNTRY_TIMEZONES = {
@@ -246,6 +247,133 @@ export function extractTaskScript(data = {}) {
   return "";
 }
 
+function taskInstanceIdOf(item = {}) {
+  return String(item.task_instance_id || item.taskInstanceId || item.id || "").trim();
+}
+
+function taskNameOf(item = {}) {
+  return String(item.task_name || item.taskName || item.name || "").trim();
+}
+
+function taskCodeOf(item = {}) {
+  return String(item.task_code || item.taskCode || item.code || "").trim();
+}
+
+function taskTypeOf(item = {}) {
+  return String(item.task_type || item.taskType || item.type || "").trim().toUpperCase();
+}
+
+function taskRetryCount(item = {}) {
+  const value = Number(item.retry_times ?? item.retryTimes ?? item.run_times ?? item.runTimes ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function objectData(value = {}) {
+  if (value?.data && typeof value.data === "object" && !Array.isArray(value.data)) return value.data;
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function hasExplicitFailureEvidence(log = "") {
+  return /(?:Caused by\s*:|SQLSTATE|detailMessage|errCode|does not exist|unknown (?:column|table)|permission denied|syntax error|unsupported operand|no such|\bERROR\b|\bFAILED\b|\bfailure\b|Exception)/i.test(String(log || ""));
+}
+
+async function resolveFailureTask(failure, context, options = {}) {
+  const instanceIdValue = String(options.instanceId || failure.instanceId || "").trim();
+  const workflowCodeValue = String(options.workflowCode || failure.workflowCode || "").trim();
+  const depth = Number(options.depth || 0);
+  const visited = options.visited || new Set();
+  if (!instanceIdValue || depth > MAX_SUB_WORKFLOW_DEPTH || visited.has(instanceIdValue)) return null;
+  visited.add(instanceIdValue);
+
+  const tasks = await postAction(context.webhookUrl, context.country, context.token, "list_task_instances", {
+    project_code: failure.projectCode,
+    instance_id: instanceIdValue,
+    process_instance_id: instanceIdValue,
+    page_no: 1,
+    page_size: 100,
+  });
+  const ownedTasks = recordList(tasks).filter((item) => {
+    const ownerInstanceId = String(item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || "").trim();
+    return !ownerInstanceId || ownerInstanceId === instanceIdValue;
+  });
+  const failedTasks = ownedTasks
+    .filter((item) => FAILED_STATES.has(stateOf(item)))
+    .sort((a, b) => timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)));
+  const retryTasks = failure.inferredFromRetry && !failedTasks.length
+    ? ownedTasks
+      .filter((item) => taskRetryCount(item) > 0)
+      .sort((a, b) => taskRetryCount(b) - taskRetryCount(a) || timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)))
+    : [];
+  const candidates = failedTasks.length ? failedTasks : retryTasks;
+  let wrapperFallback = null;
+
+  for (const task of candidates) {
+    const taskInstanceId = taskInstanceIdOf(task);
+    const taskType = taskTypeOf(task);
+    const base = {
+      task,
+      taskInstanceId,
+      taskName: taskNameOf(task),
+      taskCode: taskCodeOf(task),
+      taskType,
+      taskState: stateOf(task),
+      workflowCode: workflowCodeValue,
+      workflowInstanceId: instanceIdValue,
+      logData: {},
+    };
+    if (taskType === "SUB_WORKFLOW" && taskInstanceId) {
+      wrapperFallback ||= base;
+      try {
+        const sub = await postAction(context.webhookUrl, context.country, context.token, "get_task_log", {
+          project_code: failure.projectCode,
+          task_instance_id: taskInstanceId,
+          task_type: "SUB_WORKFLOW",
+        });
+        const subData = objectData(sub);
+        const subInstanceId = String(subData.sub_workflow_instance_id || subData.subWorkflowInstanceId || "").trim();
+        if (!subInstanceId) continue;
+        let subWorkflowCode = "";
+        try {
+          const subInstance = objectData(await postAction(context.webhookUrl, context.country, context.token, "get_instance", {
+            project_code: failure.projectCode,
+            instance_id: subInstanceId,
+          }));
+          subWorkflowCode = workflowCode(subInstance);
+        } catch {
+          // The child task list and log are still useful if instance detail is unavailable.
+        }
+        const nested = await resolveFailureTask(failure, context, {
+          instanceId: subInstanceId,
+          workflowCode: subWorkflowCode || workflowCodeValue,
+          depth: depth + 1,
+          visited,
+        });
+        if (nested) return nested;
+      } catch {
+        // Keep the parent wrapper as a last-resort result without blocking other candidates.
+      }
+      continue;
+    }
+
+    if (!taskInstanceId) continue;
+    let logData = {};
+    try {
+      logData = await postAction(context.webhookUrl, context.country, context.token, "get_task_log", {
+        project_code: failure.projectCode,
+        task_instance_id: taskInstanceId,
+      });
+    } catch {
+      if (!failure.inferredFromRetry || FAILED_STATES.has(stateOf(task))) return base;
+      continue;
+    }
+    const log = logData.log || logData.task_log || logData.content || "";
+    if (!failure.inferredFromRetry || FAILED_STATES.has(stateOf(task)) || hasExplicitFailureEvidence(log)) {
+      return { ...base, logData };
+    }
+  }
+  return wrapperFallback;
+}
+
 async function loadTaskRuntime(failure, task, { webhookUrl, country, token }) {
   const taskName = String(task.taskName || failure.taskName || "").trim();
   const taskCode = String(task.taskCode || failure.taskCode || "").trim();
@@ -285,38 +413,21 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
         failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
       };
     }
-    const tasks = await postAction(webhookUrl, country, token, "list_task_instances", {
-      project_code: failure.projectCode,
-      instance_id: failure.instanceId,
-      process_instance_id: failure.instanceId,
-      page_no: 1,
-      page_size: 100,
-    });
-    const failedTask = recordList(tasks)
-      .filter((item) => {
-        const ownerInstanceId = String(item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || "").trim();
-        return !ownerInstanceId || ownerInstanceId === String(failure.instanceId);
-      })
-      .filter((item) => FAILED_STATES.has(stateOf(item)))
-      .sort((a, b) => timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)))[0];
-    if (!failedTask) return { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
-    const taskInstanceId = String(failedTask.task_instance_id || failedTask.taskInstanceId || failedTask.id || "").trim();
-    const taskName = String(failedTask.task_name || failedTask.taskName || failedTask.name || "").trim();
-    const taskCode = String(failedTask.task_code || failedTask.taskCode || failedTask.code || "").trim();
-    const taskType = String(failedTask.task_type || failedTask.taskType || failedTask.type || "").trim().toUpperCase();
-    const logData = taskInstanceId ? await postAction(webhookUrl, country, token, "get_task_log", {
-      project_code: failure.projectCode,
-      task_instance_id: taskInstanceId,
-    }) : {};
-    const runtime = await loadTaskRuntime(failure, { taskName, taskCode, taskType }, { webhookUrl, country, token });
+    const resolved = await resolveFailureTask(failure, { webhookUrl, country, token });
+    if (!resolved) return { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
+    const { taskInstanceId, taskName, taskCode, taskType, taskState, logData, workflowCode: resolvedWorkflowCode, workflowInstanceId } = resolved;
+    const runtimeFailure = { ...failure, workflowCode: resolvedWorkflowCode || failure.workflowCode };
+    const runtime = await loadTaskRuntime(runtimeFailure, { taskName, taskCode, taskType }, { webhookUrl, country, token });
     return {
       ...failure,
       ...runtime,
+      resolvedWorkflowCode: resolvedWorkflowCode || failure.workflowCode,
+      resolvedWorkflowInstanceId: workflowInstanceId || failure.instanceId,
       taskInstanceId,
       taskName,
       taskCode,
       taskType: runtime.taskType || taskType,
-      taskState: stateOf(failedTask),
+      taskState,
       failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
     };
   } catch (error) {
