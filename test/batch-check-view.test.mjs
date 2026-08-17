@@ -137,6 +137,12 @@ test("history anomaly detail exposes an AI analysis action", () => {
     runId: "run-ai", countryCode: "INE", anomalyIndex: 2,
     analysis: { summary: "重跑后正常", confidence: "high", limitations: "测试", dataSideVerdict: "verified_normal", notificationAction: "enrich_only", chartVisibility: "hide_verified_normal" },
   }), /最终判定：AI 分析后无异常/);
+  const insufficientEvidence = renderMetabaseAnomalyAnalysis({
+    runId: "run-ai", countryCode: "CN", anomalyIndex: 3,
+    analysis: { summary: "Dify 未返回完整结论", confidence: "low", limitations: "Dify 响应缺少指标 verdict", dataSideVerdict: "insufficient_evidence", notificationAction: "send" },
+  });
+  assert.match(insufficientEvidence, /最终判定：证据不足，按异常保守处理/);
+  assert.doesNotMatch(insufficientEvidence, /最终判定：有数据侧异常/);
 });
 
 test("dashboard scan details put fluctuation charts in their own anomaly column", () => {
