@@ -2,15 +2,15 @@ const FALSE_VALUES = new Set(["0", "false", "off", "no", ""]);
 
 export function getMetabaseAnomalyAccelerationSettings(env = process.env) {
   const enabled = !FALSE_VALUES.has(String(env.METABASE_ANOMALY_AGENT_ACCELERATION_ENABLED || "").trim().toLowerCase());
-  // This path submits independent Agent calls, so it must not compete with the
-  // dashboard batch queue for the same Dify model quota.
-  const maxConcurrency = clamp(env.METABASE_ANOMALY_AGENT_ACCELERATION_MAX_CONCURRENCY, 1, 1, 1);
+  // This path submits independent Agent calls, so it shares the same bounded
+  // two-request ceiling as the dashboard batch queue.
+  const maxConcurrency = clamp(env.METABASE_ANOMALY_AGENT_ACCELERATION_MAX_CONCURRENCY, 2, 1, 2);
   const snapshotTtlSeconds = clamp(env.METABASE_ANOMALY_AGENT_SNAPSHOT_TTL_SECONDS, 600, 60, 900);
   return { enabled, maxConcurrency, snapshotTtlSeconds };
 }
 
-export function createBoundedTaskQueue({ concurrency = 1 } = {}) {
-  const limit = clamp(concurrency, 1, 1, 1);
+export function createBoundedTaskQueue({ concurrency = 2 } = {}) {
+  const limit = clamp(concurrency, 2, 1, 2);
   const pending = [];
   let active = 0;
   const runNext = () => {

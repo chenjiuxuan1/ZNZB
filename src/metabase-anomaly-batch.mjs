@@ -1,6 +1,6 @@
-// Dify analysis is tool-heavy and shares one model workspace quota. Keep patrol
-// batches serialized so simultaneous dashboards cannot exhaust that quota.
-const MAX_CONCURRENT_BATCHES = 1;
+// Dify analysis is tool-heavy and shares one model workspace quota. Two lanes
+// balance patrol latency against the risk of exhausting that quota.
+const MAX_CONCURRENT_BATCHES = 2;
 const DEFAULT_TIMEOUT_MS = 6 * 60 * 1000;
 const TARGET_DURATION_MS = 20 * 60 * 1000;
 const DEADLINE_MS = 45 * 60 * 1000;
