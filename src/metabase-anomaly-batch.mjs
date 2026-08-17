@@ -1,9 +1,11 @@
-const MAX_CONCURRENT_BATCHES = 3;
+// Dify analysis is tool-heavy and shares one model workspace quota. Keep patrol
+// batches serialized so simultaneous dashboards cannot exhaust that quota.
+const MAX_CONCURRENT_BATCHES = 1;
 const DEFAULT_TIMEOUT_MS = 6 * 60 * 1000;
 const TARGET_DURATION_MS = 20 * 60 * 1000;
 const DEADLINE_MS = 45 * 60 * 1000;
 export const MAX_DASHBOARD_ANALYSIS_BYTES = 512 * 1024;
-export const MAX_ANOMALIES_PER_DIFY_BATCH = 5;
+export const MAX_ANOMALIES_PER_DIFY_BATCH = 3;
 
 export function getBatchInvestigationLimits() {
   return {
