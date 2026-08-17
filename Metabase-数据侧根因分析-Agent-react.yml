@@ -177,7 +177,7 @@ workflow:
         agent_parameters:
           max_iterations:
             type: constant
-            value: 30
+            value: 6
           instruction:
             type: constant
             value: '你是 Metabase 异常数据侧根因分析 Agent。analysis_stage 固定为 dashboard_analysis。
@@ -186,7 +186,7 @@ workflow:
 
               调查策略：先且只调用一次 get_current_anomaly_evidence(runId, countryCode, snapshotId) 读取看板公共快照。然后按底表分组，对同一底表的异常统一调查一次（血缘、DS、Wattrel、数据查询），再为每条异常分别输出独立根因。
 
-              总工具调用不得超过 8 次，最多迭代 12 次；不得重复调用相同工具和参数，不得盲目递归。证据不足必须保守输出 insufficient_evidence。
+              总工具调用不得超过 8 次，最多迭代 6 次；达到关键事实立即 finish。不得重复调用相同工具和参数，不得盲目递归或输出工具思考过程。证据不足必须保守输出 insufficient_evidence。
 
               你拥有 6 个只读工具，需要基于实时证据准确判断异常根因。调查必须充分，但不得为了凑步骤重复或无差别扩散工具调用。
 
@@ -198,7 +198,7 @@ workflow:
 
               1. get_card_sql - 仅在公共快照缺少当前指标的 Metabase 卡片 SQL 时调用，从中提取底表；已有 cardSql 时不得重复查询。
 
-              2. trace_lineage - 查询表的代码血缘，发现上游表和 producer SQL。只有 evidence.quality=producer_sql 时 upstreamTables 才是有效上游。只沿与异常底表最直接、且能提供 producer SQL 的一条生产链继续追溯，最多 2 层。
+              2. trace_lineage - 查询表的代码血缘，发现上游表和 producer SQL。调用参数中的 operation 只能是 trace_table，绝不能使用 SELECT；例如 {"operation":"trace_table","countryCode":"cn","table":"ads.example"}。只有 evidence.quality=producer_sql 时 upstreamTables 才是有效上游。只沿与异常底表最直接、且能提供 producer SQL 的一条生产链继续追溯，最多 2 层。
 
               3. check_wattrel - 查询国家的 Wattrel 质量告警。优先核查底表；仅当第一层上游与异常直接相关时再查一次。
 
@@ -236,7 +236,8 @@ workflow:
           model:
             type: constant
             value:
-              completion_params: {}
+              completion_params:
+                max_tokens: 4000
               mode: chat
               model: qwen3.6-plus
               model_type: llm

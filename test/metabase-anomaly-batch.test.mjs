@@ -21,24 +21,24 @@ test("groups every anomaly from one dashboard into one analysis job", () => {
 test("splits oversized dashboard batches to cap anomalies per Dify request", () => {
   const cases = [];
   for (let i = 0; i < 9; i++) cases.push({ countryCode: "CN", dashboardUuid: "dash-big", dashboardTitle: "概览", anomalyIndex: i });
-  const jobs = buildDashboardAnalysisJobs(cases, 5);
-  assert.deepEqual(jobs.map((job) => job.cases.length), [5, 4]);
+  const jobs = buildDashboardAnalysisJobs(cases, 3);
+  assert.deepEqual(jobs.map((job) => job.cases.length), [3, 3, 3]);
   assert.equal(jobs[0].groupKey, "CN:dash-big#1");
   assert.equal(jobs[1].groupKey, "CN:dash-big#2");
   assert.equal(jobs[0].cases[0].anomalyIndex, 0);
-  assert.equal(jobs[1].cases[0].anomalyIndex, 5);
+  assert.equal(jobs[1].cases[0].anomalyIndex, 3);
 });
 
-test("single-stage limits allow three concurrent workers", () => {
+test("single-stage limits serialize Dify batches", () => {
   assert.deepEqual(getBatchInvestigationLimits(), {
-    maxConcurrentBatches: 3,
+    maxConcurrentBatches: 1,
     timeoutMs: 360000,
     targetDurationMs: 1200000,
     deadlineMs: 2700000,
   });
 });
 
-test("bounded investigation queue never submits a fourth batch before one settles", async () => {
+test("bounded investigation queue submits one batch at a time", async () => {
   const submitted = [];
   const releases = new Map();
   const queue = runBoundedInvestigationQueue({
@@ -48,12 +48,16 @@ test("bounded investigation queue never submits a fourth batch before one settle
   });
 
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b", "c"]);
+  assert.deepEqual(submitted, ["a"]);
   releases.get("a")({ status: "completed" });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b", "c", "d"]);
+  assert.deepEqual(submitted, ["a", "b"]);
   releases.get("b")({ status: "completed" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(submitted, ["a", "b", "c"]);
   releases.get("c")({ status: "completed" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(submitted, ["a", "b", "c", "d"]);
   releases.get("d")({ status: "completed" });
   const result = await queue;
   assert.equal(result.completed, 4);
