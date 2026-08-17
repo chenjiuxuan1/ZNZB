@@ -29,16 +29,16 @@ test("splits oversized dashboard batches to cap anomalies per Dify request", () 
   assert.equal(jobs[1].cases[0].anomalyIndex, 3);
 });
 
-test("single-stage limits serialize Dify batches", () => {
+test("single-stage limits allow two concurrent Dify batches", () => {
   assert.deepEqual(getBatchInvestigationLimits(), {
-    maxConcurrentBatches: 1,
+    maxConcurrentBatches: 2,
     timeoutMs: 360000,
     targetDurationMs: 1200000,
     deadlineMs: 2700000,
   });
 });
 
-test("bounded investigation queue submits one batch at a time", async () => {
+test("bounded investigation queue submits at most two batches at a time", async () => {
   const submitted = [];
   const releases = new Map();
   const queue = runBoundedInvestigationQueue({
@@ -48,16 +48,14 @@ test("bounded investigation queue submits one batch at a time", async () => {
   });
 
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a"]);
+  assert.deepEqual(submitted, ["a", "b"]);
   releases.get("a")({ status: "completed" });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b"]);
+  assert.deepEqual(submitted, ["a", "b", "c"]);
   releases.get("b")({ status: "completed" });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(submitted, ["a", "b", "c"]);
-  releases.get("c")({ status: "completed" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(submitted, ["a", "b", "c", "d"]);
+  releases.get("c")({ status: "completed" });
   releases.get("d")({ status: "completed" });
   const result = await queue;
   assert.equal(result.completed, 4);
