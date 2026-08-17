@@ -289,7 +289,6 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       project_code: failure.projectCode,
       instance_id: failure.instanceId,
       process_instance_id: failure.instanceId,
-      state_type: "FAILURE",
       page_no: 1,
       page_size: 100,
     });
