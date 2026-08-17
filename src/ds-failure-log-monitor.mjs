@@ -43,7 +43,7 @@ function stateOf(item = {}) {
 
 function recordList(data) {
   if (Array.isArray(data)) return data;
-  for (const key of ["records", "list", "instances", "workflow_instances", "workflowInstances", "totalList", "task_instances", "taskInstances"]) {
+  for (const key of ["records", "list", "instances", "workflow_instances", "workflowInstances", "totalList", "taskList", "task_list", "task_instances", "taskInstances"]) {
     if (Array.isArray(data?.[key])) return data[key];
   }
   if (data?.data && data.data !== data) return recordList(data.data);

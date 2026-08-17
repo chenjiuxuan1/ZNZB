@@ -115,7 +115,8 @@ test("DS failure log queries today's instances before reading failed task logs",
         total: 2,
       },
       list_task_instances: {
-        totalList: [
+        processInstanceState: "FAILURE",
+        taskList: [
           { taskInstanceId: "t-wrong", workflowInstanceId: "i-other", taskCode: "wrong-task", name: "unrelated_failure", state: "FAILURE", endTime: "2026-08-14 09:09:59" },
           { taskInstanceId: "t-1", workflowInstanceId: "i-1", taskCode: "task-1", name: "dwd_orders", state: "FAILURE", endTime: "2026-08-14 08:09:59" },
         ],
