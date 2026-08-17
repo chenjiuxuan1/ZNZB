@@ -302,3 +302,52 @@ test("DS failure log scans later task pages after same-instance recovery", async
     await fs.rm(rootDir, { recursive: true, force: true });
   }
 });
+
+test("DS failure log follows a successful SUB_WORKFLOW wrapper after same-instance recovery", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-failure-recovered-sub-workflow-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { pk: { name: "PK", token: "test-token" } },
+    projects: { pk: [{ name: "data-quality", code: "170184693195456" }] },
+  }));
+
+  const originalFetch = globalThis.fetch;
+  let unfilteredTaskCalls = 0;
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    let data = {};
+    if (request.action === "list_instances") {
+      data = { totalList: [{ workflowDefinitionCode: "parent-wf", workflowInstanceId: "2413416", workflowInstanceName: "quality-check", commandType: "START_FAILURE_TASK_PROCESS", workflowExecutionStatus: "SUCCESS", runTimes: 2, workflowStartTime: "2026-08-17 11:30:43" }], total: 1 };
+    } else if (request.action === "list_task_instances" && request.payload.state_type === "FAILURE") {
+      data = { total: 0, totalList: [] };
+    } else if (request.action === "list_task_instances") {
+      unfilteredTaskCalls += 1;
+      data = unfilteredTaskCalls === 1
+        ? { total: 1, totalList: [{ id: "parent-wrapper", workflowInstanceId: "2413416", taskCode: "sub-code", name: "DWD", taskType: "SUB_WORKFLOW", state: "SUCCESS", retryTimes: 0 }] }
+        : { total: 1, totalList: [{ id: "leaf-failure", workflowInstanceId: "child-instance", taskCode: "leaf-code", name: "quality_sql", taskType: "SQL", state: "FAILURE" }] };
+    } else if (request.action === "get_task_log" && request.payload.task_type === "SUB_WORKFLOW") {
+      data = { sub_workflow_instance_id: "child-instance" };
+    } else if (request.action === "get_instance") {
+      data = { workflowDefinitionCode: "child-wf" };
+    } else if (request.action === "get_task_log") {
+      data = { log: "ERROR quality check failed\nCaused by: duplicate key in quality result" };
+    } else if (request.action === "extract_task_runtime_config") {
+      data = { task_type: "SQL", runtime_config: { sql: "select duplicate_key from quality_result" } };
+    }
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data }); } };
+  };
+
+  try {
+    const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-17T12:00:00+08:00"), countries: ["pk"] });
+    const [failure] = result.countries[0].failures;
+    assert.equal(failure.taskInstanceId, "leaf-failure");
+    assert.equal(failure.taskName, "quality_sql");
+    assert.equal(failure.resolvedWorkflowInstanceId, "child-instance");
+    assert.equal(failure.failureMessage, "duplicate key in quality result");
+    assert.equal(failure.taskScript, "select duplicate_key from quality_result");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
