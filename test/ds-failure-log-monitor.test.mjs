@@ -142,6 +142,8 @@ test("DS failure log queries today's instances before reading failed task logs",
   try {
     const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-14T09:00:00+08:00"), countries: ["cn"] });
     assert.deepEqual(actions.map((item) => item.action), ["list_instances", "list_task_instances", "get_task_log", "extract_task_runtime_config"]);
+    const taskQuery = actions.find((item) => item.action === "list_task_instances");
+    assert.equal(taskQuery.payload.state_type, undefined);
     assert.equal(actions[0].payload.state_type, "");
     assert.equal(actions[0].payload.start_time, "2026-08-14 00:00:00");
     assert.equal(actions[0].payload.end_time, "2026-08-14 23:59:59");
