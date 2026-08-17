@@ -4,6 +4,8 @@ import { loadDsSchedulerConfig } from "./ds-scheduler-monitor.mjs";
 const REQUEST_TIMEOUT_MS = 60_000;
 const INSTANCE_PAGE_SIZE = 100;
 const MAX_INSTANCE_PAGES = 50;
+const TASK_PAGE_SIZE = 100;
+const MAX_TASK_PAGES = 50;
 const PROJECT_QUERY_CONCURRENCY = 3;
 const FAILURE_ENRICH_CONCURRENCY = 2;
 const MAX_SUB_WORKFLOW_DEPTH = 8;
@@ -277,6 +279,99 @@ function hasExplicitFailureEvidence(log = "") {
   return /(?:Caused by\s*:|SQLSTATE|detailMessage|errCode|does not exist|unknown (?:column|table)|permission denied|syntax error|unsupported operand|no such|\bERROR\b|\bFAILED\b|\bfailure\b|Exception)/i.test(String(log || ""));
 }
 
+async function listFailureTaskCandidates(failure, context, instanceIdValue) {
+  // Prefer DS 3.4's server-side state filter.  Large workflows often have
+  // hundreds of successful rows after recovery, while the historical failed
+  // row is far beyond page 1.  This query finds that row without scanning the
+  // successful rows first.  The unfiltered scan below remains the fallback for
+  // STOP/KILL states, sub-workflow wrappers and country-specific API behavior.
+  try {
+    const filtered = await postAction(context.webhookUrl, context.country, context.token, "list_task_instances", {
+      project_code: failure.projectCode,
+      instance_id: instanceIdValue,
+      process_instance_id: instanceIdValue,
+      state_type: "FAILURE",
+      page_no: 1,
+      page_size: TASK_PAGE_SIZE,
+    });
+    const filteredFailures = recordList(filtered).filter((item) => {
+      const ownerInstanceId = String(item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || "").trim();
+      return (!ownerInstanceId || ownerInstanceId === instanceIdValue) && FAILED_STATES.has(stateOf(item));
+    }).sort((a, b) => timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)));
+    if (filteredFailures.length) {
+      return {
+        candidates: filteredFailures,
+        pagesRead: 1,
+        tasksRead: filteredFailures.length,
+        total: pageTotal(filtered),
+      };
+    }
+  } catch {
+    // Continue with the compatible unfiltered paging path.
+  }
+
+  const seen = new Set();
+  const retryTasks = [];
+  let tasksRead = 0;
+  let reportedTotal = null;
+
+  for (let pageNo = 1; pageNo <= MAX_TASK_PAGES; pageNo += 1) {
+    const response = await postAction(context.webhookUrl, context.country, context.token, "list_task_instances", {
+      project_code: failure.projectCode,
+      instance_id: instanceIdValue,
+      process_instance_id: instanceIdValue,
+      page_no: pageNo,
+      page_size: TASK_PAGE_SIZE,
+    });
+    const records = recordList(response);
+    const responseTotal = pageTotal(response);
+    if (responseTotal != null) reportedTotal = responseTotal;
+
+    const ownedTasks = records.filter((item) => {
+      const ownerInstanceId = String(item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || "").trim();
+      return !ownerInstanceId || ownerInstanceId === instanceIdValue;
+    }).filter((item) => {
+      const key = taskInstanceIdOf(item) || `${taskCodeOf(item)}:${instanceTime(item)}:${stateOf(item)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    tasksRead += ownedTasks.length;
+
+    const failedTasks = ownedTasks
+      .filter((item) => FAILED_STATES.has(stateOf(item)))
+      .sort((a, b) => timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)));
+    if (failedTasks.length) {
+      return { candidates: failedTasks, pagesRead: pageNo, tasksRead, total: reportedTotal };
+    }
+
+    if (failure.inferredFromRetry) {
+      retryTasks.push(...ownedTasks.filter((item) => taskRetryCount(item) > 0));
+    }
+
+    // A full page can be followed by more rows even when an older gateway has
+    // incorrectly reported total == current page length.  Query one more page
+    // in that case; an empty/short page terminates the scan cheaply.
+    if (!records.length || records.length < TASK_PAGE_SIZE) {
+      return {
+        candidates: retryTasks.sort((a, b) => taskRetryCount(b) - taskRetryCount(a)
+          || timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a))),
+        pagesRead: pageNo,
+        tasksRead,
+        total: reportedTotal,
+      };
+    }
+  }
+
+  return {
+    candidates: retryTasks.sort((a, b) => taskRetryCount(b) - taskRetryCount(a)
+      || timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a))),
+    pagesRead: MAX_TASK_PAGES,
+    tasksRead,
+    total: reportedTotal,
+  };
+}
+
 async function resolveFailureTask(failure, context, options = {}) {
   const instanceIdValue = String(options.instanceId || failure.instanceId || "").trim();
   const workflowCodeValue = String(options.workflowCode || failure.workflowCode || "").trim();
@@ -285,26 +380,8 @@ async function resolveFailureTask(failure, context, options = {}) {
   if (!instanceIdValue || depth > MAX_SUB_WORKFLOW_DEPTH || visited.has(instanceIdValue)) return null;
   visited.add(instanceIdValue);
 
-  const tasks = await postAction(context.webhookUrl, context.country, context.token, "list_task_instances", {
-    project_code: failure.projectCode,
-    instance_id: instanceIdValue,
-    process_instance_id: instanceIdValue,
-    page_no: 1,
-    page_size: 100,
-  });
-  const ownedTasks = recordList(tasks).filter((item) => {
-    const ownerInstanceId = String(item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || "").trim();
-    return !ownerInstanceId || ownerInstanceId === instanceIdValue;
-  });
-  const failedTasks = ownedTasks
-    .filter((item) => FAILED_STATES.has(stateOf(item)))
-    .sort((a, b) => timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)));
-  const retryTasks = failure.inferredFromRetry && !failedTasks.length
-    ? ownedTasks
-      .filter((item) => taskRetryCount(item) > 0)
-      .sort((a, b) => taskRetryCount(b) - taskRetryCount(a) || timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)))
-    : [];
-  const candidates = failedTasks.length ? failedTasks : retryTasks;
+  const taskQuery = await listFailureTaskCandidates(failure, context, instanceIdValue);
+  const candidates = taskQuery.candidates;
   let wrapperFallback = null;
 
   for (const task of candidates) {
@@ -319,6 +396,9 @@ async function resolveFailureTask(failure, context, options = {}) {
       taskState: stateOf(task),
       workflowCode: workflowCodeValue,
       workflowInstanceId: instanceIdValue,
+      taskQueryPages: taskQuery.pagesRead,
+      taskQueryReadCount: taskQuery.tasksRead,
+      taskQueryTotal: taskQuery.total,
       logData: {},
     };
     if (taskType === "SUB_WORKFLOW" && taskInstanceId) {
@@ -415,7 +495,7 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
     }
     const resolved = await resolveFailureTask(failure, { webhookUrl, country, token });
     if (!resolved) return { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
-    const { taskInstanceId, taskName, taskCode, taskType, taskState, logData, workflowCode: resolvedWorkflowCode, workflowInstanceId } = resolved;
+    const { taskInstanceId, taskName, taskCode, taskType, taskState, logData, workflowCode: resolvedWorkflowCode, workflowInstanceId, taskQueryPages, taskQueryReadCount, taskQueryTotal } = resolved;
     const runtimeFailure = { ...failure, workflowCode: resolvedWorkflowCode || failure.workflowCode };
     const runtime = await loadTaskRuntime(runtimeFailure, { taskName, taskCode, taskType }, { webhookUrl, country, token });
     return {
@@ -428,6 +508,9 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       taskCode,
       taskType: runtime.taskType || taskType,
       taskState,
+      taskQueryPages,
+      taskQueryReadCount,
+      taskQueryTotal,
       failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
     };
   } catch (error) {
