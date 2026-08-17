@@ -1433,7 +1433,8 @@ function formatMetabaseFinalVerdict(analysis = {}) {
       detail: "AI 判断数据链路未发现故障证据，最终播报会跳过或降级。",
     };
   }
-  if (verdict === "data_issue" || action === "send") {
+  // Notification policy preserves an alert; it is not evidence of a data-side fault.
+  if (verdict === "data_issue") {
     return {
       className: "error ai-verdict-issue",
       supportClass: "ai-support-issue",
