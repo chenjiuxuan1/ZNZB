@@ -2,6 +2,10 @@ import { fetchCompatible } from "./fetch-compatible.mjs";
 import { loadDsSchedulerConfig } from "./ds-scheduler-monitor.mjs";
 
 const REQUEST_TIMEOUT_MS = 60_000;
+const INSTANCE_PAGE_SIZE = 100;
+const MAX_INSTANCE_PAGES = 50;
+const PROJECT_QUERY_CONCURRENCY = 3;
+const FAILURE_ENRICH_CONCURRENCY = 2;
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const COUNTRY_TIMEZONES = {
@@ -11,6 +15,14 @@ const COUNTRY_TIMEZONES = {
   th: "Asia/Bangkok",
   pk: "Asia/Karachi",
   mx: "America/Mexico_City",
+};
+const COUNTRY_DS_UI_BASE_URLS = {
+  cn: "https://dolphin.kuainiujinke.com/dolphinscheduler/ui",
+  ine: "https://ds.empoweroceanin.com/dolphinscheduler/ui",
+  ph: "https://ds.iloanmotor.com/dolphinscheduler/ui",
+  th: "https://ds.jsxjdk.com/dolphinscheduler/ui",
+  pk: "https://dolphin.wealthleaptech.com/dolphinscheduler/ui",
+  mx: "https://ds.mxgbus.com/dolphinscheduler/ui",
 };
 
 const FAILED_STATES = new Set(["FAILURE", "KILL", "STOP", "STOPPED", "6", "9", "5"]);
@@ -31,9 +43,10 @@ function stateOf(item = {}) {
 
 function recordList(data) {
   if (Array.isArray(data)) return data;
-  for (const key of ["records", "list", "instances", "task_instances", "taskInstances"]) {
+  for (const key of ["records", "list", "instances", "workflow_instances", "workflowInstances", "totalList", "task_instances", "taskInstances"]) {
     if (Array.isArray(data?.[key])) return data[key];
   }
+  if (data?.data && data.data !== data) return recordList(data.data);
   return [];
 }
 
@@ -57,6 +70,19 @@ function instanceId(item = {}) {
   return String(item.instance_id || item.instanceId || item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || item.id || "").trim();
 }
 
+function commandTypeOf(item = {}) {
+  return String(item.command_type || item.commandType || "").trim().toUpperCase();
+}
+
+function runTimesOf(item = {}) {
+  const value = Number(item.run_times ?? item.runTimes ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function isFailureRetry(item = {}) {
+  return commandTypeOf(item) === "START_FAILURE_TASK_PROCESS" || runTimesOf(item) > 1;
+}
+
 function timestamp(value) {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
@@ -64,6 +90,9 @@ function timestamp(value) {
 
 function localDate(value, timeZone) {
   if (!value) return "";
+  const text = String(value).trim();
+  const localTimestamp = text.match(/^(\d{4}-\d{2}-\d{2})[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/);
+  if (localTimestamp) return localTimestamp[1];
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return dateKey(date, timeZone);
@@ -89,7 +118,7 @@ function projectTargets(config, countryCode) {
   return code ? [{ name: String(config.projectNames?.[countryCode] || "").trim(), code }] : [];
 }
 
-async function postAction(webhookUrl, country, token, action, payload = {}) {
+async function postActionOnce(webhookUrl, country, token, action, payload = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -132,7 +161,32 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
   for (const records of groups.values()) {
     const ordered = [...records].sort((a, b) => timestamp(instanceTime(a)) - timestamp(instanceTime(b)));
     const failed = ordered.filter((item) => FAILED_STATES.has(stateOf(item)));
-    if (!failed.length) continue;
+    if (!failed.length) {
+      const retried = ordered.filter(isFailureRetry);
+      if (!retried.length) continue;
+      const recoveredInstance = retried.at(-1);
+      const recoveredState = stateOf(recoveredInstance);
+      const recovered = SUCCESS_STATES.has(recoveredState);
+      const repairing = RUNNING_STATES.has(recoveredState);
+      failures.push({
+        projectName,
+        projectCode,
+        workflowCode: workflowCode(recoveredInstance),
+        workflowName: workflowName(recoveredInstance),
+        instanceId: instanceId(recoveredInstance),
+        instanceState: "FAILURE",
+        startTime: instanceTime(recoveredInstance),
+        endTime: endTime(recoveredInstance),
+        repairStatus: recovered ? "recovered" : repairing ? "repairing" : "unresolved",
+        recoveryInstanceId: instanceId(recoveredInstance),
+        recoveryState: recoveredState,
+        recoveryTime: endTime(recoveredInstance) || instanceTime(recoveredInstance),
+        failureMessage: String(recoveredInstance.failure_message || recoveredInstance.failureMessage || recoveredInstance.error_message || recoveredInstance.errorMessage || "").trim(),
+        failureCount: Math.max(1, runTimesOf(recoveredInstance) - 1),
+        inferredFromRetry: true,
+      });
+      continue;
+    }
     const latestFailure = failed.at(-1);
     const failedAt = timestamp(instanceTime(latestFailure));
     const later = ordered.filter((item) => timestamp(instanceTime(item)) > failedAt);
@@ -160,10 +214,56 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
 
 export function extractDsFailureReason(log, fallback = "") {
   const lines = String(log || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const meaningful = lines.filter((line) => /(?:ERROR|Exception|Caused by|SQLSTATE|FAILED|failure|No such|does not exist|Permission denied)/i.test(line));
-  const candidate = meaningful.at(-1) || String(fallback || "").trim();
+  const stackFrame = (line) => /(?:^|\s)(?:at\s+)?[\w$<>.]+\([^)]*\.(?:java|scala|kt|py):\d+\)\s*$/i.test(line)
+    || /^\s*\.\.\.\s+\d+\s+more\s*$/i.test(line);
+  const candidates = lines.map((line, index) => {
+    if (stackFrame(line)) return null;
+    let score = 0;
+    if (/Caused by\s*:/i.test(line)) score = 100;
+    else if (/(?:SQLSTATE|detailMessage|errCode|does not exist|unknown (?:column|table)|permission denied|syntax error|unsupported operand|no such)/i.test(line)) score = 90;
+    else if (/(?:Exception|SQLException|Error)\s*[:：]/i.test(line)) score = 80;
+    else if (/(?:\bERROR\b|\bFAILED\b|\bfailure\b)/i.test(line)) score = 60;
+    return score ? { line, score, index } : null;
+  }).filter(Boolean).sort((a, b) => b.score - a.score || b.index - a.index);
+  if (!candidates.length && lines.some(stackFrame) && !String(fallback || "").trim()) {
+    return "任务日志只返回了程序调用栈，未解析到明确业务失败原因";
+  }
+  const candidate = candidates[0]?.line || String(fallback || "").trim();
   if (!candidate) return "任务日志未返回明确失败原因";
-  return candidate.replace(/^.*?(?:ERROR|Exception|Caused by)\s*[-:：]?\s*/i, "").trim().slice(0, 600) || candidate.slice(0, 600);
+  if (stackFrame(candidate)) return "任务日志只返回了程序调用栈，未解析到明确业务失败原因";
+  return candidate
+    .replace(/^.*?Caused by\s*:\s*/i, "")
+    .replace(/^.*?\bERROR\b\s*[-:：]?\s*/i, "")
+    .trim().slice(0, 1000) || candidate.slice(0, 1000);
+}
+
+export function extractTaskScript(data = {}) {
+  const runtime = data.runtime_config || data.runtimeConfig || {};
+  const taskParams = data.task_params || data.taskParams || {};
+  for (const value of [runtime.sql, runtime.raw_script, runtime.rawScript, taskParams.sql, taskParams.raw_script, taskParams.rawScript, data.sql, data.raw_script, data.rawScript]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+async function loadTaskRuntime(failure, task, { webhookUrl, country, token }) {
+  const taskName = String(task.taskName || failure.taskName || "").trim();
+  const taskCode = String(task.taskCode || failure.taskCode || "").trim();
+  if (!failure.workflowCode || (!taskName && !taskCode)) return {};
+  try {
+    const runtime = await postAction(webhookUrl, country, token, "extract_task_runtime_config", {
+      project_code: failure.projectCode,
+      workflow_code: failure.workflowCode,
+      task_name: taskName,
+      task_code: taskCode,
+    });
+    return {
+      taskType: String(runtime.task_type || runtime.taskType || task.taskType || "").trim().toUpperCase(),
+      taskScript: extractTaskScript(runtime),
+    };
+  } catch (error) {
+    return { taskConfigError: error.message };
+  }
 }
 
 async function enrichFailure(failure, { webhookUrl, country, token }) {
@@ -174,8 +274,14 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
         project_code: failure.projectCode,
         task_instance_id: failure.taskInstanceId,
       });
+      const runtime = await loadTaskRuntime(failure, {
+        taskName: failure.taskName,
+        taskCode: failure.taskCode,
+        taskType: failure.taskType,
+      }, { webhookUrl, country, token });
       return {
         ...failure,
+        ...runtime,
         failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
       };
     }
@@ -188,21 +294,29 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       page_size: 100,
     });
     const failedTask = recordList(tasks)
+      .filter((item) => {
+        const ownerInstanceId = String(item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || "").trim();
+        return !ownerInstanceId || ownerInstanceId === String(failure.instanceId);
+      })
       .filter((item) => FAILED_STATES.has(stateOf(item)))
       .sort((a, b) => timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a)))[0];
     if (!failedTask) return { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
     const taskInstanceId = String(failedTask.task_instance_id || failedTask.taskInstanceId || failedTask.id || "").trim();
     const taskName = String(failedTask.task_name || failedTask.taskName || failedTask.name || "").trim();
     const taskCode = String(failedTask.task_code || failedTask.taskCode || failedTask.code || "").trim();
+    const taskType = String(failedTask.task_type || failedTask.taskType || failedTask.type || "").trim().toUpperCase();
     const logData = taskInstanceId ? await postAction(webhookUrl, country, token, "get_task_log", {
       project_code: failure.projectCode,
       task_instance_id: taskInstanceId,
     }) : {};
+    const runtime = await loadTaskRuntime(failure, { taskName, taskCode, taskType }, { webhookUrl, country, token });
     return {
       ...failure,
+      ...runtime,
       taskInstanceId,
       taskName,
       taskCode,
+      taskType: runtime.taskType || taskType,
       taskState: stateOf(failedTask),
       failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
     };
@@ -213,6 +327,44 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       logError: error.message,
     };
   }
+}
+
+function isTransientGatewayError(error) {
+  return /(?:connection (?:closed|reset)|closed by remote host|port 22|econnreset|socket hang up|fetch failed|request timeout|请求超时|网关返回非 JSON（HTTP 200）)/i.test(String(error?.message || error || ""));
+}
+
+async function postAction(webhookUrl, country, token, action, payload = {}) {
+  try {
+    return await postActionOnce(webhookUrl, country, token, action, payload);
+  } catch (error) {
+    if (!isTransientGatewayError(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      return await postActionOnce(webhookUrl, country, token, action, payload);
+    } catch (retryError) {
+      throw new Error(`网关瞬时连接失败，自动重试 1 次后仍未恢复：${retryError.message}`);
+    }
+  }
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker));
+  return results;
+}
+
+function buildDsInstanceUrl(country, projectCode, instanceId, configuredBaseUrl = "") {
+  const baseUrl = String(configuredBaseUrl || COUNTRY_DS_UI_BASE_URLS[country] || "").trim().replace(/\/+$/, "");
+  if (!baseUrl || !projectCode || !instanceId) return "";
+  return `${baseUrl}/projects/${encodeURIComponent(projectCode)}/workflow/instances/${encodeURIComponent(instanceId)}`;
 }
 
 export function normalizeGatewayFailures(data = {}, { projectName = "", projectCode = "", targetDate = "", timeZone = "UTC" } = {}) {
@@ -255,20 +407,81 @@ export function normalizeGatewayFailures(data = {}, { projectName = "", projectC
   }).sort((a, b) => timestamp(b.startTime) - timestamp(a.startTime));
 }
 
-async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone }) {
-  try {
-    const data = await postAction(webhookUrl, country, token, "check_failed_instances", {
-      project_code: project.code,
-      page_size: 100,
-      consecutive_failures: 1,
-      stale_policy: "one_full_schedule_cycle",
-      failure_policy: "scheduled_today_final_failure",
-      include_checked_workflows: false,
-      include_failed_workflows: true,
+function pageTotal(data = {}) {
+  const source = data?.data && typeof data.data === "object" ? data.data : data;
+  for (const key of ["total", "totalCount", "total_count"]) {
+    const raw = source?.[key];
+    if (raw == null || raw === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
+function totalPages(data = {}) {
+  const source = data?.data && typeof data.data === "object" ? data.data : data;
+  for (const key of ["totalPage", "totalPages", "total_page", "total_pages", "pages"]) {
+    const raw = source?.[key];
+    if (raw == null || raw === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
+async function listProjectInstances({ webhookUrl, country, token, projectCode, targetDate, timeZone }) {
+  const instances = [];
+  const seen = new Set();
+  for (let pageNo = 1; pageNo <= MAX_INSTANCE_PAGES; pageNo += 1) {
+    const data = await postAction(webhookUrl, country, token, "list_instances", {
+      project_code: projectCode,
+      state_type: "",
+      search_val: "",
+      page_no: pageNo,
+      page_size: INSTANCE_PAGE_SIZE,
+      start_time: `${targetDate} 00:00:00`,
+      end_time: `${targetDate} 23:59:59`,
+      timezone_id: timeZone,
     });
-    const failures = normalizeGatewayFailures(data, { projectName: project.name, projectCode: project.code, targetDate, timeZone });
-    const enriched = await Promise.all(failures.map((failure) => enrichFailure(failure, { webhookUrl, country, token })));
-    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: Number(data.total_checked || data.totalChecked || recordList(data).length), failures: enriched };
+    const records = recordList(data);
+    const reachedOlderRecords = records.some((item) => {
+      const start = instanceTime(item);
+      return Boolean(start) && localDate(start, timeZone) < targetDate;
+    });
+    for (const item of records) {
+      const key = instanceId(item) || `${workflowCode(item)}:${instanceTime(item)}:${stateOf(item)}`;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      instances.push(item);
+    }
+    const count = pageTotal(data);
+    const pages = totalPages(data);
+    if (!records.length || reachedOlderRecords || (count != null && instances.length >= count) || (pages != null && pageNo >= pages) || records.length < INSTANCE_PAGE_SIZE) break;
+  }
+  return instances.filter((item) => {
+    const start = instanceTime(item);
+    return Boolean(start) && localDate(start, timeZone) === targetDate;
+  });
+}
+
+async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl }) {
+  try {
+    const instances = await listProjectInstances({
+      webhookUrl,
+      country,
+      token,
+      projectCode: project.code,
+      targetDate,
+      timeZone,
+    });
+    const failures = classifyWorkflowFailures(instances, { projectName: project.name, projectCode: project.code })
+      .map((failure) => ({
+        ...failure,
+        dsInstanceUrl: buildDsInstanceUrl(country, project.code, failure.instanceId, dsUiBaseUrl),
+      }));
+    const enriched = await mapWithConcurrency(failures, FAILURE_ENRICH_CONCURRENCY,
+      (failure) => enrichFailure(failure, { webhookUrl, country, token }));
+    return { projectName: project.name, projectCode: project.code, success: true, checkedInstances: instances.length, failures: enriched };
   } catch (error) {
     return { projectName: project.name, projectCode: project.code, success: false, error: error.message, checkedInstances: 0, failures: [] };
   }
@@ -281,6 +494,7 @@ async function inspectCountry(config, country, now) {
   const projects = projectTargets(config, country);
   const timeZone = COUNTRY_TIMEZONES[country];
   const targetDate = todayInTimeZone(timeZone, now);
+  const dsUiBaseUrl = String(countryConfig.dsUiUrl || countryConfig.ds_ui_url || "").trim();
   if (!token || !projects.length) {
     return {
       country,
@@ -296,14 +510,15 @@ async function inspectCountry(config, country, now) {
       projects: [],
     };
   }
-  const projectResults = await Promise.all(projects.map((project) => inspectProject({
+  const projectResults = await mapWithConcurrency(projects, PROJECT_QUERY_CONCURRENCY, (project) => inspectProject({
     webhookUrl: config.n8nWebhookUrl,
     country,
     token,
     project,
     targetDate,
     timeZone,
-  })));
+    dsUiBaseUrl,
+  }));
   const failures = projectResults.flatMap((item) => item.failures || []);
   return {
     country,
