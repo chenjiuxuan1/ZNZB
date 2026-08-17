@@ -270,6 +270,13 @@ function taskRetryCount(item = {}) {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
+function isSameInstanceRecovery(failure = {}) {
+  if (failure.inferredFromRetry) return true;
+  const failedInstanceId = String(failure.instanceId || "").trim();
+  const recoveryInstanceId = String(failure.recoveryInstanceId || "").trim();
+  return Boolean(failedInstanceId && recoveryInstanceId && failedInstanceId === recoveryInstanceId);
+}
+
 function objectData(value = {}) {
   if (value?.data && typeof value.data === "object" && !Array.isArray(value.data)) return value.data;
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -345,8 +352,8 @@ async function listFailureTaskCandidates(failure, context, instanceIdValue) {
       return { candidates: failedTasks, pagesRead: pageNo, tasksRead, total: reportedTotal };
     }
 
-    if (failure.inferredFromRetry) {
-      retryTasks.push(...ownedTasks.filter((item) => taskRetryCount(item) > 0));
+    if (isSameInstanceRecovery(failure)) {
+      retryTasks.push(...ownedTasks.filter((item) => taskRetryCount(item) > 0 || taskTypeOf(item) === "SUB_WORKFLOW"));
     }
 
     // A full page can be followed by more rows even when an older gateway has
@@ -443,11 +450,11 @@ async function resolveFailureTask(failure, context, options = {}) {
         task_instance_id: taskInstanceId,
       });
     } catch {
-      if (!failure.inferredFromRetry || FAILED_STATES.has(stateOf(task))) return base;
+      if (!isSameInstanceRecovery(failure) || FAILED_STATES.has(stateOf(task))) return base;
       continue;
     }
     const log = logData.log || logData.task_log || logData.content || "";
-    if (!failure.inferredFromRetry || FAILED_STATES.has(stateOf(task)) || hasExplicitFailureEvidence(log)) {
+    if (!isSameInstanceRecovery(failure) || FAILED_STATES.has(stateOf(task)) || hasExplicitFailureEvidence(log)) {
       return { ...base, logData };
     }
   }
