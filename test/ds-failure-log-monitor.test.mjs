@@ -143,7 +143,7 @@ test("DS failure log queries today's instances before reading failed task logs",
     const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-14T09:00:00+08:00"), countries: ["cn"] });
     assert.deepEqual(actions.map((item) => item.action), ["list_instances", "list_task_instances", "get_task_log", "extract_task_runtime_config"]);
     const taskQuery = actions.find((item) => item.action === "list_task_instances");
-    assert.equal(taskQuery.payload.state_type, undefined);
+    assert.equal(taskQuery.payload.state_type, "FAILURE");
     assert.equal(actions[0].payload.state_type, "");
     assert.equal(actions[0].payload.start_time, "2026-08-14 00:00:00");
     assert.equal(actions[0].payload.end_time, "2026-08-14 23:59:59");
@@ -244,6 +244,59 @@ test("DS failure log recovers failure evidence from a retried task in the same i
     assert.equal(failure.taskInstanceId, "retried-task-i");
     assert.equal(failure.taskState, "SUCCESS");
     assert.equal(failure.failureMessage, "SQLSTATE 42S22 unknown column loan_id");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("DS failure log scans later task pages after same-instance recovery", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-failure-task-pages-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { pk: { name: "PK", token: "test-token" } },
+    projects: { pk: [{ name: "data-quality", code: "170184693195456" }] },
+  }));
+
+  const originalFetch = globalThis.fetch;
+  const taskPages = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    let data = {};
+    if (request.action === "list_instances") {
+      data = { totalList: [{ workflowDefinitionCode: "wf-1", workflowInstanceId: "2413416", workflowInstanceName: "quality-check", commandType: "START_FAILURE_TASK_PROCESS", workflowExecutionStatus: "SUCCESS", runTimes: 2, workflowStartTime: "2026-08-17 11:30:43" }], total: 1 };
+    } else if (request.action === "list_task_instances") {
+      const pageNo = Number(request.payload.page_no);
+      taskPages.push({ pageNo, stateType: request.payload.state_type || "" });
+      data = request.payload.state_type === "FAILURE"
+        ? { total: 0, totalList: [] }
+        : pageNo === 1
+        ? { total: 101, totalList: Array.from({ length: 100 }, (_, index) => ({ id: `success-${index}`, workflowInstanceId: "2413416", taskCode: `task-${index}`, name: `successful_task_${index}`, taskType: "SQL", state: "SUCCESS" })) }
+        : { total: 101, totalList: [{ id: "failed-task", workflowInstanceId: "2413416", taskCode: "failed-code", name: "failed_quality_sql", taskType: "SQL", state: "FAILURE", endTime: "2026-08-17 11:31:00" }] };
+    } else if (request.action === "get_task_log") {
+      data = { log: "ERROR query failed\nCaused by: SQLSTATE 42S22 unknown column bad_col" };
+    } else if (request.action === "extract_task_runtime_config") {
+      data = { task_type: "SQL", runtime_config: { sql: "select bad_col from source" } };
+    }
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data }); } };
+  };
+
+  try {
+    const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-17T12:00:00+08:00"), countries: ["pk"] });
+    const [failure] = result.countries[0].failures;
+    assert.deepEqual(taskPages, [
+      { pageNo: 1, stateType: "FAILURE" },
+      { pageNo: 1, stateType: "" },
+      { pageNo: 2, stateType: "" },
+    ]);
+    assert.equal(failure.taskInstanceId, "failed-task");
+    assert.equal(failure.taskName, "failed_quality_sql");
+    assert.equal(failure.failureMessage, "SQLSTATE 42S22 unknown column bad_col");
+    assert.equal(failure.taskScript, "select bad_col from source");
+    assert.equal(failure.taskQueryPages, 2);
+    assert.equal(failure.taskQueryReadCount, 101);
+    assert.equal(failure.taskQueryTotal, 101);
   } finally {
     globalThis.fetch = originalFetch;
     await fs.rm(rootDir, { recursive: true, force: true });
