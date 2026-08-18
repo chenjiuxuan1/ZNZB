@@ -10,6 +10,7 @@ const COUNTRY_OPTIONS = [
   { code: "mx", name: "墨西哥", flag: "🇲🇽" },
 ];
 const COUNTRY_META = Object.fromEntries(COUNTRY_OPTIONS.map((item) => [item.code, item]));
+const AUTO_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const STATUS_LABELS = {
   recovered: { label: "已自动修复", className: "ok" },
   repairing: { label: "修复中", className: "warn" },
@@ -26,14 +27,19 @@ let model = {
   total: 0,
   runId: 0,
   country: "",
+  nextAutoRefreshAt: 0,
 };
 
+let autoRefreshTimer = null;
+
 export function renderDsFailureLogs(root) {
+  syncAutoRefresh(root);
   paint(root);
 }
 
 async function load(root) {
   if (model.loading) return;
+  clearAutoRefresh();
   const selected = COUNTRY_OPTIONS.filter((item) => !model.country || item.code === model.country);
 
   const runId = ++model.runId;
@@ -61,7 +67,37 @@ async function load(root) {
 
   if (runId !== model.runId) return;
   model.loading = false;
-  if (isCurrentView()) paint(root);
+  if (isCurrentView()) {
+    syncAutoRefresh(root);
+    paint(root);
+  }
+}
+
+function unresolvedFailureCount() {
+  return (model.result?.countries || [])
+    .filter((country) => !model.country || country.country === model.country)
+    .flatMap((country) => country.failures || [])
+    .filter((item) => item.repairStatus === "unresolved").length;
+}
+
+function clearAutoRefresh() {
+  if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+  autoRefreshTimer = null;
+  model.nextAutoRefreshAt = 0;
+}
+
+function syncAutoRefresh(root) {
+  if (!isCurrentView() || model.loading || unresolvedFailureCount() === 0) {
+    clearAutoRefresh();
+    return;
+  }
+  if (autoRefreshTimer) return;
+  model.nextAutoRefreshAt = Date.now() + AUTO_REFRESH_INTERVAL_MS;
+  autoRefreshTimer = setTimeout(() => {
+    autoRefreshTimer = null;
+    model.nextAutoRefreshAt = 0;
+    if (isCurrentView() && !model.loading) load(root);
+  }, AUTO_REFRESH_INTERVAL_MS);
 }
 
 function readableQueryError(error) {
@@ -130,6 +166,9 @@ function paint(root) {
     : {};
   const hasResult = Boolean(model.result);
   const selectedCount = model.country ? 1 : COUNTRY_OPTIONS.length;
+  const autoRefreshNotice = model.nextAutoRefreshAt
+    ? `<div class="sandbox-status warn"><strong>待修复任务自动复查</strong><span>页面将每隔 1 小时自动重新查询当前国家；下次复查时间：${formatTime(model.nextAutoRefreshAt)}</span></div>`
+    : "";
   root.innerHTML = `
     <div class="page-header batch-hero ds-failure-hero">
       <div>
@@ -145,6 +184,7 @@ function paint(root) {
     </div>
     ${model.error ? `<div class="sandbox-status error"><strong>无法查询</strong><span>${escapeHtml(model.error)}</span></div>` : ""}
     <section class="panel ds-failure-toolbar">
+      ${autoRefreshNotice}
       <div class="detail-header compact-header">
         <div><h2 class="panel-title">当天失败任务</h2><p class="muted">选择需要观察的国家后点击查询。每个国家独立返回，查询中的国家不会阻塞已完成国家的结果。</p></div>
         <button class="primary" id="ds-failure-query" ${model.loading ? "disabled" : ""}>${model.loading ? `正在查询 ${model.completed}/${model.total}` : hasResult ? "重新查询" : "查询"}</button>
@@ -212,7 +252,17 @@ function filteredFailures(failures) {
 }
 
 function renderFailure(item) {
-  const status = STATUS_LABELS[item.repairStatus] || STATUS_LABELS.unresolved;
+  const status = item.repairStatus === "recovered"
+    ? STATUS_LABELS.recovered
+    : item.failureType === "sql_error"
+      ? { label: "SQL 错误，需人工修改", className: "danger" }
+      : item.failureType === "recoverable"
+        ? { label: "自动重跑中", className: "warn" }
+        : STATUS_LABELS[item.repairStatus] || STATUS_LABELS.unresolved;
+  const taskUnlocated = !item.taskName && !item.taskCode;
+  const unlocatedNotice = taskUnlocated
+    ? `<div class="sandbox-status warn"><strong>失败节点尚未定位</strong><span>该工作流状态为失败或停止。请进入 DS 工作流实例，在失败或停止节点中查看日志确定具体原因。${item.dsInstanceUrl ? ` <a href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">查看节点日志 ↗</a>` : ""}</span></div>`
+    : "";
   const taskLabel = item.taskName || item.taskCode || "未定位到失败任务";
   const scriptLabel = item.taskType === "SQL" ? "出错 SQL" : "任务执行脚本";
   return `<article class="ds-failure-item ${escapeHtml(item.repairStatus || "unresolved")}">
@@ -228,12 +278,14 @@ function renderFailure(item) {
       <div><span>失败工作流</span><strong>${escapeHtml(item.workflowName || item.workflowCode || "未命名工作流")}</strong><small>${escapeHtml(item.workflowCode || "-")}</small></div>
       <div><span>失败任务</span><strong>${escapeHtml(taskLabel)}</strong><small>${escapeHtml([item.taskType, item.taskCode].filter(Boolean).join(" · ") || "任务信息未返回")}</small></div>
     </div>
+    ${unlocatedNotice}
     <div class="ds-failure-meta">
       <span>失败实例：${escapeHtml(item.instanceId || "-")}</span>
       <span>失败状态：${escapeHtml(item.instanceState || "FAILURE")}</span>
       <span>当天失败次数：${item.failureCount || 1}</span>
     </div>
     <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(item.failureMessage || "任务日志未返回明确失败原因")}</pre></div>
+    ${item.failureType === "sql_error" ? `<div class="ds-failure-sql-missing"><strong>重跑策略</strong><span>无需重跑，请人工修改 SQL 后再处理</span></div>` : item.failureType === "recoverable" && item.repairStatus !== "recovered" ? `<div class="ds-failure-sql-missing"><strong>重跑策略</strong><span>后台正在立即重跑；失败后会继续重跑，成功后自动停止</span></div>` : ""}
     ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
     ${item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${item.repairStatus === "recovered" ? "修复结果" : "修复进度"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
