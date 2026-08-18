@@ -255,6 +255,18 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/ds-failure-logs") {
     return sendJson(response, 200, await api.getDsFailureLogs(Object.fromEntries(url.searchParams.entries())));
   }
+  if (method === "GET" && url.pathname === "/api/ds-failure-retry/control") {
+    return sendJson(response, 200, api.getDsFailureRetryControl());
+  }
+  if (method === "POST" && url.pathname === "/api/ds-failure-retry/start") {
+    return sendJson(response, 200, api.startDsFailureRetry(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-failure-retry/stop") {
+    return sendJson(response, 200, api.stopDsFailureRetry());
+  }
+  if (method === "GET" && url.pathname === "/api/ds-failure-retry/logs") {
+    return sendJson(response, 200, api.getDsFailureRetryLogs(Object.fromEntries(url.searchParams.entries())));
+  }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/notification") {
     return sendJson(response, 200, await api.getDsNotificationConfig());
   }

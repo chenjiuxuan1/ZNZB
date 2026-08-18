@@ -40,8 +40,17 @@ export function createDsAutoRetryManager({
 } = {}) {
   const active = new Map();
   const statuses = new Map();
+  const logs = [];
   let scanTimer = null;
   let scanning = false;
+  let enabled = false;
+  let startAt = null;
+  let countries = [];
+
+  const appendLog = (level, event, detail = {}) => {
+    logs.push({ id: `${now().getTime()}-${logs.length + 1}`, time: now().toISOString(), level, event, ...detail });
+    if (logs.length > 500) logs.splice(0, logs.length - 500);
+  };
 
   const setStatus = (key, patch) => {
     statuses.set(key, { ...(statuses.get(key) || {}), ...patch, updatedAt: now().toISOString() });
@@ -53,8 +62,14 @@ export function createDsAutoRetryManager({
     let attempts = Number(statuses.get(key)?.attempts || 0);
     try {
       while (true) {
+        if (!enabled) {
+          setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "页面已停止自动重跑", attempts });
+          appendLog("info", "retry_stopped", { key, country, attempts, message: "页面已停止自动重跑" });
+          return;
+        }
         if (countryDateKey(country, now()) !== startedDate) {
           setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "失败实例已跨天，自动重跑终止", attempts });
+          appendLog("warn", "safety_stopped", { key, country, attempts, message: "失败实例已跨天" });
           return;
         }
         const config = await configLoader(rootDir);
@@ -63,6 +78,7 @@ export function createDsAutoRetryManager({
         const webhookUrl = String(config.n8nWebhookUrl || "").trim();
         if (!token || !webhookUrl) {
           setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "DS Token 或网关未配置", attempts });
+          appendLog("error", "configuration_error", { key, country, attempts, message: "DS Token 或网关未配置" });
           return;
         }
         const payload = {
@@ -75,16 +91,19 @@ export function createDsAutoRetryManager({
           instance = await actionFn({ webhookUrl, country, token, action: "get_instance", payload });
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", lastError: error.message, attempts });
+          appendLog("error", "instance_check_failed", { key, country, attempts, message: error.message });
           await sleep(retryDelayMs);
           continue;
         }
         const state = dsStateOf(instance?.data || instance);
         if (SUCCESS_STATES.has(state)) {
           setStatus(key, { autoRetryStatus: "recovered", stopReason: "重跑成功", attempts, recoveryState: state });
+          appendLog("success", "recovered", { key, country, attempts, state, message: "实例重跑成功" });
           return;
         }
         if (STOP_STATES.has(state)) {
           setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "实例已被人工停止或终止", attempts, recoveryState: state });
+          appendLog("warn", "safety_stopped", { key, country, attempts, state, message: "实例已被人工停止或终止" });
           return;
         }
         try {
@@ -98,10 +117,12 @@ export function createDsAutoRetryManager({
           const releaseState = nestedReleaseState(workflow);
           if (releaseState === "OFFLINE" || releaseState === "0") {
             setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "工作流已下线", attempts, releaseState });
+            appendLog("warn", "safety_stopped", { key, country, attempts, releaseState, message: "工作流已下线" });
             return;
           }
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", lastError: `工作流状态读取失败：${error.message}`, attempts });
+          appendLog("error", "workflow_check_failed", { key, country, attempts, message: error.message });
           await sleep(retryDelayMs);
           continue;
         }
@@ -112,14 +133,17 @@ export function createDsAutoRetryManager({
         }
         if (!FAILURE_STATES.has(state)) {
           setStatus(key, { autoRetryStatus: "manual_review", stopReason: `实例状态 ${state || "UNKNOWN"} 无法安全重跑`, attempts });
+          appendLog("warn", "manual_review", { key, country, attempts, state, message: "实例状态无法安全重跑" });
           return;
         }
         try {
           await actionFn({ webhookUrl, country, token, action: "retry_instance", payload });
           attempts += 1;
           setStatus(key, { autoRetryStatus: "retrying", attempts, lastAttemptAt: now().toISOString(), lastError: "", stopReason: "" });
+          appendLog("info", "retry_submitted", { key, country, attempts, state, message: `已提交第 ${attempts} 次重跑` });
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", attempts, lastError: error.message });
+          appendLog("error", "retry_failed", { key, country, attempts, message: error.message });
         }
         await sleep(retryDelayMs);
       }
@@ -129,11 +153,14 @@ export function createDsAutoRetryManager({
   }
 
   async function scan() {
+    if (!enabled) return { skipped: true, reason: "disabled" };
+    if (startAt && now().getTime() < startAt.getTime()) return { skipped: true, reason: "scheduled", startAt: startAt.toISOString() };
     if (scanning) return { skipped: true };
     scanning = true;
     try {
       const result = await inspectFn(rootDir);
       for (const countryResult of result.countries || []) {
+        if (countries.length && !countries.includes(countryResult.country)) continue;
         for (const failure of countryResult.failures || []) {
           const key = failureKey(countryResult.country, failure);
           if (failure.repairStatus === "recovered") {
@@ -145,10 +172,12 @@ export function createDsAutoRetryManager({
               autoRetryStatus: failure.failureType || "manual_review",
               stopReason: failure.retryDecision || "不满足自动重跑条件",
             });
+            appendLog("info", "skipped", { key, country: countryResult.country, message: failure.retryDecision || "不满足自动重跑条件" });
             continue;
           }
           if (!active.has(key)) {
             setStatus(key, { autoRetryStatus: "retrying", attempts: Number(statuses.get(key)?.attempts || 0), stopReason: "" });
+            appendLog("info", "retry_started", { key, country: countryResult.country, attempts: Number(statuses.get(key)?.attempts || 0), message: "开始处理符合条件的失败任务" });
             const task = runLoop(countryResult.country, failure).catch((error) => {
               logger.error?.(`[ds-auto-retry] ${key}: ${error.message}`);
               setStatus(key, { autoRetryStatus: "retry_wait", lastError: error.message });
@@ -180,7 +209,32 @@ export function createDsAutoRetryManager({
     if (scanTimer) return;
     scanTimer = setInterval(() => scan().catch((error) => logger.error?.("[ds-auto-retry] scan failed:", error)), scanIntervalMs);
     scanTimer.unref?.();
-    setTimeout(() => scan().catch((error) => logger.error?.("[ds-auto-retry] initial scan failed:", error)), 15_000).unref?.();
+  }
+
+  function enable(options = {}) {
+    const parsed = options.startAt ? new Date(options.startAt) : now();
+    if (Number.isNaN(parsed.getTime())) throw new Error("重跑开始时间无效");
+    enabled = true;
+    startAt = parsed;
+    countries = Array.isArray(options.countries) ? [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))] : [];
+    appendLog("info", "control_enabled", { message: `已启用重跑，开始时间：${startAt.toISOString()}`, startAt: startAt.toISOString(), countries });
+    if (now().getTime() >= startAt.getTime()) scan().catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error));
+    return control();
+  }
+
+  function disable() {
+    enabled = false;
+    appendLog("info", "control_disabled", { message: "已从页面停止自动重跑" });
+    return control();
+  }
+
+  function control() {
+    return { enabled, startAt: startAt?.toISOString() || null, countries, activeCount: active.size, logCount: logs.length };
+  }
+
+  function getLogs(limit = 200) {
+    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 200));
+    return logs.slice(-safeLimit).reverse();
   }
 
   function stop() {
@@ -188,5 +242,5 @@ export function createDsAutoRetryManager({
     scanTimer = null;
   }
 
-  return { start, stop, scan, decorate, statuses, active };
+  return { start, stop, scan, enable, disable, control, getLogs, decorate, statuses, active, logs };
 }

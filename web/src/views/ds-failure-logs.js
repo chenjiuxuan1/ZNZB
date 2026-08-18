@@ -1,4 +1,4 @@
-import { apiGet } from "../api.js";
+import { apiGet, apiPost } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
 const COUNTRY_OPTIONS = [
@@ -36,6 +36,11 @@ let model = {
   runId: 0,
   country: "",
   nextAutoRefreshAt: 0,
+  retryControl: { enabled: false, startAt: null, activeCount: 0, logCount: 0 },
+  retryLogs: [],
+  retryControlLoaded: false,
+  retryActionLoading: false,
+  retryActionMessage: "",
 };
 
 let autoRefreshTimer = null;
@@ -43,6 +48,54 @@ let autoRefreshTimer = null;
 export function renderDsFailureLogs(root) {
   syncAutoRefresh(root);
   paint(root);
+  if (!model.retryControlLoaded) refreshRetryPanel(root);
+}
+
+async function refreshRetryPanel(root) {
+  try {
+    const [control, logResult] = await Promise.all([
+      apiGet("/api/ds-failure-retry/control"),
+      apiGet("/api/ds-failure-retry/logs?limit=200"),
+    ]);
+    model.retryControl = control;
+    model.retryLogs = logResult.logs || [];
+    model.retryControlLoaded = true;
+    if (isCurrentView()) paint(root);
+  } catch (error) {
+    model.retryControlLoaded = true;
+    model.retryActionMessage = readableQueryError(error);
+    if (isCurrentView()) paint(root);
+  }
+}
+
+async function toggleRetry(root) {
+  if (model.retryActionLoading) return;
+  model.retryActionLoading = true;
+  model.retryActionMessage = "";
+  paint(root);
+  try {
+    if (model.retryControl.enabled) {
+      model.retryControl = await apiPost("/api/ds-failure-retry/stop");
+      model.retryActionMessage = "已停止自动重跑；正在运行的任务将在下一次状态检查时退出。";
+    } else {
+      const input = root.querySelector("#ds-retry-start-at")?.value;
+      if (!input) throw new Error("请选择重跑开始时间");
+      const startAt = new Date(input);
+      if (Number.isNaN(startAt.getTime())) throw new Error("重跑开始时间无效");
+      model.retryControl = await apiPost("/api/ds-failure-retry/start", {
+        startAt: startAt.toISOString(),
+        countries: model.country ? [model.country] : [],
+      });
+      model.retryActionMessage = startAt.getTime() > Date.now() ? "重跑计划已保存，到达所选时间后自动开始。" : "已启动符合条件失败任务的重跑。";
+    }
+    const logResult = await apiGet("/api/ds-failure-retry/logs?limit=200");
+    model.retryLogs = logResult.logs || [];
+  } catch (error) {
+    model.retryActionMessage = String(error?.message || error);
+  } finally {
+    model.retryActionLoading = false;
+    if (isCurrentView()) paint(root);
+  }
 }
 
 async function load(root) {
@@ -177,6 +230,10 @@ function paint(root) {
   const autoRefreshNotice = model.nextAutoRefreshAt
     ? `<div class="sandbox-status warn"><strong>待修复任务自动复查</strong><span>页面将每隔 1 小时自动重新查询当前国家；下次复查时间：${formatTime(model.nextAutoRefreshAt)}</span></div>`
     : "";
+  const retryStartValue = toDateTimeLocal(model.retryControl.startAt || new Date());
+  const retryStateLabel = model.retryControl.enabled
+    ? Date.parse(model.retryControl.startAt || "") > Date.now() ? "等待计划时间" : "自动重跑已启用"
+    : "自动重跑已关闭";
   root.innerHTML = `
     <div class="page-header batch-hero ds-failure-hero">
       <div>
@@ -204,6 +261,26 @@ function paint(root) {
       </div>
       <div class="ds-failure-legend"><span class="badge ok">已自动修复</span><span>最新失败实例后出现成功实例</span><span class="badge warn">修复中</span><span>最新失败实例后出现运行中实例</span><span class="badge danger">待修复</span><span>最新失败实例后没有成功或运行中实例</span></div>
     </section>
+    <section class="panel ds-failure-retry-control">
+      <div class="detail-header compact-header">
+        <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">仅处理资源、网络或运行环境类可恢复故障；SQL/代码错误、人工停止、下线及跨天任务不会重跑。</p></div>
+        <span class="badge ${model.retryControl.enabled ? "warn" : "danger"}">${retryStateLabel}</span>
+      </div>
+      <div class="ds-failure-filter-grid">
+        <label>重跑开始时间<input id="ds-retry-start-at" type="datetime-local" value="${escapeHtml(retryStartValue)}" ${model.retryControl.enabled ? "disabled" : ""}></label>
+        <label>重跑范围<input value="${model.country ? escapeHtml(COUNTRY_META[model.country]?.name || model.country) : "全部国家"}" disabled></label>
+        <label>当前运行任务<input value="${Number(model.retryControl.activeCount || 0)} 个" disabled></label>
+      </div>
+      <div class="ds-failure-item-actions">
+        <button class="${model.retryControl.enabled ? "secondary" : "primary"}" id="ds-retry-toggle" ${model.retryActionLoading ? "disabled" : ""}>${model.retryActionLoading ? "处理中…" : model.retryControl.enabled ? "停止重跑" : "启动符合条件任务重跑"}</button>
+        <button class="secondary" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新重跑日志</button>
+      </div>
+      ${model.retryActionMessage ? `<div class="sandbox-status ${/失败|错误|无效|请选择/.test(model.retryActionMessage) ? "error" : "warn"}"><span>${escapeHtml(model.retryActionMessage)}</span></div>` : ""}
+      <details class="ds-failure-sql" open>
+        <summary>重跑日志 · 最近 ${model.retryLogs.length} 条</summary>
+        ${renderRetryLogs(model.retryLogs)}
+      </details>
+    </section>
     <section class="ds-failure-country-list">
       ${hasResult ? renderCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">选择需要观察的国家，然后点击“查询”。</p></section>`}
     </section>
@@ -213,6 +290,25 @@ function paint(root) {
   root.querySelector("#ds-failure-country")?.addEventListener("change", (event) => { model.country = event.target.value; paint(root); });
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
+  root.querySelector("#ds-retry-toggle")?.addEventListener("click", () => toggleRetry(root));
+  root.querySelector("#ds-retry-refresh-logs")?.addEventListener("click", () => refreshRetryPanel(root));
+}
+
+function renderRetryLogs(logs) {
+  if (!logs.length) return `<div class="ds-failure-empty">暂无重跑日志。启动重跑后，这里会记录扫描、跳过、提交、失败、恢复和安全停止详情。</div>`;
+  return `<div class="ds-failure-reason"><pre>${logs.map((item) => {
+    const parts = [formatTime(item.time), String(item.level || "info").toUpperCase(), item.country || "-", item.message || item.event || "-"];
+    if (Number(item.attempts || 0)) parts.push(`次数=${Number(item.attempts)}`);
+    if (item.key) parts.push(`任务=${item.key}`);
+    return escapeHtml(parts.join(" | "));
+  }).join("\n")}</pre></div>`;
+}
+
+function toDateTimeLocal(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 function renderCountries(countries) {
