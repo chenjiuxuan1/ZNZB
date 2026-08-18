@@ -2567,6 +2567,23 @@ export function createPlatformApi({
       return dsAutoRetryManager?.decorate ? dsAutoRetryManager.decorate(result) : result;
     },
 
+    getDsFailureRetryControl() {
+      return dsAutoRetryManager?.control?.() || { enabled: false, startAt: null, countries: [], activeCount: 0, logCount: 0 };
+    },
+
+    startDsFailureRetry(input = {}) {
+      if (!dsAutoRetryManager?.enable) throw new Error("DS 失败重跑管理器未启用");
+      return dsAutoRetryManager.enable(input);
+    },
+
+    stopDsFailureRetry() {
+      return dsAutoRetryManager?.disable?.() || { enabled: false, startAt: null, countries: [], activeCount: 0, logCount: 0 };
+    },
+
+    getDsFailureRetryLogs(filters = {}) {
+      return { logs: dsAutoRetryManager?.getLogs?.(filters.limit) || [] };
+    },
+
     async getDsNotificationConfig() {
       const [stored, batchSchedule, rules] = await Promise.all([
         readOptionalJson(resolve("dsNotification")),
