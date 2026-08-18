@@ -15,6 +15,14 @@ const STATUS_LABELS = {
   recovered: { label: "已自动修复", className: "ok" },
   repairing: { label: "修复中", className: "warn" },
   unresolved: { label: "待修复", className: "danger" },
+  retrying: { label: "自动重跑中", className: "warn" },
+  running: { label: "重跑运行中", className: "warn" },
+  retry_wait: { label: "等待继续重跑", className: "warn" },
+  sql_code_error: { label: "SQL错误，需人工修改", className: "danger" },
+  manual_review: { label: "待人工确认", className: "danger" },
+  safety_stopped: { label: "已停止重跑", className: "danger" },
+  sql_error: { label: "SQL错误，需人工修改", className: "danger" },
+  recoverable: { label: "自动重跑中", className: "warn" },
 };
 
 let model = {
@@ -244,7 +252,8 @@ function renderCountry(country) {
 function filteredFailures(failures) {
   const keyword = model.keyword.trim().toLowerCase();
   return failures.filter((item) => {
-    if (model.status && item.repairStatus !== model.status) return false;
+    const displayStatus = item.autoRetryStatus || item.failureType || item.repairStatus;
+    if (model.status && displayStatus !== model.status) return false;
     if (!keyword) return true;
     return [item.projectName, item.workflowName, item.workflowCode, item.taskName, item.failureMessage]
       .some((value) => String(value || "").toLowerCase().includes(keyword));
@@ -252,20 +261,15 @@ function filteredFailures(failures) {
 }
 
 function renderFailure(item) {
-  const status = item.repairStatus === "recovered"
-    ? STATUS_LABELS.recovered
-    : item.failureType === "sql_error"
-      ? { label: "SQL 错误，需人工修改", className: "danger" }
-      : item.failureType === "recoverable"
-        ? { label: "自动重跑中", className: "warn" }
-        : STATUS_LABELS[item.repairStatus] || STATUS_LABELS.unresolved;
+  const displayStatus = item.autoRetryStatus || item.failureType || item.repairStatus || "unresolved";
+  const status = STATUS_LABELS[displayStatus] || STATUS_LABELS.unresolved;
   const taskUnlocated = !item.taskName && !item.taskCode;
   const unlocatedNotice = taskUnlocated
     ? `<div class="sandbox-status warn"><strong>失败节点尚未定位</strong><span>该工作流状态为失败或停止。请进入 DS 工作流实例，在失败或停止节点中查看日志确定具体原因。${item.dsInstanceUrl ? ` <a href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">查看节点日志 ↗</a>` : ""}</span></div>`
     : "";
   const taskLabel = item.taskName || item.taskCode || "未定位到失败任务";
   const scriptLabel = item.taskType === "SQL" ? "出错 SQL" : "任务执行脚本";
-  return `<article class="ds-failure-item ${escapeHtml(item.repairStatus || "unresolved")}">
+  return `<article class="ds-failure-item ${escapeHtml(displayStatus)}">
     <div class="ds-failure-item-head">
       <div><span class="badge ${status.className}">${status.label}</span><strong>${escapeHtml(item.workflowName || item.workflowCode || "未命名工作流")}</strong></div>
       <div class="ds-failure-item-actions">
@@ -285,9 +289,9 @@ function renderFailure(item) {
       <span>当天失败次数：${item.failureCount || 1}</span>
     </div>
     <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(item.failureMessage || "任务日志未返回明确失败原因")}</pre></div>
-    ${item.failureType === "sql_error" ? `<div class="ds-failure-sql-missing"><strong>重跑策略</strong><span>无需重跑，请人工修改 SQL 后再处理</span></div>` : item.failureType === "recoverable" && item.repairStatus !== "recovered" ? `<div class="ds-failure-sql-missing"><strong>重跑策略</strong><span>后台正在立即重跑；失败后会继续重跑，成功后自动停止</span></div>` : ""}
+    <div class="ds-failure-recovery"><strong>重跑策略</strong><span>${escapeHtml(item.retryDecision || "等待失败原因分类")}${Number(item.attempts || 0) ? ` · 已重跑 ${Number(item.attempts)} 次` : ""}${item.lastError ? ` · 最近错误：${escapeHtml(item.lastError)}` : ""}</span></div>
     ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
-    ${item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${item.repairStatus === "recovered" ? "修复结果" : "修复进度"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
+    ${item.repairStatus !== "unresolved" || item.stopReason ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "修复结果" : "修复进度"}</strong><span>${item.stopReason ? escapeHtml(item.stopReason) : `后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}`}</span></div>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
 }
