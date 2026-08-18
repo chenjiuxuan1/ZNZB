@@ -16,6 +16,12 @@ function resultWith(failure) {
   };
 }
 
+async function enableAndWait(manager) {
+  manager.enable({ startAt: fixedNow.toISOString() });
+  await new Promise((resolve) => setImmediate(resolve));
+  await Promise.all([...manager.active.values()]);
+}
+
 test("classifies SQL errors separately from retryable resource failures", () => {
   assert.equal(classifyDsFailureType({ failureMessage: "SQL syntax error near FROM" }).failureType, "sql_code_error");
   assert.equal(classifyDsFailureType({ failureMessage: "Container killed: out of memory" }).failureType, "retryable");
@@ -31,7 +37,7 @@ test("does not start retry loop for SQL code errors", async () => {
     actionFn: async () => { actions += 1; return {}; },
     now: () => fixedNow,
   });
-  await manager.scan();
+  await enableAndWait(manager);
   assert.equal(actions, 0);
   assert.equal(manager.active.size, 0);
   assert.equal([...manager.statuses.values()][0].autoRetryStatus, "sql_code_error");
@@ -53,8 +59,7 @@ test("keeps retryable failures running until the instance succeeds", async () =>
     now: () => fixedNow,
     sleep: async () => {},
   });
-  await manager.scan();
-  await Promise.all([...manager.active.values()]);
+  await enableAndWait(manager);
   assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance", "get_instance"]);
   assert.equal([...manager.statuses.values()][0].autoRetryStatus, "recovered");
   assert.equal([...manager.statuses.values()][0].attempts, 1);
@@ -75,8 +80,7 @@ test("stops without retry when the workflow is offline", async () => {
     now: () => fixedNow,
     sleep: async () => {},
   });
-  await manager.scan();
-  await Promise.all([...manager.active.values()]);
+  await enableAndWait(manager);
   assert.deepEqual(actions, ["get_instance", "get_workflow"]);
   assert.match([...manager.statuses.values()][0].stopReason, /工作流已下线/);
 });
@@ -89,7 +93,7 @@ test("does not retry an instance that was manually stopped", async () => {
     actionFn: async () => { actions += 1; return {}; },
     now: () => fixedNow,
   });
-  await manager.scan();
+  await enableAndWait(manager);
   assert.equal(actions, 0);
   assert.equal([...manager.statuses.values()][0].autoRetryStatus, "safety_stopped");
 });
@@ -103,8 +107,27 @@ test("terminates a retryable instance when its failure date is no longer today",
     now: () => fixedNow,
     sleep: async () => {},
   });
-  await manager.scan();
-  await Promise.all([...manager.active.values()]);
+  await enableAndWait(manager);
   assert.equal(actions, 0);
   assert.match([...manager.statuses.values()][0].stopReason, /跨天/);
+});
+
+test("is disabled by default and waits until the selected start time", async () => {
+  let inspected = 0;
+  let current = new Date(fixedNow);
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => { inspected += 1; return { totalFailures: 0, countries: [] }; },
+    now: () => current,
+  });
+  assert.deepEqual(await manager.scan(), { skipped: true, reason: "disabled" });
+  manager.enable({ startAt: "2026-08-18T11:00:00+08:00" });
+  assert.equal((await manager.scan()).reason, "scheduled");
+  assert.equal(inspected, 0);
+  current = new Date("2026-08-18T11:00:00+08:00");
+  await manager.scan();
+  assert.equal(inspected, 1);
+  manager.disable();
+  assert.equal(manager.control().enabled, false);
+  assert.ok(manager.getLogs().some((item) => item.event === "control_disabled"));
 });

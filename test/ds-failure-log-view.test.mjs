@@ -25,7 +25,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /尚未查询/);
   assert.doesNotMatch(source, /type="date"/);
   assert.doesNotMatch(source, /\?date=/);
-  assert.match(source, /renderDsFailureLogs\(root\) \{\s*syncAutoRefresh\(root\);\s*paint\(root\);\s*\}/);
+  assert.match(source, /renderDsFailureLogs\(root\) \{\s*syncAutoRefresh\(root\);\s*paint\(root\);\s*if \(!model\.retryControlLoaded\) refreshRetryPanel\(root\);\s*\}/);
   assert.doesNotMatch(source, /ds-country-choice/);
   assert.match(source, /\?country=/);
   assert.match(source, /Promise\.all\(selected\.map/);
@@ -37,6 +37,9 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /SQL错误，需人工修改/);
   assert.match(source, /自动重跑中/);
   assert.match(source, /重跑策略/);
+  assert.match(source, /启动符合条件任务重跑/);
+  assert.match(source, /type="datetime-local"/);
+  assert.match(source, /重跑日志/);
   assert.match(source, /repairStatus === "unresolved"/);
   assert.match(source, /每隔 1 小时自动重新查询当前国家/);
   assert.match(source, /查看节点日志/);
@@ -66,4 +69,6 @@ test("sidebar and server expose the independent DS failure log module", async ()
   ]);
   assert.match(app, /path: "\/ds-failure-logs", label: "DS失败任务日志"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-logs"/);
+  assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/start"/);
+  assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/logs"/);
 });
