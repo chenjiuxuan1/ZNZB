@@ -37,9 +37,15 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /SQL错误，需人工修改/);
   assert.match(source, /自动重跑中/);
   assert.match(source, /重跑策略/);
-  assert.match(source, /启动符合条件任务重跑/);
+  assert.match(source, /id="ds-retry-country"/);
+  assert.match(source, /<option value="">全部国家<\/option>/);
+  assert.match(source, /ds-retry-header-actions/);
+  assert.match(source, /"启动重跑"/);
   assert.match(source, /type="datetime-local"/);
   assert.match(source, /重跑日志/);
+  assert.match(source, /schedule-history-table ds-retry-history-table/);
+  assert.match(source, /<th>运行时间<\/th><th>状态<\/th><th>国家<\/th><th>事件<\/th><th>次数<\/th><th>任务<\/th><th>明细<\/th>/);
+  assert.match(source, /retryLogBadge/);
   assert.match(source, /repairStatus === "unresolved"/);
   assert.match(source, /每隔 1 小时自动重新查询当前国家/);
   assert.match(source, /查看节点日志/);

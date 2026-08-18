@@ -37,6 +37,7 @@ let model = {
   country: "",
   nextAutoRefreshAt: 0,
   retryControl: { enabled: false, startAt: null, activeCount: 0, logCount: 0 },
+  retryCountry: "",
   retryLogs: [],
   retryControlLoaded: false,
   retryActionLoading: false,
@@ -58,6 +59,7 @@ async function refreshRetryPanel(root) {
       apiGet("/api/ds-failure-retry/logs?limit=200"),
     ]);
     model.retryControl = control;
+    model.retryCountry = control.countries?.length === 1 ? control.countries[0] : model.retryCountry;
     model.retryLogs = logResult.logs || [];
     model.retryControlLoaded = true;
     if (isCurrentView()) paint(root);
@@ -84,7 +86,7 @@ async function toggleRetry(root) {
       if (Number.isNaN(startAt.getTime())) throw new Error("重跑开始时间无效");
       model.retryControl = await apiPost("/api/ds-failure-retry/start", {
         startAt: startAt.toISOString(),
-        countries: model.country ? [model.country] : [],
+        countries: model.retryCountry ? [model.retryCountry] : [],
       });
       model.retryActionMessage = startAt.getTime() > Date.now() ? "重跑计划已保存，到达所选时间后自动开始。" : "已启动符合条件失败任务的重跑。";
     }
@@ -264,22 +266,24 @@ function paint(root) {
     <section class="panel ds-failure-retry-control">
       <div class="detail-header compact-header">
         <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">仅处理资源、网络或运行环境类可恢复故障；SQL/代码错误、人工停止、下线及跨天任务不会重跑。</p></div>
-        <span class="badge ${model.retryControl.enabled ? "warn" : "danger"}">${retryStateLabel}</span>
+        <div class="ds-retry-header-actions">
+          <span class="badge ${model.retryControl.enabled ? "warn" : "danger"}">${retryStateLabel}</span>
+          <button class="secondary ds-retry-action" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新日志</button>
+          <button class="${model.retryControl.enabled ? "danger" : "primary"} ds-retry-action" id="ds-retry-toggle" ${model.retryActionLoading ? "disabled" : ""}>${model.retryActionLoading ? "处理中…" : model.retryControl.enabled ? "停止重跑" : "启动重跑"}</button>
+        </div>
       </div>
       <div class="ds-failure-filter-grid">
         <label>重跑开始时间<input id="ds-retry-start-at" type="datetime-local" value="${escapeHtml(retryStartValue)}" ${model.retryControl.enabled ? "disabled" : ""}></label>
-        <label>重跑范围<input value="${model.country ? escapeHtml(COUNTRY_META[model.country]?.name || model.country) : "全部国家"}" disabled></label>
+        <label>重跑国家<select id="ds-retry-country" ${model.retryControl.enabled ? "disabled" : ""}><option value="">全部国家</option>${COUNTRY_OPTIONS.map((item) => `<option value="${item.code}" ${model.retryCountry === item.code ? "selected" : ""}>${item.flag} ${item.name}</option>`).join("")}</select></label>
         <label>当前运行任务<input value="${Number(model.retryControl.activeCount || 0)} 个" disabled></label>
       </div>
-      <div class="ds-failure-item-actions">
-        <button class="${model.retryControl.enabled ? "secondary" : "primary"}" id="ds-retry-toggle" ${model.retryActionLoading ? "disabled" : ""}>${model.retryActionLoading ? "处理中…" : model.retryControl.enabled ? "停止重跑" : "启动符合条件任务重跑"}</button>
-        <button class="secondary" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新重跑日志</button>
-      </div>
       ${model.retryActionMessage ? `<div class="sandbox-status ${/失败|错误|无效|请选择/.test(model.retryActionMessage) ? "error" : "warn"}"><span>${escapeHtml(model.retryActionMessage)}</span></div>` : ""}
-      <details class="ds-failure-sql" open>
-        <summary>重跑日志 · 最近 ${model.retryLogs.length} 条</summary>
+      <div class="sub-panel ds-retry-history">
+        <div class="detail-header compact-header">
+          <div><h3 class="panel-title">重跑日志</h3><p class="muted">按时间倒序展示最近 ${model.retryLogs.length} 条重跑记录。</p></div>
+        </div>
         ${renderRetryLogs(model.retryLogs)}
-      </details>
+      </div>
     </section>
     <section class="ds-failure-country-list">
       ${hasResult ? renderCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">选择需要观察的国家，然后点击“查询”。</p></section>`}
@@ -292,16 +296,59 @@ function paint(root) {
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
   root.querySelector("#ds-retry-toggle")?.addEventListener("click", () => toggleRetry(root));
   root.querySelector("#ds-retry-refresh-logs")?.addEventListener("click", () => refreshRetryPanel(root));
+  root.querySelector("#ds-retry-country")?.addEventListener("change", (event) => { model.retryCountry = event.target.value; paint(root); });
 }
 
 function renderRetryLogs(logs) {
-  if (!logs.length) return `<div class="ds-failure-empty">暂无重跑日志。启动重跑后，这里会记录扫描、跳过、提交、失败、恢复和安全停止详情。</div>`;
-  return `<div class="ds-failure-reason"><pre>${logs.map((item) => {
-    const parts = [formatTime(item.time), String(item.level || "info").toUpperCase(), item.country || "-", item.message || item.event || "-"];
-    if (Number(item.attempts || 0)) parts.push(`次数=${Number(item.attempts)}`);
-    if (item.key) parts.push(`任务=${item.key}`);
-    return escapeHtml(parts.join(" | "));
-  }).join("\n")}</pre></div>`;
+  if (!logs.length) return `<p class="muted">暂无重跑日志。启动重跑后，每次扫描、跳过、提交、失败、恢复和安全停止都会在这里留下一条记录。</p>`;
+  return `
+    <div class="table-wrap schedule-history-table ds-retry-history-table">
+      <table>
+        <thead><tr><th>运行时间</th><th>状态</th><th>国家</th><th>事件</th><th>次数</th><th>任务</th><th>明细</th></tr></thead>
+        <tbody>${logs.map((item) => `
+          <tr>
+            <td>${escapeHtml(formatTime(item.time))}</td>
+            <td><span class="badge ${retryLogBadge(item.level)}">${escapeHtml(retryLogStatus(item.level))}</span></td>
+            <td>${escapeHtml(COUNTRY_META[item.country]?.name || item.country || "全部")}</td>
+            <td>${escapeHtml(retryLogEvent(item.event))}</td>
+            <td>${Number(item.attempts || 0) || "—"}</td>
+            <td><code>${escapeHtml(item.key || "—")}</code></td>
+            <td>${escapeHtml(item.message || "—")}</td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </div>`;
+}
+
+function retryLogBadge(level) {
+  if (level === "success") return "ok";
+  if (level === "error") return "danger";
+  if (level === "warn") return "warn";
+  return "idle";
+}
+
+function retryLogStatus(level) {
+  if (level === "success") return "成功";
+  if (level === "error") return "失败";
+  if (level === "warn") return "已停止";
+  return "处理中";
+}
+
+function retryLogEvent(event) {
+  return ({
+    control_enabled: "启用重跑",
+    control_disabled: "停止重跑",
+    retry_started: "开始处理",
+    retry_submitted: "提交重跑",
+    retry_failed: "提交失败",
+    retry_stopped: "停止处理",
+    recovered: "恢复成功",
+    skipped: "跳过任务",
+    safety_stopped: "安全停止",
+    configuration_error: "配置错误",
+    instance_check_failed: "实例检查失败",
+    workflow_check_failed: "工作流检查失败",
+    manual_review: "转人工确认",
+  }[event] || event || "状态更新");
 }
 
 function toDateTimeLocal(value) {
