@@ -32,6 +32,46 @@ const FAILED_STATES = new Set(["FAILURE", "KILL", "STOP", "STOPPED", "6", "9", "
 const SUCCESS_STATES = new Set(["SUCCESS", "7"]);
 const RUNNING_STATES = new Set(["SUBMITTED_SUCCESS", "RUNNING_EXECUTION", "WAITING_THREAD", "WAITING_DEPEND", "DELAY_EXECUTION", "0", "1", "10", "11", "12"]);
 
+const SQL_CODE_ERROR_PATTERNS = [
+  /\bsyntax error\b/i, /\bsqlsyntaxerrorexception\b/i, /\bparse(?:r)? exception\b/i,
+  /\bsemantic exception\b/i, /\banalysis exception\b/i, /\bmismatched input\b/i,
+  /\bunknown (?:column|table|function|database)\b/i,
+  /\b(?:column|table|function|database) .+ (?:does not exist|not found)\b/i,
+  /\bno such (?:column|table|function|database)\b/i,
+  /\b(?:cannot|could not|unable to) resolve (?:column|field|table|function)\b/i,
+  /\binvalid identifier\b/i, /\bno matching function\b/i,
+  /\btype mismatch\b|\bcannot cast\b|\bincompatible type\b|\bunsupported operand\b/i,
+  /字段.+不存在|表.+不存在|函数.+不存在|无法解析.+(?:字段|列|表|函数)|SQL.+语法错误/i,
+];
+
+const RETRYABLE_FAILURE_PATTERNS = [
+  /\bout of memory\b|\boom\b|\bmemory limit\b|内存(?:不足|超限|溢出)/i,
+  /\bcpu limit\b|\bcpu quota\b|CPU.+(?:超限|不足)/i,
+  /\bexit(?:ed)? (?:code )?137\b|\bsigkill\b|\bkilled by (?:yarn|system|kernel|signal|oom)\b/i,
+  /\bexecutor lost\b|\bworker (?:lost|unavailable|disconnected)\b|\bnode lost\b/i,
+  /\bno available worker\b|\bworker.+(?:offline|down)\b/i,
+  /\bconnection (?:reset|refused|closed|timed out)\b|\bsocket hang up\b|\bbroken pipe\b|\bnetwork (?:error|unreachable)\b/i,
+  /\btemporary(?:ily)? unavailable\b|\bservice unavailable\b|\btoo many requests\b/i,
+  /\bresource (?:limit|quota|shortage|insufficient|unavailable)\b|资源(?:不足|超限|紧张)/i,
+  /\btimeout\b|\btimed out\b|超时/i,
+  /\bno associated load channel\b/i,
+];
+
+export function classifyDsFailureType(failure = {}) {
+  const state = String(failure.instanceState || failure.taskState || "").trim().toUpperCase();
+  if (["STOP", "STOPPED", "KILL", "KILLING", "5", "9"].includes(state)) {
+    return { failureType: "safety_stopped", retryable: false, retryDecision: "人工停止或终止，不自动重跑" };
+  }
+  const evidence = [failure.failureMessage, failure.logError, failure.taskScript].filter(Boolean).join("\n");
+  if (SQL_CODE_ERROR_PATTERNS.some((pattern) => pattern.test(evidence))) {
+    return { failureType: "sql_code_error", retryable: false, retryDecision: "SQL/代码错误，需人工修改" };
+  }
+  if (RETRYABLE_FAILURE_PATTERNS.some((pattern) => pattern.test(evidence))) {
+    return { failureType: "retryable", retryable: true, retryDecision: "资源、网络或运行环境故障，自动持续重跑" };
+  }
+  return { failureType: "manual_review", retryable: false, retryDecision: "失败类型未确认，为避免误重跑需人工确认" };
+}
+
 export function normalizeCountrySelection(value) {
   if (value == null || value === "") return [...COUNTRY_ORDER];
   const requested = (Array.isArray(value) ? value : String(value).split(","))
@@ -482,7 +522,10 @@ async function loadTaskRuntime(failure, task, { webhookUrl, country, token }) {
 }
 
 async function enrichFailure(failure, { webhookUrl, country, token }) {
-  if (!failure.instanceId) return { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
+  if (!failure.instanceId) {
+    const enriched = { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
+    return { ...enriched, ...classifyDsFailureType(enriched) };
+  }
   try {
     if (failure.taskInstanceId) {
       const logData = await postAction(webhookUrl, country, token, "get_task_log", {
@@ -494,18 +537,22 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
         taskCode: failure.taskCode,
         taskType: failure.taskType,
       }, { webhookUrl, country, token });
-      return {
+      const enriched = {
         ...failure,
         ...runtime,
         failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
       };
+      return { ...enriched, ...classifyDsFailureType(enriched) };
     }
     const resolved = await resolveFailureTask(failure, { webhookUrl, country, token });
-    if (!resolved) return { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
+    if (!resolved) {
+      const enriched = { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
+      return { ...enriched, ...classifyDsFailureType(enriched) };
+    }
     const { taskInstanceId, taskName, taskCode, taskType, taskState, logData, workflowCode: resolvedWorkflowCode, workflowInstanceId, taskQueryPages, taskQueryReadCount, taskQueryTotal } = resolved;
     const runtimeFailure = { ...failure, workflowCode: resolvedWorkflowCode || failure.workflowCode };
     const runtime = await loadTaskRuntime(runtimeFailure, { taskName, taskCode, taskType }, { webhookUrl, country, token });
-    return {
+    const enriched = {
       ...failure,
       ...runtime,
       resolvedWorkflowCode: resolvedWorkflowCode || failure.workflowCode,
@@ -520,12 +567,14 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       taskQueryTotal,
       failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
     };
+    return { ...enriched, ...classifyDsFailureType(enriched) };
   } catch (error) {
-    return {
+    const enriched = {
       ...failure,
       failureMessage: extractDsFailureReason("", failure.failureMessage),
       logError: error.message,
     };
+    return { ...enriched, ...classifyDsFailureType(enriched) };
   }
 }
 
@@ -568,6 +617,18 @@ async function postAction(webhookUrl, country, token, action, payload = {}) {
       throw new Error(`网关瞬时连接失败，自动重试 1 次后仍未恢复：${retryError.message}`);
     }
   }
+}
+
+export async function postDsFailureAction({ webhookUrl, country, token, action, payload = {} }) {
+  return postAction(webhookUrl, country, token, action, payload);
+}
+
+export function dsStateOf(value = {}) {
+  return stateOf(value);
+}
+
+export function countryDateKey(country, value = new Date()) {
+  return dateKey(value, COUNTRY_TIMEZONES[country] || "UTC");
 }
 
 async function mapWithConcurrency(items, limit, mapper) {
@@ -742,10 +803,7 @@ async function inspectCountry(config, country, now) {
     timeZone,
     dsUiBaseUrl,
   }));
-  const failures = projectResults.flatMap((item) => item.failures || []).map((item) => ({
-    ...item,
-    failureType: classifyDsFailureReason(item.failureMessage),
-  }));
+  const failures = projectResults.flatMap((item) => item.failures || []);
   return {
     country,
     countryName,
