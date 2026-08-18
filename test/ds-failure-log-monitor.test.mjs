@@ -3,7 +3,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
+import { classifyDsFailureReason, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
+
+test("DS failure reasons distinguish SQL errors from recoverable infrastructure errors", () => {
+  assert.equal(classifyDsFailureReason("Unknown column 'loan_id'"), "sql_error");
+  assert.equal(classifyDsFailureReason("type mismatch: bigint and varchar"), "sql_error");
+  assert.equal(classifyDsFailureReason("Connection reset by peer"), "recoverable");
+  assert.equal(classifyDsFailureReason("Out of memory; process killed"), "recoverable");
+  assert.equal(classifyDsFailureReason("business validation failed"), "unknown");
+});
 
 test("DS failure log accepts a unique subset of supported countries", () => {
   assert.deepEqual(normalizeCountrySelection("th,cn,th,unknown"), ["cn", "th"]);
