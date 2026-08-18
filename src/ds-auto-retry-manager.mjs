@@ -46,9 +46,10 @@ export function createDsAutoRetryManager({
   let enabled = false;
   let startAt = null;
   let countries = [];
+  let currentRunId = null;
 
   const appendLog = (level, event, detail = {}) => {
-    logs.push({ id: `${now().getTime()}-${logs.length + 1}`, time: now().toISOString(), level, event, ...detail });
+    logs.push({ id: `${now().getTime()}-${logs.length + 1}`, runId: detail.runId || currentRunId, time: now().toISOString(), level, event, ...detail });
     if (logs.length > 500) logs.splice(0, logs.length - 500);
   };
 
@@ -217,6 +218,7 @@ export function createDsAutoRetryManager({
     enabled = true;
     startAt = parsed;
     countries = Array.isArray(options.countries) ? [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))] : [];
+    currentRunId = `ds-retry-${now().getTime()}`;
     appendLog("info", "control_enabled", { message: `已启用重跑，开始时间：${startAt.toISOString()}`, startAt: startAt.toISOString(), countries });
     if (now().getTime() >= startAt.getTime()) scan().catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error));
     return control();
@@ -229,7 +231,7 @@ export function createDsAutoRetryManager({
   }
 
   function control() {
-    return { enabled, startAt: startAt?.toISOString() || null, countries, activeCount: active.size, logCount: logs.length };
+    return { enabled, startAt: startAt?.toISOString() || null, countries, activeCount: active.size, logCount: logs.length, currentRunId };
   }
 
   function getLogs(limit = 200) {
