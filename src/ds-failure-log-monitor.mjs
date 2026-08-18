@@ -533,6 +533,29 @@ function isTransientGatewayError(error) {
   return /(?:connection (?:closed|reset)|closed by remote host|port 22|econnreset|socket hang up|fetch failed|request timeout|请求超时|网关返回非 JSON（HTTP 200）)/i.test(String(error?.message || error || ""));
 }
 
+export function classifyDsFailureReason(reason = "") {
+  const text = String(reason || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!text) return "unknown";
+  const sqlErrors = [
+    /syntax error/, /sqlsyntaxerrorexception/, /parse exception/, /semantic exception/,
+    /analysis exception/, /unknown column/, /column .+(?:not found|does not exist)/,
+    /table .+(?:not found|does not exist|doesn't exist)/, /no such (?:table|column|function)/,
+    /function .+not found/, /no matching function/, /type mismatch/, /cannot cast/,
+    /incompatible type/, /unsupported operand/,
+  ];
+  if (sqlErrors.some((pattern) => pattern.test(text))) return "sql_error";
+  const recoverable = [
+    /cpu.+(?:limit|exceed)/, /out of memory/, /\boom\b/, /memory.+(?:limit|exceed|insufficient)/,
+    /exit *(?:code)? *137/, /killed by (?:signal|oom)/,
+    /resource (?:queue|pool).+(?:full|insufficient|unavailable)/,
+    /no available worker/, /worker.+(?:unavailable|offline|down|lost)/,
+    /connection (?:reset|refused|timed? out|closed)/, /network (?:error|unreachable)/,
+    /temporary (?:failure|unavailable)/, /transient/, /socket hang up/, /broken pipe/,
+    /remote host/, /no associated load channel/,
+  ];
+  return recoverable.some((pattern) => pattern.test(text)) ? "recoverable" : "unknown";
+}
+
 async function postAction(webhookUrl, country, token, action, payload = {}) {
   try {
     return await postActionOnce(webhookUrl, country, token, action, payload);
@@ -719,7 +742,10 @@ async function inspectCountry(config, country, now) {
     timeZone,
     dsUiBaseUrl,
   }));
-  const failures = projectResults.flatMap((item) => item.failures || []);
+  const failures = projectResults.flatMap((item) => item.failures || []).map((item) => ({
+    ...item,
+    failureType: classifyDsFailureReason(item.failureMessage),
+  }));
   return {
     country,
     countryName,
