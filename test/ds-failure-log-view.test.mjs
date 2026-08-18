@@ -34,6 +34,9 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /<option value="">全部国家<\/option>/);
   assert.match(source, /timeoutMs: 55_000/);
   assert.match(source, /AUTO_REFRESH_INTERVAL_MS = 60 \* 60 \* 1000/);
+  assert.match(source, /SQL错误，需人工修改/);
+  assert.match(source, /自动重跑中/);
+  assert.match(source, /重跑策略/);
   assert.match(source, /repairStatus === "unresolved"/);
   assert.match(source, /每隔 1 小时自动重新查询当前国家/);
   assert.match(source, /查看节点日志/);
@@ -53,6 +56,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.doesNotMatch(monitor, /failure_policy: "scheduled_today_final_failure"/);
   assert.match(platformApi, /getDsFailureLogs\(filters = \{\}\)/);
   assert.match(platformApi, /countries: country \|\| undefined/);
+  assert.match(platformApi, /dsAutoRetryManager\?\.decorate/);
 });
 
 test("sidebar and server expose the independent DS failure log module", async () => {

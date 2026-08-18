@@ -5,6 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
+import { createDsAutoRetryManager } from "./ds-auto-retry-manager.mjs";
 import { cleanupLegacyDashboardUrls } from "./history-dashboard-url-cleanup.mjs";
 import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
 import { assertWarehouseLineageToolAuthorized, proxyWarehouseLineageRequest } from "./warehouse-lineage-proxy.mjs";
@@ -23,7 +24,8 @@ try {
 } catch (error) {
   console.error("[history-url-cleanup] failed:", error);
 }
-const api = createPlatformApi({ rootDir });
+const dsAutoRetryManager = createDsAutoRetryManager({ rootDir });
+const api = createPlatformApi({ rootDir, dsAutoRetryManager });
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";
 
@@ -50,6 +52,7 @@ server.listen(port, host, () => {
 startBatchScheduler();
 startDsScheduler();
 startHiveScheduler();
+dsAutoRetryManager.start();
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";

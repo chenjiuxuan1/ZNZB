@@ -168,6 +168,7 @@ export function createPlatformApi({
   metabaseAnomalyBatchAgentFn = analyzeMetabaseAnomalyBatch,
   fluctuationMetricTagStore = createFluctuationMetricTagStore(),
   aiFirstMetabasePatrolEnabled = isAiFirstMetabasePatrolEnabled(),
+  dsAutoRetryManager = null,
 } = {}) {
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
@@ -2562,7 +2563,8 @@ export function createPlatformApi({
 
     async getDsFailureLogs(filters = {}) {
       const country = String(filters.country || "").trim().toLowerCase();
-      return inspectDsFailureLogs(rootDir, { countries: country || undefined });
+      const result = await inspectDsFailureLogs(rootDir, { countries: country || undefined });
+      return dsAutoRetryManager?.decorate ? dsAutoRetryManager.decorate(result) : result;
     },
 
     async getDsNotificationConfig() {
