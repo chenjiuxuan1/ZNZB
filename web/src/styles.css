@@ -19,6 +19,46 @@
   margin-bottom: 16px;
 }
 
+.ds-failure-retry-control {
+  margin-bottom: 16px;
+}
+
+.ds-retry-header-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+button.ds-retry-action {
+  border-radius: 8px;
+  font-size: 12px;
+  min-height: 32px;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.ds-retry-history {
+  margin-top: 18px;
+}
+
+.ds-retry-history-table th:first-child,
+.ds-retry-history-table td:first-child {
+  min-width: 168px;
+}
+
+.ds-retry-history-table th:nth-child(6),
+.ds-retry-history-table td:nth-child(6) {
+  min-width: 220px;
+}
+
+.ds-retry-history-table td code {
+  color: #475467;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .ds-failure-filter-grid {
   display: grid;
   gap: 12px;
