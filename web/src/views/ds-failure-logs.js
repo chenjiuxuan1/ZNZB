@@ -224,6 +224,11 @@ function isCurrentView() {
 }
 
 function paint(root) {
+  const retryRunId = retryHistoryRunId();
+  if (retryRunId) {
+    renderRetryHistoryDetailPage(root, retryRunId);
+    return;
+  }
   const result = model.result
     ? aggregateResult(model.result.countries.filter((item) => !model.country || item.country === model.country))
     : {};
@@ -280,9 +285,9 @@ function paint(root) {
       ${model.retryActionMessage ? `<div class="sandbox-status ${/失败|错误|无效|请选择/.test(model.retryActionMessage) ? "error" : "warn"}"><span>${escapeHtml(model.retryActionMessage)}</span></div>` : ""}
       <div class="sub-panel ds-retry-history">
         <div class="detail-header compact-header">
-          <div><h3 class="panel-title">重跑日志</h3><p class="muted">按时间倒序展示最近 ${model.retryLogs.length} 条重跑记录。</p></div>
+          <div><h3 class="panel-title">重跑历史</h3><p class="muted">每次启动形成一条历史记录，点击“打开详情页”查看该次重跑的完整过程。</p></div>
         </div>
-        ${renderRetryLogs(model.retryLogs)}
+        ${renderRetryHistoryRows(buildRetryRuns(model.retryLogs))}
       </div>
     </section>
     <section class="ds-failure-country-list">
@@ -299,24 +304,100 @@ function paint(root) {
   root.querySelector("#ds-retry-country")?.addEventListener("change", (event) => { model.retryCountry = event.target.value; paint(root); });
 }
 
-function renderRetryLogs(logs) {
-  if (!logs.length) return `<p class="muted">暂无重跑日志。启动重跑后，每次扫描、跳过、提交、失败、恢复和安全停止都会在这里留下一条记录。</p>`;
+function renderRetryHistoryRows(runs) {
+  if (!runs.length) return `<p class="muted">暂无重跑历史。启动一次重跑计划后，这里会生成一条可打开详情页的历史记录。</p>`;
   return `
     <div class="table-wrap schedule-history-table ds-retry-history-table">
       <table>
-        <thead><tr><th>运行时间</th><th>状态</th><th>国家</th><th>事件</th><th>次数</th><th>任务</th><th>明细</th></tr></thead>
-        <tbody>${logs.map((item) => `
+        <thead><tr><th>运行时间</th><th>状态</th><th>国家</th><th>任务</th><th>重跑次数</th><th>结果</th><th>明细</th></tr></thead>
+        <tbody>${runs.map((run) => `
           <tr>
-            <td>${escapeHtml(formatTime(item.time))}</td>
-            <td><span class="badge ${retryLogBadge(item.level)}">${escapeHtml(retryLogStatus(item.level))}</span></td>
-            <td>${escapeHtml(COUNTRY_META[item.country]?.name || item.country || "全部")}</td>
-            <td>${escapeHtml(retryLogEvent(item.event))}</td>
-            <td>${Number(item.attempts || 0) || "—"}</td>
-            <td><code>${escapeHtml(item.key || "—")}</code></td>
-            <td>${escapeHtml(item.message || "—")}</td>
+            <td>${escapeHtml(formatTime(run.startedAt))}</td>
+            <td><span class="badge ${retryRunBadge(run.status)}">${escapeHtml(retryRunStatus(run.status))}</span></td>
+            <td>${escapeHtml(run.countryNames)}</td>
+            <td>${run.taskCount} 个</td>
+            <td>${run.retryCount}</td>
+            <td>${escapeHtml(run.summary)}</td>
+            <td><a class="link-button" href="#/ds-failure-logs?retryRunId=${encodeURIComponent(run.id)}">打开详情页</a></td>
           </tr>`).join("")}</tbody>
       </table>
     </div>`;
+}
+
+function buildRetryRuns(logs) {
+  const groups = new Map();
+  for (const item of logs) {
+    const id = item.runId || `legacy-${item.id}`;
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(item);
+  }
+  return [...groups.entries()].map(([id, items]) => {
+    const ordered = [...items].sort((a, b) => Date.parse(a.time || 0) - Date.parse(b.time || 0));
+    const countries = [...new Set(ordered.map((item) => item.country).filter(Boolean))];
+    const taskCount = new Set(ordered.map((item) => item.key).filter(Boolean)).size;
+    const retryCount = ordered.filter((item) => item.event === "retry_submitted").length;
+    const status = ordered.some((item) => item.event === "recovered") ? "success"
+      : ordered.some((item) => item.level === "error") ? "failed"
+        : ordered.some((item) => ["control_disabled", "safety_stopped", "retry_stopped"].includes(item.event)) ? "stopped"
+          : "running";
+    const last = ordered.at(-1) || {};
+    return {
+      id,
+      startedAt: ordered[0]?.time,
+      endedAt: last.time,
+      status,
+      countryNames: countries.length ? countries.map((country) => COUNTRY_META[country]?.name || country).join("、") : "全部国家",
+      taskCount,
+      retryCount,
+      summary: last.message || retryRunStatus(status),
+      logs: ordered.reverse(),
+    };
+  }).sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
+}
+
+function retryRunBadge(status) {
+  if (status === "success") return "ok";
+  if (status === "failed") return "danger";
+  if (status === "stopped") return "idle";
+  return "warn";
+}
+
+function retryRunStatus(status) {
+  return ({ success: "运行成功", failed: "运行失败", stopped: "已停止", running: "运行中" }[status] || "未知");
+}
+
+function retryHistoryRunId() {
+  if (typeof window === "undefined") return "";
+  const query = window.location.hash.split("?")[1] || "";
+  return new URLSearchParams(query).get("retryRunId") || "";
+}
+
+function renderRetryHistoryDetailPage(root, runId) {
+  const run = buildRetryRuns(model.retryLogs).find((item) => item.id === runId);
+  if (!run) {
+    root.innerHTML = `<section class="panel history-detail-page"><div class="detail-header compact-header"><div><h2 class="panel-title">重跑历史详情</h2><p class="muted">未找到该次重跑记录，可能已超出最近 200 条日志范围。</p></div><a class="link-button" href="#/ds-failure-logs">返回失败任务日志</a></div></section>`;
+    return;
+  }
+  root.innerHTML = `
+    <section class="panel history-detail-page">
+      <div class="detail-header compact-header">
+        <div><h2 class="panel-title">重跑历史详情</h2><p class="muted">运行编号：${escapeHtml(run.id)}</p></div>
+        <a class="link-button" href="#/ds-failure-logs">返回失败任务日志</a>
+      </div>
+      <div class="hero-stats">
+        ${stat("运行状态", retryRunStatus(run.status))}
+        ${stat("国家范围", run.countryNames)}
+        ${stat("涉及任务", run.taskCount)}
+        ${stat("提交重跑", run.retryCount)}
+      </div>
+      <div class="schedule-help"><strong>运行时间</strong><span>${formatTime(run.startedAt)} 至 ${formatTime(run.endedAt)}</span><strong>最终结果</strong><span>${escapeHtml(run.summary)}</span></div>
+      <div class="table-wrap schedule-history-table ds-retry-history-table">
+        <table>
+          <thead><tr><th>时间</th><th>状态</th><th>国家</th><th>事件</th><th>次数</th><th>任务</th><th>详细说明</th></tr></thead>
+          <tbody>${run.logs.map((item) => `<tr><td>${escapeHtml(formatTime(item.time))}</td><td><span class="badge ${retryLogBadge(item.level)}">${escapeHtml(retryLogStatus(item.level))}</span></td><td>${escapeHtml(COUNTRY_META[item.country]?.name || item.country || "全部")}</td><td>${escapeHtml(retryLogEvent(item.event))}</td><td>${Number(item.attempts || 0) || "—"}</td><td><code>${escapeHtml(item.key || "—")}</code></td><td>${escapeHtml(item.message || "—")}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </section>`;
 }
 
 function retryLogBadge(level) {
