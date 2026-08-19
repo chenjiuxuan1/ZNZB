@@ -317,13 +317,13 @@ function paint(root) {
 
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
   root.querySelector("#ds-failure-stop-query")?.addEventListener("click", () => stopQuery(root));
-  bindCountryMultiSelect(root, "ds-failure-country", (values) => { model.countries = values; paint(root); });
+  bindCountryMultiSelect(root, "ds-failure-country", (values) => { model.countries = values; });
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
   root.querySelector("#ds-failure-schedule-category")?.addEventListener("change", (event) => { model.scheduleCategory = event.target.value; paint(root); });
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
   root.querySelector("#ds-retry-toggle")?.addEventListener("click", () => toggleRetry(root));
   root.querySelector("#ds-retry-refresh-logs")?.addEventListener("click", () => refreshRetryPanel(root));
-  bindCountryMultiSelect(root, "ds-retry-country", (values) => { model.retryCountries = values; paint(root); });
+  bindCountryMultiSelect(root, "ds-retry-country", (values) => { model.retryCountries = values; });
 }
 
 function renderCountryMultiSelect(id, label, selected, disabled = false) {
@@ -336,7 +336,11 @@ function bindCountryMultiSelect(root, id, onChange) {
   const field = root.querySelector(`#${id}`);
   if (!field || field.dataset.disabled === "true") return;
   field.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener("change", () => {
-    onChange([...field.querySelectorAll('input[type="checkbox"]:checked')].map((item) => item.value));
+    const values = [...field.querySelectorAll('input[type="checkbox"]:checked')].map((item) => item.value);
+    onChange(values);
+    const names = COUNTRY_OPTIONS.filter((item) => values.includes(item.code)).map((item) => item.name);
+    const summary = field.querySelector("summary");
+    if (summary) summary.textContent = names.length ? names.join("、") : "全部国家";
   }));
 }
 

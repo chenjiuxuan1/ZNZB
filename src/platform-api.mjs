@@ -174,6 +174,7 @@ export function createPlatformApi({
   let batchScheduleRunProgress = null;
   let batchScheduleRunning = false;
   let batchScheduleStopRequested = false;
+  let batchScheduleAbortController = null;
   let dsScheduleRunning = false;
   let hiveScheduleRunning = false;
   // Prevent repeated UI clicks from dispatching several evidence jobs for the
@@ -320,6 +321,7 @@ export function createPlatformApi({
 
     stopBatchScheduleRun() {
       batchScheduleStopRequested = true;
+      batchScheduleAbortController?.abort();
       batchScheduleRunProgress = batchScheduleRunProgress ? {
         ...batchScheduleRunProgress,
         status: "stopped",
@@ -1420,6 +1422,7 @@ export function createPlatformApi({
       const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
       batchScheduleRunning = true;
       batchScheduleStopRequested = false;
+      batchScheduleAbortController = new AbortController();
       batchScheduleRunProgress = createBatchScheduleRunProgress({
         id: historyRunId,
         trigger: "manual_test",
@@ -1427,7 +1430,7 @@ export function createPlatformApi({
         countryConfigs: enabledCountryConfigs,
       });
       try {
-        const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck(body), (event) => {
+        const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck({ ...body, signal: batchScheduleAbortController.signal }), (event) => {
           batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
         }, 1, () => batchScheduleStopRequested);
         if (batchScheduleStopRequested) throw new Error("巡检已由用户停止");
@@ -1579,6 +1582,7 @@ export function createPlatformApi({
         return { ran: true, schedule: saved, error: error.message };
       } finally {
         batchScheduleRunning = false;
+        batchScheduleAbortController = null;
       }
     },
 
@@ -2090,6 +2094,7 @@ export function createPlatformApi({
       // remap never ran on the batch-check path and the missing-auth check
       // compared against the wrong factory.
       const result = await checkPublicDashboards({
+        signal: body.signal,
         inventory: filteredInventory,
         ruleConfig: {
           ...ruleConfig,
@@ -2291,6 +2296,7 @@ export function createPlatformApi({
       const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
       batchScheduleRunning = true;
       batchScheduleStopRequested = false;
+      batchScheduleAbortController = new AbortController();
       try {
         const enabledCountryConfigs = schedule.countryConfigs.filter((item) => item.enabled);
         batchScheduleRunProgress = createBatchScheduleRunProgress({
@@ -2299,7 +2305,7 @@ export function createPlatformApi({
           startedAt,
           countryConfigs: enabledCountryConfigs,
         });
-        const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck(body), (event) => {
+        const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck({ ...body, signal: batchScheduleAbortController.signal }), (event) => {
           batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
         }, 1, () => batchScheduleStopRequested);
         if (batchScheduleStopRequested) throw new Error("巡检已由用户停止");
@@ -2451,6 +2457,7 @@ export function createPlatformApi({
         return { ran: true, schedule: saved, error: error.message };
       } finally {
         batchScheduleRunning = false;
+        batchScheduleAbortController = null;
       }
     },
 

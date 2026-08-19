@@ -13,15 +13,17 @@ const DEFAULT_METABASE_API_BASE_URL = "http://172.16.0.212:80";
 
 const CARD_QUERY_CONCURRENCY = 3;
 
-async function runWithConcurrency(tasks, limit, fn) {
+async function runWithConcurrency(tasks, limit, fn, signal = null) {
   const results = new Array(tasks.length);
   let nextIndex = 0;
   async function worker() {
     while (nextIndex < tasks.length) {
+      if (signal?.aborted) throw new DOMException("巡检已停止", "AbortError");
       const i = nextIndex++;
       try {
         results[i] = await fn(tasks[i], i);
       } catch (error) {
+        if (error?.name === "AbortError") throw error;
         results[i] = { ok: false, rows: [], error: error.message };
       }
     }
@@ -44,6 +46,7 @@ export async function checkPublicDashboards({
   checkedAt: explicitCheckedAt = null,
   queryCardFn = queryCard,
   metabaseClientFactory = createDefaultMetabaseClient,
+  signal = null,
 }) {
   const inventoryData = inventory || await readJsonFile(path.resolve(inventoryFile));
   const ruleConfigData = ruleConfig || await readJsonFile(path.resolve(rulesFile), {
@@ -70,6 +73,7 @@ export async function checkPublicDashboards({
     ruleConfigData.builtInChecks?.nonZeroToZero !== false;
 
   for (const dashboard of inventoryData.dashboards || []) {
+    if (signal?.aborted) throw new DOMException("巡检已停止", "AbortError");
     if (shouldSkipInternalDashboardWithoutAuth(dashboard, metabaseClientFactory)) {
       const card = {
         title: "看板访问配置",
@@ -122,7 +126,8 @@ export async function checkPublicDashboards({
     const cardResults = await runWithConcurrency(
       queryTasks,
       CARD_QUERY_CONCURRENCY,
-      (task) => queryCardFn(client, dashboard, task.card, task.parameters),
+      (task) => queryCardFn(client, dashboard, task.card, task.parameters, signal),
+      signal,
     );
     for (let taskIdx = 0; taskIdx < queryTasks.length; taskIdx++) {
       const { card, queryGroup } = queryTasks[taskIdx];
@@ -558,7 +563,7 @@ function isStaleDashcardError(error) {
   return /Metabase internal request failed \(404\b/i.test(String(error?.message || error));
 }
 
-async function queryCard(client, dashboard, card, parameters = []) {
+async function queryCard(client, dashboard, card, parameters = [], signal = null) {
   const request = {
     cardId: card.cardId,
     dashcardId: card.dashcardId,
@@ -571,9 +576,10 @@ async function queryCard(client, dashboard, card, parameters = []) {
   }
 
   try {
-    const rows = await client.queryDashcardJson(request);
+    const rows = await client.queryDashcardJson(request, { signal });
     return { ok: true, rows: Array.isArray(rows) ? rows : [], error: null };
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     const canRemap = dashboard.access === "internal"
       && isStaleDashcardError(error)
       && typeof client.getDashboard === "function";
@@ -590,7 +596,7 @@ async function queryCard(client, dashboard, card, parameters = []) {
     }
 
     try {
-      const rows = await client.queryDashcardJson({ ...request, dashcardId });
+      const rows = await client.queryDashcardJson({ ...request, dashcardId }, { signal });
       return {
         ok: true,
         rows: Array.isArray(rows) ? rows : [],
@@ -599,6 +605,7 @@ async function queryCard(client, dashboard, card, parameters = []) {
         staleDashcardId: card.dashcardId,
       };
     } catch (retryError) {
+      if (retryError?.name === "AbortError") throw retryError;
       return { ok: false, rows: [], error: retryError.message };
     }
   }
