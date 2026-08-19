@@ -636,7 +636,7 @@ function renderBatchSchedulePanel() {
         </div>
         <div class="button-group">
           <button id="save-batch-schedule" class="secondary" ${saving || running ? "disabled" : ""} aria-busy="${saving}">${saving ? "保存中..." : "保存配置"}</button>
-          <button id="run-batch-schedule-now" class="green-toggle" role="switch" aria-checked="${running}" ${saving ? "disabled" : ""}><span class="green-toggle-track"></span><span>${running ? "停止查询" : "立即运行测试"}</span></button>
+          <button id="run-batch-schedule-now" class="green-toggle" role="switch" aria-checked="${running}" ${saving && !running ? "disabled" : ""}><span class="green-toggle-track"></span><span>${running ? "停止查询" : "立即运行测试"}</span></button>
         </div>
       </div>
       ${renderScheduleOverview(schedule)}
