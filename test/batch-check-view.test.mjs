@@ -258,6 +258,9 @@ test("scheduled patrol exposes a green start and stop query switch", () => {
   assert.match(source, /\/api\/batch-schedule\/stop/);
   assert.match(source, /id="run-batch-schedule-now" class="green-toggle"/);
   assert.match(source, /saving && !running \? "disabled" : ""/);
+  assert.match(source, /startBatchScheduleRunWhenReady\(root\)/);
+  assert.match(source, /正在等待上一轮停止并释放资源/);
+  assert.match(source, /从第一步、首个上线国家开始执行/);
   assert.match(source, /上次测试已手动停止/);
   assert.match(source, /operation was aborted\|aborterror\|巡检已由用户停止/i);
   assert.match(source, /getAttribute\("aria-checked"\) === "true"/);
@@ -269,7 +272,7 @@ test("scheduled patrol exposes a green start and stop query switch", () => {
 
 test("app cache-busts the scheduled patrol stop controls", () => {
   const app = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
-  assert.match(app, /batch-check\.js\?v=20260819-manual-stop-status-v3/);
+  assert.match(app, /batch-check\.js\?v=20260819-patrol-restart-v4/);
 });
 
 test("scheduled country progress details stay open across polling rerenders", () => {

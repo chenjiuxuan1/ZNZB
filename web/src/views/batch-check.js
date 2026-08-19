@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from "../api.js";
+import { apiGet, apiPost, apiPut } from "../api.js?v=20260819-patrol-restart-v1";
 import { getDashboards, isDashboardExecutable, state } from "../state.js";
 import { countryLabel, escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
 
@@ -234,7 +234,7 @@ export function renderBatchCheck(root) {
     renderBatchCheck(root);
     try {
       state.batchSchedule = await apiPut("/api/batch-schedule", payload);
-      const runResp = await apiPost("/api/batch-schedule/run-now", {});
+      const runResp = await startBatchScheduleRunWhenReady(root);
       if (runResp.error) {
         state.batchScheduleStatus = {
           type: "warn",
@@ -693,6 +693,33 @@ function renderBatchSchedulePanel() {
       ${renderBatchScheduleStatus(status)}
     </section>
   `;
+}
+
+async function startBatchScheduleRunWhenReady(root) {
+  const maxAttempts = 240;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = await apiPost("/api/batch-schedule/run-now", {});
+      state.batchScheduleProgress = null;
+      state.batchScheduleStatus = {
+        type: "loading",
+        title: "定时巡检测试已重新启动",
+        detail: "已创建全新巡检任务，正在从第一步、首个上线国家开始执行。",
+      };
+      return result;
+    } catch (error) {
+      const stillStopping = error.status === 409 || /正在运行|already running/i.test(String(error.message || ""));
+      if (!stillStopping || attempt === maxAttempts) throw error;
+      state.batchScheduleStatus = {
+        type: "loading",
+        title: "正在重新启动巡检",
+        detail: "正在等待上一轮停止并释放资源，完成后将自动从第一步重新开始。",
+      };
+      renderBatchCheck(root);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw new Error("等待上一轮巡检停止超时，请稍后重试");
 }
 
 function renderScheduleSavedStatus(schedule) {
