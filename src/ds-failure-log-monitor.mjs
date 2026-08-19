@@ -139,6 +139,10 @@ function isFailureRetry(item = {}) {
   return commandTypeOf(item) === "START_FAILURE_TASK_PROCESS" || runTimesOf(item) > 1;
 }
 
+function scheduleCategoryOf(item = {}) {
+  return commandTypeOf(item) === "SCHEDULER" ? "scheduled_online" : "non_scheduled_online";
+}
+
 function timestamp(value) {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
@@ -239,6 +243,7 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
         recoveryTime: endTime(recoveredInstance) || instanceTime(recoveredInstance),
         failureMessage: String(recoveredInstance.failure_message || recoveredInstance.failureMessage || recoveredInstance.error_message || recoveredInstance.errorMessage || "").trim(),
         failureCount: Math.max(1, runTimesOf(recoveredInstance) - 1),
+        scheduleCategory: scheduleCategoryOf(recoveredInstance),
         inferredFromRetry: true,
       });
       continue;
@@ -263,6 +268,7 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
       recoveryTime: instanceTime(recovered || repairing || {}),
       failureMessage: String(latestFailure.failure_message || latestFailure.failureMessage || latestFailure.error_message || latestFailure.errorMessage || "").trim(),
       failureCount: failed.length,
+      scheduleCategory: scheduleCategoryOf(latestFailure),
     });
   }
   return failures.sort((a, b) => timestamp(b.startTime) - timestamp(a.startTime));
@@ -700,6 +706,8 @@ export function normalizeGatewayFailures(data = {}, { projectName = "", projectC
       taskName: String(item.task_name || item.taskName || item.failed_task_name || "").trim(),
       taskCode: String(item.task_code || item.taskCode || item.failed_task_code || "").trim(),
       taskState: String(item.task_state || item.taskState || item.failed_task_state || "").trim(),
+      scheduleCategory: String(item.schedule_category || item.scheduleCategory || "").trim()
+        || scheduleCategoryOf(item),
     };
   }).sort((a, b) => timestamp(b.startTime) - timestamp(a.startTime));
 }
