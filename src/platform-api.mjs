@@ -3852,6 +3852,7 @@ async function runScheduledCountryChecks(countryConfigs, runBatchCheckFn, onProg
         countryRuns[i] = countryRun;
         onProgress?.({ type: "success", countryConfig, countryRun });
       } catch (error) {
+        if (error?.name === "AbortError") throw error;
         const countryRun = {
           countryCode: countryConfig.countryCode,
           countryName: countryConfig.countryName || "",
@@ -3903,6 +3904,7 @@ function updateBatchScheduleRunProgress(progress, event) {
   if (!progress || !event?.countryConfig) {
     return progress;
   }
+  if (progress.status === "stopped") return progress;
   const countryCode = event.countryConfig.countryCode;
   const countries = (progress.countries || []).map((item) => {
     if (item.countryCode !== countryCode) {
@@ -3947,6 +3949,7 @@ function updateBatchScheduleRunProgress(progress, event) {
 
 function updateBatchScheduleRunProgressStage(progress, key, patch) {
   if (!progress) return progress;
+  if (progress.status === "stopped") return progress;
   return {
     ...progress,
     stages: (progress.stages || []).map((stage) => stage.key === key ? { ...stage, ...patch } : stage),
@@ -3955,6 +3958,7 @@ function updateBatchScheduleRunProgressStage(progress, key, patch) {
 
 function updateBatchScheduleAiProgress(progress, event = {}) {
   if (!progress) return progress;
+  if (progress.status === "stopped") return progress;
   const current = (progress.stages || []).find((stage) => stage.key === "ai_analysis") || {};
   const total = Number(event.totalAnomalies ?? event.result?.totalAnomalies ?? current.totalAnomalies ?? current.totalDashboards ?? 0);
   const completed = Number(event.completed ?? event.result?.totalAnomalies ?? current.completed ?? 0);
@@ -3996,6 +4000,7 @@ function updateBatchScheduleAiProgress(progress, event = {}) {
 
 function updateBatchScheduleAiBatchProgress(progress, event = {}) {
   if (!progress) return progress;
+  if (progress.status === "stopped") return progress;
   const current = (progress.stages || []).find((stage) => stage.key === "ai_analysis") || {};
   const total = Number(event.total ?? current.total ?? 0);
   const completed = Number(event.completed ?? current.completed ?? 0);
