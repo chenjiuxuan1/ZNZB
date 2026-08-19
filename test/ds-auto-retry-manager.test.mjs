@@ -88,12 +88,18 @@ test("keeps retryable failures running until the instance succeeds", async () =>
 
 test("stops a suspected empty run after one hour", async () => {
   const actions = [];
+  const notifications = [];
   let current = new Date(fixedNow);
   const failure = classifyDsFailureType({ failureMessage: "workflow failed without a task node" });
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
     inspectFn: async () => resultWith(failure),
     configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    ownerConfigLoader: async () => ({ countryConfigs: [{ countryCode: "CN", ownerEmails: "cn-owner@kn.group" }] }),
+    notifyFn: async (config, message, metadata) => {
+      notifications.push({ config, message, metadata });
+      return { sent: true };
+    },
     actionFn: async ({ action }) => {
       actions.push(action);
       if (action === "get_instance") return { state: "FAILURE" };
@@ -109,6 +115,10 @@ test("stops a suspected empty run after one hour", async () => {
   assert.equal(status.autoRetryStatus, "safety_stopped");
   assert.match(status.stopReason, /1 小时/);
   assert.ok(manager.getLogs().some((item) => item.event === "empty_run_timeout"));
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].config.alerts.recipientEmails, "cn-owner@kn.group");
+  assert.match(notifications[0].message, /实例 ID：3001/);
+  assert.ok(manager.getLogs().some((item) => item.event === "owner_notification_sent"));
 });
 
 test("stops without retry when the workflow is offline", async () => {
