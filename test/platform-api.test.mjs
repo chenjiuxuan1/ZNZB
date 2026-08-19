@@ -2715,6 +2715,7 @@ test("platform api saves schedule with internal source inventory without discove
         enabled: true,
         notifyChannel: "knBot",
         recipientEmails: "owner@kn.group",
+        ownerEmails: "ds-owner@kn.group",
       },
     ],
   });
@@ -3266,12 +3267,14 @@ test("platform api preserves explicit next run time on schedule save", async () 
         dashboardUuids: ["dash-1"],
         notifyChannel: "knBot",
         recipientEmails: "owner@kn.group",
+        ownerEmails: "ds-owner@kn.group",
       },
     ],
   });
 
   assert.equal(schedule.nextRunAt, nextRunAt);
   assert.equal(schedule.countryConfigs[0].botToken, "${KN_BOT_TOKEN}");
+  assert.equal(schedule.countryConfigs[0].ownerEmails, "ds-owner@kn.group");
 });
 
 test("platform api schedules the next run at a fixed Beijing daily time", async () => {
