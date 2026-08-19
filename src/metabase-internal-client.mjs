@@ -41,12 +41,13 @@ export class MetabaseInternalClient {
     });
   }
 
-  async queryDashcardJson({ cardId, dashboardId, dashcardId, parameters = [] }) {
+  async queryDashcardJson({ cardId, dashboardId, dashcardId, parameters = [] }, options = {}) {
     return this.requestJson(
       `/api/dashboard/${encodeURIComponent(dashboardId)}/dashcard/${dashcardId}/card/${cardId}/query/json`,
       {
         method: "POST",
         body: JSON.stringify({ parameters }),
+        signal: options.signal,
       },
     );
   }
@@ -74,7 +75,14 @@ export class MetabaseInternalClient {
   async requestJsonOnce(pathname, options = {}) {
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    let timedOut = false;
+    const abortFromCaller = () => controller.abort();
+    if (options.signal?.aborted) controller.abort();
+    else options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.timeoutMs);
 
     let response;
     try {
@@ -89,12 +97,13 @@ export class MetabaseInternalClient {
         signal: controller.signal,
       });
     } catch (error) {
-      if (error.name === "AbortError") {
+      if (error.name === "AbortError" && timedOut) {
         throw new Error(`Metabase internal request timed out after ${this.timeoutMs / 1000}s: ${pathname}`);
       }
       throw error;
     } finally {
       clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", abortFromCaller);
     }
 
     const contentType = response.headers.get("content-type") || "";

@@ -669,6 +669,22 @@ test("MetabaseInternalClient retries transient gateway responses", async () => {
   assert.equal(requestCount, 2);
 });
 
+test("MetabaseInternalClient aborts an active query when the patrol is stopped", async () => {
+  const controller = new AbortController();
+  const client = new MetabaseInternalClient({
+    baseUrl: "https://data.example",
+    apiKey: "test-api-key",
+    requestTimeoutSeconds: 60,
+    fetchFn: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(new DOMException("stopped", "AbortError")), { once: true });
+    }),
+  });
+
+  const query = client.queryDashcardJson({ dashboardId: "642", dashcardId: 2, cardId: 1 }, { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(query, (error) => error?.name === "AbortError");
+});
+
 test("checkPublicDashboards uses one fixed checkedAt for every rule", async () => {
   const result = await checkPublicDashboards({
     checkedAt: "2026-06-09T08:00:00.000Z",
