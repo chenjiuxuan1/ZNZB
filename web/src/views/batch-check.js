@@ -212,9 +212,10 @@ export function renderBatchCheck(root) {
     const progressStatus = state.batchScheduleProgress?.status || "";
     const switchIsRunning = root.querySelector("#run-batch-schedule-now")?.getAttribute("aria-checked") === "true";
     if (switchIsRunning || ["running", "sending", "ai_analyzing", "queued", "stopping"].includes(progressStatus)) {
-      await apiPost("/api/batch-schedule/stop", {});
-      state.batchScheduleStatus = { type: "warn", title: "正在停止巡检", detail: "当前请求完成后将停止，不再查询后续国家。" };
-      startBatchScheduleProgressPolling(root);
+      const stopped = await apiPost("/api/batch-schedule/stop", {});
+      stopBatchScheduleProgressPolling();
+      state.batchScheduleProgress = stopped.progress || { status: "stopped" };
+      state.batchScheduleStatus = { type: "warn", title: "巡检已停止", detail: "已停止页面查询，当前请求结束后不会再查询后续国家。" };
       renderBatchCheck(root);
       return;
     }
@@ -609,7 +610,7 @@ function isScheduleProgressViewOpen() {
 }
 
 function isFinishedScheduleProgress(progress = {}) {
-  return ["success", "partial_failed", "failed"].includes(progress.status);
+  return ["success", "partial_failed", "failed", "stopped"].includes(progress.status);
 }
 
 function shouldContinueScheduleProgressPolling() {
