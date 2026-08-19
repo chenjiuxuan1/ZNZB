@@ -44,6 +44,16 @@ const SQL_CODE_ERROR_PATTERNS = [
   /字段.+不存在|表.+不存在|函数.+不存在|无法解析.+(?:字段|列|表|函数)|SQL.+语法错误/i,
 ];
 
+const PERMISSION_ERROR_PATTERNS = [
+  /\bpermission denied\b|\baccess denied\b|\bunauthorized\b|\bforbidden\b/i,
+  /\bnot authorized\b|\binsufficient privileges?\b/i,
+  /\bpermission.+(?:denied|required|missing)\b/i,
+  /\bdoes not have (?:the )?(?:required )?(?:permission|privilege)\b/i,
+  /\b(?:accesscontrol|authorization)exception\b/i,
+  /\buser .+ has no privilege\b/i,
+  /没有权限|无权限|权限不足|拒绝访问|未授权|禁止访问|缺少权限|权限被拒绝/i,
+];
+
 const RETRYABLE_FAILURE_PATTERNS = [
   /\bout of memory\b|\boom\b|\bmemory limit\b|内存(?:不足|超限|溢出)/i,
   /\bcpu limit\b|\bcpu quota\b|CPU.+(?:超限|不足)/i,
@@ -66,10 +76,13 @@ export function classifyDsFailureType(failure = {}) {
   if (SQL_CODE_ERROR_PATTERNS.some((pattern) => pattern.test(evidence))) {
     return { failureType: "sql_code_error", retryable: false, retryDecision: "SQL/代码错误，需人工修改" };
   }
+  if (PERMISSION_ERROR_PATTERNS.some((pattern) => pattern.test(evidence))) {
+    return { failureType: "permission_error", retryable: false, retryDecision: "权限不足，需人工处理" };
+  }
   if (RETRYABLE_FAILURE_PATTERNS.some((pattern) => pattern.test(evidence))) {
     return { failureType: "retryable", retryable: true, retryDecision: "资源、网络或运行环境故障，自动持续重跑" };
   }
-  return { failureType: "manual_review", retryable: false, retryDecision: "失败类型未确认，为避免误重跑需人工确认" };
+  return { failureType: "retryable", retryable: true, retryDecision: "非 SQL/代码或权限问题，自动持续重跑" };
 }
 
 export function normalizeCountrySelection(value) {
