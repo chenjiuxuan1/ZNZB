@@ -1552,12 +1552,21 @@ export function createPlatformApi({
           error: error.message,
           finishedAt: new Date().toISOString(),
         };
-        const saved = {
+        const saved = stopped ? {
+          ...schedule,
+          nextRunAt,
+          lastManualTestAt: startedAt,
+          lastManualTestStatus: "stopped",
+          lastManualTestError: "巡检已由用户手动停止",
+        } : {
           ...schedule,
           lastRunAt: startedAt,
           nextRunAt,
           lastError: error.message,
           lastResult: null,
+          lastManualTestAt: startedAt,
+          lastManualTestStatus: "failed",
+          lastManualTestError: error.message,
         };
         await writeJsonAtomic(resolve("batchSchedule"), saved);
         await appendHistoryEntry({

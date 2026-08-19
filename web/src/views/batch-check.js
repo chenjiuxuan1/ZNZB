@@ -689,10 +689,22 @@ function renderBatchSchedulePanel() {
       </div>
       ${renderCountryScheduleConfig(schedule)}
       ${schedule.lastResult ? renderScheduleLastResult(schedule.lastResult) : ""}
-      ${schedule.lastError ? `<div class="sandbox-status error"><strong>上次定时运行失败</strong><span>${escapeHtml(schedule.lastError)}</span></div>` : ""}
+      ${renderScheduleSavedStatus(schedule)}
       ${renderBatchScheduleStatus(status)}
     </section>
   `;
+}
+
+function renderScheduleSavedStatus(schedule) {
+  const legacyAborted = /operation was aborted|aborterror|巡检已由用户停止/i.test(String(schedule.lastError || ""));
+  const manualStopped = schedule.lastManualTestStatus === "stopped" || legacyAborted;
+  const manualStatus = manualStopped
+    ? `<div class="sandbox-status warn"><strong>上次测试已手动停止</strong><span>${escapeHtml(schedule.lastManualTestError || "已停止当前查询，不影响后续定时任务。")}</span></div>`
+    : "";
+  const scheduledError = schedule.lastError && !legacyAborted
+    ? `<div class="sandbox-status error"><strong>上次定时运行失败</strong><span>${escapeHtml(schedule.lastError)}</span></div>`
+    : "";
+  return `${manualStatus}${scheduledError}`;
 }
 
 function renderScheduleOverview(schedule) {
