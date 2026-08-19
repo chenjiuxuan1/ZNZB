@@ -24,15 +24,16 @@ async function enableAndWait(manager) {
 
 test("retries every failure except SQL/code and permission errors", () => {
   assert.equal(classifyDsFailureType({ failureMessage: "SQL syntax error near FROM" }).failureType, "sql_code_error");
-  assert.equal(classifyDsFailureType({ failureMessage: "Container killed: out of memory" }).failureType, "retryable");
-  assert.equal(classifyDsFailureType({ failureMessage: "Connection reset by peer" }).retryable, true);
+  assert.equal(classifyDsFailureType({ taskName: "etl", failureMessage: "Container killed: out of memory" }).failureType, "retryable");
+  assert.equal(classifyDsFailureType({ taskName: "etl", failureMessage: "Connection reset by peer" }).retryable, true);
   assert.deepEqual(classifyDsFailureType({ failureMessage: "Permission denied for table ads.orders" }), {
     failureType: "permission_error",
     retryable: false,
     retryDecision: "权限不足，需人工处理",
   });
   assert.equal(classifyDsFailureType({ failureMessage: "用户没有权限访问该表" }).failureType, "permission_error");
-  assert.equal(classifyDsFailureType({ failureMessage: "business validation failed" }).retryable, true);
+  assert.equal(classifyDsFailureType({ taskName: "etl", failureMessage: "business validation failed" }).retryable, true);
+  assert.equal(classifyDsFailureType({ failureMessage: "business validation failed" }).failureType, "suspected_empty_run");
 });
 
 test("does not start retry loop for SQL code errors", async () => {
@@ -83,6 +84,31 @@ test("keeps retryable failures running until the instance succeeds", async () =>
   assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance", "get_instance"]);
   assert.equal([...manager.statuses.values()][0].autoRetryStatus, "recovered");
   assert.equal([...manager.statuses.values()][0].attempts, 1);
+});
+
+test("stops a suspected empty run after one hour", async () => {
+  const actions = [];
+  let current = new Date(fixedNow);
+  const failure = classifyDsFailureType({ failureMessage: "workflow failed without a task node" });
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith(failure),
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    actionFn: async ({ action }) => {
+      actions.push(action);
+      if (action === "get_instance") return { state: "FAILURE" };
+      if (action === "get_workflow") return { releaseState: "ONLINE" };
+      return { success: true };
+    },
+    now: () => current,
+    sleep: async () => { current = new Date(current.getTime() + 60 * 60 * 1000); },
+  });
+  await enableAndWait(manager);
+  assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance"]);
+  const status = [...manager.statuses.values()][0];
+  assert.equal(status.autoRetryStatus, "safety_stopped");
+  assert.match(status.stopReason, /1 小时/);
+  assert.ok(manager.getLogs().some((item) => item.event === "empty_run_timeout"));
 });
 
 test("stops without retry when the workflow is offline", async () => {
