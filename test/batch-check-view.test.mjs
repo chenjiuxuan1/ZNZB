@@ -22,6 +22,7 @@ test("buildBatchScheduleCountryConfig keeps KN Chat personal recipients and grou
     ".schedule-country-dashboard-uuid": { value: "dashboard-ph" },
     ".schedule-country-chat-id": { value: "-100239001" },
     ".schedule-country-recipient-emails": { value: "owner@kn.group" },
+    ".schedule-country-owner-emails": { value: "ds-owner@kn.group" },
   };
   const row = {
     dataset: { countryCode: "PH" },
@@ -38,6 +39,7 @@ test("buildBatchScheduleCountryConfig keeps KN Chat personal recipients and grou
   assert.equal(config.countryCode, "PH");
   assert.equal(config.chatId, "-100239001");
   assert.equal(config.recipientEmails, "owner@kn.group");
+  assert.equal(config.ownerEmails, "ds-owner@kn.group");
   assert.equal(config.botToken, "${KN_BOT_TOKEN}");
 });
 
@@ -264,7 +266,7 @@ test("scheduled patrol exposes a green start and stop query switch", () => {
 
 test("app cache-busts the scheduled patrol stop controls", () => {
   const app = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
-  assert.match(app, /batch-check\.js\?v=20260819-patrol-stop-v1/);
+  assert.match(app, /batch-check\.js\?v=20260819-owner-email-v1/);
 });
 
 test("scheduled country progress details stay open across polling rerenders", () => {

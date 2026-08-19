@@ -6,13 +6,13 @@ import { renderInventory } from "./views/inventory.js?v=20260811-manual-discover
 import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui16";
 import { renderRules } from "./views/rules.js?v=20260706-ui16";
 import { renderSandbox } from "./views/sandbox.js?v=20260707-sandbox-country";
-import { renderBatchCheck } from "./views/batch-check.js?v=20260819-patrol-stop-v1";
+import { renderBatchCheck } from "./views/batch-check.js?v=20260819-owner-email-v1";
 import { renderFluctuationVisual } from "./views/fluctuation-visual.js?v=20260806-filtered-run-load";
 import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
 import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
-import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260819-v17";
+import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260819-owner-email-v1";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },

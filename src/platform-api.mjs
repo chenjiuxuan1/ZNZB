@@ -3187,6 +3187,7 @@ function normalizeCountryScheduleConfigs(inputConfigs, previousSchedule, countri
       botToken: normalizeDefaultSecret(merged.botToken ?? previousSchedule.botToken, "${KN_BOT_TOKEN}"),
       chatId: String(merged.chatId ?? previousSchedule.chatId ?? "").trim(),
       recipientEmails: String(merged.recipientEmails ?? previousSchedule.recipientEmails ?? "").trim(),
+      ownerEmails: String(merged.ownerEmails ?? previousConfig.ownerEmails ?? "").trim(),
       mentions: normalizeMentions(merged.mentions ?? previousSchedule.mentions).join(","),
     };
   });

@@ -468,6 +468,10 @@ function retryLogEvent(event) {
     configuration_error: "配置错误",
     instance_check_failed: "实例检查失败",
     workflow_check_failed: "工作流检查失败",
+    empty_run_timeout: "疑似空跑超时",
+    owner_notification_sent: "负责人告警已发送",
+    owner_notification_failed: "负责人告警发送失败",
+    owner_notification_skipped: "未配置负责人",
     manual_review: "转人工确认",
   }[event] || event || "状态更新");
 }

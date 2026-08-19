@@ -1680,6 +1680,11 @@ function renderCountryScheduleConfig(schedule) {
                     <option value="tv" ${notifyChannel === "tv" ? "selected" : ""}>TV webhook</option>
                   </select>
                 </label>
+                <label class="schedule-country-owner-field">
+                  负责人邮箱
+                  <input class="schedule-country-owner-emails" value="${escapeHtml(config.ownerEmails || "")}" placeholder="多个邮箱用逗号分隔">
+                  <small>疑似空跑自动重跑满 1 小时后，按邮箱私聊负责人并记录发送结果。</small>
+                </label>
                 <label class="kn-target-field">
                   接收人邮箱
                   <input class="schedule-country-recipient-emails" value="${escapeHtml(config.recipientEmails || "")}" placeholder="多个邮箱用逗号分隔">
@@ -1755,6 +1760,7 @@ export function buildBatchScheduleCountryConfig(row, notifyConfig = {}) {
     botToken: notifyChannel === "knBot" ? "${KN_BOT_TOKEN}" : "",
     chatId: notifyChannel === "knBot" ? row.querySelector(".schedule-country-chat-id")?.value.trim() || "" : "",
     recipientEmails: notifyChannel === "knBot" ? row.querySelector(".schedule-country-recipient-emails")?.value.trim() || "" : "",
+    ownerEmails: row.querySelector(".schedule-country-owner-emails")?.value.trim() || "",
     mentions: notifyChannel === "tv" ? row.querySelector(".schedule-country-mentions")?.value.trim() || "" : "",
   };
 }
