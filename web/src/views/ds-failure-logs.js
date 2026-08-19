@@ -11,7 +11,6 @@ const COUNTRY_OPTIONS = [
 ];
 const COUNTRY_META = Object.fromEntries(COUNTRY_OPTIONS.map((item) => [item.code, item]));
 const AUTO_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-const COUNTRY_QUERY_TIMEOUT_MS = 180_000;
 const STATUS_LABELS = {
   recovered: { label: "已自动修复", className: "ok" },
   repairing: { label: "修复中", className: "warn" },
@@ -21,6 +20,7 @@ const STATUS_LABELS = {
   retry_wait: { label: "等待继续重跑", className: "warn" },
   sql_code_error: { label: "SQL错误，需人工修改", className: "danger" },
   permission_error: { label: "权限不足，需人工处理", className: "danger" },
+  suspected_empty_run: { label: "疑似空跑", className: "warn" },
   manual_review: { label: "待人工确认", className: "danger" },
   safety_stopped: { label: "已停止重跑", className: "danger" },
   sql_error: { label: "SQL错误，需人工修改", className: "danger" },
@@ -48,6 +48,7 @@ let model = {
 };
 
 let autoRefreshTimer = null;
+let queryController = null;
 
 export function renderDsFailureLogs(root) {
   syncAutoRefresh(root);
@@ -113,13 +114,15 @@ async function load(root) {
   model.error = "";
   model.completed = 0;
   model.total = selected.length;
+  queryController = new AbortController();
+  const signal = queryController.signal;
   model.result = aggregateResult(selected.map(queryingCountry));
   paint(root);
 
   await Promise.all(selected.map(async (option) => {
     let country;
     try {
-      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}`, { timeoutMs: COUNTRY_QUERY_TIMEOUT_MS });
+      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}`, { signal });
       country = response.countries?.[0] || failedCountry(option, "接口未返回该国家的检查结果");
     } catch (error) {
       country = failedCountry(option, readableQueryError(error));
@@ -133,10 +136,24 @@ async function load(root) {
 
   if (runId !== model.runId) return;
   model.loading = false;
+  queryController = null;
   if (isCurrentView()) {
     syncAutoRefresh(root);
     paint(root);
   }
+}
+
+function stopQuery(root) {
+  if (!model.loading) return;
+  model.runId += 1;
+  queryController?.abort();
+  queryController = null;
+  model.loading = false;
+  model.result = aggregateResult((model.result?.countries || []).map((country) => country.querying
+    ? failedCountry(COUNTRY_META[country.country] || { code: country.country, name: country.country }, "已手动停止查询")
+    : country));
+  syncAutoRefresh(root);
+  paint(root);
 }
 
 function unresolvedFailureCount() {
@@ -169,7 +186,7 @@ function syncAutoRefresh(root) {
 function readableQueryError(error) {
   const message = String(error?.message || "查询失败");
   if (/failed to fetch/i.test(message)) return "平台未收到服务器响应，可能是查询超时、服务重启或 DS 网关连接中断";
-  if (/timeout|timed out|abort/i.test(message)) return "查询超过 3 分钟，DS 网关或目标国家响应过慢";
+  if (/timeout|timed out/i.test(message)) return "DS 网关或目标国家响应超时";
   return message;
 }
 
@@ -262,7 +279,7 @@ function paint(root) {
       ${autoRefreshNotice}
       <div class="detail-header compact-header">
         <div><h2 class="panel-title">当天失败任务</h2><p class="muted">选择需要观察的国家后点击查询。每个国家独立返回，查询中的国家不会阻塞已完成国家的结果。</p></div>
-        <button class="primary" id="ds-failure-query" ${model.loading ? "disabled" : ""}>${model.loading ? `正在查询 ${model.completed}/${model.total}` : hasResult ? "重新查询" : "查询"}</button>
+        <div class="ds-retry-header-actions"><button class="primary" id="ds-failure-query" ${model.loading ? "disabled" : ""}>${model.loading ? `正在查询 ${model.completed}/${model.total}` : hasResult ? "重新查询" : "查询"}</button>${model.loading ? '<button class="secondary" id="ds-failure-stop-query">停止查询</button>' : ""}</div>
       </div>
       <div class="ds-failure-filter-grid">
         <label>国家<select id="ds-failure-country" ${model.loading ? "disabled" : ""}><option value="">全部国家</option>${COUNTRY_OPTIONS.map((item) => `<option value="${item.code}" ${model.country === item.code ? "selected" : ""}>${item.flag} ${item.name}</option>`).join("")}</select></label>
@@ -300,6 +317,7 @@ function paint(root) {
   `;
 
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
+  root.querySelector("#ds-failure-stop-query")?.addEventListener("click", () => stopQuery(root));
   root.querySelector("#ds-failure-country")?.addEventListener("change", (event) => { model.country = event.target.value; paint(root); });
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
   root.querySelector("#ds-failure-schedule-category")?.addEventListener("change", (event) => { model.scheduleCategory = event.target.value; paint(root); });
@@ -494,6 +512,9 @@ function renderFailure(item) {
   const displayStatus = item.autoRetryStatus || item.failureType || item.repairStatus || "unresolved";
   const status = STATUS_LABELS[displayStatus] || STATUS_LABELS.unresolved;
   const taskUnlocated = !item.taskName && !item.taskCode;
+  const failureReason = taskUnlocated
+    ? "失败节点尚未定位，可能为空跑，具体原因需人工确认"
+    : describeFailureReason(item.failureMessage || "任务日志未返回明确失败原因");
   const unlocatedNotice = taskUnlocated
     ? `<div class="sandbox-status warn"><strong>失败节点尚未定位</strong><span>该工作流状态为失败或停止。请进入 DS 工作流实例，在失败或停止节点中查看日志确定具体原因。${item.dsInstanceUrl ? ` <a href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">查看节点日志 ↗</a>` : ""}</span></div>`
     : "";
@@ -518,12 +539,31 @@ function renderFailure(item) {
       <span>失败状态：${escapeHtml(item.instanceState || "FAILURE")}</span>
       <span>当天失败次数：${item.failureCount || 1}</span>
     </div>
-    <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(item.failureMessage || "任务日志未返回明确失败原因")}</pre></div>
+    <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(failureReason)}</pre></div>
     <div class="ds-failure-recovery"><strong>重跑策略</strong><span>${escapeHtml(item.retryDecision || "等待失败原因分类")}${Number(item.attempts || 0) ? ` · 已重跑 ${Number(item.attempts)} 次` : ""}${item.lastError ? ` · 最近错误：${escapeHtml(item.lastError)}` : ""}</span></div>
     ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
     ${item.repairStatus !== "unresolved" || item.stopReason ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "修复结果" : "修复进度"}</strong><span>${item.stopReason ? escapeHtml(item.stopReason) : `后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}`}</span></div>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
+}
+
+function describeFailureReason(reason) {
+  const text = String(reason || "").trim();
+  if (!text || /[\u3400-\u9fff]/.test(text)) return text;
+  const descriptions = [
+    [/permission denied|access denied|unauthorized|forbidden|insufficient privilege/i, "权限不足或访问被拒绝"],
+    [/syntax error|sqlsyntaxerrorexception|parse exception/i, "SQL 或代码语法错误"],
+    [/unknown column|column .+(?:not found|does not exist)/i, "引用的字段不存在"],
+    [/table .+(?:not found|does not exist)|no such table/i, "引用的表不存在"],
+    [/out of memory|memory limit|\boom\b/i, "内存不足或超过资源限制"],
+    [/connection reset|connection refused|network error|socket hang up|broken pipe/i, "网络连接异常"],
+    [/timed out|timeout/i, "执行或连接超时"],
+    [/no available worker|worker .+(?:lost|offline|unavailable)/i, "没有可用执行节点"],
+    [/exit(?:ed)? (?:code )?137|sigkill|killed/i, "进程被系统终止，通常与资源不足有关"],
+    [/service unavailable|temporarily unavailable|too many requests/i, "服务暂时不可用或请求过多"],
+  ];
+  const matched = descriptions.find(([pattern]) => pattern.test(text));
+  return `${text}（${matched?.[1] || "英文报错，具体原因需人工确认"}）`;
 }
 
 function stat(label, value) {
