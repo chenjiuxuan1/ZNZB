@@ -70,6 +70,15 @@
   width: 14px;
 }
 
+.ds-failure-filter-grid .country-multi-menu label {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  grid-template-columns: none;
+  white-space: nowrap;
+}
+
 button.ds-retry-action {
   border-radius: 8px;
   font-size: 12px;

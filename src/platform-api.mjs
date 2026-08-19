@@ -322,8 +322,9 @@ export function createPlatformApi({
       batchScheduleStopRequested = true;
       batchScheduleRunProgress = batchScheduleRunProgress ? {
         ...batchScheduleRunProgress,
-        status: "stopping",
+        status: "stopped",
         stopRequestedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
       } : batchScheduleRunProgress;
       return { stopping: batchScheduleRunning, progress: batchScheduleRunProgress };
     },
@@ -1541,9 +1542,10 @@ export function createPlatformApi({
         });
         return { ran: true, schedule: saved, result: saved.lastResult, agentTriggerResult };
       } catch (error) {
+        const stopped = batchScheduleStopRequested;
         batchScheduleRunProgress = {
           ...(batchScheduleRunProgress || {}),
-          status: "failed",
+          status: stopped ? "stopped" : "failed",
           error: error.message,
           finishedAt: new Date().toISOString(),
         };
@@ -1561,7 +1563,7 @@ export function createPlatformApi({
           startedAt,
           finishedAt: new Date().toISOString(),
           nextRunAt,
-          status: "failed",
+          status: stopped ? "stopped" : "failed",
           ok: false,
           error: error.message,
           countryCount: 0,
@@ -2412,9 +2414,10 @@ export function createPlatformApi({
         });
         return { ran: true, schedule: saved, result: saved.lastResult, agentTriggerResult };
       } catch (error) {
+        const stopped = batchScheduleStopRequested;
         batchScheduleRunProgress = {
           ...(batchScheduleRunProgress || {}),
-          status: "failed",
+          status: stopped ? "stopped" : "failed",
           error: error.message,
           finishedAt: new Date().toISOString(),
         };
@@ -2432,7 +2435,7 @@ export function createPlatformApi({
           startedAt,
           finishedAt: new Date().toISOString(),
           nextRunAt,
-          status: "failed",
+          status: stopped ? "stopped" : "failed",
           ok: false,
           error: error.message,
           countryCount: 0,
