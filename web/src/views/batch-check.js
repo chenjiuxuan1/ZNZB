@@ -209,6 +209,14 @@ export function renderBatchCheck(root) {
     renderBatchCheck(root);
   });
   root.querySelector("#run-batch-schedule-now")?.addEventListener("click", async () => {
+    const progressStatus = state.batchScheduleProgress?.status || "";
+    if (["running", "sending", "ai_analyzing", "queued", "stopping"].includes(progressStatus)) {
+      await apiPost("/api/batch-schedule/stop", {});
+      state.batchScheduleStatus = { type: "warn", title: "正在停止巡检", detail: "当前请求完成后将停止，不再查询后续国家。" };
+      startBatchScheduleProgressPolling(root);
+      renderBatchCheck(root);
+      return;
+    }
     updateBatchNotifyConfigFromDom(root);
     const payload = buildBatchSchedulePayload(root, {
       countryCode: isAllCountries ? "" : state.selected.countryCode || selectedCountry,
@@ -605,7 +613,7 @@ function isFinishedScheduleProgress(progress = {}) {
 
 function shouldContinueScheduleProgressPolling() {
   return isScheduleProgressViewOpen() && (
-    ["running", "sending", "ai_analyzing", "queued"].includes(state.batchScheduleProgress?.status)
+    ["running", "sending", "ai_analyzing", "queued", "stopping"].includes(state.batchScheduleProgress?.status)
     || state.batchScheduleStatus?.type === "loading"
   );
 }
@@ -615,7 +623,8 @@ function renderBatchSchedulePanel() {
   const enabled = Boolean(schedule.enabled);
   const status = state.batchScheduleStatus;
   const saving = status?.type === "loading" && /保存/.test(status.title || "");
-  const running = status?.type === "loading" && /试跑/.test(status.title || "");
+  const progressRunning = ["running", "sending", "ai_analyzing", "queued", "stopping"].includes(state.batchScheduleProgress?.status || "");
+  const running = progressRunning || (status?.type === "loading" && /试跑/.test(status.title || ""));
   return `
     <section class="panel schedule-panel">
       <div class="schedule-title-row">
@@ -625,7 +634,7 @@ function renderBatchSchedulePanel() {
         </div>
         <div class="button-group">
           <button id="save-batch-schedule" class="secondary" ${saving || running ? "disabled" : ""} aria-busy="${saving}">${saving ? "保存中..." : "保存配置"}</button>
-          <button id="run-batch-schedule-now" class="primary" ${saving || running ? "disabled" : ""} aria-busy="${running}">${running ? "正在启动..." : "立即运行测试"}</button>
+          <button id="run-batch-schedule-now" class="green-toggle" role="switch" aria-checked="${running}" ${saving ? "disabled" : ""}><span class="green-toggle-track"></span><span>${running ? "停止查询" : "立即运行测试"}</span></button>
         </div>
       </div>
       ${renderScheduleOverview(schedule)}

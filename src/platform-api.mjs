@@ -173,6 +173,7 @@ export function createPlatformApi({
   const resolve = (name) => path.join(rootDir, FILES[name]);
   let batchScheduleRunProgress = null;
   let batchScheduleRunning = false;
+  let batchScheduleStopRequested = false;
   let dsScheduleRunning = false;
   let hiveScheduleRunning = false;
   // Prevent repeated UI clicks from dispatching several evidence jobs for the
@@ -315,6 +316,16 @@ export function createPlatformApi({
 
     isBatchScheduleRunning() {
       return batchScheduleRunning;
+    },
+
+    stopBatchScheduleRun() {
+      batchScheduleStopRequested = true;
+      batchScheduleRunProgress = batchScheduleRunProgress ? {
+        ...batchScheduleRunProgress,
+        status: "stopping",
+        stopRequestedAt: new Date().toISOString(),
+      } : batchScheduleRunProgress;
+      return { stopping: batchScheduleRunning, progress: batchScheduleRunProgress };
     },
 
     async getBatchHistory(filters = {}) {
@@ -1407,6 +1418,7 @@ export function createPlatformApi({
       const historyRunId = randomUUID();
       const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
       batchScheduleRunning = true;
+      batchScheduleStopRequested = false;
       batchScheduleRunProgress = createBatchScheduleRunProgress({
         id: historyRunId,
         trigger: "manual_test",
@@ -1416,7 +1428,8 @@ export function createPlatformApi({
       try {
         const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck(body), (event) => {
           batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
-        });
+        }, 1, () => batchScheduleStopRequested);
+        if (batchScheduleStopRequested) throw new Error("巡检已由用户停止");
         const wattrelSummary = await buildScheduledWattrelSummary({
           countryConfigs: enabledCountryConfigs,
           wattrelConfigFile: resolve("wattrel"),
@@ -2275,6 +2288,7 @@ export function createPlatformApi({
       const historyRunId = randomUUID();
       const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
       batchScheduleRunning = true;
+      batchScheduleStopRequested = false;
       try {
         const enabledCountryConfigs = schedule.countryConfigs.filter((item) => item.enabled);
         batchScheduleRunProgress = createBatchScheduleRunProgress({
@@ -2285,7 +2299,8 @@ export function createPlatformApi({
         });
         const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck(body), (event) => {
           batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
-        });
+        }, 1, () => batchScheduleStopRequested);
+        if (batchScheduleStopRequested) throw new Error("巡检已由用户停止");
         const wattrelSummary = await buildScheduledWattrelSummary({
           countryConfigs: enabledCountryConfigs,
           wattrelConfigFile: resolve("wattrel"),
@@ -3803,11 +3818,12 @@ function summarizeCountryScheduleRuns(countryRuns = [], { wattrelSummary = null 
   };
 }
 
-async function runScheduledCountryChecks(countryConfigs, runBatchCheckFn, onProgress = null, concurrency = 1) {
+async function runScheduledCountryChecks(countryConfigs, runBatchCheckFn, onProgress = null, concurrency = 1, shouldStop = () => false) {
   const countryRuns = new Array(countryConfigs.length);
   let nextIndex = 0;
   async function worker() {
     while (nextIndex < countryConfigs.length) {
+      if (shouldStop()) break;
       const i = nextIndex++;
       const countryConfig = countryConfigs[i];
       onProgress?.({ type: "start", countryConfig });
@@ -3838,7 +3854,7 @@ async function runScheduledCountryChecks(countryConfigs, runBatchCheckFn, onProg
   }
   const workers = Array.from({ length: Math.min(concurrency, countryConfigs.length) }, () => worker());
   await Promise.all(workers);
-  return countryRuns;
+  return countryRuns.filter(Boolean);
 }
 
 function createBatchScheduleRunProgress({ id, trigger, startedAt, countryConfigs }) {
