@@ -21,12 +21,13 @@ export class MetabasePublicClient {
     });
   }
 
-  async queryDashcardJson({ cardId, dashboardUuid, dashcardId, parameters = [] }) {
+  async queryDashcardJson({ cardId, dashboardUuid, dashcardId, parameters = [] }, requestOptions = {}) {
     return this.requestJson(
       `/api/public/dashboard/${encodeURIComponent(dashboardUuid)}/dashcard/${dashcardId}/card/${cardId}/json`,
       {
         method: "POST",
         body: JSON.stringify({ parameters }),
+        signal: requestOptions.signal,
       },
     );
   }
@@ -49,6 +50,8 @@ export class MetabasePublicClient {
 
   async requestJsonOnce(pathname, options = {}) {
     const controller = new AbortController();
+    const abortFromCaller = () => controller.abort();
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true });
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     let response;
@@ -64,11 +67,13 @@ export class MetabasePublicClient {
       });
     } catch (error) {
       if (error.name === "AbortError") {
+        if (options.signal?.aborted) throw new DOMException("巡检已停止", "AbortError");
         throw new Error(`Metabase public request timed out after ${this.timeoutMs / 1000}s: ${pathname}`);
       }
       throw error;
     } finally {
       clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", abortFromCaller);
     }
 
     const contentType = response.headers.get("content-type") || "";
