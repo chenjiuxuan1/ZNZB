@@ -22,11 +22,17 @@ async function enableAndWait(manager) {
   await Promise.all([...manager.active.values()]);
 }
 
-test("classifies SQL errors separately from retryable resource failures", () => {
+test("retries every failure except SQL/code and permission errors", () => {
   assert.equal(classifyDsFailureType({ failureMessage: "SQL syntax error near FROM" }).failureType, "sql_code_error");
   assert.equal(classifyDsFailureType({ failureMessage: "Container killed: out of memory" }).failureType, "retryable");
   assert.equal(classifyDsFailureType({ failureMessage: "Connection reset by peer" }).retryable, true);
-  assert.equal(classifyDsFailureType({ failureMessage: "business validation failed" }).failureType, "manual_review");
+  assert.deepEqual(classifyDsFailureType({ failureMessage: "Permission denied for table ads.orders" }), {
+    failureType: "permission_error",
+    retryable: false,
+    retryDecision: "权限不足，需人工处理",
+  });
+  assert.equal(classifyDsFailureType({ failureMessage: "用户没有权限访问该表" }).failureType, "permission_error");
+  assert.equal(classifyDsFailureType({ failureMessage: "business validation failed" }).retryable, true);
 });
 
 test("does not start retry loop for SQL code errors", async () => {
@@ -41,6 +47,20 @@ test("does not start retry loop for SQL code errors", async () => {
   assert.equal(actions, 0);
   assert.equal(manager.active.size, 0);
   assert.equal([...manager.statuses.values()][0].autoRetryStatus, "sql_code_error");
+});
+
+test("does not start retry loop for permission errors", async () => {
+  let actions = 0;
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({ ...classifyDsFailureType({ failureMessage: "Access denied for table dw.orders" }) }),
+    actionFn: async () => { actions += 1; return {}; },
+    now: () => fixedNow,
+  });
+  await enableAndWait(manager);
+  assert.equal(actions, 0);
+  assert.equal(manager.active.size, 0);
+  assert.equal([...manager.statuses.values()][0].autoRetryStatus, "permission_error");
 });
 
 test("keeps retryable failures running until the instance succeeds", async () => {

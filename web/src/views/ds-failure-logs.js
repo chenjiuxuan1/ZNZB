@@ -19,6 +19,7 @@ const STATUS_LABELS = {
   running: { label: "重跑运行中", className: "warn" },
   retry_wait: { label: "等待继续重跑", className: "warn" },
   sql_code_error: { label: "SQL错误，需人工修改", className: "danger" },
+  permission_error: { label: "权限不足，需人工处理", className: "danger" },
   manual_review: { label: "待人工确认", className: "danger" },
   safety_stopped: { label: "已停止重跑", className: "danger" },
   sql_error: { label: "SQL错误，需人工修改", className: "danger" },
@@ -270,7 +271,7 @@ function paint(root) {
     </section>
     <section class="panel ds-failure-retry-control">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">仅处理资源、网络或运行环境类可恢复故障；SQL/代码错误、人工停止、下线及跨天任务不会重跑。</p></div>
+        <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">除 SQL/代码错误和权限不足外，其余失败均进入持续重跑；人工停止、下线及跨天任务仍会安全停止。</p></div>
         <div class="ds-retry-header-actions">
           <span class="badge ${model.retryControl.enabled ? "warn" : "danger"}">${retryStateLabel}</span>
           <button class="secondary ds-retry-action" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新日志</button>

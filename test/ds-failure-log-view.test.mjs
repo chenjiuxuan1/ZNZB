@@ -35,6 +35,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /timeoutMs: 55_000/);
   assert.match(source, /AUTO_REFRESH_INTERVAL_MS = 60 \* 60 \* 1000/);
   assert.match(source, /SQL错误，需人工修改/);
+  assert.match(source, /权限不足，需人工处理/);
+  assert.match(source, /除 SQL\/代码错误和权限不足外，其余失败均进入持续重跑/);
   assert.match(source, /自动重跑中/);
   assert.match(source, /重跑策略/);
   assert.match(source, /id="ds-retry-country"/);
