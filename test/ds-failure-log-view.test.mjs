@@ -30,8 +30,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /\?country=/);
   assert.match(source, /Promise\.all\(selected\.map/);
   assert.match(source, /各国并行查询并在完成后立即显示/);
-  assert.match(source, /id="ds-failure-country"/);
-  assert.match(source, /<option value="">全部国家<\/option>/);
+  assert.match(source, /renderCountryMultiSelect\("ds-failure-country"/);
+  assert.match(source, /function renderCountryMultiSelect/);
+  assert.match(source, /function bindCountryMultiSelect/);
+  assert.match(source, /model\.retryCountries/);
   assert.doesNotMatch(source, /COUNTRY_QUERY_TIMEOUT_MS/);
   assert.match(source, /new AbortController\(\)/);
   assert.match(source, /id="ds-failure-stop-query"/);
@@ -48,10 +50,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /除 SQL\/代码错误和权限不足外，其余失败均进入持续重跑/);
   assert.match(source, /自动重跑中/);
   assert.match(source, /重跑策略/);
-  assert.match(source, /id="ds-retry-country"/);
-  assert.match(source, /<option value="">全部国家<\/option>/);
+  assert.match(source, /renderCountryMultiSelect\("ds-retry-country"/);
+  assert.match(source, /class="green-toggle" id="ds-retry-toggle"/);
   assert.match(source, /ds-retry-header-actions/);
-  assert.match(source, /"启动重跑"/);
+  assert.match(source, /role="switch" aria-checked=/);
   assert.match(source, /type="datetime-local"/);
   assert.match(source, /重跑历史/);
   assert.match(source, /schedule-history-table ds-retry-history-table/);

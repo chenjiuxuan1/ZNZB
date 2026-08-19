@@ -251,6 +251,14 @@ test("scheduled patrol renders three equal switch controls with HIVE after DS", 
   assert.match(source, /includeHiveScheduler:/);
 });
 
+test("scheduled patrol exposes a green start and stop query switch", () => {
+  const source = fs.readFileSync(new URL("../web/src/views/batch-check.js", import.meta.url), "utf8");
+  assert.match(source, /\/api\/batch-schedule\/stop/);
+  assert.match(source, /id="run-batch-schedule-now" class="green-toggle"/);
+  assert.match(source, /停止查询/);
+  assert.match(source, /立即运行测试/);
+});
+
 test("scheduled country progress details stay open across polling rerenders", () => {
   const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
   state.routeQuery = {};

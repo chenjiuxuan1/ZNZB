@@ -203,6 +203,9 @@ async function handleApi(request, response, url) {
     api.runBatchScheduleNow().catch((error) => console.error("[batch-schedule] run-now background error:", error.message));
     return sendJson(response, 200, { started: true });
   }
+  if (method === "POST" && url.pathname === "/api/batch-schedule/stop") {
+    return sendJson(response, 200, api.stopBatchScheduleRun());
+  }
   if (method === "POST" && url.pathname === "/api/sandbox/evaluate") {
     return sendJson(response, 200, await api.evaluateSandbox(await readBody(request)));
   }
