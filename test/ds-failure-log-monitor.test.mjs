@@ -13,6 +13,15 @@ test("DS failure reasons distinguish SQL errors from recoverable infrastructure 
   assert.equal(classifyDsFailureReason("business validation failed"), "unknown");
 });
 
+test("DS failure records distinguish scheduled and non-scheduled triggers", () => {
+  const failures = classifyWorkflowFailures([
+    { workflowDefinitionCode: "scheduled", workflowInstanceId: "s-1", workflowInstanceName: "scheduled", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-19 08:00:00" },
+    { workflowDefinitionCode: "manual", workflowInstanceId: "m-1", workflowInstanceName: "manual", commandType: "START_PROCESS", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-19 08:01:00" },
+  ]);
+  assert.equal(failures.find((item) => item.workflowCode === "scheduled").scheduleCategory, "scheduled_online");
+  assert.equal(failures.find((item) => item.workflowCode === "manual").scheduleCategory, "non_scheduled_online");
+});
+
 test("DS failure log accepts a unique subset of supported countries", () => {
   assert.deepEqual(normalizeCountrySelection("th,cn,th,unknown"), ["cn", "th"]);
   assert.deepEqual(normalizeCountrySelection(["mx", "ine"]), ["ine", "mx"]);

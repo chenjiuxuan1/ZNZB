@@ -11,6 +11,7 @@ const COUNTRY_OPTIONS = [
 ];
 const COUNTRY_META = Object.fromEntries(COUNTRY_OPTIONS.map((item) => [item.code, item]));
 const AUTO_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+const COUNTRY_QUERY_TIMEOUT_MS = 180_000;
 const STATUS_LABELS = {
   recovered: { label: "已自动修复", className: "ok" },
   repairing: { label: "修复中", className: "warn" },
@@ -31,6 +32,7 @@ let model = {
   loading: false,
   error: "",
   status: "",
+  scheduleCategory: "",
   keyword: "",
   completed: 0,
   total: 0,
@@ -117,7 +119,7 @@ async function load(root) {
   await Promise.all(selected.map(async (option) => {
     let country;
     try {
-      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}`, { timeoutMs: 55_000 });
+      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}`, { timeoutMs: COUNTRY_QUERY_TIMEOUT_MS });
       country = response.countries?.[0] || failedCountry(option, "接口未返回该国家的检查结果");
     } catch (error) {
       country = failedCountry(option, readableQueryError(error));
@@ -167,7 +169,7 @@ function syncAutoRefresh(root) {
 function readableQueryError(error) {
   const message = String(error?.message || "查询失败");
   if (/failed to fetch/i.test(message)) return "平台未收到服务器响应，可能是查询超时、服务重启或 DS 网关连接中断";
-  if (/timeout|timed out|abort/i.test(message)) return "查询超过 55 秒，DS 网关或目标国家响应过慢";
+  if (/timeout|timed out|abort/i.test(message)) return "查询超过 3 分钟，DS 网关或目标国家响应过慢";
   return message;
 }
 
@@ -265,6 +267,7 @@ function paint(root) {
       <div class="ds-failure-filter-grid">
         <label>国家<select id="ds-failure-country" ${model.loading ? "disabled" : ""}><option value="">全部国家</option>${COUNTRY_OPTIONS.map((item) => `<option value="${item.code}" ${model.country === item.code ? "selected" : ""}>${item.flag} ${item.name}</option>`).join("")}</select></label>
         <label>修复状态<select id="ds-failure-status"><option value="">全部状态</option>${Object.entries(STATUS_LABELS).map(([value, item]) => `<option value="${value}" ${model.status === value ? "selected" : ""}>${item.label}</option>`).join("")}</select></label>
+        <label>定时状态<select id="ds-failure-schedule-category"><option value="">全部任务</option><option value="scheduled_online" ${model.scheduleCategory === "scheduled_online" ? "selected" : ""}>定时上线任务</option><option value="non_scheduled_online" ${model.scheduleCategory === "non_scheduled_online" ? "selected" : ""}>非定时上线任务</option></select></label>
         <label>搜索项目或任务<input id="ds-failure-keyword" value="${escapeHtml(model.keyword)}" placeholder="项目、工作流、失败任务或原因"></label>
       </div>
       <div class="ds-failure-legend"><span class="badge ok">已自动修复</span><span>最新失败实例后出现成功实例</span><span class="badge warn">修复中</span><span>最新失败实例后出现运行中实例</span><span class="badge danger">待修复</span><span>最新失败实例后没有成功或运行中实例</span></div>
@@ -299,6 +302,7 @@ function paint(root) {
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
   root.querySelector("#ds-failure-country")?.addEventListener("change", (event) => { model.country = event.target.value; paint(root); });
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
+  root.querySelector("#ds-failure-schedule-category")?.addEventListener("change", (event) => { model.scheduleCategory = event.target.value; paint(root); });
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
   root.querySelector("#ds-retry-toggle")?.addEventListener("click", () => toggleRetry(root));
   root.querySelector("#ds-retry-refresh-logs")?.addEventListener("click", () => refreshRetryPanel(root));
@@ -479,6 +483,7 @@ function filteredFailures(failures) {
   return failures.filter((item) => {
     const displayStatus = item.autoRetryStatus || item.failureType || item.repairStatus;
     if (model.status && displayStatus !== model.status) return false;
+    if (model.scheduleCategory && item.scheduleCategory !== model.scheduleCategory) return false;
     if (!keyword) return true;
     return [item.projectName, item.workflowName, item.workflowCode, item.taskName, item.failureMessage]
       .some((value) => String(value || "").toLowerCase().includes(keyword));
