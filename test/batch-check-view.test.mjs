@@ -255,6 +255,7 @@ test("scheduled patrol exposes a green start and stop query switch", () => {
   const source = fs.readFileSync(new URL("../web/src/views/batch-check.js", import.meta.url), "utf8");
   assert.match(source, /\/api\/batch-schedule\/stop/);
   assert.match(source, /id="run-batch-schedule-now" class="green-toggle"/);
+  assert.match(source, /getAttribute\("aria-checked"\) === "true"/);
   assert.match(source, /停止查询/);
   assert.match(source, /立即运行测试/);
 });
