@@ -37,10 +37,10 @@ let model = {
   completed: 0,
   total: 0,
   runId: 0,
-  country: "",
+  countries: [],
   nextAutoRefreshAt: 0,
   retryControl: { enabled: false, startAt: null, activeCount: 0, logCount: 0 },
-  retryCountry: "",
+  retryCountries: [],
   retryLogs: [],
   retryControlLoaded: false,
   retryActionLoading: false,
@@ -63,7 +63,7 @@ async function refreshRetryPanel(root) {
       apiGet("/api/ds-failure-retry/logs?limit=200"),
     ]);
     model.retryControl = control;
-    model.retryCountry = control.countries?.length === 1 ? control.countries[0] : model.retryCountry;
+    model.retryCountries = Array.isArray(control.countries) ? [...control.countries] : model.retryCountries;
     model.retryLogs = logResult.logs || [];
     model.retryControlLoaded = true;
     if (isCurrentView()) paint(root);
@@ -90,7 +90,7 @@ async function toggleRetry(root) {
       if (Number.isNaN(startAt.getTime())) throw new Error("重跑开始时间无效");
       model.retryControl = await apiPost("/api/ds-failure-retry/start", {
         startAt: startAt.toISOString(),
-        countries: model.retryCountry ? [model.retryCountry] : [],
+        countries: model.retryCountries,
       });
       model.retryActionMessage = startAt.getTime() > Date.now() ? "重跑计划已保存，到达所选时间后自动开始。" : "已启动符合条件失败任务的重跑。";
     }
@@ -107,7 +107,7 @@ async function toggleRetry(root) {
 async function load(root) {
   if (model.loading) return;
   clearAutoRefresh();
-  const selected = COUNTRY_OPTIONS.filter((item) => !model.country || item.code === model.country);
+  const selected = COUNTRY_OPTIONS.filter((item) => !model.countries.length || model.countries.includes(item.code));
 
   const runId = ++model.runId;
   model.loading = true;
@@ -158,7 +158,7 @@ function stopQuery(root) {
 
 function unresolvedFailureCount() {
   return (model.result?.countries || [])
-    .filter((country) => !model.country || country.country === model.country)
+    .filter((country) => !model.countries.length || model.countries.includes(country.country))
     .flatMap((country) => country.failures || [])
     .filter((item) => item.repairStatus === "unresolved").length;
 }
@@ -250,10 +250,10 @@ function paint(root) {
     return;
   }
   const result = model.result
-    ? aggregateResult(model.result.countries.filter((item) => !model.country || item.country === model.country))
+    ? aggregateResult(model.result.countries.filter((item) => !model.countries.length || model.countries.includes(item.country)))
     : {};
   const hasResult = Boolean(model.result);
-  const selectedCount = model.country ? 1 : COUNTRY_OPTIONS.length;
+  const selectedCount = model.countries.length || COUNTRY_OPTIONS.length;
   const autoRefreshNotice = model.nextAutoRefreshAt
     ? `<div class="sandbox-status warn"><strong>待修复任务自动复查</strong><span>页面将每隔 1 小时自动重新查询当前国家；下次复查时间：${formatTime(model.nextAutoRefreshAt)}</span></div>`
     : "";
@@ -282,7 +282,7 @@ function paint(root) {
         <div class="ds-retry-header-actions"><button class="primary" id="ds-failure-query" ${model.loading ? "disabled" : ""}>${model.loading ? `正在查询 ${model.completed}/${model.total}` : hasResult ? "重新查询" : "查询"}</button>${model.loading ? '<button class="secondary" id="ds-failure-stop-query">停止查询</button>' : ""}</div>
       </div>
       <div class="ds-failure-filter-grid">
-        <label>国家<select id="ds-failure-country" ${model.loading ? "disabled" : ""}><option value="">全部国家</option>${COUNTRY_OPTIONS.map((item) => `<option value="${item.code}" ${model.country === item.code ? "selected" : ""}>${item.flag} ${item.name}</option>`).join("")}</select></label>
+        ${renderCountryMultiSelect("ds-failure-country", "国家", model.countries, model.loading)}
         <label>修复状态<select id="ds-failure-status"><option value="">全部状态</option>${Object.entries(STATUS_LABELS).map(([value, item]) => `<option value="${value}" ${model.status === value ? "selected" : ""}>${item.label}</option>`).join("")}</select></label>
         <label>定时状态<select id="ds-failure-schedule-category"><option value="">全部任务</option><option value="scheduled_online" ${model.scheduleCategory === "scheduled_online" ? "selected" : ""}>定时上线任务</option><option value="non_scheduled_online" ${model.scheduleCategory === "non_scheduled_online" ? "selected" : ""}>非定时上线任务</option></select></label>
         <label>搜索项目或任务<input id="ds-failure-keyword" value="${escapeHtml(model.keyword)}" placeholder="项目、工作流、失败任务或原因"></label>
@@ -292,15 +292,14 @@ function paint(root) {
     <section class="panel ds-failure-retry-control">
       <div class="detail-header compact-header">
         <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">除 SQL/代码错误和权限不足外，其余失败均进入持续重跑；人工停止、下线及跨天任务仍会安全停止。</p></div>
-        <div class="ds-retry-header-actions">
-          <span class="badge ${model.retryControl.enabled ? "warn" : "danger"}">${retryStateLabel}</span>
+        <div class="ds-retry-header-actions ds-retry-control-actions">
           <button class="secondary ds-retry-action" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新日志</button>
-          <button class="${model.retryControl.enabled ? "danger" : "primary"} ds-retry-action" id="ds-retry-toggle" ${model.retryActionLoading ? "disabled" : ""}>${model.retryActionLoading ? "处理中…" : model.retryControl.enabled ? "停止重跑" : "启动重跑"}</button>
+          <button class="green-toggle" id="ds-retry-toggle" role="switch" aria-checked="${model.retryControl.enabled}" ${model.retryActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>${model.retryActionLoading ? "处理中…" : retryStateLabel}</span></button>
         </div>
       </div>
       <div class="ds-failure-filter-grid">
         <label>重跑开始时间<input id="ds-retry-start-at" type="datetime-local" value="${escapeHtml(retryStartValue)}" ${model.retryControl.enabled ? "disabled" : ""}></label>
-        <label>重跑国家<select id="ds-retry-country" ${model.retryControl.enabled ? "disabled" : ""}><option value="">全部国家</option>${COUNTRY_OPTIONS.map((item) => `<option value="${item.code}" ${model.retryCountry === item.code ? "selected" : ""}>${item.flag} ${item.name}</option>`).join("")}</select></label>
+        ${renderCountryMultiSelect("ds-retry-country", "重跑国家", model.retryCountries, model.retryControl.enabled)}
         <label>当前运行任务<input value="${Number(model.retryControl.activeCount || 0)} 个" disabled></label>
       </div>
       ${model.retryActionMessage ? `<div class="sandbox-status ${/失败|错误|无效|请选择/.test(model.retryActionMessage) ? "error" : "warn"}"><span>${escapeHtml(model.retryActionMessage)}</span></div>` : ""}
@@ -318,13 +317,27 @@ function paint(root) {
 
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
   root.querySelector("#ds-failure-stop-query")?.addEventListener("click", () => stopQuery(root));
-  root.querySelector("#ds-failure-country")?.addEventListener("change", (event) => { model.country = event.target.value; paint(root); });
+  bindCountryMultiSelect(root, "ds-failure-country", (values) => { model.countries = values; paint(root); });
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
   root.querySelector("#ds-failure-schedule-category")?.addEventListener("change", (event) => { model.scheduleCategory = event.target.value; paint(root); });
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
   root.querySelector("#ds-retry-toggle")?.addEventListener("click", () => toggleRetry(root));
   root.querySelector("#ds-retry-refresh-logs")?.addEventListener("click", () => refreshRetryPanel(root));
-  root.querySelector("#ds-retry-country")?.addEventListener("change", (event) => { model.retryCountry = event.target.value; paint(root); });
+  bindCountryMultiSelect(root, "ds-retry-country", (values) => { model.retryCountries = values; paint(root); });
+}
+
+function renderCountryMultiSelect(id, label, selected, disabled = false) {
+  const names = COUNTRY_OPTIONS.filter((item) => selected.includes(item.code)).map((item) => item.name);
+  const summary = names.length ? names.join("、") : "全部国家";
+  return `<div class="country-multi-field"><span>${label}</span><details class="country-multi-select" id="${id}" ${disabled ? "data-disabled=true" : ""}><summary>${escapeHtml(summary)}</summary><div class="country-multi-menu">${COUNTRY_OPTIONS.map((item) => `<label><input type="checkbox" value="${item.code}" ${selected.includes(item.code) ? "checked" : ""} ${disabled ? "disabled" : ""}><span>${item.flag} ${item.name}</span></label>`).join("")}</div></details></div>`;
+}
+
+function bindCountryMultiSelect(root, id, onChange) {
+  const field = root.querySelector(`#${id}`);
+  if (!field || field.dataset.disabled === "true") return;
+  field.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener("change", () => {
+    onChange([...field.querySelectorAll('input[type="checkbox"]:checked')].map((item) => item.value));
+  }));
 }
 
 function renderRetryHistoryRows(runs) {
@@ -463,7 +476,7 @@ function toDateTimeLocal(value) {
 }
 
 function renderCountries(countries) {
-  const visible = countries.filter((country) => !model.country || model.country === country.country);
+  const visible = countries.filter((country) => !model.countries.length || model.countries.includes(country.country));
   if (!visible.length) return `<section class="panel"><p class="muted">所选国家尚未查询，请点击“重新查询”。</p></section>`;
   return visible.map((country) => renderCountry(country)).join("");
 }
