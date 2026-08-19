@@ -32,7 +32,11 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /各国并行查询并在完成后立即显示/);
   assert.match(source, /id="ds-failure-country"/);
   assert.match(source, /<option value="">全部国家<\/option>/);
-  assert.match(source, /timeoutMs: 55_000/);
+  assert.match(source, /COUNTRY_QUERY_TIMEOUT_MS = 180_000/);
+  assert.match(source, /timeoutMs: COUNTRY_QUERY_TIMEOUT_MS/);
+  assert.match(source, /id="ds-failure-schedule-category"/);
+  assert.match(source, /定时上线任务/);
+  assert.match(source, /非定时上线任务/);
   assert.match(source, /AUTO_REFRESH_INTERVAL_MS = 60 \* 60 \* 1000/);
   assert.match(source, /SQL错误，需人工修改/);
   assert.match(source, /权限不足，需人工处理/);
