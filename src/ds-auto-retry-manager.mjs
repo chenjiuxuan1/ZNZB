@@ -34,6 +34,7 @@ export function createDsAutoRetryManager({
   configLoader = loadDsSchedulerConfig,
   scanIntervalMs = 60_000,
   retryDelayMs = 10_000,
+  emptyRunRetryLimitMs = 60 * 60 * 1000,
   now = () => new Date(),
   sleep = delay,
   logger = console,
@@ -60,12 +61,18 @@ export function createDsAutoRetryManager({
   async function runLoop(country, failure) {
     const key = failureKey(country, failure);
     const startedDate = countryDateKey(country, new Date(failure.startTime || now()));
+    const retryStartedAt = now().getTime();
     let attempts = Number(statuses.get(key)?.attempts || 0);
     try {
       while (true) {
         if (!enabled) {
           setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "页面已停止自动重跑", attempts });
           appendLog("info", "retry_stopped", { key, country, attempts, message: "页面已停止自动重跑" });
+          return;
+        }
+        if (failure.failureType === "suspected_empty_run" && now().getTime() - retryStartedAt >= emptyRunRetryLimitMs) {
+          setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "疑似空跑任务重跑已满 1 小时，自动关闭并等待人工确认", attempts });
+          appendLog("warn", "empty_run_timeout", { key, country, attempts, message: "疑似空跑任务重跑超过 1 小时，已自动关闭" });
           return;
         }
         if (countryDateKey(country, now()) !== startedDate) {

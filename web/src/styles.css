@@ -65,6 +65,10 @@ button.ds-retry-action {
   grid-template-columns: 180px 180px minmax(260px, 1fr);
 }
 
+.ds-failure-toolbar .ds-failure-filter-grid {
+  grid-template-columns: 180px 180px 210px minmax(280px, 1fr);
+}
+
 .ds-failure-filter-grid label {
   color: var(--muted);
   display: grid;
@@ -298,6 +302,12 @@ button.ds-retry-action {
 
   .ds-failure-levels {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1200px) {
+  .ds-failure-toolbar .ds-failure-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
