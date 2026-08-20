@@ -248,22 +248,25 @@ function aggregateCountry(c, range) {
   let requests = 0, success = 0, failed = 0, riskActions = 0;
   const operators = new Map();
   const actions = new Map();
+  const tokens = new Set();
   for (const d of daily) {
     requests += d.requests;
     success += d.success;
     failed += d.failed;
     riskActions += d.riskActions;
     for (const op of (d.operators || [])) {
-      const agg = operators.get(op.operator) || { operator: op.operator, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map() };
+      const agg = operators.get(op.operator) || { operator: op.operator, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tokens: new Set() };
       agg.requests += op.requests;
       agg.success += op.success;
       agg.failed += op.failed;
       agg.riskActions += op.riskActions;
       agg.durationTotalMs += (op.avgDurationMs || 0) * op.requests;
       for (const [a, n] of Object.entries(op.actions || {})) agg.actions.set(a, (agg.actions.get(a) || 0) + n);
+      for (const t of (op.tokens || [])) agg.tokens.add(t);
       operators.set(op.operator, agg);
     }
     for (const [a, n] of Object.entries(d.actions || {})) actions.set(a, (actions.get(a) || 0) + n);
+    for (const t of (d.tokens || [])) tokens.add(t);
   }
   const opList = [...operators.values()].map((op) => ({
     operator: op.operator,
@@ -274,6 +277,7 @@ function aggregateCountry(c, range) {
     riskActions: op.riskActions,
     avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
     actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
+    tokens: [...op.tokens].sort(),
   })).sort((a, b) => b.requests - a.requests);
   return {
     country: c.country,
@@ -284,6 +288,7 @@ function aggregateCountry(c, range) {
     riskActions,
     uniqueOperators: opList.length,
     operators: opList,
+    tokens: [...tokens].sort(),
     actions: Object.fromEntries([...actions.entries()].sort((a, b) => b[1] - a[1])),
     daily,
   };
@@ -318,11 +323,16 @@ function renderCountry(c) {
             ${kpi("统计天数", data.daily.length)}
           </div>
         </div>
+        ${data.tokens && data.tokens.length ? `
+        <div class="dsu-tokens-row">
+          <span class="dsu-filter-label">使用 Token</span>
+          <span class="dsu-token-tags">${data.tokens.map((t) => `<code class="dsu-token-tag">${escapeHtml(t)}</code>`).join("")}</span>
+        </div>` : ""}
         ${renderBreakdown("动作分布", data.actions, (key) => key)}
         <div class="dsu-table-wrap">
           <table class="ds-table dsu-operator-table">
             <thead>
-              <tr><th>操作人</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>平均耗时</th><th>主要动作</th></tr>
+              <tr><th>操作人</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>使用Token</th><th>平均耗时</th><th>主要动作</th></tr>
             </thead>
             <tbody>
               ${data.operators.map((op) => renderCountryOperatorRow(op)).join("")}
@@ -396,6 +406,7 @@ function renderCountryOperatorRow(op) {
       <td>${op.success} / ${op.failed}</td>
       <td><span class="chip ${rateClass(op.successRate)}">${op.successRate}%</span></td>
       <td>${op.riskActions}</td>
+      <td>${(op.tokens || []).map((t) => `<code class="dsu-token-tag">${escapeHtml(t)}</code>`).join("") || "-"}</td>
       <td>${fmtDuration(op.avgDurationMs)}</td>
       <td class="muted">${Object.entries(op.actions || {}).slice(0, 3).map(([a, n]) => `${escapeHtml(a)}×${n}`).join(" · ") || "-"}</td>
     </tr>
