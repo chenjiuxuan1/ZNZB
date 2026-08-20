@@ -339,6 +339,9 @@ export async function saveDsSchedulerConfig(rootDir, config) {
     countries,
     alerts: config.alerts || {},
   };
+  if (config.usage || previous.usage) {
+    fullConfig.usage = config.usage || previous.usage;
+  }
 
   await writeJsonFileAtomic(filePath, fullConfig);
   return { ...fullConfig, resolved: resolveResults.filter((r) => r.ok).length, resolveErrors: resolveResults.filter((r) => !r.ok) };
