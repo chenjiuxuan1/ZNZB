@@ -60,6 +60,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /ds-retry-header-actions/);
   assert.match(source, /role="switch" aria-checked=/);
   assert.match(source, /<select id="ds-retry-interval"/);
+  assert.match(source, /\[60, 120, 240, 360\]/);
+  assert.match(source, /id="ds-retry-minute"[^>]+min="0" max="59"/);
+  assert.match(source, /COUNTRY_OPTIONS\.map\(\(item\) => item\.code\)/);
+  assert.match(source, /停止立即测试/);
   assert.ok(source.indexOf("const selectedIntervalMinutes") < source.indexOf("model.retryActionLoading = true"));
   assert.doesNotMatch(source, /id="ds-retry-start-at"/);
   assert.match(source, /重跑历史/);
@@ -75,7 +79,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /renderRetryLogDetail/);
   assert.match(source, /function failureReasonForDisplay/);
   assert.match(source, /失败节点尚未定位，可能为空跑，具体原因需人工确认/);
-  assert.match(styles, /\.ds-failure-retry-control \.ds-failure-filter-grid \{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.ds-failure-retry-control \.ds-failure-filter-grid \{[\s\S]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(source, /返回失败任务日志/);
   assert.match(source, /buildRetryRuns/);
   assert.match(source, /<th>运行时间<\/th><th>状态<\/th><th>国家<\/th><th>任务<\/th><th>重跑次数<\/th><th>结果<\/th><th>明细<\/th>/);
@@ -112,5 +116,6 @@ test("sidebar and server expose the independent DS failure log module", async ()
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/start"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/config"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/run-now"/);
+  assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/run-now\/stop"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/logs"/);
 });
