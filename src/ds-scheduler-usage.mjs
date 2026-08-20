@@ -253,8 +253,111 @@ export function buildDailyUsage(rows = [], options = {}) {
     uniqueCountries: allCountries.size,
     uniqueActions: allActions.size,
     uniqueSources: allSources.size,
+    countryUsage: buildCountryUsage(normalized),
     days,
   };
+}
+
+
+/**
+ * Aggregate normalized audit rows into a per-country usage report. Each country
+ * keeps a per-day breakdown (with per-day operators) so the UI can apply an
+ * independent time window per country.
+ */
+export function buildCountryUsage(normalizedRows = []) {
+  const byCountry = new Map();
+  for (const row of normalizedRows) {
+    const date = row.date;
+    if (!date) continue;
+    const country = row.country || "unknown";
+    if (!byCountry.has(country)) byCountry.set(country, { daily: new Map() });
+    const c = byCountry.get(country);
+    if (!c.daily.has(date)) c.daily.set(date, { date, requests: 0, success: 0, failed: 0, riskActions: 0, operators: new Map(), actions: new Map() });
+    const d = c.daily.get(date);
+    d.requests += 1;
+    if (row.success) d.success += 1;
+    else d.failed += 1;
+    if (row.riskLevel === "high" || row.riskLevel === "medium") d.riskActions += 1;
+    const opKey = String(row.operator || "unknown");
+    const op = d.operators.get(opKey) || { operator: opKey, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map() };
+    op.requests += 1;
+    if (row.success) op.success += 1;
+    else op.failed += 1;
+    if (row.riskLevel === "high" || row.riskLevel === "medium") op.riskActions += 1;
+    op.durationTotalMs += row.durationMs;
+    plus(op.actions, row.action || "unknown");
+    d.operators.set(opKey, op);
+    plus(d.actions, row.action || "unknown");
+  }
+
+  const countries = [];
+  for (const [country, c] of byCountry.entries()) {
+    const daily = [...c.daily.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, d]) => ({
+      date: d.date,
+      requests: d.requests,
+      success: d.success,
+      failed: d.failed,
+      successRate: d.requests ? Math.round((d.success / d.requests) * 1000) / 10 : 0,
+      riskActions: d.riskActions,
+      uniqueOperators: d.operators.size,
+      operators: [...d.operators.values()].map((op) => ({
+        operator: op.operator,
+        requests: op.requests,
+        success: op.success,
+        failed: op.failed,
+        successRate: op.requests ? Math.round((op.success / op.requests) * 1000) / 10 : 0,
+        riskActions: op.riskActions,
+        avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
+        actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
+      })).sort((a, b) => b.requests - a.requests),
+      actions: Object.fromEntries([...d.actions.entries()].sort((a, b) => b[1] - a[1])),
+    }));
+
+    let requests = 0, success = 0, failed = 0, riskActions = 0;
+    for (const d of daily) { requests += d.requests; success += d.success; failed += d.failed; riskActions += d.riskActions; }
+    const operatorsMap = new Map();
+    for (const d of daily) {
+      for (const op of d.operators) {
+        const key = op.operator;
+        const agg = operatorsMap.get(key) || { operator: key, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map() };
+        agg.requests += op.requests;
+        agg.success += op.success;
+        agg.failed += op.failed;
+        agg.riskActions += op.riskActions;
+        agg.durationTotalMs += op.avgDurationMs * op.requests;
+        for (const [a, n] of Object.entries(op.actions || {})) plus(agg.actions, a, n);
+        operatorsMap.set(key, agg);
+      }
+    }
+    const operators = [...operatorsMap.values()].map((op) => ({
+      operator: op.operator,
+      requests: op.requests,
+      success: op.success,
+      failed: op.failed,
+      successRate: op.requests ? Math.round((op.success / op.requests) * 1000) / 10 : 0,
+      riskActions: op.riskActions,
+      avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
+      actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
+    })).sort((a, b) => b.requests - a.requests);
+
+    const actions = new Map();
+    for (const d of daily) for (const [a, n] of Object.entries(d.actions || {})) plus(actions, a, n);
+
+    countries.push({
+      country,
+      requests,
+      success,
+      failed,
+      successRate: requests ? Math.round((success / requests) * 1000) / 10 : 0,
+      riskActions,
+      uniqueOperators: operators.length,
+      operators,
+      actions: Object.fromEntries([...actions.entries()].sort((a, b) => b[1] - a[1])),
+      daily,
+    });
+  }
+  countries.sort((a, b) => b.requests - a.requests);
+  return countries;
 }
 
 function parseMysqlBatchOutput(stdout) {
