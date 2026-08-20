@@ -57,7 +57,13 @@ async function refresh(root) {
   btn.innerHTML = `<span class="btn-spinner"></span>刷新中…`;
   try {
     model.report = await apiPost("/api/ds-scheduler/usage/refresh", { days: model.days }, { timeoutMs: 120000 });
-    model.status = { type: "ok", text: "已从数据源刷新最新使用情况。" };
+    if (model.report?.error) {
+      model.status = { type: "error", text: `刷新失败：${model.report.refreshError || "数据源不可达"}` };
+    } else if (model.report?.enabled === false) {
+      model.status = { type: "warn", text: "功能未启用：请将 config/ds-scheduler.config.json 中 usage.enabled 设为 true。" };
+    } else {
+      model.status = { type: "ok", text: "已从数据源刷新最新使用情况。" };
+    }
   } catch (error) {
     model.status = { type: "error", text: `刷新失败：${error.message}` };
   } finally {
@@ -103,6 +109,9 @@ function renderStatus(report) {
     const reason = report?.refreshError || model.status?.text || "数据源不可达";
     return `<div class="sandbox-status error"><strong>暂时无法获取数据</strong><span>${escapeHtml(reason)}</span></div>`;
   }
+  if (model.status?.type === "warn") {
+    return `<div class="sandbox-status warn"><strong>${escapeHtml(model.status.text)}</strong></div>`;
+  }
   if (model.status?.type === "ok") {
     return `<div class="sandbox-status success"><strong>${escapeHtml(model.status.text)}</strong></div>`;
   }
@@ -131,7 +140,10 @@ function renderMain(report, root) {
 
 function renderDays(report) {
   if (report?.error) {
-    return renderEmptyHint("数据源不可达");
+    return renderEmptyHint("数据源不可达", report?.refreshError || "");
+  }
+  if (report?.enabled === false) {
+    return renderEmptyHint("未启用");
   }
   if (!report.days || report.days.length === 0) {
     return renderEmptyHint("暂无数据");
@@ -143,19 +155,27 @@ function renderDays(report) {
   `;
 }
 
-function renderEmptyHint(kind) {
+function renderEmptyHint(kind, extra = "") {
+  if (kind === "未启用") {
+    return `
+      <div class="notice">
+        <strong>功能未启用</strong>
+        <span>当前 <code>config/ds-scheduler.config.json</code> 里 <code>usage.enabled</code> 不是 true，平台没有调用 n8n 网关。请把 <code>usage.enabled</code> 设为 <code>true</code> 后重启平台。</span>
+      </div>
+    `;
+  }
   if (kind === "数据源不可达") {
     return `
       <div class="notice">
         <strong>数据源不可达</strong>
-        <span>当前取数方式为 gateway（n8n 网关）。请确认：① n8n 已导入并激活 <code>n8n-ds-usage-report.json</code>；② 平台能访问 <code>DS_USAGE_WEBHOOK_URL</code> 指向的 n8n；③ n8n Variables 已配置 <code>DS_AUDIT_DB_PASSWORD</code>。也可改用 <code>ssh</code> 直连跳板机，或导入本地快照后查看缓存。</span>
+        <span>${extra ? `${escapeHtml(extra)}<br>` : ""}当前取数方式为 gateway（n8n 网关）。请确认：① n8n 已导入并激活 <code>n8n-ds-usage-report.json</code>；② 平台能访问 <code>DS_USAGE_WEBHOOK_URL</code> 指向的 n8n；③ n8n Variables 已配置 <code>DS_AUDIT_DB_PASSWORD</code>。也可改用 <code>ssh</code> 直连跳板机，或导入本地快照后查看缓存。</span>
       </div>
     `;
   }
   return `
     <div class="notice">
       <strong>暂无数据</strong>
-      <span>当前统计周期内没有审计记录。请确认网关注册了审计写入，且查询窗口内有调用。</span>
+      <span>当前统计周期内没有审计记录。若 n8n 已收到请求并返回 0 条，说明审计表 <code>ds_operation_audit_log</code> 在窗口内没有数据；否则请查看服务端日志确认是否已调用网关。</span>
     </div>
   `;
 }

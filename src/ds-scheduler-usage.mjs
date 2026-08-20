@@ -359,13 +359,17 @@ function postJson(urlString, body, headers = {}, timeoutMs = GATEWAY_TIMEOUT_MS)
 async function queryAuditViaGateway(config) {
   const headers = {};
   if (config.gateway.token) headers.Authorization = `Bearer ${config.gateway.token}`;
-  const { statusCode, payload } = await postJson(config.gateway.webhookUrl, {
+  const webhookUrl = config.gateway.webhookUrl || "";
+  console.log(`[ds-usage] POST gateway -> ${webhookUrl}`);
+  const { statusCode, payload } = await postJson(webhookUrl, {
     source: "duty-platform",
     action: config.gateway.action || "usage_report",
     request_id: `${config.gateway.requestIdPrefix || "duty-usage-"}${Date.now()}`,
     country: "cn",
     payload: { days: config.days, include_checked_workflows: false },
   }, headers);
+  const bodyPreview = JSON.stringify(payload || {}).slice(0, 400);
+  console.log(`[ds-usage] gateway response status=${statusCode} body=${bodyPreview}`);
   if (statusCode < 200 || statusCode >= 300 || payload.success === false) {
     const message = payload.error?.message || payload.error || `网关请求失败 (HTTP ${statusCode})`;
     throw new Error(String(message));
@@ -414,7 +418,7 @@ export async function fetchAndAggregateUsage(options = {}) {
     && Date.now() - new Date(cached.generatedAt).getTime() < 10 * 60 * 1000;
 
   if (!config.enabled && cached && Array.isArray(cached.rows)) {
-    return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true };
+    return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, enabled: config.enabled };
   }
   if (config.enabled) {
     try {
@@ -429,16 +433,16 @@ export async function fetchAndAggregateUsage(options = {}) {
       if (options.cache !== false) {
         await saveUsageSnapshot(rootDir, { generatedAt: report.generatedAt, rows: rowsList });
       }
-      return { ...report, source: config.source, cached: config.source === "snapshot" };
+      return { ...report, source: config.source, cached: config.source === "snapshot", enabled: config.enabled };
     } catch (error) {
       if (cached && Array.isArray(cached.rows)) {
-        return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, refreshError: error.message };
+        return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, refreshError: error.message, enabled: config.enabled };
       }
-      return { ...buildDailyUsage([]), source: config.source, cached: false, refreshError: error.message, error: true };
+      return { ...buildDailyUsage([]), source: config.source, cached: false, refreshError: error.message, error: true, enabled: config.enabled };
     }
   }
   if (cached && Array.isArray(cached.rows)) {
-    return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true };
+    return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, enabled: config.enabled };
   }
-  return { ...buildDailyUsage([]), source: "empty", cached: false };
+  return { ...buildDailyUsage([]), source: "empty", cached: false, enabled: config.enabled };
 }
