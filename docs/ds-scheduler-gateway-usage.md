@@ -66,6 +66,21 @@
 
 > 前提：审计记录里必须真的存了 token 值。当前 `ds-scheduler-router` 工作流的「构造审计写入SQL」节点默认只写 `ds_token_present`（布尔标记），**不存 token 值**。请使用仓库内/提供文件中带 token 持久化的版本（`requestPayload` 里加 `ds_token: ctx.ds_token || ''`）重新导入路由工作流，之后的新审计记录才会带 token。历史记录（旧数据）token 为空，页面显示「-」。
 
+
+### 历史数据回填 token（方案 A）
+
+路由工作流更新前产生的历史审计记录没有 token 值。可用 `scripts/backfill-audit-token.mjs` 从 n8n 执行历史回填（仅限 n8n 保留期内的记录）：
+
+```bash
+# 试跑（不写库）
+DRY_RUN=1 N8N_PGPASSWORD=<n8n库密码> AUDIT_DB_PASSWORD=<审计库密码> node scripts/backfill-audit-token.mjs
+
+# 正式回填
+N8N_PGPASSWORD=<n8n库密码> AUDIT_DB_PASSWORD=<审计库密码> node scripts/backfill-audit-token.mjs
+```
+
+按 `request_id` 匹配，用 `JSON_SET` 把 `ds_token` 写进审计表 `request_payload.$.ds_token`（只更新 token 为空的记录）。连接信息均可用环境变量覆盖（见脚本头部注释）。
+
 ## 接口
 ## 接口
 
