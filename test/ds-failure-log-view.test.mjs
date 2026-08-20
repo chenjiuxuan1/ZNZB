@@ -55,10 +55,11 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /自动重跑中/);
   assert.match(source, /重跑策略/);
   assert.match(source, /renderCountryMultiSelect\("ds-retry-country"/);
-  assert.match(source, /class="green-toggle" id="ds-retry-toggle"/);
+  assert.match(source, /id="ds-retry-toggle"[^>]+role="switch"/);
   assert.match(source, /ds-retry-header-actions/);
   assert.match(source, /role="switch" aria-checked=/);
-  assert.match(source, /type="datetime-local"/);
+  assert.match(source, /<select id="ds-retry-interval"/);
+  assert.doesNotMatch(source, /id="ds-retry-start-at"/);
   assert.match(source, /重跑历史/);
   assert.match(source, /schedule-history-table ds-retry-history-table/);
   assert.match(source, /retryRunId=/);
@@ -67,7 +68,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /不重跑任务配置/);
   assert.match(source, /data-retry-exclusion-country/);
   assert.match(source, /立即运行测试/);
-  assert.match(source, /不会立即检测，将由后台自动触发/);
+  assert.match(source, /自动重跑开关未改变/);
+  assert.match(source, /到达所选间隔时执行第一轮/);
   assert.match(source, /renderRetryLogDetail/);
   assert.match(source, /返回失败任务日志/);
   assert.match(source, /buildRetryRuns/);
@@ -104,5 +106,6 @@ test("sidebar and server expose the independent DS failure log module", async ()
   assert.match(server, /url\.pathname === "\/api\/ds-failure-logs"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/start"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/config"/);
+  assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/run-now"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/logs"/);
 });
