@@ -52,6 +52,17 @@
 .green-toggle[aria-checked="true"] .green-toggle-track { background: #16a34a; }
 .green-toggle[aria-checked="true"] .green-toggle-track::after { transform: translateX(18px); }
 
+.ds-retry-run-now { background: #fff; border: 1px solid #dbe4f0; justify-content: flex-start; min-height: 42px; width: 100%; }
+.ds-retry-run-now:hover { background: #f8fafc; }
+.ds-retry-exclusion-backdrop { align-items: center; background: rgb(15 23 42 / .42); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 1000; }
+.ds-retry-exclusion-modal { max-height: calc(100vh - 48px); max-width: 1180px; overflow: auto; width: 100%; }
+.ds-retry-exclusion-grid { margin-top: 18px; }
+.ds-retry-exclusion-grid textarea { min-height: 96px; resize: vertical; width: 100%; }
+.ds-retry-exclusion-actions { justify-content: flex-end; margin-top: 18px; }
+.ds-retry-log-detail { display: grid; gap: 4px; min-width: 260px; white-space: normal; }
+.ds-retry-log-detail strong { color: #334155; }
+.ds-retry-log-detail small { color: #64748b; }
+
 .country-multi-field { color: var(--muted); display: grid; font-size: 13px; gap: 6px; min-width: 0; }
 .country-multi-select { position: relative; }
 .country-multi-select summary { background: #fff; border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; list-style: none; min-height: 40px; overflow: hidden; padding: 10px 34px 10px 12px; text-overflow: ellipsis; white-space: nowrap; }
