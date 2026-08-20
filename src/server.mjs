@@ -264,6 +264,9 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/ds-failure-retry/start") {
     return sendJson(response, 200, api.startDsFailureRetry(await readBody(request, {})));
   }
+  if (method === "POST" && url.pathname === "/api/ds-failure-retry/config") {
+    return sendJson(response, 200, api.configureDsFailureRetry(await readBody(request, {})));
+  }
   if (method === "POST" && url.pathname === "/api/ds-failure-retry/stop") {
     return sendJson(response, 200, api.stopDsFailureRetry());
   }

@@ -77,12 +77,14 @@ export function createDsAutoRetryManager({
   let enabled = Boolean(persisted.enabled);
   let startAt = persisted.startAt && !Number.isNaN(Date.parse(persisted.startAt)) ? new Date(persisted.startAt) : null;
   let countries = Array.isArray(persisted.countries) ? persisted.countries : [];
+  let excludedTasks = normalizeExcludedTasks(persisted.excludedTasks);
   let currentRunId = persisted.currentRunId || null;
 
   const persistState = () => saveRetryState(stateFile, {
     enabled,
     startAt: startAt?.toISOString() || null,
     countries,
+    excludedTasks,
     currentRunId,
     logs: logs.slice(-500),
     statuses: [...statuses.entries()],
@@ -237,6 +239,14 @@ export function createDsAutoRetryManager({
         if (countries.length && !countries.includes(countryResult.country)) continue;
         for (const failure of countryResult.failures || []) {
           const key = failureKey(countryResult.country, failure);
+          if (isExcludedFailure(countryResult.country, failure, excludedTasks)) {
+            const previous = statuses.get(key);
+            setStatus(key, { autoRetryStatus: "manual_review", stopReason: "已在重跑排除配置中指定为不重跑" });
+            if (previous?.stopReason !== "已在重跑排除配置中指定为不重跑") {
+              appendLog("info", "excluded", { key, country: countryResult.country, ...failureTaskDetail(failure), message: "该任务已被重跑排除配置命中，不执行自动重跑" });
+            }
+            continue;
+          }
           if (failure.repairStatus === "recovered") {
             setStatus(key, { autoRetryStatus: "recovered", stopReason: "已修复" });
             continue;
@@ -283,7 +293,6 @@ export function createDsAutoRetryManager({
     if (scanTimer) return;
     scanTimer = setInterval(() => scan().catch((error) => logger.error?.("[ds-auto-retry] scan failed:", error)), scanIntervalMs);
     scanTimer.unref?.();
-    if (enabled) scan().catch((error) => logger.error?.("[ds-auto-retry] restored scan failed:", error));
   }
 
   function enable(options = {}) {
@@ -292,9 +301,16 @@ export function createDsAutoRetryManager({
     enabled = true;
     startAt = parsed;
     countries = Array.isArray(options.countries) ? [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))] : [];
+    excludedTasks = normalizeExcludedTasks(options.excludedTasks ?? excludedTasks);
     currentRunId = `ds-retry-${now().getTime()}`;
     appendLog("info", "control_enabled", { message: `已启用重跑，开始时间：${startAt.toISOString()}`, startAt: startAt.toISOString(), countries });
-    if (now().getTime() >= startAt.getTime()) scan().catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error));
+    if (options.runNow === true) scan().catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error));
+    return control();
+  }
+
+  function configure(options = {}) {
+    excludedTasks = normalizeExcludedTasks(options.excludedTasks);
+    persistState();
     return control();
   }
 
@@ -305,7 +321,7 @@ export function createDsAutoRetryManager({
   }
 
   function control() {
-    return { enabled, startAt: startAt?.toISOString() || null, countries, activeCount: active.size, logCount: logs.length, currentRunId };
+    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedTasks, activeCount: active.size, logCount: logs.length, currentRunId };
   }
 
   function getLogs(limit = 200) {
@@ -318,7 +334,7 @@ export function createDsAutoRetryManager({
     scanTimer = null;
   }
 
-  return { start, stop, scan, enable, disable, control, getLogs, decorate, statuses, active, logs };
+  return { start, stop, scan, enable, disable, configure, control, getLogs, decorate, statuses, active, logs };
 }
 
 function failureTaskDetail(failure = {}) {
@@ -330,7 +346,28 @@ function failureTaskDetail(failure = {}) {
     taskCode: String(failure.taskCode || ""),
     taskName: String(failure.taskName || ""),
     instanceId: String(failure.instanceId || ""),
+    failureReason: String(failure.failureMessage || failure.retryDecision || "任务日志未返回明确失败原因"),
   };
+}
+
+function normalizeExcludedTasks(value) {
+  const result = {};
+  for (const [country, tasks] of Object.entries(value && typeof value === "object" ? value : {})) {
+    const code = String(country || "").trim().toLowerCase();
+    if (!code) continue;
+    const normalized = Array.isArray(tasks) ? tasks : String(tasks || "").split(/[，,；;\n]/);
+    result[code] = [...new Set(normalized.map((item) => String(item || "").trim()).filter(Boolean))];
+  }
+  return result;
+}
+
+function isExcludedFailure(country, failure, excludedTasks) {
+  const configured = excludedTasks[String(country || "").trim().toLowerCase()] || [];
+  if (!configured.length) return false;
+  const identities = [failure.taskName, failure.taskCode, failure.workflowName, failure.workflowCode]
+    .map((item) => String(item || "").trim().toLowerCase())
+    .filter(Boolean);
+  return configured.some((item) => identities.includes(String(item).trim().toLowerCase()));
 }
 
 function loadRetryState(filePath) {
