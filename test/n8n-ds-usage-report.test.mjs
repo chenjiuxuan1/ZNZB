@@ -21,7 +21,7 @@ test("usage-report workflow queries the audit table with column names and reads 
   assert.match(parse.parameters.jsCode, /ds_operation_audit_log/);
   assert.match(parse.parameters.jsCode, /10\.20\.47\.19/);
   assert.match(parse.parameters.jsCode, /--column-names/);
-  assert.match(parse.parameters.jsCode, /\$vars && \$vars\.DS_AUDIT_DB_PASSWORD/);
+  assert.match(parse.parameters.jsCode, /auditPassword/);
   assert.doesNotMatch(parse.parameters.jsCode, /6JA8j2uGvZi3FrAcxM06/);
 });
 

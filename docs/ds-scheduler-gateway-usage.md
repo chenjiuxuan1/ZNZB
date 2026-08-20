@@ -44,20 +44,20 @@
 ```
 
 - `source: "ssh"`：通过跳板机直接查审计表（推荐，与现有 Wattrel 链路一致）。
-- `source: "gateway"`：调用独立的 n8n 工作流 `n8n-ds-usage-report.json`（webhook 路径 `ds-usage-report`）拉取审计记录，不依赖平台机器直连跳板机；需在 n8n 中导入该工作流并在 Variables 中配置 `DS_AUDIT_DB_PASSWORD`。
+- `source: "gateway"`：调用独立的 n8n 工作流 `n8n-ds-usage-report.json`（webhook 路径 `ds-usage-report`）拉取审计记录，不依赖平台机器直连跳板机；需在 n8n 中导入该工作流并激活。
 - `source: "snapshot"`：只读取本地缓存快照 `config/ds-scheduler-usage-snapshot.json`，用于离线展示与测试。
 
-审计库密码通过环境变量 `DS_AUDIT_DB_PASSWORD` 注入（取自 n8n `ds-scheduler-router` 审计写入节点），不写在配置里；网关免鉴权，无需 token。
+审计库密码不写在配置里；`source: "gateway"` 模式下由值班平台从 `.env` 读取 `DS_AUDIT_DB_PASSWORD`，并通过 webhook 请求体的 `payload.auditPassword` 传给 n8n 节点执行 mysql 查询，因此**无需在 n8n 侧额外配置环境变量**。网关免鉴权，无需 token。
 
 ## n8n 工作流（免 SSH 取数）
 
 仓库新增独立工作流 `n8n-ds-usage-report.json`，用于在 `source: "gateway"` 模式下由 n8n 侧查询审计表并返回使用统计，避免值班平台机器直连跳板机：
 
 1. 在 n8n 中导入 `n8n-ds-usage-report.json`，激活后得到 webhook 地址 `/webhook/ds-usage-report`。
-2. 在 n8n Variables 中配置 `DS_AUDIT_DB_PASSWORD`（审计库密码，不写入工作流 JSON）。
-3. 设置平台 `usage.gateway.webhookUrl` 为该 webhook（默认 `${DS_USAGE_WEBHOOK_URL}`）。
+2. 设置平台 `usage.gateway.webhookUrl` 为该 webhook（默认 `${DS_USAGE_WEBHOOK_URL}`）；审计库密码由平台经 `payload.auditPassword` 自动下发，无需在 n8n 配置环境变量。
+3. 确认 SSH 节点「中国跳板机查询审计表」引用的凭据已绑定。
 
-请求体（值班平台自动发送）：`{ "source":"duty-platform", "action":"usage_report", "payload":{ "days": 30 } }`，返回 `{ "success":true, "rows":[...] }`。
+请求体（值班平台自动发送）：`{ "source":"duty-platform", "action":"usage_report", "payload":{ "days": 30, "auditPassword": "..." } }`，返回 `{ "success":true, "rows":[...] }`。
 
 ## 接口
 ## 接口
