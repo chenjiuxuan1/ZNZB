@@ -506,7 +506,7 @@ function buildRetryRuns(logs) {
       matchedCountryNames: matchedCountryNames || "暂无符合条件的任务",
       taskCount,
       retryCount,
-      summary: last.message || retryRunStatus(status),
+      summary: formatRetryMessage(last.message) || retryRunStatus(status),
       logs: ordered.reverse(),
     };
   }).sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
@@ -559,9 +559,16 @@ function renderRetryHistoryDetailPage(root, runId) {
 }
 
 function renderRetryLogDetail(item = {}) {
-  if (!item.key) return escapeHtml(item.message || "—");
+  if (!item.key) return escapeHtml(formatRetryMessage(item.message) || "—");
   const reason = failureReasonForDisplay(item);
-  return `<div class="ds-retry-log-detail"><strong>失败原因</strong><span>${escapeHtml(reason)}</span>${item.message ? `<small>处理记录：${escapeHtml(item.message)}</small>` : ""}</div>`;
+  return `<div class="ds-retry-log-detail"><strong>失败原因</strong><span>${escapeHtml(reason)}</span>${item.message ? `<small>处理记录：${escapeHtml(formatRetryMessage(item.message))}</small>` : ""}</div>`;
+}
+
+function formatRetryMessage(message) {
+  return String(message || "").replace(
+    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z/g,
+    (value) => new Date(value).toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" }),
+  );
 }
 
 function renderRetryTaskIdentity(item = {}) {

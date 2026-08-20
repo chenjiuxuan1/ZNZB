@@ -78,6 +78,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /自动重跑开关未改变/);
   assert.match(source, /到达所选间隔时执行第一轮/);
   assert.match(source, /renderRetryLogDetail/);
+  assert.match(source, /function formatRetryMessage/);
+  assert.match(source, /timeZone: "Asia\/Shanghai"/);
   assert.match(source, /function failureReasonForDisplay/);
   assert.match(source, /失败节点尚未定位，可能为空跑，具体原因需人工确认/);
   assert.match(styles, /\.ds-failure-retry-control \.ds-failure-filter-grid \{[\s\S]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
