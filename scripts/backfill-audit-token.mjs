@@ -80,7 +80,7 @@ async function readN8nRows() {
       data::jsonb #>> '${pathRid}' AS rid,
       data::jsonb #>> '${pathTok}' AS tok
     FROM execution_data
-    WHERE executionId IN (
+    WHERE "executionId" IN (
       SELECT id FROM execution_entity
       WHERE "workflowId" = (
         SELECT id FROM workflow_entity WHERE name = ${sqlQuote(CFG.workflowName)} LIMIT 1
