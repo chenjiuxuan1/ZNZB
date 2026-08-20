@@ -76,7 +76,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /data-retry-exclusion-country/);
   assert.match(source, /立即运行测试/);
   assert.match(source, /自动重跑开关未改变/);
-  assert.match(source, /到达所选间隔时执行第一轮/);
+  assert.match(source, /在所设置的重跑分钟执行第一轮，之后按所选间隔运行/);
   assert.match(source, /renderRetryLogDetail/);
   assert.match(source, /function formatRetryMessage/);
   assert.match(source, /timeZone: "Asia\/Shanghai"/);

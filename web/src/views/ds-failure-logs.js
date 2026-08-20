@@ -381,7 +381,7 @@ function paint(root) {
         ${renderRetryIntervalSelect(model.retryControl.intervalMinutes || 60, model.retryControl.enabled)}
         <label>自动重跑分钟<input id="ds-retry-minute" type="number" min="0" max="59" step="1" value="${Number(model.retryControl.retryMinute ?? 0)}" ${model.retryControl.enabled ? "disabled" : ""} placeholder="0-59"></label>
         ${renderCountryMultiSelect("ds-retry-country", "重跑国家", model.retryCountries, model.retryControl.enabled)}
-        <div class="country-multi-field"><span>自动重跑</span><button class="green-toggle ds-retry-run-now" id="ds-retry-toggle" type="button" role="switch" aria-checked="${model.retryControl.enabled}" ${model.retryActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>${model.retryActionLoading ? "处理中…" : retryStateLabel}</span></button><small>开启后从当前时刻计时，到达所选间隔时执行第一轮</small></div>
+        <div class="country-multi-field"><span>自动重跑</span><button class="green-toggle ds-retry-run-now" id="ds-retry-toggle" type="button" role="switch" aria-checked="${model.retryControl.enabled}" ${model.retryActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>${model.retryActionLoading ? "处理中…" : retryStateLabel}</span></button><small>开启后在所设置的重跑分钟执行第一轮，之后按所选间隔运行</small></div>
         <label>当前运行任务<input value="${Number(model.retryControl.activeCount || 0)} 个" disabled></label>
       </div>
       ${model.retryActionMessage ? `<div class="sandbox-status ${/失败|错误|无效|请选择/.test(model.retryActionMessage) ? "error" : "warn"}"><span>${escapeHtml(model.retryActionMessage)}</span></div>` : ""}
