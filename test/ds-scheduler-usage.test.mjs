@@ -13,7 +13,7 @@ import {
 } from "../src/ds-scheduler-usage.mjs";
 
 const SAMPLE_ROWS = [
-  { operation_time: "2026-08-20 09:00:00", operator: "张三", source_system: "codex-skill", country: "cn", action: "list_projects", success: 1, risk_level: "low", duration_ms: 120 },
+  { operation_time: "2026-08-20 09:00:00", operator: "张三", source_system: "codex-skill", country: "cn", action: "list_projects", success: 1, risk_level: "low", duration_ms: 120, token: "TOK-CN" },
   { operation_time: "2026-08-20 10:00:00", operator: "张三", source_system: "codex-skill", country: "cn", action: "create_workflow", success: 0, risk_level: "medium", duration_ms: 900, error_code: "ERR" },
   { operation_time: "2026-08-20 11:00:00", operator: "李四", source_system: "n8n", country: "ine", action: "list_workflows", success: 1, risk_level: "low", duration_ms: 50 },
   { operation_time: "2026-08-21 09:00:00", operator: "张三", source_system: "codex-skill", country: "pk", action: "offline_schedule", success: 1, risk_level: "high", duration_ms: 300 },
@@ -68,6 +68,14 @@ test("buildCountryUsage aggregates per-country totals and per-day windows", () =
   assert.equal(windowed.reduce((s, d) => s + d.requests, 0), 2);
   assert.deepEqual(cn.actions, { list_projects: 1, create_workflow: 1 });
   assert.equal(countries[0].requests >= countries[countries.length - 1].requests, true);
+  assert.deepEqual(cn.tokens, ["TOK-CN"]);
+  assert.equal(cn.operators[0].tokens[0], "TOK-CN");
+});
+
+test("normalizeAuditRow maps token from row or ds_token", () => {
+  assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A", token: "T1" }).token, "T1");
+  assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A", ds_token: "T2" }).token, "T2");
+  assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A" }).token, "");
 });
 
 test("normalizeAuditRow handles success booleans/ints and derives date", () => {

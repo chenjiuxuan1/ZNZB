@@ -59,6 +59,13 @@
 
 请求体（值班平台自动发送）：`{ "source":"duty-platform", "action":"usage_report", "payload":{ "days": 30, "auditPassword": "..." } }`，返回 `{ "success":true, "rows":[...] }`。
 
+
+### 展示实际访问用的 Token
+
+页面「国家使用分布」会展示每个国家实际访问 DS 网关时使用的 `ds_token`（该国操作人、明细均带 Token 列）。
+
+> 前提：审计记录里必须真的存了 token 值。当前 `ds-scheduler-router` 工作流的「构造审计写入SQL」节点默认只写 `ds_token_present`（布尔标记），**不存 token 值**。请使用仓库内/提供文件中带 token 持久化的版本（`requestPayload` 里加 `ds_token: ctx.ds_token || ''`）重新导入路由工作流，之后的新审计记录才会带 token。历史记录（旧数据）token 为空，页面显示「-」。
+
 ## 接口
 ## 接口
 

@@ -5976,3 +5976,22 @@ body {
 @media (max-width: 640px) {
   .dsu-token-grid { grid-template-columns: 1fr; }
 }
+
+.dsu-tokens-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.dsu-token-tags { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.dsu-token-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: #f1f5f9;
+  color: #334155;
+  white-space: nowrap;
+}
