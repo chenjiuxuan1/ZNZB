@@ -130,7 +130,7 @@ button.ds-retry-action {
 
 .ds-failure-retry-control .ds-failure-filter-grid {
   align-items: start;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .ds-failure-retry-control .ds-failure-filter-grid > * {

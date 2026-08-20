@@ -191,6 +191,16 @@ test("automatic retry starts its interval clock without running immediately", as
   assert.ok(manager.getLogs().some((item) => item.event === "control_disabled"));
 });
 
+test("automatic retry aligns the first run to the selected minute and then uses the hour interval", () => {
+  const current = new Date("2026-08-20T16:40:00+08:00");
+  const manager = createDsAutoRetryManager({ rootDir: "/unused", now: () => current });
+  manager.enable({ intervalMinutes: 120, retryMinute: 30 });
+  assert.equal(manager.control().retryMinute, 30);
+  assert.equal(manager.control().intervalMinutes, 120);
+  assert.equal(manager.control().nextRunAt, "2026-08-20T09:30:00.000Z");
+  manager.disable();
+});
+
 test("manual run starts immediately without enabling automatic retry", async () => {
   let inspected = 0;
   const manager = createDsAutoRetryManager({
@@ -203,6 +213,22 @@ test("manual run starts immediately without enabling automatic retry", async () 
   assert.equal(inspected, 1);
   assert.equal(manager.control().enabled, false);
   assert.ok(manager.getLogs().some((item) => item.event === "manual_run"));
+});
+
+test("manual run can be stopped independently from automatic retry", async () => {
+  let releaseInspect;
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: () => new Promise((resolve) => { releaseInspect = resolve; }),
+    now: () => fixedNow,
+  });
+  manager.enable({ intervalMinutes: 60, retryMinute: 0 });
+  manager.runNow();
+  assert.equal(manager.control().manualRunning, true);
+  manager.stopManualRun();
+  assert.equal(manager.control().manualRunning, false);
+  assert.equal(manager.control().enabled, true);
+  releaseInspect({ totalFailures: 0, countries: [] });
 });
 
 test("manual run submits at most one retry while automatic retry is disabled", async () => {
