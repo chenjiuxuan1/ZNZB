@@ -434,7 +434,7 @@ export async function fetchAndAggregateUsage(options = {}) {
       if (cached && Array.isArray(cached.rows)) {
         return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, refreshError: error.message };
       }
-      throw error;
+      return { ...buildDailyUsage([]), source: config.source, cached: false, refreshError: error.message, error: true };
     }
   }
   if (cached && Array.isArray(cached.rows)) {
