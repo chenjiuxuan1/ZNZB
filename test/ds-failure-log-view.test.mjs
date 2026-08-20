@@ -9,6 +9,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
     fs.readFile(new URL("../src/platform-api.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(source, /DS 失败任务日志/);
+  assert.match(source, /选择范围/);
+  assert.match(source, /实际命中/);
+  assert.match(source, /具体任务/);
+  assert.match(source, /renderRetryTaskIdentity/);
   assert.match(source, /已自动修复/);
   assert.match(source, /修复中/);
   assert.match(source, /待修复/);
