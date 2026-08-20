@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 /**
- * 一次性回填脚本：从 n8n 执行历史把每次请求的 ds_token 写回审计库。
+ * 一次性回填脚本：从 n8n 执行历史把每次请求实际使用的 ds_token 写回审计库。
  *
- * 思路（方案 A）：
- *   1. 用 psql 读 n8n 自己的 PostgreSQL（execution_entity + execution_data）。
- *      n8n 执行数据是扁平数组 + 引用下标：node 输出里的 request_id/ds_token 是
- *      下标，真实值在 data[下标]，脚本用正则取出下标再解出真实值。
- *   2. 用 mysql 对审计表 ds_operation_audit_log 按 request_id 做 JSON_SET，
- *      把 token 写进 request_payload.$.ds_token（只更新 token 为空的记录）。
+ * 思路（方案 A，按 country + action + 时间近似匹配）：
+ *   n8n 的执行数据里不存可用的 request_id（request_id 字段为空），但存了
+ *   country / action / ds_token 以及执行时间。审计表每条记录有精确的
+ *   country / action / operation_time 与唯一的 request_id。因此：
+ *   1. 用 psql 从 n8n PostgreSQL 读出每条已完成执行的
+ *      country、action、ds_token、执行时间（Asia/Shanghai）。
+ *      n8n 执行数据是扁平数组 + 引用下标：country/action/ds_token 字段值是
+ *      "下标"，真实值在 data[下标]，脚本用正则取出下标再解出真实字符串。
+ *   2. 用 mysql 从审计表 ds_operation_audit_log 读出
+ *      request_id、country、action、operation_time。
+ *   3. 按 country 相同 + action 相同 + 执行时间≈审计时间（默认 ±30 秒）
+ *      匹配，把 n8n 里真实存储的 ds_token 回填到该审计记录的
+ *      request_payload.$.ds_token（只更新 token 为空/缺失的记录）。
+ *
+ * 注意：这是近似匹配，同一国家同一动作在同一时间窗口内有多条时可能错配。
  *
  * 前置条件（在服务器上运行，需能访问两台库）：
  *   - psql 客户端（PostgreSQL，n8n 的库；若端口未映射到宿主机，用 N8N_DOCKER_CONTAINER）
@@ -24,10 +33,11 @@
  *   N8N_DOCKER_CONTAINER（n8n Postgres 容器名，如 n8n-db；设置后通过
  *                         docker exec 在容器内跑 psql，适用于端口未映射到宿主机）
  *   N8N_WORKFLOW_NAME   （默认 ds-scheduler-router）
- *   N8N_NODE_NAMES      （逗号分隔，尝试从中提取 request_id/ds_token，
- *                         默认 "Webhook,解析并标准化请求"）
- *   N8N_LIMIT           （最多回填条数，0=不限制，便于先小批量验证）
+ *   N8N_TIMEZONE        （执行时间换算的时区，默认 Asia/Shanghai）
+ *   N8N_LIMIT           （最多读取的 n8n 执行记录数，0=不限制）
+ *   BACKFILL_WINDOW_MS  （时间匹配窗口，默认 30000，即 ±30 秒）
  *   AUDIT_DB_HOST / AUDIT_DB_PORT / AUDIT_DB_USER / AUDIT_DB_PASSWORD / AUDIT_DB_NAME / AUDIT_DB_TABLE
+ *   AUDIT_DB_LIMIT      （最多读取的审计记录数，0=不限制）
  *   PSQL_BIN / MYSQL_BIN （客户端路径，默认 psql / mysql）
  *   DRY_RUN             （=1 只打印不写库）
  */
@@ -44,14 +54,16 @@ const CFG = {
   pgPassword: env("N8N_PGPASSWORD", ""),
   pgDatabase: env("N8N_PGDATABASE", "n8n"),
   workflowName: env("N8N_WORKFLOW_NAME", "ds-scheduler-router"),
-  nodeNames: env("N8N_NODE_NAMES", "Webhook,解析并标准化请求").split(",").map((v) => v.trim()).filter(Boolean),
+  timezone: env("N8N_TIMEZONE", "Asia/Shanghai"),
   limit: Math.max(0, Number(env("N8N_LIMIT", "0")) || 0),
+  windowMs: Math.max(0, Number(env("BACKFILL_WINDOW_MS", "30000")) || 0),
   auditHost: env("AUDIT_DB_HOST", "10.20.47.19"),
   auditPort: env("AUDIT_DB_PORT", "3306"),
   auditUser: env("AUDIT_DB_USER", "root"),
   auditPassword: env("AUDIT_DB_PASSWORD", ""),
   auditDatabase: env("AUDIT_DB_NAME", "warning_rule"),
   auditTable: env("AUDIT_DB_TABLE", "ds_operation_audit_log"),
+  auditLimit: Math.max(0, Number(env("AUDIT_DB_LIMIT", "0")) || 0),
   psqlBin: env("PSQL_BIN", "psql"),
   mysqlBin: env("MYSQL_BIN", "mysql"),
   n8nDocker: env("N8N_DOCKER_CONTAINER", ""),
@@ -68,28 +80,7 @@ function pgArgs() {
   return args;
 }
 
-function pathFor(node, field) {
-  return `{resultData,runData,${node},0,data,main,0,0,json,${field}}`;
-}
-
-async function readN8nRows() {
-  // n8n 执行数据是扁平数组，node 输出里的 request_id/ds_token 都是"引用下标"，
-  // 真实值在 data[下标]。先用正则取出引用下标，再 d -> 下标 解出真实字符串。
-  const sql = `
-    SELECT
-      d -> (regexp_match(d::text, '"request_id"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS rid,
-      d -> (regexp_match(d::text, '"ds_token"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS tok
-    FROM (
-      SELECT data::jsonb AS d
-      FROM execution_data
-      WHERE "executionId" IN (
-        SELECT id FROM execution_entity
-        WHERE "workflowId" = (
-          SELECT id FROM workflow_entity WHERE name = ${sqlQuote(CFG.workflowName)} LIMIT 1
-        ) AND finished = TRUE
-      )${CFG.limit ? ` LIMIT ${CFG.limit}` : ""}
-    ) t;
-  `;
+async function execPg(sql) {
   const baseArgs = [...pgArgs(), "-c", sql];
   let cmd, cmdArgs, cmdEnv;
   if (CFG.n8nDocker) {
@@ -103,15 +94,45 @@ async function readN8nRows() {
     cmdEnv = { ...process.env, PGPASSWORD: CFG.pgPassword };
   }
   const { stdout } = await run(cmd, cmdArgs, { env: cmdEnv, maxBuffer: 512 * 1024 * 1024 });
+  return stdout;
+}
+
+function unquote(raw) {
+  if (raw == null) return "";
+  let s = String(raw).trim();
+  if (s.length >= 2 && ((s[0] === '"' && s[s.length - 1] === '"') || (s[0] === "'" && s[s.length - 1] === "'"))) {
+    s = s.slice(1, -1);
+  }
+  return s;
+}
+
+async function readN8nRows() {
+  // 每条已完成执行：取 country/action/ds_token 的引用下标，再解出真实值。
+  // 执行时间换算成指定时区（默认 Asia/Shanghai，与审计 operation_time 对齐）。
+  const sql = `
+    SELECT
+      to_char(e."startedAt" AT TIME ZONE ${sqlQuote(CFG.timezone)}, 'YYYY-MM-DD HH24:MI:SS') AS started,
+      d -> (regexp_match(d::text, '"country"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS country,
+      d -> (regexp_match(d::text, '"action"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS action,
+      d -> (regexp_match(d::text, '"ds_token"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS tok
+    FROM execution_data d
+    JOIN execution_entity e ON e.id = d."executionId"
+    WHERE e."workflowId" = (
+      SELECT id FROM workflow_entity WHERE name = ${sqlQuote(CFG.workflowName)} LIMIT 1
+    ) AND e.finished = TRUE
+    ${CFG.limit ? `LIMIT ${CFG.limit}` : ""};
+  `;
+  const stdout = await execPg(sql);
   const rows = [];
   for (const line of stdout.split("\n")) {
     if (!line.trim()) continue;
-    const [ridRaw, tokRaw] = line.split("\t");
-    if (!ridRaw || !tokRaw) continue;
-    let rid = null, tok = null;
-    try { rid = JSON.parse(ridRaw); } catch { rid = ridRaw.replace(/^"|"$/g, ""); }
-    try { tok = JSON.parse(tokRaw); } catch { tok = tokRaw.replace(/^"|"$/g, ""); }
-    if (rid && tok) rows.push({ request_id: String(rid), token: String(tok) });
+    const [startedRaw, countryRaw, actionRaw, tokRaw] = line.split("\t");
+    const started = unquote(startedRaw);
+    const country = unquote(countryRaw).toLowerCase();
+    const action = unquote(actionRaw);
+    const token = unquote(tokRaw);
+    if (!started || !country || !action || !token) continue;
+    rows.push({ startedAt: started, country, action, token });
   }
   return rows;
 }
@@ -132,14 +153,79 @@ function runMysql(sql) {
   });
 }
 
-async function updateAudit(rows) {
-  const unique = new Map();
-  for (const r of rows) {
-    if (!r.token) continue;
-    if (!unique.has(r.request_id)) unique.set(r.request_id, r.token);
+async function readAuditRows() {
+  const sql = [
+    `SELECT request_id, country, action, DATE_FORMAT(operation_time, '%Y-%m-%d %H:%i:%s') AS operation_time`,
+    `FROM \`${CFG.auditTable}\``,
+    `WHERE request_id IS NOT NULL AND request_id <> ''`,
+    CFG.auditLimit ? `LIMIT ${CFG.auditLimit}` : "",
+  ].filter(Boolean).join(" ");
+  const args = [
+    "-h", CFG.auditHost, "-P", CFG.auditPort, "-u", CFG.auditUser,
+    "--batch", "--raw", "--silent", "--default-character-set=utf8mb4",
+    CFG.auditDatabase, "-e", sql,
+  ];
+  const { stdout } = await run(CFG.mysqlBin, args, { env: { ...process.env, MYSQL_PWD: CFG.auditPassword }, maxBuffer: 512 * 1024 * 1024 });
+  const rows = [];
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const [requestId, country, action, operationTime] = line.split("\t");
+    rows.push({
+      request_id: unquote(requestId),
+      country: unquote(country).toLowerCase(),
+      action: unquote(action),
+      operationTime: unquote(operationTime),
+    });
   }
+  return rows;
+}
+
+function toTimestamp(s) {
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : t;
+}
+
+async function updateAudit(n8nRows, auditRows) {
+  // 建立审计记录索引：key = `${country}\u0001${action}`，值为数组（按时间）。
+  const byKey = new Map();
+  for (const a of auditRows) {
+    const key = `${a.country}\u0001${a.action}`;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(a);
+  }
+
+  // 逐条 n8n 记录，在对应的 country+action 桶里找时间最近且落在窗口内的审计记录。
+  const matched = new Map(); // request_id -> token
+  let candidates = 0;
+  let unmatched = 0;
+  const n8nTime = toTimestamp(n8nRows[0]?.startedAt) != null;
+  for (const n of n8nRows) {
+    const key = `${n.country}\u0001${n.action}`;
+    const bucket = byKey.get(key);
+    if (!bucket) { unmatched++; continue; }
+    const t = toTimestamp(n.startedAt);
+    if (t == null) { unmatched++; continue; }
+    let best = null;
+    let bestDiff = Infinity;
+    for (const a of bucket) {
+      const at = toTimestamp(a.operationTime);
+      if (at == null) continue;
+      const diff = Math.abs(at - t);
+      if (diff <= CFG.windowMs && diff < bestDiff) {
+        bestDiff = diff;
+        best = a;
+      }
+    }
+    if (best) {
+      if (!matched.has(best.request_id)) matched.set(best.request_id, n.token);
+      candidates++;
+    } else {
+      unmatched++;
+    }
+  }
+
   const statements = [];
-  for (const [requestId, token] of unique.entries()) {
+  for (const [requestId, token] of matched.entries()) {
     statements.push(`
 UPDATE ${CFG.auditTable}
 SET request_payload = JSON_SET(
@@ -154,28 +240,29 @@ WHERE request_id = ${sqlQuote(requestId)}
     OR JSON_UNQUOTE(JSON_EXTRACT(request_payload, '$.ds_token')) = ''
   );`);
   }
-  console.log(`[audit] 唯一 request_id=${unique.size}，生成 UPDATE 语句 ${statements.length} 条`);
+
+  console.log(`[n8n]  读取 ${n8nRows.length} 条执行记录（country+action+时间可用：${n8nTime ? "是" : "否"}）`);
+  console.log(`[audit] 读取 ${auditRows.length} 条审计记录`);
+  console.log(`[match] 时间窗口 ±${Math.round(CFG.windowMs / 1000)} 秒；命中 ${candidates} 条，未命中 ${unmatched} 条`);
+  console.log(`[audit] 唯一 request_id=${matched.size}，生成 UPDATE 语句 ${statements.length} 条`);
   if (CFG.dryRun || statements.length === 0) {
     if (statements.length === 0) console.log("[audit] 没有需要回填的记录");
-    return { updated: 0, skipped: unique.size, total: unique.size };
+    if (CFG.dryRun) console.log("[dry-run] 未执行（试跑）");
+    return { updated: 0, skipped: matched.size, total: matched.size };
   }
-  const sql = statements.join("\n");
-  if (CFG.dryRun) {
-    console.log("[dry-run] 未执行（试跑）");
-    return { updated: 0, skipped: unique.size, total: unique.size };
-  }
-  await runMysql(sql);
+  await runMysql(statements.join("\n"));
   console.log(`[audit] 已批量执行 ${statements.length} 条 UPDATE`);
-  return { updated: statements.length, skipped: 0, total: unique.size };
+  return { updated: statements.length, skipped: 0, total: matched.size };
 }
 
 async function main() {
   if (CFG.dryRun) console.log("[mode] DRY RUN —— 不会写审计库");
-  if (CFG.limit) console.log(`[limit] 本次最多处理 ${CFG.limit} 条执行记录`);
+  if (CFG.limit) console.log(`[limit] 本次最多读取 ${CFG.limit} 条 n8n 执行记录`);
+  if (CFG.auditLimit) console.log(`[limit] 本次最多读取 ${CFG.auditLimit} 条审计记录`);
   console.log(`[n8n] ${CFG.pgHost}:${CFG.pgPort} db=${CFG.pgDatabase} workflow=${CFG.workflowName}`);
-  const rows = await readN8nRows();
-  console.log(`[n8n] 解析到 ${rows.length} 条带 request_id + ds_token 的执行记录`);
-  const { updated, skipped, total } = await updateAudit(rows);
+  const n8nRows = await readN8nRows();
+  const auditRows = await readAuditRows();
+  const { updated, skipped, total } = await updateAudit(n8nRows, auditRows);
   console.log(`[audit] 唯一 request_id=${total} 已回填=${updated} 跳过=${skipped}`);
   if (CFG.dryRun) console.log("[done] 以上为试跑，未写库");
 }

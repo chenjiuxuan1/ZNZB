@@ -80,7 +80,7 @@ DRY_RUN=1 N8N_DOCKER_CONTAINER=n8n-db N8N_PGPASSWORD=<n8n库密码> AUDIT_DB_PAS
 N8N_DOCKER_CONTAINER=n8n-db N8N_PGPASSWORD=<n8n库密码> AUDIT_DB_PASSWORD=<审计库密码> node scripts/backfill-audit-token.mjs
 ```
 
-按 `request_id` 匹配，用 `JSON_SET` 把 `ds_token` 写进审计表 `request_payload.$.ds_token`（只更新 token 为空的记录）。连接信息均可用环境变量覆盖（见脚本头部注释）。
+n8n 执行历史里 `request_id` 为空，无法按它匹配，因此按 **country + action + 执行时间≈审计时间（默认 ±30 秒）** 近似匹配，把 n8n 里真实存储的 `ds_token` 回填到对应审计记录（只更新 token 为空的记录）。因是近似匹配，同一国家同一动作在同一时间窗口内有多条时可能错配；窗口可用 `BACKFILL_WINDOW_MS` 调整。连接信息均可用环境变量覆盖（见脚本头部注释）。
 
 ## 接口
 ## 接口
