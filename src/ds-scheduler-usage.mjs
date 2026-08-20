@@ -97,6 +97,7 @@ export function normalizeAuditRow(row = {}) {
     traceId: String(r.trace_id || r.traceId || "").trim(),
     operator: String(r.operator || r.operator_name || "").trim() || "unknown",
     source: String(r.source_system || r.sourceSystem || r.source || "").trim() || "unknown",
+    token: String(r.token || r.ds_token || "").trim(),
     country: String(r.country || "").trim().toLowerCase(),
     action: String(r.action || "").trim(),
     targetType: String(r.target_type || r.targetType || "").trim(),
@@ -279,14 +280,17 @@ export function buildCountryUsage(normalizedRows = []) {
     else d.failed += 1;
     if (row.riskLevel === "high" || row.riskLevel === "medium") d.riskActions += 1;
     const opKey = String(row.operator || "unknown");
-    const op = d.operators.get(opKey) || { operator: opKey, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map() };
+    const op = d.operators.get(opKey) || { operator: opKey, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tokens: new Set() };
     op.requests += 1;
     if (row.success) op.success += 1;
     else op.failed += 1;
     if (row.riskLevel === "high" || row.riskLevel === "medium") op.riskActions += 1;
     op.durationTotalMs += row.durationMs;
+    if (row.token) op.tokens.add(row.token);
     plus(op.actions, row.action || "unknown");
     d.operators.set(opKey, op);
+    if (!d.tokens) d.tokens = new Set();
+    if (row.token) d.tokens.add(row.token);
     plus(d.actions, row.action || "unknown");
   }
 
@@ -309,8 +313,10 @@ export function buildCountryUsage(normalizedRows = []) {
         riskActions: op.riskActions,
         avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
         actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
+        tokens: [...op.tokens].sort(),
       })).sort((a, b) => b.requests - a.requests),
       actions: Object.fromEntries([...d.actions.entries()].sort((a, b) => b[1] - a[1])),
+      tokens: d.tokens ? [...d.tokens].sort() : [],
     }));
 
     let requests = 0, success = 0, failed = 0, riskActions = 0;
@@ -319,13 +325,14 @@ export function buildCountryUsage(normalizedRows = []) {
     for (const d of daily) {
       for (const op of d.operators) {
         const key = op.operator;
-        const agg = operatorsMap.get(key) || { operator: key, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map() };
+        const agg = operatorsMap.get(key) || { operator: key, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tokens: new Set() };
         agg.requests += op.requests;
         agg.success += op.success;
         agg.failed += op.failed;
         agg.riskActions += op.riskActions;
         agg.durationTotalMs += op.avgDurationMs * op.requests;
         for (const [a, n] of Object.entries(op.actions || {})) plus(agg.actions, a, n);
+        for (const t of (op.tokens || [])) agg.tokens.add(t);
         operatorsMap.set(key, agg);
       }
     }
@@ -338,10 +345,15 @@ export function buildCountryUsage(normalizedRows = []) {
       riskActions: op.riskActions,
       avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
       actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
+      tokens: [...op.tokens].sort(),
     })).sort((a, b) => b.requests - a.requests);
 
     const actions = new Map();
-    for (const d of daily) for (const [a, n] of Object.entries(d.actions || {})) plus(actions, a, n);
+    const tokens = new Set();
+    for (const d of daily) {
+      for (const [a, n] of Object.entries(d.actions || {})) plus(actions, a, n);
+      for (const t of (d.tokens || [])) tokens.add(t);
+    }
 
     countries.push({
       country,
@@ -352,6 +364,7 @@ export function buildCountryUsage(normalizedRows = []) {
       riskActions,
       uniqueOperators: operators.length,
       operators,
+      tokens: [...tokens].sort(),
       actions: Object.fromEntries([...actions.entries()].sort((a, b) => b[1] - a[1])),
       daily,
     });
