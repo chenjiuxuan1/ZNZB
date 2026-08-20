@@ -40,12 +40,13 @@ let model = {
   countries: [],
   nextAutoRefreshAt: 0,
   retryControl: { enabled: false, startAt: null, activeCount: 0, logCount: 0 },
-  retryCountries: [],
+  retryCountries: COUNTRY_OPTIONS.map((item) => item.code),
   retryExcludedTasks: {},
   retryExclusionOpen: false,
   retryLogs: [],
   retryControlLoaded: false,
   retryActionLoading: false,
+  retryManualActionLoading: false,
   retryActionMessage: "",
 };
 
@@ -65,7 +66,9 @@ async function refreshRetryPanel(root) {
       apiGet("/api/ds-failure-retry/logs?limit=200"),
     ]);
     model.retryControl = control;
-    model.retryCountries = Array.isArray(control.countries) ? [...control.countries] : model.retryCountries;
+    model.retryCountries = Array.isArray(control.countries) && control.countries.length
+      ? [...control.countries]
+      : COUNTRY_OPTIONS.map((item) => item.code);
     model.retryExcludedTasks = control.excludedTasks && typeof control.excludedTasks === "object" ? control.excludedTasks : {};
     model.retryLogs = logResult.logs || [];
     model.retryControlLoaded = true;
@@ -83,8 +86,16 @@ async function toggleRetry(root) {
   const selectedIntervalMinutes = enabling
     ? Number(root.querySelector("#ds-retry-interval")?.value || 0)
     : Number(model.retryControl.intervalMinutes || 60);
+  const selectedRetryMinute = enabling
+    ? Number(root.querySelector("#ds-retry-minute")?.value)
+    : Number(model.retryControl.retryMinute || 0);
   if (enabling && (!Number.isFinite(selectedIntervalMinutes) || selectedIntervalMinutes < 1)) {
     model.retryActionMessage = "重跑间隔至少为 1 分钟";
+    paint(root);
+    return;
+  }
+  if (enabling && (!Number.isInteger(selectedRetryMinute) || selectedRetryMinute < 0 || selectedRetryMinute > 59)) {
+    model.retryActionMessage = "自动重跑分钟必须是 0 到 59 的整数";
     paint(root);
     return;
   }
@@ -100,8 +111,9 @@ async function toggleRetry(root) {
         countries: model.retryCountries,
         excludedTasks: model.retryExcludedTasks,
         intervalMinutes: selectedIntervalMinutes,
+        retryMinute: selectedRetryMinute,
       });
-      model.retryActionMessage = `自动重跑已开启；从现在开始计时，每隔 ${selectedIntervalMinutes} 分钟执行一次。`;
+      model.retryActionMessage = `自动重跑已开启；首次运行 ${formatTime(model.retryControl.nextRunAt)}，之后每隔 ${selectedIntervalMinutes / 60} 小时执行一次。`;
     }
     const logResult = await apiGet("/api/ds-failure-retry/logs?limit=200");
     model.retryLogs = logResult.logs || [];
@@ -114,24 +126,42 @@ async function toggleRetry(root) {
 }
 
 async function runRetryNow(root) {
-  if (model.retryActionLoading) return;
-  model.retryActionLoading = true;
-  model.retryActionMessage = "正在立即执行重跑检查…";
+  if (model.retryManualActionLoading) return;
+  model.retryManualActionLoading = true;
+  model.retryActionMessage = model.retryControl.manualRunning ? "正在停止立即运行测试…" : "正在立即执行重跑检查…";
   paint(root);
   try {
-    model.retryControl = await apiPost("/api/ds-failure-retry/run-now", {
-      countries: model.retryCountries,
-      excludedTasks: model.retryExcludedTasks,
-    });
-    model.retryActionMessage = "已立即执行一轮符合条件任务的重跑；自动重跑开关未改变。";
+    if (model.retryControl.manualRunning) {
+      model.retryControl = await apiPost("/api/ds-failure-retry/run-now/stop", {});
+      model.retryActionMessage = "已停止立即运行测试；自动重跑开关未改变。";
+    } else {
+      model.retryControl = await apiPost("/api/ds-failure-retry/run-now", {
+        countries: model.retryCountries,
+        excludedTasks: model.retryExcludedTasks,
+      });
+      model.retryActionMessage = "已开始立即运行测试；再次点击可停止，自动重跑开关未改变。";
+    }
     const logResult = await apiGet("/api/ds-failure-retry/logs?limit=200");
     model.retryLogs = logResult.logs || [];
   } catch (error) {
     model.retryActionMessage = `立即重跑失败：${error.message}`;
   } finally {
-    model.retryActionLoading = false;
+    model.retryManualActionLoading = false;
     paint(root);
+    scheduleManualStatusPoll(root);
   }
+}
+
+function scheduleManualStatusPoll(root) {
+  if (!model.retryControl.manualRunning) return;
+  setTimeout(async () => {
+    if (!isCurrentView()) return;
+    try {
+      model.retryControl = await apiGet("/api/ds-failure-retry/control");
+      paint(root);
+      scheduleManualStatusPoll(root);
+    } catch {}
+  }, 1000);
 }
 
 async function saveRetryExclusions(root) {
@@ -344,11 +374,12 @@ function paint(root) {
         <div class="ds-retry-header-actions ds-retry-control-actions">
           <button class="secondary ds-retry-action" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新日志</button>
           <button class="secondary ds-retry-action" id="ds-retry-exclusions">不重跑任务配置</button>
-          <button class="green-toggle" id="ds-retry-run-now" type="button" ${model.retryActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>立即运行测试</span></button>
+          <button class="green-toggle" id="ds-retry-run-now" type="button" role="switch" aria-checked="${Boolean(model.retryControl.manualRunning)}" ${model.retryManualActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>${model.retryManualActionLoading ? "处理中…" : model.retryControl.manualRunning ? "停止立即测试" : "立即运行测试"}</span></button>
         </div>
       </div>
       <div class="ds-failure-filter-grid">
         ${renderRetryIntervalSelect(model.retryControl.intervalMinutes || 60, model.retryControl.enabled)}
+        <label>自动重跑分钟<input id="ds-retry-minute" type="number" min="0" max="59" step="1" value="${Number(model.retryControl.retryMinute ?? 0)}" ${model.retryControl.enabled ? "disabled" : ""} placeholder="0-59"></label>
         ${renderCountryMultiSelect("ds-retry-country", "重跑国家", model.retryCountries, model.retryControl.enabled)}
         <div class="country-multi-field"><span>自动重跑</span><button class="green-toggle ds-retry-run-now" id="ds-retry-toggle" type="button" role="switch" aria-checked="${model.retryControl.enabled}" ${model.retryActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>${model.retryActionLoading ? "处理中…" : retryStateLabel}</span></button><small>开启后从当前时刻计时，到达所选间隔时执行第一轮</small></div>
         <label>当前运行任务<input value="${Number(model.retryControl.activeCount || 0)} 个" disabled></label>
@@ -385,10 +416,10 @@ function paint(root) {
 
 function renderRetryIntervalSelect(value, disabled) {
   const selected = Number(value) || 60;
-  const options = [5, 10, 15, 30, 60, 120];
+  const options = [60, 120, 240, 360];
   if (!options.includes(selected)) options.push(selected);
   options.sort((a, b) => a - b);
-  return `<label>自动重跑间隔<select id="ds-retry-interval" ${disabled ? "disabled" : ""}>${options.map((minutes) => `<option value="${minutes}" ${minutes === selected ? "selected" : ""}>每隔 ${minutes < 60 ? `${minutes} 分钟` : `${minutes / 60} 小时`}</option>`).join("")}</select></label>`;
+  return `<label>自动重跑间隔<select id="ds-retry-interval" ${disabled ? "disabled" : ""}>${options.map((minutes) => `<option value="${minutes}" ${minutes === selected ? "selected" : ""}>每隔 ${minutes / 60} 小时</option>`).join("")}</select></label>`;
 }
 
 function renderRetryExclusionModal() {

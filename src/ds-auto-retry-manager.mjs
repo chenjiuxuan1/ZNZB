@@ -80,6 +80,10 @@ export function createDsAutoRetryManager({
   let excludedTasks = normalizeExcludedTasks(persisted.excludedTasks);
   let currentRunId = persisted.currentRunId || null;
   let intervalMinutes = Math.max(1, Number(persisted.intervalMinutes) || Math.round(scanIntervalMs / 60_000) || 1);
+  let retryMinute = normalizeRetryMinute(persisted.retryMinute);
+  let nextRunAt = parseDate(persisted.nextRunAt);
+  let manualRunning = false;
+  let manualRunToken = 0;
 
   const persistState = () => saveRetryState(stateFile, {
     enabled,
@@ -88,6 +92,8 @@ export function createDsAutoRetryManager({
     excludedTasks,
     currentRunId,
     intervalMinutes,
+    retryMinute,
+    nextRunAt: nextRunAt?.toISOString() || null,
     logs: logs.slice(-500),
     statuses: [...statuses.entries()],
   }, logger);
@@ -111,6 +117,11 @@ export function createDsAutoRetryManager({
     let attempts = Number(statuses.get(key)?.attempts || 0);
     try {
       while (true) {
+        if (manual && !manualRunning) {
+          setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "已停止立即运行测试", attempts });
+          appendLog("info", "manual_run_stopped", { key, country, attempts, ...taskDetail, message: "已停止立即运行测试" });
+          return;
+        }
         if (!enabled && !manual) {
           setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "页面已停止自动重跑", attempts });
           appendLog("info", "retry_stopped", { key, country, attempts, ...taskDetail, message: "页面已停止自动重跑" });
@@ -217,6 +228,7 @@ export function createDsAutoRetryManager({
           appendLog("warn", "manual_review", { key, country, attempts, state, ...taskDetail, message: "实例状态无法安全重跑" });
           return;
         }
+        if (manual && !manualRunning) return;
         try {
           await actionFn({ webhookUrl, country, token, action: "retry_instance", payload });
           attempts += 1;
@@ -240,8 +252,10 @@ export function createDsAutoRetryManager({
     if (!force && startAt && now().getTime() < startAt.getTime()) return { skipped: true, reason: "scheduled", startAt: startAt.toISOString() };
     if (scanning) return { skipped: true };
     scanning = true;
+    const startedTasks = [];
     try {
       const result = await inspectFn(rootDir);
+      if (manual && !manualRunning) return { skipped: true, reason: "manual_stopped" };
       for (const countryResult of result.countries || []) {
         if (countries.length && !countries.includes(countryResult.country)) continue;
         for (const failure of countryResult.failures || []) {
@@ -274,9 +288,11 @@ export function createDsAutoRetryManager({
               setStatus(key, { autoRetryStatus: "retry_wait", lastError: error.message });
             });
             active.set(key, task);
+            startedTasks.push(task);
           }
         }
       }
+      if (manual && startedTasks.length) await Promise.allSettled(startedTasks);
       return { skipped: false, failures: result.totalFailures || 0, active: active.size };
     } finally {
       scanning = false;
@@ -302,8 +318,26 @@ export function createDsAutoRetryManager({
   }
 
   function scheduleAutomaticScan() {
-    if (scanTimer) clearInterval(scanTimer);
-    scanTimer = setInterval(() => scan().catch((error) => logger.error?.("[ds-auto-retry] scan failed:", error)), intervalMinutes * 60_000);
+    if (scanTimer) clearTimeout(scanTimer);
+    if (!enabled) return;
+    if (nextRunAt && nextRunAt.getTime() <= now().getTime()) {
+      nextRunAt = advanceScheduledTime(nextRunAt, intervalMinutes, now());
+    } else if (!nextRunAt) {
+      nextRunAt = nextMinuteOccurrence(now(), retryMinute);
+    }
+    persistState();
+    const delayMs = Math.max(1, nextRunAt.getTime() - now().getTime());
+    scanTimer = setTimeout(async () => {
+      const scheduledAt = nextRunAt;
+      try {
+        await scan();
+      } catch (error) {
+        logger.error?.("[ds-auto-retry] scan failed:", error);
+      } finally {
+        nextRunAt = advanceScheduledTime(scheduledAt || now(), intervalMinutes, now());
+        scheduleAutomaticScan();
+      }
+    }, delayMs);
     scanTimer.unref?.();
   }
 
@@ -315,20 +349,38 @@ export function createDsAutoRetryManager({
     countries = Array.isArray(options.countries) ? [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))] : [];
     excludedTasks = normalizeExcludedTasks(options.excludedTasks ?? excludedTasks);
     intervalMinutes = Math.max(1, Number(options.intervalMinutes) || intervalMinutes || 1);
+    retryMinute = normalizeRetryMinute(options.retryMinute);
+    nextRunAt = nextMinuteOccurrence(now(), retryMinute);
     currentRunId = `ds-retry-${now().getTime()}`;
-    appendLog("info", "control_enabled", { message: `已启用自动重跑，每隔 ${intervalMinutes} 分钟检查一次`, startAt: startAt.toISOString(), countries, intervalMinutes });
+    appendLog("info", "control_enabled", { message: `已启用自动重跑，每隔 ${intervalMinutes / 60} 小时运行；首次运行：${nextRunAt.toISOString()}`, startAt: startAt.toISOString(), countries, intervalMinutes, retryMinute, nextRunAt: nextRunAt.toISOString() });
     scheduleAutomaticScan();
     return control();
   }
 
   function runNow(options = {}) {
+    if (manualRunning) return control();
     if (Array.isArray(options.countries)) {
       countries = [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
     }
     excludedTasks = normalizeExcludedTasks(options.excludedTasks ?? excludedTasks);
     currentRunId = `ds-retry-manual-${now().getTime()}`;
+    manualRunning = true;
+    const token = ++manualRunToken;
     appendLog("info", "manual_run", { message: "已手动立即运行一次重跑检查", countries });
-    scan({ force: true, manual: true }).catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error));
+    scan({ force: true, manual: true })
+      .catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error))
+      .finally(() => {
+        if (manualRunToken !== token) return;
+        manualRunning = false;
+        persistState();
+      });
+    return control();
+  }
+
+  function stopManualRun() {
+    manualRunning = false;
+    manualRunToken += 1;
+    appendLog("info", "manual_run_stopped", { message: "已从页面停止立即运行测试", countries });
     return control();
   }
 
@@ -340,14 +392,15 @@ export function createDsAutoRetryManager({
 
   function disable() {
     enabled = false;
-    if (scanTimer) clearInterval(scanTimer);
+    if (scanTimer) clearTimeout(scanTimer);
     scanTimer = null;
+    nextRunAt = null;
     appendLog("info", "control_disabled", { message: "已从页面停止自动重跑" });
     return control();
   }
 
   function control() {
-    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedTasks, intervalMinutes, activeCount: active.size, logCount: logs.length, currentRunId };
+    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedTasks, intervalMinutes, retryMinute, nextRunAt: nextRunAt?.toISOString() || null, manualRunning, activeCount: active.size, logCount: logs.length, currentRunId };
   }
 
   function getLogs(limit = 200) {
@@ -356,11 +409,37 @@ export function createDsAutoRetryManager({
   }
 
   function stop() {
-    if (scanTimer) clearInterval(scanTimer);
+    if (scanTimer) clearTimeout(scanTimer);
     scanTimer = null;
   }
 
-  return { start, stop, scan, enable, disable, configure, runNow, control, getLogs, decorate, statuses, active, logs };
+  return { start, stop, scan, enable, disable, configure, runNow, stopManualRun, control, getLogs, decorate, statuses, active, logs };
+}
+
+function normalizeRetryMinute(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 59) return 0;
+  return parsed;
+}
+
+function parseDate(value) {
+  const parsed = value ? new Date(value) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+}
+
+function nextMinuteOccurrence(reference, minute) {
+  const next = new Date(reference);
+  next.setSeconds(0, 0);
+  next.setMinutes(normalizeRetryMinute(minute));
+  if (next.getTime() <= reference.getTime()) next.setHours(next.getHours() + 1);
+  return next;
+}
+
+function advanceScheduledTime(previous, interval, reference) {
+  const next = new Date(previous);
+  const step = Math.max(60, Number(interval) || 60) * 60_000;
+  do next.setTime(next.getTime() + step); while (next.getTime() <= reference.getTime());
+  return next;
 }
 
 function failureTaskDetail(failure = {}) {
