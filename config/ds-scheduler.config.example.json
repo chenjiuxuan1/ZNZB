@@ -21,12 +21,11 @@
   },
   "usage": {
     "enabled": true,
-    "source": "ssh",
+    "source": "gateway",
     "days": 30,
     "gateway": {
       "webhookUrl": "${DS_USAGE_WEBHOOK_URL}",
-      "action": "usage_report",
-      "token": "${DS_GATEWAY_TOKEN}"
+      "action": "usage_report"
     },
     "ssh": {
       "command": "ssh",

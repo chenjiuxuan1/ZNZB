@@ -19,7 +19,7 @@
 ```jsonc
 "usage": {
   "enabled": true,
-  "source": "ssh",          // ssh | gateway | snapshot
+  "source": "gateway",      // ssh | gateway | snapshot
   "days": 30,
   "gateway": {
     "webhookUrl": "${DS_SCHEDULER_WEBHOOK_URL}",
@@ -47,7 +47,7 @@
 - `source: "gateway"`：调用独立的 n8n 工作流 `n8n-ds-usage-report.json`（webhook 路径 `ds-usage-report`）拉取审计记录，不依赖平台机器直连跳板机；需在 n8n 中导入该工作流并在 Variables 中配置 `DS_AUDIT_DB_PASSWORD`。
 - `source: "snapshot"`：只读取本地缓存快照 `config/ds-scheduler-usage-snapshot.json`，用于离线展示与测试。
 
-审计库密码通过环境变量 `DS_AUDIT_DB_PASSWORD` 注入，不写在配置里。
+审计库密码通过环境变量 `DS_AUDIT_DB_PASSWORD` 注入（取自 n8n `ds-scheduler-router` 审计写入节点），不写在配置里；网关免鉴权，无需 token。
 
 ## n8n 工作流（免 SSH 取数）
 
