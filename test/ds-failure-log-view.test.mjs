@@ -64,6 +64,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /id="ds-retry-minute"[^>]+min="0" max="59"/);
   assert.match(source, /COUNTRY_OPTIONS\.map\(\(item\) => item\.code\)/);
   assert.match(source, /停止立即测试/);
+  assert.match(source, /\["control_disabled", "manual_run_stopped", "safety_stopped", "retry_stopped"\]/);
   assert.ok(source.indexOf("const selectedIntervalMinutes") < source.indexOf("model.retryActionLoading = true"));
   assert.doesNotMatch(source, /id="ds-retry-start-at"/);
   assert.match(source, /重跑历史/);
