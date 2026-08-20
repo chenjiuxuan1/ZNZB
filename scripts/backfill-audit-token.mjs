@@ -112,9 +112,9 @@ async function readN8nRows() {
   const sql = `
     SELECT
       to_char(e."startedAt" AT TIME ZONE ${sqlQuote(CFG.timezone)}, 'YYYY-MM-DD HH24:MI:SS') AS started,
-      d -> (regexp_match(d::text, '"country"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS country,
-      d -> (regexp_match(d::text, '"action"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS action,
-      d -> (regexp_match(d::text, '"ds_token"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS tok
+      d.data::jsonb -> (regexp_match(d.data::text, '"country"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS country,
+      d.data::jsonb -> (regexp_match(d.data::text, '"action"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS action,
+      d.data::jsonb -> (regexp_match(d.data::text, '"ds_token"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS tok
     FROM execution_data d
     JOIN execution_entity e ON e.id = d."executionId"
     WHERE e."workflowId" = (
