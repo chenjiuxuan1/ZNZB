@@ -2620,6 +2620,11 @@ export function createPlatformApi({
       return dsAutoRetryManager.configure(input);
     },
 
+    runDsFailureRetryNow(input = {}) {
+      if (!dsAutoRetryManager?.runNow) throw new Error("DS 失败重跑管理器未启用");
+      return dsAutoRetryManager.runNow(input);
+    },
+
     stopDsFailureRetry() {
       return dsAutoRetryManager?.disable?.() || { enabled: false, startAt: null, countries: [], activeCount: 0, logCount: 0 };
     },

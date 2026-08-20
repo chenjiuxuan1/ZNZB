@@ -79,6 +79,7 @@ export function createDsAutoRetryManager({
   let countries = Array.isArray(persisted.countries) ? persisted.countries : [];
   let excludedTasks = normalizeExcludedTasks(persisted.excludedTasks);
   let currentRunId = persisted.currentRunId || null;
+  let intervalMinutes = Math.max(1, Number(persisted.intervalMinutes) || Math.round(scanIntervalMs / 60_000) || 1);
 
   const persistState = () => saveRetryState(stateFile, {
     enabled,
@@ -86,6 +87,7 @@ export function createDsAutoRetryManager({
     countries,
     excludedTasks,
     currentRunId,
+    intervalMinutes,
     logs: logs.slice(-500),
     statuses: [...statuses.entries()],
   }, logger);
@@ -101,7 +103,7 @@ export function createDsAutoRetryManager({
     persistState();
   };
 
-  async function runLoop(country, failure) {
+  async function runLoop(country, failure, { manual = false } = {}) {
     const key = failureKey(country, failure);
     const startedDate = countryDateKey(country, new Date(failure.startTime || now()));
     const retryStartedAt = now().getTime();
@@ -109,7 +111,7 @@ export function createDsAutoRetryManager({
     let attempts = Number(statuses.get(key)?.attempts || 0);
     try {
       while (true) {
-        if (!enabled) {
+        if (!enabled && !manual) {
           setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "页面已停止自动重跑", attempts });
           appendLog("info", "retry_stopped", { key, country, attempts, ...taskDetail, message: "页面已停止自动重跑" });
           return;
@@ -168,6 +170,7 @@ export function createDsAutoRetryManager({
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", lastError: error.message, attempts });
           appendLog("error", "instance_check_failed", { key, country, attempts, ...taskDetail, message: error.message });
+          if (manual) return;
           await sleep(retryDelayMs);
           continue;
         }
@@ -199,11 +202,13 @@ export function createDsAutoRetryManager({
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", lastError: `工作流状态读取失败：${error.message}`, attempts });
           appendLog("error", "workflow_check_failed", { key, country, attempts, ...taskDetail, message: error.message });
+          if (manual) return;
           await sleep(retryDelayMs);
           continue;
         }
         if (RUNNING_STATES.has(state)) {
           setStatus(key, { autoRetryStatus: "running", attempts, recoveryState: state, stopReason: "" });
+          if (manual) return;
           await sleep(retryDelayMs);
           continue;
         }
@@ -217,20 +222,22 @@ export function createDsAutoRetryManager({
           attempts += 1;
           setStatus(key, { autoRetryStatus: "retrying", attempts, lastAttemptAt: now().toISOString(), lastError: "", stopReason: "" });
           appendLog("info", "retry_submitted", { key, country, attempts, state, ...taskDetail, message: `已提交第 ${attempts} 次重跑` });
+          if (manual) return;
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", attempts, lastError: error.message });
           appendLog("error", "retry_failed", { key, country, attempts, ...taskDetail, message: error.message });
+          if (manual) return;
         }
-        await sleep(retryDelayMs);
+        await sleep(intervalMinutes * 60_000);
       }
     } finally {
       active.delete(key);
     }
   }
 
-  async function scan() {
-    if (!enabled) return { skipped: true, reason: "disabled" };
-    if (startAt && now().getTime() < startAt.getTime()) return { skipped: true, reason: "scheduled", startAt: startAt.toISOString() };
+  async function scan({ force = false, manual = false } = {}) {
+    if (!enabled && !force) return { skipped: true, reason: "disabled" };
+    if (!force && startAt && now().getTime() < startAt.getTime()) return { skipped: true, reason: "scheduled", startAt: startAt.toISOString() };
     if (scanning) return { skipped: true };
     scanning = true;
     try {
@@ -262,7 +269,7 @@ export function createDsAutoRetryManager({
           if (!active.has(key)) {
             setStatus(key, { autoRetryStatus: "retrying", attempts: Number(statuses.get(key)?.attempts || 0), stopReason: "" });
             appendLog("info", "retry_started", { key, country: countryResult.country, attempts: Number(statuses.get(key)?.attempts || 0), ...failureTaskDetail(failure), message: "开始处理符合条件的失败任务" });
-            const task = runLoop(countryResult.country, failure).catch((error) => {
+            const task = runLoop(countryResult.country, failure, { manual }).catch((error) => {
               logger.error?.(`[ds-auto-retry] ${key}: ${error.message}`);
               setStatus(key, { autoRetryStatus: "retry_wait", lastError: error.message });
             });
@@ -291,20 +298,37 @@ export function createDsAutoRetryManager({
 
   function start() {
     if (scanTimer) return;
-    scanTimer = setInterval(() => scan().catch((error) => logger.error?.("[ds-auto-retry] scan failed:", error)), scanIntervalMs);
+    if (enabled) scheduleAutomaticScan();
+  }
+
+  function scheduleAutomaticScan() {
+    if (scanTimer) clearInterval(scanTimer);
+    scanTimer = setInterval(() => scan().catch((error) => logger.error?.("[ds-auto-retry] scan failed:", error)), intervalMinutes * 60_000);
     scanTimer.unref?.();
   }
 
   function enable(options = {}) {
-    const parsed = options.startAt ? new Date(options.startAt) : now();
+    const parsed = now();
     if (Number.isNaN(parsed.getTime())) throw new Error("重跑开始时间无效");
     enabled = true;
     startAt = parsed;
     countries = Array.isArray(options.countries) ? [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))] : [];
     excludedTasks = normalizeExcludedTasks(options.excludedTasks ?? excludedTasks);
+    intervalMinutes = Math.max(1, Number(options.intervalMinutes) || intervalMinutes || 1);
     currentRunId = `ds-retry-${now().getTime()}`;
-    appendLog("info", "control_enabled", { message: `已启用重跑，开始时间：${startAt.toISOString()}`, startAt: startAt.toISOString(), countries });
-    if (options.runNow === true) scan().catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error));
+    appendLog("info", "control_enabled", { message: `已启用自动重跑，每隔 ${intervalMinutes} 分钟检查一次`, startAt: startAt.toISOString(), countries, intervalMinutes });
+    scheduleAutomaticScan();
+    return control();
+  }
+
+  function runNow(options = {}) {
+    if (Array.isArray(options.countries)) {
+      countries = [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
+    }
+    excludedTasks = normalizeExcludedTasks(options.excludedTasks ?? excludedTasks);
+    currentRunId = `ds-retry-manual-${now().getTime()}`;
+    appendLog("info", "manual_run", { message: "已手动立即运行一次重跑检查", countries });
+    scan({ force: true, manual: true }).catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error));
     return control();
   }
 
@@ -316,12 +340,14 @@ export function createDsAutoRetryManager({
 
   function disable() {
     enabled = false;
+    if (scanTimer) clearInterval(scanTimer);
+    scanTimer = null;
     appendLog("info", "control_disabled", { message: "已从页面停止自动重跑" });
     return control();
   }
 
   function control() {
-    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedTasks, activeCount: active.size, logCount: logs.length, currentRunId };
+    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedTasks, intervalMinutes, activeCount: active.size, logCount: logs.length, currentRunId };
   }
 
   function getLogs(limit = 200) {
@@ -334,7 +360,7 @@ export function createDsAutoRetryManager({
     scanTimer = null;
   }
 
-  return { start, stop, scan, enable, disable, configure, control, getLogs, decorate, statuses, active, logs };
+  return { start, stop, scan, enable, disable, configure, runNow, control, getLogs, decorate, statuses, active, logs };
 }
 
 function failureTaskDetail(failure = {}) {

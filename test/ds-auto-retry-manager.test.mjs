@@ -20,8 +20,8 @@ function resultWith(failure) {
 }
 
 async function enableAndWait(manager) {
-  manager.enable({ startAt: fixedNow.toISOString(), runNow: true });
-  await new Promise((resolve) => setImmediate(resolve));
+  manager.enable({ intervalMinutes: 30 });
+  await manager.scan();
   await Promise.all([...manager.active.values()]);
 }
 
@@ -171,7 +171,7 @@ test("terminates a retryable instance when its failure date is no longer today",
   assert.match([...manager.statuses.values()][0].stopReason, /跨天/);
 });
 
-test("is disabled by default and waits until the selected start time", async () => {
+test("automatic retry starts its interval clock without running immediately", async () => {
   let inspected = 0;
   let current = new Date(fixedNow);
   const manager = createDsAutoRetryManager({
@@ -180,10 +180,10 @@ test("is disabled by default and waits until the selected start time", async () 
     now: () => current,
   });
   assert.deepEqual(await manager.scan(), { skipped: true, reason: "disabled" });
-  manager.enable({ startAt: "2026-08-18T11:00:00+08:00" });
-  assert.equal((await manager.scan()).reason, "scheduled");
+  manager.enable({ intervalMinutes: 30 });
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(inspected, 0);
-  current = new Date("2026-08-18T11:00:00+08:00");
+  assert.equal(manager.control().intervalMinutes, 30);
   await manager.scan();
   assert.equal(inspected, 1);
   manager.disable();
@@ -191,18 +191,42 @@ test("is disabled by default and waits until the selected start time", async () 
   assert.ok(manager.getLogs().some((item) => item.event === "control_disabled"));
 });
 
-test("enabling automatic retry does not inspect immediately unless runNow is selected", async () => {
+test("manual run starts immediately without enabling automatic retry", async () => {
   let inspected = 0;
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
     inspectFn: async () => { inspected += 1; return { totalFailures: 0, countries: [] }; },
     now: () => fixedNow,
   });
-  manager.enable({ startAt: fixedNow.toISOString() });
+  manager.runNow();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(inspected, 0);
-  await manager.scan();
   assert.equal(inspected, 1);
+  assert.equal(manager.control().enabled, false);
+  assert.ok(manager.getLogs().some((item) => item.event === "manual_run"));
+});
+
+test("manual run submits at most one retry while automatic retry is disabled", async () => {
+  const actions = [];
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({
+      ...classifyDsFailureType({ failureMessage: "Connection reset by peer" }),
+      failureMessage: "Connection reset by peer",
+    }),
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    actionFn: async ({ action }) => {
+      actions.push(action);
+      if (action === "get_instance") return { state: "FAILURE" };
+      if (action === "get_workflow") return { releaseState: "ONLINE" };
+      return { success: true };
+    },
+    now: () => fixedNow,
+  });
+  manager.runNow({ countries: ["cn"] });
+  await new Promise((resolve) => setImmediate(resolve));
+  await Promise.all([...manager.active.values()]);
+  assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance"]);
+  assert.equal(manager.control().enabled, false);
 });
 
 test("skips an exact country task configured as excluded", async () => {
