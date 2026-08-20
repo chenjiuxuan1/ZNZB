@@ -366,7 +366,7 @@ async function queryAuditViaGateway(config) {
     action: config.gateway.action || "usage_report",
     request_id: `${config.gateway.requestIdPrefix || "duty-usage-"}${Date.now()}`,
     country: "cn",
-    payload: { days: config.days, include_checked_workflows: false },
+    payload: { days: config.days, include_checked_workflows: false, auditPassword: config.auditDb.password || "" },
   }, headers);
   const bodyPreview = JSON.stringify(payload || {}).slice(0, 400);
   console.log(`[ds-usage] gateway response status=${statusCode} body=${bodyPreview}`);
