@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import {
   buildDailyUsage,
+  buildCountryUsage,
   normalizeAuditRow,
   normalizeUsageConfig,
   fetchAndAggregateUsage,
@@ -48,6 +49,25 @@ test("buildDailyUsage orders operators by request count and exposes country brea
   const day1 = report.days.find((d) => d.date === "2026-08-20");
   assert.equal(day1.operators[0].operator, "张三");
   assert.deepEqual(day1.countries, { cn: 2, ine: 1 });
+});
+
+test("buildCountryUsage aggregates per-country totals and per-day windows", () => {
+  const normalized = SAMPLE_ROWS.map(normalizeAuditRow);
+  const countries = buildCountryUsage(normalized);
+  const cn = countries.find((c) => c.country === "cn");
+  assert.ok(cn);
+  assert.equal(cn.requests, 2);
+  assert.equal(cn.success, 1);
+  assert.equal(cn.failed, 1);
+  assert.equal(cn.successRate, 50);
+  assert.equal(cn.riskActions, 1);
+  assert.equal(cn.uniqueOperators, 1);
+  assert.equal(cn.operators[0].operator, "张三");
+  // per-day window: last 1 day for cn covers 2026-08-20 (2 requests)
+  const windowed = cn.daily.slice(-1);
+  assert.equal(windowed.reduce((s, d) => s + d.requests, 0), 2);
+  assert.deepEqual(cn.actions, { list_projects: 1, create_workflow: 1 });
+  assert.equal(countries[0].requests >= countries[countries.length - 1].requests, true);
 });
 
 test("normalizeAuditRow handles success booleans/ints and derives date", () => {
