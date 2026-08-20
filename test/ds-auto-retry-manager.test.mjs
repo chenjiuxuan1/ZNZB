@@ -259,6 +259,27 @@ test("manual run submits at most one retry while automatic retry is disabled", a
   manager.stopManualRun();
 });
 
+test("control counts persisted retry tasks while automatic retry is enabled", () => {
+  const manager = createDsAutoRetryManager({ rootDir: "/unused", now: () => fixedNow });
+  manager.enable({ intervalMinutes: 60, retryMinute: 10 });
+  manager.statuses.set("cn:1001:3001", { autoRetryStatus: "retry_wait", runId: manager.control().currentRunId });
+  manager.statuses.set("cn:old:task", { autoRetryStatus: "retry_wait", runId: "older-run" });
+  assert.equal(manager.control().activeCount, 1);
+  manager.disable();
+  assert.equal(manager.control().activeCount, 0);
+});
+
+test("deletes every persisted log belonging to one retry run", () => {
+  const manager = createDsAutoRetryManager({ rootDir: "/unused", now: () => fixedNow });
+  manager.enable({ intervalMinutes: 60, retryMinute: 10 });
+  const runId = manager.control().currentRunId;
+  assert.ok(manager.getLogs().some((item) => item.runId === runId));
+  const result = manager.deleteRunLogs(runId);
+  assert.ok(result.deleted > 0);
+  assert.equal(manager.getLogs().some((item) => item.runId === runId), false);
+  manager.disable();
+});
+
 test("skips an exact country task configured as excluded", async () => {
   let actions = 0;
   const failure = {

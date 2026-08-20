@@ -118,6 +118,23 @@ button.ds-retry-action {
   white-space: nowrap;
 }
 
+.ds-retry-history-table .danger-icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff7f7;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.ds-retry-history-table .danger-icon:hover {
+  background: #fee2e2;
+}
+
 .ds-failure-filter-grid {
   display: grid;
   gap: 12px;
