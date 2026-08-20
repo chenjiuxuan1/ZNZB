@@ -85,7 +85,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(styles, /\.ds-failure-retry-control \.ds-failure-filter-grid \{[\s\S]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(source, /返回失败任务日志/);
   assert.match(source, /buildRetryRuns/);
-  assert.match(source, /<th>运行时间<\/th><th>状态<\/th><th>国家<\/th><th>任务<\/th><th>重跑次数<\/th><th>结果<\/th><th>明细<\/th>/);
+  assert.match(source, /run\.status === "running" \|\| run\.logs\.some\(\(item\) => item\.event === "control_enabled"\)/);
+  assert.match(source, /data-delete-retry-run/);
+  assert.match(source, /apiDelete\("\/api\/ds-failure-retry\/logs"/);
+  assert.match(source, /<th>运行时间<\/th><th>状态<\/th><th>国家<\/th><th>任务<\/th><th>重跑次数<\/th><th>结果<\/th><th>明细<\/th><th>删除<\/th>/);
   assert.match(source, /retryLogBadge/);
   assert.match(source, /repairStatus === "unresolved"/);
   assert.match(source, /每隔 1 小时自动重新查询当前国家/);
@@ -121,4 +124,5 @@ test("sidebar and server expose the independent DS failure log module", async ()
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/run-now"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/run-now\/stop"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/logs"/);
+  assert.match(server, /method === "DELETE" && url\.pathname === "\/api\/ds-failure-retry\/logs"/);
 });

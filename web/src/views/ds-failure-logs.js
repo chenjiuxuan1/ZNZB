@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "../api.js";
+import { apiDelete, apiGet, apiPost } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
 const COUNTRY_OPTIONS = [
@@ -411,6 +411,7 @@ function paint(root) {
   root.querySelector("#ds-retry-exclusion-close")?.addEventListener("click", () => { model.retryExclusionOpen = false; paint(root); });
   root.querySelector("#ds-retry-exclusion-cancel")?.addEventListener("click", () => { model.retryExclusionOpen = false; paint(root); });
   root.querySelector("#ds-retry-exclusion-save")?.addEventListener("click", () => saveRetryExclusions(root));
+  root.querySelectorAll("[data-delete-retry-run]").forEach((button) => button.addEventListener("click", () => deleteRetryRun(root, button.dataset.deleteRetryRun)));
   bindCountryMultiSelect(root, "ds-retry-country", (values) => { model.retryCountries = values; });
 }
 
@@ -461,7 +462,7 @@ function renderRetryHistoryRows(runs) {
   return `
     <div class="table-wrap schedule-history-table ds-retry-history-table">
       <table>
-        <thead><tr><th>运行时间</th><th>状态</th><th>国家</th><th>任务</th><th>重跑次数</th><th>结果</th><th>明细</th></tr></thead>
+        <thead><tr><th>运行时间</th><th>状态</th><th>国家</th><th>任务</th><th>重跑次数</th><th>结果</th><th>明细</th><th>删除</th></tr></thead>
         <tbody>${runs.map((run) => `
           <tr>
             <td>${escapeHtml(formatTime(run.startedAt))}</td>
@@ -471,6 +472,7 @@ function renderRetryHistoryRows(runs) {
             <td>${run.retryCount}</td>
             <td>${escapeHtml(run.summary)}</td>
             <td><a class="link-button" href="#/ds-failure-logs?retryRunId=${encodeURIComponent(run.id)}">打开详情页</a></td>
+            <td><button class="icon-button danger-icon" type="button" data-delete-retry-run="${escapeHtml(run.id)}" title="删除这条重跑历史" aria-label="删除这条重跑历史">🗑</button></td>
           </tr>`).join("")}</tbody>
       </table>
     </div>`;
@@ -509,7 +511,8 @@ function buildRetryRuns(logs) {
       summary: formatRetryMessage(last.message) || retryRunStatus(status),
       logs: ordered.reverse(),
     };
-  }).sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
+  }).filter((run) => run.status === "running" || run.logs.some((item) => item.event === "control_enabled"))
+    .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
 }
 
 function retryRunBadge(status) {
@@ -562,6 +565,18 @@ function renderRetryLogDetail(item = {}) {
   if (!item.key) return escapeHtml(formatRetryMessage(item.message) || "—");
   const reason = failureReasonForDisplay(item);
   return `<div class="ds-retry-log-detail"><strong>失败原因</strong><span>${escapeHtml(reason)}</span>${item.message ? `<small>处理记录：${escapeHtml(formatRetryMessage(item.message))}</small>` : ""}</div>`;
+}
+
+async function deleteRetryRun(root, runId) {
+  if (!runId || !window.confirm("确定删除这条重跑历史吗？删除后无法恢复。")) return;
+  try {
+    await apiDelete("/api/ds-failure-retry/logs", { runId });
+    model.retryLogs = model.retryLogs.filter((item) => String(item.runId || `legacy-${item.id}`) !== runId);
+    model.retryActionMessage = "重跑历史已删除。";
+  } catch (error) {
+    model.retryActionMessage = `删除重跑历史失败：${error.message}`;
+  }
+  paint(root);
 }
 
 function formatRetryMessage(message) {
