@@ -79,6 +79,15 @@ async function refreshRetryPanel(root) {
 
 async function toggleRetry(root) {
   if (model.retryActionLoading) return;
+  const enabling = !model.retryControl.enabled;
+  const selectedIntervalMinutes = enabling
+    ? Number(root.querySelector("#ds-retry-interval")?.value || 0)
+    : Number(model.retryControl.intervalMinutes || 60);
+  if (enabling && (!Number.isFinite(selectedIntervalMinutes) || selectedIntervalMinutes < 1)) {
+    model.retryActionMessage = "重跑间隔至少为 1 分钟";
+    paint(root);
+    return;
+  }
   model.retryActionLoading = true;
   model.retryActionMessage = "";
   paint(root);
@@ -87,14 +96,12 @@ async function toggleRetry(root) {
       model.retryControl = await apiPost("/api/ds-failure-retry/stop");
       model.retryActionMessage = "已停止自动重跑；正在运行的任务将在下一次状态检查时退出。";
     } else {
-      const intervalMinutes = Number(root.querySelector("#ds-retry-interval")?.value || 0);
-      if (!Number.isFinite(intervalMinutes) || intervalMinutes < 1) throw new Error("重跑间隔至少为 1 分钟");
       model.retryControl = await apiPost("/api/ds-failure-retry/start", {
         countries: model.retryCountries,
         excludedTasks: model.retryExcludedTasks,
-        intervalMinutes,
+        intervalMinutes: selectedIntervalMinutes,
       });
-      model.retryActionMessage = `自动重跑已开启；从现在开始计时，每隔 ${intervalMinutes} 分钟执行一次。`;
+      model.retryActionMessage = `自动重跑已开启；从现在开始计时，每隔 ${selectedIntervalMinutes} 分钟执行一次。`;
     }
     const logResult = await apiGet("/api/ds-failure-retry/logs?limit=200");
     model.retryLogs = logResult.logs || [];
@@ -522,7 +529,7 @@ function renderRetryHistoryDetailPage(root, runId) {
 
 function renderRetryLogDetail(item = {}) {
   if (!item.key) return escapeHtml(item.message || "—");
-  const reason = describeFailureReason(item.failureReason || "任务日志未返回明确失败原因");
+  const reason = failureReasonForDisplay(item);
   return `<div class="ds-retry-log-detail"><strong>失败原因</strong><span>${escapeHtml(reason)}</span>${item.message ? `<small>处理记录：${escapeHtml(item.message)}</small>` : ""}</div>`;
 }
 
@@ -628,9 +635,7 @@ function renderFailure(item) {
   const displayStatus = item.autoRetryStatus || item.failureType || item.repairStatus || "unresolved";
   const status = STATUS_LABELS[displayStatus] || STATUS_LABELS.unresolved;
   const taskUnlocated = !item.taskName && !item.taskCode;
-  const failureReason = taskUnlocated
-    ? "失败节点尚未定位，可能为空跑，具体原因需人工确认"
-    : describeFailureReason(item.failureMessage || "任务日志未返回明确失败原因");
+  const failureReason = failureReasonForDisplay(item);
   const unlocatedNotice = taskUnlocated
     ? `<div class="sandbox-status warn"><strong>失败节点尚未定位</strong><span>该工作流状态为失败或停止。请进入 DS 工作流实例，在失败或停止节点中查看日志确定具体原因。${item.dsInstanceUrl ? ` <a href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">查看节点日志 ↗</a>` : ""}</span></div>`
     : "";
@@ -661,6 +666,11 @@ function renderFailure(item) {
     ${item.repairStatus !== "unresolved" || item.stopReason ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "修复结果" : "修复进度"}</strong><span>${item.stopReason ? escapeHtml(item.stopReason) : `后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}`}</span></div>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
+}
+
+function failureReasonForDisplay(item = {}) {
+  if (!item.taskName && !item.taskCode) return "失败节点尚未定位，可能为空跑，具体原因需人工确认";
+  return describeFailureReason(item.failureReason || item.failureMessage || "任务日志未返回明确失败原因");
 }
 
 function describeFailureReason(reason) {

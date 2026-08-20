@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 
 test("DS failure log page exposes repair states and failure reasons", async () => {
-  const [source, monitor, platformApi] = await Promise.all([
+  const [source, monitor, platformApi, styles] = await Promise.all([
     fs.readFile(new URL("../web/src/views/ds-failure-logs.js", import.meta.url), "utf8"),
     fs.readFile(new URL("../src/ds-failure-log-monitor.mjs", import.meta.url), "utf8"),
     fs.readFile(new URL("../src/platform-api.mjs", import.meta.url), "utf8"),
+    fs.readFile(new URL("../web/src/styles.css", import.meta.url), "utf8"),
   ]);
   assert.match(source, /DS 失败任务日志/);
   assert.match(source, /选择范围/);
@@ -59,6 +60,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /ds-retry-header-actions/);
   assert.match(source, /role="switch" aria-checked=/);
   assert.match(source, /<select id="ds-retry-interval"/);
+  assert.ok(source.indexOf("const selectedIntervalMinutes") < source.indexOf("model.retryActionLoading = true"));
   assert.doesNotMatch(source, /id="ds-retry-start-at"/);
   assert.match(source, /重跑历史/);
   assert.match(source, /schedule-history-table ds-retry-history-table/);
@@ -71,6 +73,9 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /自动重跑开关未改变/);
   assert.match(source, /到达所选间隔时执行第一轮/);
   assert.match(source, /renderRetryLogDetail/);
+  assert.match(source, /function failureReasonForDisplay/);
+  assert.match(source, /失败节点尚未定位，可能为空跑，具体原因需人工确认/);
+  assert.match(styles, /\.ds-failure-retry-control \.ds-failure-filter-grid \{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(source, /返回失败任务日志/);
   assert.match(source, /buildRetryRuns/);
   assert.match(source, /<th>运行时间<\/th><th>状态<\/th><th>国家<\/th><th>任务<\/th><th>重跑次数<\/th><th>结果<\/th><th>明细<\/th>/);
