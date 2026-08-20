@@ -426,3 +426,24 @@ test("DS check retries one transient n8n timeout before marking a project failed
     globalThis.fetch = originalFetch;
   }
 });
+
+test("DS config save preserves the usage section so gateway stats config is not lost", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-monitor-usage-"));
+  const filePath = path.join(rootDir, "config/ds-scheduler.config.json");
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify({
+    n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+    countries: { cn: { name: "中国", token: "" } },
+    usage: { enabled: true, source: "gateway", days: 30 },
+  }));
+
+  await saveDsSchedulerConfig(rootDir, {
+    n8nWebhookUrl: "http://127.0.0.1:5678/webhook/ds-scheduler",
+    countries: { cn: { name: "中国", token: "" } },
+    alerts: { channel: "tv" },
+  });
+
+  const saved = JSON.parse(await fs.readFile(filePath, "utf8"));
+  assert.deepEqual(saved.usage, { enabled: true, source: "gateway", days: 30 });
+  assert.equal(saved.alerts.channel, "tv");
+});

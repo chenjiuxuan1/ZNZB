@@ -1,0 +1,231 @@
+{
+  "name": "ds-usage-report",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ds-usage-report",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "dsu-webhook",
+      "name": "接收使用统计请求",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -860,
+        0
+      ],
+      "webhookId": "replace-with-your-webhook-id",
+      "notes": "值班平台调用这个 Webhook 获取 ds-scheduler-router 的使用统计。请求体 payload.days 控制统计窗口（默认 30 天）。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body ?? $json;\nconst inputPayload = raw.payload && typeof raw.payload === 'object'\n  ? raw.payload\n  : (raw.body && raw.body.payload && typeof raw.body.payload === 'object' ? raw.body.payload : {});\nconst days = Math.max(1, Math.min(90, Number(inputPayload.days || raw.days || 30) || 30));\nconst requestId = String(raw.request_id || raw.requestId || `dsu-${Date.now()}`);\nconst dbPassword = $vars?.DS_AUDIT_DB_PASSWORD || '';\n\nfunction shellQuote(value) {\n  return `'${String(value).replace(/'/g, `'\\\\''`)}'`;\n}\nfunction sqlQuote(value) {\n  return `'${String(value).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\")}'`;\n}\n\nconst sql = [\n  'SELECT request_id, trace_id, `operator`, source_system, country, action, target_type,',\n  'project_code, workflow_code, workflow_name, instance_id, success, error_code, risk_level,',\n  'duration_ms, operation_time',\n  'FROM `ds_operation_audit_log`',\n  `WHERE operation_time >= DATE_SUB(NOW(), INTERVAL ${days} DAY)`,\n  'ORDER BY operation_time ASC',\n].join(' ');\n\nconst errors = [];\nif (!dbPassword) errors.push('missing n8n variable: DS_AUDIT_DB_PASSWORD');\nif (!sql.trim()) errors.push('sql is required');\n\nif (errors.length) {\n  return [{ json: { valid: false, errors, requestId, days } }];\n}\n\nconst meta = JSON.stringify({ requestId, days });\nconst remoteScript = [\n  'set -euo pipefail',\n  `printf '%s\\\\n' ${shellQuote(`__DSU_META__${meta}`)}`,\n  `MYSQL_PWD=${shellQuote(dbPassword)} mysql --batch --raw --column-names ` +\n    `--host=${shellQuote('10.20.47.19')} --port=3306 --user=${shellQuote('root')} ` +\n    `--default-character-set=utf8mb4 ${shellQuote('warning_rule')} -e ${shellQuote(sql)}`,\n].join('\\n');\n\nreturn [{ json: { valid: true, command: remoteScript, requestId, days } }];"
+      },
+      "id": "dsu-parse",
+      "name": "解析请求生成审计查询命令",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ],
+      "notes": "按窗口天数生成在中国跳板机上执行 mysql 查询 ds_operation_audit_log 的命令。审计库密码从 n8n Variables（DS_AUDIT_DB_PASSWORD）读取，不写入工作流 JSON。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "dsu-valid-condition",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "dsu-if-valid",
+      "name": "请求是否有效",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -380,
+        0
+      ],
+      "notes": "缺审计库密码或命令为空时直接返回错误。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{$json.command}}"
+      },
+      "id": "dsu-ssh",
+      "name": "中国跳板机查询审计表",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "continueOnFail": true,
+      "position": [
+        -60,
+        -220
+      ],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "wGL20YUQ7ZpN1xRA",
+          "name": "中国跳板机"
+        }
+      },
+      "notes": "通过中国跳板机凭据进入执行机，直接 mysql 查询 ds_operation_audit_log 审计表（10.20.47.19）。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\nconst stdout = String(raw.stdout || raw.data || '');\nconst stderr = String(raw.stderr || raw.error?.message || '').trim();\nconst exitCode = raw.code ?? raw.exitCode ?? (raw.error ? 1 : 0);\n\nfunction parseValue(value) {\n  if (value === undefined || value === 'NULL') return null;\n  if (/^-?\\d+(?:\\.\\d+)?$/.test(value)) {\n    const n = Number(value);\n    if (Number.isFinite(n)) return n;\n  }\n  return value;\n}\n\nconst lines = stdout.split(/\\r?\\n/).filter((line) => line.length > 0);\nlet meta = {};\nif (lines[0]?.startsWith('__DSU_META__')) {\n  try { meta = JSON.parse(lines.shift().replace('__DSU_META__', '')); } catch {}\n}\n\nif (Number(exitCode) !== 0) {\n  return [{ json: { success: false, requestId: meta.requestId || '', days: meta.days || 0, rows: [], rowCount: 0, error: { code: 'COMMAND_FAILED', message: stderr || 'ssh/mysql command failed', exit_code: exitCode } } }];\n}\n\nif (!lines.length) {\n  return [{ json: { success: true, requestId: meta.requestId || '', days: meta.days || 0, rows: [], rowCount: 0 } }];\n}\n\nconst headers = lines[0].split('\\t');\nconst rows = lines.slice(1).map((line) => {\n  const values = line.split('\\t');\n  return Object.fromEntries(headers.map((header, index) => [header, parseValue(values[index])]));\n});\n\nreturn [{ json: { success: true, requestId: meta.requestId || '', days: meta.days || 0, rows, rowCount: rows.length } }];"
+      },
+      "id": "dsu-parse-result",
+      "name": "解析查询结果",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        -220
+      ],
+      "notes": "统一解析 mysql batch TSV 输出为 JSON rows；命令失败时返回 success=false。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\nconst errors = Array.isArray(raw.errors) ? raw.errors : ['invalid request'];\nreturn [{\n  json: {\n    success: false,\n    requestId: String(raw.requestId || raw.request_id || ''),\n    days: Number(raw.days || 0),\n    rows: [],\n    rowCount: 0,\n    error: { code: 'INVALID_REQUEST', message: errors.join('; ') || 'invalid request' },\n  },\n}];"
+      },
+      "id": "dsu-invalid",
+      "name": "构造请求错误响应",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        220
+      ],
+      "notes": "请求无效时返回错误信息。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "dsu-respond",
+      "name": "返回使用统计结果",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        560,
+        0
+      ],
+      "notes": "返回给值班平台。成功时 rows 为审计记录数组；失败时 error.message 说明原因。",
+      "notesInFlow": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "接收使用统计请求": {
+      "main": [
+        [
+          {
+            "node": "解析请求生成审计查询命令",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "解析请求生成审计查询命令": {
+      "main": [
+        [
+          {
+            "node": "请求是否有效",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "请求是否有效": {
+      "main": [
+        [
+          {
+            "node": "中国跳板机查询审计表",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "构造请求错误响应",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "中国跳板机查询审计表": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "解析查询结果": {
+      "main": [
+        [
+          {
+            "node": "返回使用统计结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "构造请求错误响应": {
+      "main": [
+        [
+          {
+            "node": "返回使用统计结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "replace-with-a-unique-version-id",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "replace-with-workflow-id",
+  "tags": []
+}

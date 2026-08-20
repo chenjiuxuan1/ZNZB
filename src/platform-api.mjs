@@ -41,6 +41,11 @@ import {
   notifyHiveSchedulerCheck,
 } from "./hive-scheduler-monitor.mjs";
 import {
+  fetchAndAggregateUsage,
+  loadUsageConfig,
+  normalizeUsageConfig,
+} from "./ds-scheduler-usage.mjs";
+import {
   mapWattrelRowsToAnomalies,
   queryWattrelAlerts as queryWattrelAlertRows,
 } from "./wattrel-client.mjs";
@@ -2726,6 +2731,19 @@ export function createPlatformApi({
       } finally {
         dsScheduleRunning = false;
       }
+    },
+
+    async getDsSchedulerUsage(filters = {}) {
+      const days = Math.max(1, Math.min(90, Number(filters.days || 0) || 30));
+      const config = await loadUsageConfig(rootDir);
+      const report = await fetchAndAggregateUsage({ rootDir, config: { ...config, days } });
+      return report;
+    },
+
+    async refreshDsSchedulerUsage(filters = {}) {
+      const days = Math.max(1, Math.min(90, Number(filters.days || 0) || 30));
+      const config = await loadUsageConfig(rootDir);
+      return fetchAndAggregateUsage({ rootDir, config: { ...config, days }, cache: true });
     },
   };
 }
