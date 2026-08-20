@@ -63,7 +63,7 @@ function sqlQuote(value) {
 }
 
 function pgArgs() {
-  const args = ["-h", CFG.pgHost, "-p", CFG.pgPort, "-U", CFG.pgUser, "-d", CFG.pgDatabase, "-t", "-A"];
+  const args = ["-h", CFG.pgHost, "-p", CFG.pgPort, "-U", CFG.pgUser, "-d", CFG.pgDatabase, "-t", "-A", "-F", "\t"];
   if (CFG.pgPassword) args.push("--no-password");
   return args;
 }
