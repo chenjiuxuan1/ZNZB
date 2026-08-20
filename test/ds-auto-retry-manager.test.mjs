@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { classifyDsFailureType } from "../src/ds-failure-log-monitor.mjs";
 import { createDsAutoRetryManager } from "../src/ds-auto-retry-manager.mjs";
 
@@ -186,4 +189,31 @@ test("is disabled by default and waits until the selected start time", async () 
   manager.disable();
   assert.equal(manager.control().enabled, false);
   assert.ok(manager.getLogs().some((item) => item.event === "control_disabled"));
+});
+
+test("persists enabled control, selected countries, logs, and task identity across restart", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-retry-state-"));
+  await fs.mkdir(path.join(rootDir, "config"));
+  const failure = {
+    ...classifyDsFailureType({ failureMessage: "Connection reset by peer" }),
+    projectName: "Risk Project",
+    workflowName: "daily_risk_etl",
+    taskName: "load_risk_result",
+  };
+  const first = createDsAutoRetryManager({
+    rootDir,
+    inspectFn: async () => resultWith(failure),
+    configLoader: async () => ({ n8nWebhookUrl: "", countries: {} }),
+    now: () => fixedNow,
+  });
+  await enableAndWait(first);
+
+  const second = createDsAutoRetryManager({ rootDir, inspectFn: async () => ({ totalFailures: 0, countries: [] }), now: () => fixedNow });
+  assert.equal(second.control().enabled, true);
+  assert.deepEqual(second.control().countries, []);
+  const taskLog = second.getLogs().find((item) => item.event === "retry_started");
+  assert.equal(taskLog.taskName, "load_risk_result");
+  assert.equal(taskLog.workflowName, "daily_risk_etl");
+  assert.equal(taskLog.projectName, "Risk Project");
+  second.disable();
 });
