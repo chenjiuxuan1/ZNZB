@@ -3,8 +3,9 @@
  * 一次性回填脚本：从 n8n 执行历史把每次请求的 ds_token 写回审计库。
  *
  * 思路（方案 A）：
- *   1. 用 psql 读 n8n 自己的 PostgreSQL（execution_entity + execution_data），
- *      从路由工作流每次执行的输入项里取出 request_id 和 ds_token。
+ *   1. 用 psql 读 n8n 自己的 PostgreSQL（execution_entity + execution_data）。
+ *      n8n 执行数据是扁平数组 + 引用下标：node 输出里的 request_id/ds_token 是
+ *      下标，真实值在 data[下标]，脚本用正则取出下标再解出真实值。
  *   2. 用 mysql 对审计表 ds_operation_audit_log 按 request_id 做 JSON_SET，
  *      把 token 写进 request_payload.$.ds_token（只更新 token 为空的记录）。
  *
@@ -72,20 +73,22 @@ function pathFor(node, field) {
 }
 
 async function readN8nRows() {
-  // 每个执行只 cast 一次 data::jsonb，用 COALESCE 依次尝试多个节点名取 rid/tok。
-  const ridExprs = CFG.nodeNames.map((n) => `data::jsonb #>> '${pathFor(n, "request_id")}'`);
-  const tokExprs = CFG.nodeNames.map((n) => `data::jsonb #>> '${pathFor(n, "ds_token")}'`);
+  // n8n 执行数据是扁平数组，node 输出里的 request_id/ds_token 都是"引用下标"，
+  // 真实值在 data[下标]。先用正则取出引用下标，再 d -> 下标 解出真实字符串。
   const sql = `
     SELECT
-      COALESCE(${ridExprs.join(", ")}),
-      COALESCE(${tokExprs.join(", ")})
-    FROM execution_data
-    WHERE "executionId" IN (
-      SELECT id FROM execution_entity
-      WHERE "workflowId" = (
-        SELECT id FROM workflow_entity WHERE name = ${sqlQuote(CFG.workflowName)} LIMIT 1
-      ) AND finished = TRUE
-    )${CFG.limit ? ` LIMIT ${CFG.limit}` : ""};
+      d -> (regexp_match(d::text, '"request_id"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS rid,
+      d -> (regexp_match(d::text, '"ds_token"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS tok
+    FROM (
+      SELECT data::jsonb AS d
+      FROM execution_data
+      WHERE "executionId" IN (
+        SELECT id FROM execution_entity
+        WHERE "workflowId" = (
+          SELECT id FROM workflow_entity WHERE name = ${sqlQuote(CFG.workflowName)} LIMIT 1
+        ) AND finished = TRUE
+      )${CFG.limit ? ` LIMIT ${CFG.limit}` : ""}
+    ) t;
   `;
   const baseArgs = [...pgArgs(), "-c", sql];
   let cmd, cmdArgs, cmdEnv;
@@ -103,8 +106,12 @@ async function readN8nRows() {
   const rows = [];
   for (const line of stdout.split("\n")) {
     if (!line.trim()) continue;
-    const [rid, tok] = line.split("\t");
-    if (rid && tok) rows.push({ request_id: rid.trim(), token: tok.trim() });
+    const [ridRaw, tokRaw] = line.split("\t");
+    if (!ridRaw || !tokRaw) continue;
+    let rid = null, tok = null;
+    try { rid = JSON.parse(ridRaw); } catch { rid = ridRaw.replace(/^"|"$/g, ""); }
+    try { tok = JSON.parse(tokRaw); } catch { tok = tokRaw.replace(/^"|"$/g, ""); }
+    if (rid && tok) rows.push({ request_id: String(rid), token: String(tok) });
   }
   return rows;
 }
