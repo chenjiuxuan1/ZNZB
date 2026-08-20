@@ -20,7 +20,7 @@ function resultWith(failure) {
 }
 
 async function enableAndWait(manager) {
-  manager.enable({ startAt: fixedNow.toISOString() });
+  manager.enable({ startAt: fixedNow.toISOString(), runNow: true });
   await new Promise((resolve) => setImmediate(resolve));
   await Promise.all([...manager.active.values()]);
 }
@@ -191,11 +191,47 @@ test("is disabled by default and waits until the selected start time", async () 
   assert.ok(manager.getLogs().some((item) => item.event === "control_disabled"));
 });
 
+test("enabling automatic retry does not inspect immediately unless runNow is selected", async () => {
+  let inspected = 0;
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => { inspected += 1; return { totalFailures: 0, countries: [] }; },
+    now: () => fixedNow,
+  });
+  manager.enable({ startAt: fixedNow.toISOString() });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(inspected, 0);
+  await manager.scan();
+  assert.equal(inspected, 1);
+});
+
+test("skips an exact country task configured as excluded", async () => {
+  let actions = 0;
+  const failure = {
+    ...classifyDsFailureType({ failureMessage: "Connection reset by peer" }),
+    taskName: "daily_order_sync",
+    failureMessage: "Connection reset by peer",
+  };
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith(failure),
+    actionFn: async () => { actions += 1; return {}; },
+    now: () => fixedNow,
+  });
+  manager.configure({ excludedTasks: { cn: ["daily_order_sync"] } });
+  await enableAndWait(manager);
+  assert.equal(actions, 0);
+  assert.match([...manager.statuses.values()][0].stopReason, /排除配置/);
+  const excludedLog = manager.getLogs().find((item) => item.event === "excluded");
+  assert.equal(excludedLog.failureReason, "Connection reset by peer");
+});
+
 test("persists enabled control, selected countries, logs, and task identity across restart", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-retry-state-"));
   await fs.mkdir(path.join(rootDir, "config"));
   const failure = {
     ...classifyDsFailureType({ failureMessage: "Connection reset by peer" }),
+    failureMessage: "Connection reset by peer",
     projectName: "Risk Project",
     workflowName: "daily_risk_etl",
     taskName: "load_risk_result",
@@ -215,5 +251,6 @@ test("persists enabled control, selected countries, logs, and task identity acro
   assert.equal(taskLog.taskName, "load_risk_result");
   assert.equal(taskLog.workflowName, "daily_risk_etl");
   assert.equal(taskLog.projectName, "Risk Project");
+  assert.equal(taskLog.failureReason, "Connection reset by peer");
   second.disable();
 });
