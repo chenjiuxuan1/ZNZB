@@ -2638,6 +2638,11 @@ export function createPlatformApi({
       return { logs: dsAutoRetryManager?.getLogs?.(filters.limit) || [] };
     },
 
+    deleteDsFailureRetryRun(input = {}) {
+      if (!dsAutoRetryManager?.deleteRunLogs) throw new Error("DS 失败重跑管理器未启用");
+      return dsAutoRetryManager.deleteRunLogs(input.runId);
+    },
+
     async getDsNotificationConfig() {
       const [stored, batchSchedule, rules] = await Promise.all([
         readOptionalJson(resolve("dsNotification")),

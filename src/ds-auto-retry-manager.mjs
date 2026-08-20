@@ -9,6 +9,7 @@ const SUCCESS_STATES = new Set(["SUCCESS", "7"]);
 const RUNNING_STATES = new Set(["SUBMITTED_SUCCESS", "RUNNING_EXECUTION", "WAITING_THREAD", "WAITING_DEPEND", "DELAY_EXECUTION", "0", "1", "10", "11", "12"]);
 const STOP_STATES = new Set(["STOP", "STOPPED", "KILL", "KILLING", "5", "9"]);
 const FAILURE_STATES = new Set(["FAILURE", "FAILED", "6"]);
+const ACTIVE_RETRY_STATUSES = new Set(["retrying", "running", "retry_wait"]);
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -281,7 +282,7 @@ export function createDsAutoRetryManager({
             continue;
           }
           if (!active.has(key)) {
-            setStatus(key, { autoRetryStatus: "retrying", attempts: Number(statuses.get(key)?.attempts || 0), stopReason: "" });
+            setStatus(key, { autoRetryStatus: "retrying", attempts: Number(statuses.get(key)?.attempts || 0), stopReason: "", runId: currentRunId });
             appendLog("info", "retry_started", { key, country: countryResult.country, attempts: Number(statuses.get(key)?.attempts || 0), ...failureTaskDetail(failure), message: "开始处理符合条件的失败任务" });
             const task = runLoop(countryResult.country, failure, { manual }).catch((error) => {
               logger.error?.(`[ds-auto-retry] ${key}: ${error.message}`);
@@ -399,7 +400,13 @@ export function createDsAutoRetryManager({
   }
 
   function control() {
-    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedTasks, intervalMinutes, retryMinute, nextRunAt: nextRunAt?.toISOString() || null, manualRunning, activeCount: active.size, logCount: logs.length, currentRunId };
+    const activeKeys = new Set(active.keys());
+    if (enabled || manualRunning) {
+      for (const [key, status] of statuses.entries()) {
+        if (status?.runId === currentRunId && ACTIVE_RETRY_STATUSES.has(status?.autoRetryStatus)) activeKeys.add(key);
+      }
+    }
+    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedTasks, intervalMinutes, retryMinute, nextRunAt: nextRunAt?.toISOString() || null, manualRunning, activeCount: activeKeys.size, logCount: logs.length, currentRunId };
   }
 
   function getLogs(limit = 200) {
@@ -407,12 +414,23 @@ export function createDsAutoRetryManager({
     return logs.slice(-safeLimit).reverse();
   }
 
+  function deleteRunLogs(runId) {
+    const target = String(runId || "").trim();
+    if (!target) throw new Error("缺少要删除的重跑记录编号");
+    const before = logs.length;
+    for (let index = logs.length - 1; index >= 0; index -= 1) {
+      if (String(logs[index]?.runId || `legacy-${logs[index]?.id}`) === target) logs.splice(index, 1);
+    }
+    persistState();
+    return { deleted: before - logs.length, runId: target, logCount: logs.length };
+  }
+
   function stop() {
     if (scanTimer) clearTimeout(scanTimer);
     scanTimer = null;
   }
 
-  return { start, stop, scan, enable, disable, configure, runNow, stopManualRun, control, getLogs, decorate, statuses, active, logs };
+  return { start, stop, scan, enable, disable, configure, runNow, stopManualRun, control, getLogs, deleteRunLogs, decorate, statuses, active, logs };
 }
 
 function normalizeRetryMinute(value) {
