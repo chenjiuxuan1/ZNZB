@@ -129,7 +129,20 @@ button.ds-retry-action {
 }
 
 .ds-failure-retry-control .ds-failure-filter-grid {
-  grid-template-columns: 220px 360px minmax(220px, 1fr);
+  align-items: start;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ds-failure-retry-control .ds-failure-filter-grid > * {
+  min-width: 0;
+  width: 100%;
+}
+
+.ds-failure-retry-control .ds-failure-filter-grid input,
+.ds-failure-retry-control .ds-failure-filter-grid select,
+.ds-failure-retry-control .ds-failure-filter-grid .country-multi-select,
+.ds-failure-retry-control .ds-failure-filter-grid .green-toggle {
+  width: 100%;
 }
 
 .ds-failure-filter-grid label {
