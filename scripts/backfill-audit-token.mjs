@@ -77,8 +77,8 @@ async function readN8nRows() {
     const pathRid = `{resultData,runData,${safeNode},0,data,main,0,0,json,request_id}`;
     const pathTok = `{resultData,runData,${safeNode},0,data,main,0,0,json,ds_token}`;
     return `SELECT
-      data #>> '${pathRid}' AS rid,
-      data #>> '${pathTok}' AS tok
+      data::jsonb #>> '${pathRid}' AS rid,
+      data::jsonb #>> '${pathTok}' AS tok
     FROM execution_data
     WHERE executionId IN (
       SELECT id FROM execution_entity
