@@ -5908,3 +5908,43 @@ body {
 .dsu-country-toolbar .input {
   min-width: 120px;
 }
+
+.dsu-token-details { margin-bottom: 12px; }
+.dsu-token-details summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  color: #0f172a;
+  background: var(--panel-soft, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+}
+.dsu-token-details summary::-webkit-details-marker { display: none; }
+.dsu-token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  padding: 12px 0 0;
+}
+.dsu-token-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  background: var(--panel, #fff);
+}
+.dsu-token-country { font-size: 12px; font-weight: 700; color: #334155; min-width: 64px; }
+.dsu-token-value {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #0f172a;
+  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dsu-token-details .small { padding: 2px 8px; font-size: 11px; }

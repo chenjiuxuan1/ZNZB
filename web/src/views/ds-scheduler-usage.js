@@ -4,7 +4,8 @@ import { escapeHtml } from "../view-utils.js";
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const SOURCE_LABELS = { "codex-skill": "Codex Skill", n8n: "n8n", "duty-platform": "值班平台" };
 const COUNTRY_DAY_OPTIONS = [7, 14, 30, 0];
-let model = { report: null, status: null, loading: false, days: 30, countryDays: {} };
+const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
+let model = { report: null, config: null, status: null, loading: false, days: 30, countryDays: {} };
 
 function countryLabel(code) {
   return COUNTRY_LABELS[code] || code || "-";
@@ -45,9 +46,13 @@ async function load(root) {
   } catch (error) {
     model.report = null;
     model.status = { type: "error", text: `加载失败：${error.message}` };
-  } finally {
-    model.loading = false;
   }
+  try {
+    model.config = await apiGet("/api/ds-scheduler/config", { timeoutMs: 30000 });
+  } catch {
+    model.config = null;
+  }
+  model.loading = false;
   paint(root);
 }
 
@@ -84,6 +89,7 @@ function paint(root) {
       ${renderHeroStats(report)}
     </div>
     ${renderStatus(report)}
+    ${renderTokens()}
     ${report ? renderMain(report) : ""}
   `;
   root.querySelector("#dsu-refresh")?.addEventListener("click", () => refresh(root));
@@ -92,6 +98,12 @@ function paint(root) {
       model.countryDays[sel.dataset.country] = Number(sel.value) || 0;
       paint(root);
     });
+  });
+  root.querySelectorAll("[data-token-action='reveal']").forEach((btn) => {
+    btn.addEventListener("click", () => toggleToken(btn));
+  });
+  root.querySelectorAll("[data-token-action='copy']").forEach((btn) => {
+    btn.addEventListener("click", () => copyToken(btn));
   });
 }
 
@@ -105,6 +117,91 @@ function renderHeroStats(report) {
       <article><span>风险操作</span><strong>${report?.totalRiskActions ?? "—"}</strong></article>
     </div>
   `;
+}
+
+function renderTokens() {
+  const countries = (model.config && model.config.countries) || {};
+  const rows = COUNTRY_ORDER.map((code) => {
+    const token = (countries[code] && countries[code].token) || "";
+    const label = countryLabel(code);
+    if (!token) {
+      return `
+        <div class="dsu-token-row" data-country="${code}">
+          <span class="dsu-token-country">${escapeHtml(label)}</span>
+          <code class="dsu-token-value muted">未配置</code>
+        </div>`;
+    }
+    return `
+      <div class="dsu-token-row" data-country="${code}">
+        <span class="dsu-token-country">${escapeHtml(label)}</span>
+        <code class="dsu-token-value" data-role="token-text">••••••••••••••••</code>
+        <button class="secondary small" data-token-action="reveal" data-country="${code}">显示</button>
+        <button class="secondary small" data-token-action="copy" data-country="${code}">复制</button>
+      </div>`;
+  }).join("");
+  const configured = COUNTRY_ORDER.filter((code) => (countries[code] && countries[code].token)).length;
+  return `
+    <details class="panel dsu-token-details">
+      <summary>国家 Token（API 调用用）· 已配置 ${configured}/${COUNTRY_ORDER.length}</summary>
+      <div class="dsu-token-grid">
+        ${rows}
+      </div>
+    </details>
+  `;
+}
+
+function tokenOf(country) {
+  return ((model.config && model.config.countries && model.config.countries[country]) || {}).token || "";
+}
+
+function toggleToken(btn) {
+  const row = btn.closest("[data-country]");
+  const country = row.getAttribute("data-country");
+  const text = row.querySelector("[data-role='token-text']");
+  if (!text) return;
+  const shown = text.dataset.shown === "1";
+  if (shown) {
+    text.textContent = "••••••••••••••••";
+    text.dataset.shown = "0";
+    btn.textContent = "显示";
+  } else {
+    text.textContent = tokenOf(country);
+    text.dataset.shown = "1";
+    btn.textContent = "隐藏";
+  }
+}
+
+function copyToken(btn) {
+  const row = btn.closest("[data-country]");
+  const country = row.getAttribute("data-country");
+  const value = tokenOf(country);
+  if (!value) return;
+  const done = () => {
+    const prev = btn.textContent;
+    btn.textContent = "已复制";
+    setTimeout(() => { btn.textContent = prev; }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(value).then(done).catch(() => fallbackCopy(value, done));
+  } else {
+    fallbackCopy(value, done);
+  }
+}
+
+function fallbackCopy(value, done) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    done();
+  } catch (e) {
+    // ignore
+  }
 }
 
 function renderStatus(report) {
