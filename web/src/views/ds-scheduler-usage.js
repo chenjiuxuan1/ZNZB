@@ -3,9 +3,8 @@ import { escapeHtml } from "../view-utils.js";
 
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const SOURCE_LABELS = { "codex-skill": "Codex Skill", n8n: "n8n", "duty-platform": "值班平台" };
-const COUNTRY_DAY_OPTIONS = [7, 14, 30, 0];
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
-let model = { report: null, config: null, status: null, loading: false, days: 30, countryDays: {} };
+let model = { report: null, config: null, status: null, loading: false, days: 30, countryRange: {} };
 
 function countryLabel(code) {
   return COUNTRY_LABELS[code] || code || "-";
@@ -93,14 +92,17 @@ function paint(root) {
     ${report ? renderMain(report) : ""}
   `;
   root.querySelector("#dsu-refresh")?.addEventListener("click", () => refresh(root));
-  root.querySelectorAll("[data-role='country-days']").forEach((sel) => {
-    sel.addEventListener("change", () => {
-      model.countryDays[sel.dataset.country] = Number(sel.value) || 0;
+  root.querySelectorAll("[data-role='country-from'], [data-role='country-to']").forEach((input) => {
+    input.addEventListener("change", () => {
+      const country = input.dataset.country;
+      const fromEl = root.querySelector(`[data-role='country-from'][data-country='${country}']`);
+      const toEl = root.querySelector(`[data-role='country-to'][data-country='${country}']`);
+      model.countryRange[country] = {
+        from: fromEl ? fromEl.value : "",
+        to: toEl ? toEl.value : "",
+      };
       paint(root);
     });
-  });
-  root.querySelectorAll("[data-token-action='reveal']").forEach((btn) => {
-    btn.addEventListener("click", () => toggleToken(btn));
   });
   root.querySelectorAll("[data-token-action='copy']").forEach((btn) => {
     btn.addEventListener("click", () => copyToken(btn));
@@ -124,19 +126,11 @@ function renderTokens() {
   const rows = COUNTRY_ORDER.map((code) => {
     const token = (countries[code] && countries[code].token) || "";
     const label = countryLabel(code);
-    if (!token) {
-      return `
-        <div class="dsu-token-row" data-country="${code}">
-          <span class="dsu-token-country">${escapeHtml(label)}</span>
-          <code class="dsu-token-value muted">未配置</code>
-        </div>`;
-    }
     return `
       <div class="dsu-token-row" data-country="${code}">
         <span class="dsu-token-country">${escapeHtml(label)}</span>
-        <code class="dsu-token-value" data-role="token-text">••••••••••••••••</code>
-        <button class="secondary small" data-token-action="reveal" data-country="${code}">显示</button>
-        <button class="secondary small" data-token-action="copy" data-country="${code}">复制</button>
+        <code class="dsu-token-value">${escapeHtml(token || "未配置")}</code>
+        ${token ? `<button class="secondary small" data-token-action="copy" data-country="${code}">复制</button>` : ""}
       </div>`;
   }).join("");
   const configured = COUNTRY_ORDER.filter((code) => (countries[code] && countries[code].token)).length;
@@ -152,23 +146,6 @@ function renderTokens() {
 
 function tokenOf(country) {
   return ((model.config && model.config.countries && model.config.countries[country]) || {}).token || "";
-}
-
-function toggleToken(btn) {
-  const row = btn.closest("[data-country]");
-  const country = row.getAttribute("data-country");
-  const text = row.querySelector("[data-role='token-text']");
-  if (!text) return;
-  const shown = text.dataset.shown === "1";
-  if (shown) {
-    text.textContent = "••••••••••••••••";
-    text.dataset.shown = "0";
-    btn.textContent = "显示";
-  } else {
-    text.textContent = tokenOf(country);
-    text.dataset.shown = "1";
-    btn.textContent = "隐藏";
-  }
 }
 
 function copyToken(btn) {
@@ -253,13 +230,21 @@ function renderCountryList(report) {
   `;
 }
 
-function countryWindow(c, days) {
-  if (!c.daily || !c.daily.length) return c.daily || [];
-  return days > 0 ? c.daily.slice(-days) : c.daily;
+function countryDefaultRange(c) {
+  const dates = (c.daily || []).map((d) => d.date).filter(Boolean);
+  if (!dates.length) return { from: "", to: "" };
+  dates.sort();
+  return { from: dates[0], to: dates[dates.length - 1] };
 }
 
-function aggregateCountry(c, days) {
-  const daily = countryWindow(c, days);
+function countryWindow(c, range) {
+  const from = (range && range.from) || "";
+  const to = (range && range.to) || "";
+  return (c.daily || []).filter((d) => (!from || d.date >= from) && (!to || d.date <= to));
+}
+
+function aggregateCountry(c, range) {
+  const daily = countryWindow(c, range);
   let requests = 0, success = 0, failed = 0, riskActions = 0;
   const operators = new Map();
   const actions = new Map();
@@ -305,8 +290,8 @@ function aggregateCountry(c, days) {
 }
 
 function renderCountry(c) {
-  const days = model.countryDays[c.country] ?? 0;
-  const data = aggregateCountry(c, days);
+  const range = model.countryRange[c.country] || countryDefaultRange(c);
+  const data = aggregateCountry(c, range);
   const hasData = data.requests > 0;
   return `
     <details class="dsu-country" ${hasData ? "open" : ""}>
@@ -321,13 +306,9 @@ function renderCountry(c) {
       </summary>
       <div class="dsu-country-body">
         <div class="dsu-country-toolbar">
-          <label for="dsu-cd-${escapeHtml(c.country)}">统计时间范围</label>
-          <select id="dsu-cd-${escapeHtml(c.country)}" class="input" data-country="${escapeHtml(c.country)}" data-role="country-days">
-            ${COUNTRY_DAY_OPTIONS.map((d) => {
-              const label = d === 0 ? "全部" : `近 ${d} 天`;
-              return `<option value="${d}" ${days === d ? "selected" : ""}>${label}</option>`;
-            }).join("")}
-          </select>
+          <span class="dsu-filter-label">按天筛选</span>
+          <label>开始<input type="date" class="input" data-role="country-from" data-country="${escapeHtml(c.country)}" value="${escapeHtml(range.from)}"></label>
+          <label>结束<input type="date" class="input" data-role="country-to" data-country="${escapeHtml(c.country)}" value="${escapeHtml(range.to)}"></label>
           <span class="muted">覆盖 ${data.daily.length} 天</span>
         </div>
         <div class="dsu-row">
