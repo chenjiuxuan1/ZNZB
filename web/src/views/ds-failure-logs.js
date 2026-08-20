@@ -494,7 +494,7 @@ function buildRetryRuns(logs) {
     const retryCount = ordered.filter((item) => item.event === "retry_submitted").length;
     const status = ordered.some((item) => item.event === "recovered") ? "success"
       : ordered.some((item) => item.level === "error") ? "failed"
-        : ordered.some((item) => ["control_disabled", "safety_stopped", "retry_stopped"].includes(item.event)) ? "stopped"
+        : ordered.some((item) => ["control_disabled", "manual_run_stopped", "safety_stopped", "retry_stopped"].includes(item.event)) ? "stopped"
           : "running";
     const last = ordered.at(-1) || {};
     return {
@@ -591,6 +591,7 @@ function retryLogEvent(event) {
     control_enabled: "启用重跑",
     control_disabled: "停止重跑",
     manual_run: "立即运行",
+    manual_run_stopped: "停止立即测试",
     retry_started: "开始处理",
     retry_submitted: "提交重跑",
     retry_failed: "提交失败",
