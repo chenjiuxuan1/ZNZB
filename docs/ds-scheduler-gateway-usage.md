@@ -73,10 +73,11 @@
 
 ```bash
 # 试跑（不写库）
-DRY_RUN=1 N8N_PGPASSWORD=<n8n库密码> AUDIT_DB_PASSWORD=<审计库密码> node scripts/backfill-audit-token.mjs
+# 若 n8n Postgres 端口未映射到宿主机，用 docker exec 在容器内跑 psql：
+DRY_RUN=1 N8N_DOCKER_CONTAINER=n8n-db N8N_PGPASSWORD=<n8n库密码> AUDIT_DB_PASSWORD=<审计库密码> node scripts/backfill-audit-token.mjs
 
 # 正式回填
-N8N_PGPASSWORD=<n8n库密码> AUDIT_DB_PASSWORD=<审计库密码> node scripts/backfill-audit-token.mjs
+N8N_DOCKER_CONTAINER=n8n-db N8N_PGPASSWORD=<n8n库密码> AUDIT_DB_PASSWORD=<审计库密码> node scripts/backfill-audit-token.mjs
 ```
 
 按 `request_id` 匹配，用 `JSON_SET` 把 `ds_token` 写进审计表 `request_payload.$.ds_token`（只更新 token 为空的记录）。连接信息均可用环境变量覆盖（见脚本头部注释）。
