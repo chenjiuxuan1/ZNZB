@@ -56,7 +56,7 @@ async function refresh(root) {
   btn.dataset.busy = "1";
   btn.innerHTML = `<span class="btn-spinner"></span>刷新中…`;
   try {
-    model.report = await apiPost(`/api/ds-scheduler/usage/refresh`, { days: model.days }, { timeoutMs: 120000 });
+    model.report = await apiPost("/api/ds-scheduler/usage/refresh", { days: model.days }, { timeoutMs: 120000 });
     model.status = { type: "ok", text: "已从数据源刷新最新使用情况。" };
   } catch (error) {
     model.status = { type: "error", text: `刷新失败：${error.message}` };
@@ -71,33 +71,13 @@ function paint(root) {
   root.innerHTML = `
     <div class="page-header batch-hero">
       <div>
-        <h1 class="page-title">调度网关使用统计</h1>
-        <p class="page-note">统计 n8n <code>ds-scheduler-router</code> 网关的审计记录：每天谁在使用、调用了哪些动作、成功率与风险操作等。</p>
+        <h1 class="page-title">DS网关使用统计</h1>
+        <p class="page-note">统计 n8n <code>ds-scheduler-router</code> 网关的审计记录：每天谁在使用、调用了哪些动作、成功率与风险操作等。${report ? sourceBadge(report) : ""}</p>
       </div>
-      <div class="hero-stats">
-        ${stat("统计天数", report?.dayCount ?? "—")}
-        ${stat("调用总次数", report?.totalRequests ?? "—")}
-        ${stat("使用人数", report?.uniqueOperators ?? "—")}
-        ${stat("成功率", report ? `${report.totalSuccessRate ?? 0}%` : "—")}
-        ${stat("风险操作", report?.totalRiskActions ?? "—")}
-      </div>
+      ${renderHeroStats(report)}
     </div>
-    ${renderStatus()}
-    <section class="panel">
-      <div class="detail-header compact-header">
-        <div>
-          <h2 class="panel-title">每日使用明细 ${sourceBadge(report)}</h2>
-          <p class="muted">${report ? `最近更新：${new Date(report.generatedAt).toLocaleString("zh-CN")}` : ""}</p>
-        </div>
-        <div class="button-group">
-          <select id="dsu-days" class="input">
-            ${[7, 14, 30].map((d) => `<option value="${d}" ${model.days === d ? "selected" : ""}>近 ${d} 天</option>`).join("")}
-          </select>
-          <button class="primary" id="dsu-refresh">刷新数据</button>
-        </div>
-      </div>
-      ${report ? renderDays(report) : ""}
-    </section>
+    ${renderStatus(report)}
+    ${report ? renderMain(report, root) : ""}
   `;
   root.querySelector("#dsu-refresh")?.addEventListener("click", () => refresh(root));
   root.querySelector("#dsu-days")?.addEventListener("change", (event) => {
@@ -106,23 +86,76 @@ function paint(root) {
   });
 }
 
-function stat(label, value) {
-  return `<div class="hero-stat"><div class="hero-stat-value">${escapeHtml(String(value))}</div><div class="hero-stat-label">${escapeHtml(label)}</div></div>`;
+function renderHeroStats(report) {
+  return `
+    <div class="hero-stats" aria-label="网关使用统计概览">
+      <article><span>统计天数</span><strong>${report?.dayCount ?? "—"}</strong></article>
+      <article><span>调用总次数</span><strong>${report?.totalRequests ?? "—"}</strong></article>
+      <article><span>使用人数</span><strong>${report?.uniqueOperators ?? "—"}</strong></article>
+      <article><span>成功率</span><strong>${report ? `${report.totalSuccessRate ?? 0}%` : "—"}</strong></article>
+      <article><span>风险操作</span><strong>${report?.totalRiskActions ?? "—"}</strong></article>
+    </div>
+  `;
 }
 
-function renderStatus() {
-  if (!model.status) return "";
-  const cls = model.status.type === "error" ? "error" : "success";
-  return `<div class="sandbox-status ${cls}"><strong>${escapeHtml(model.status.text)}</strong></div>`;
+function renderStatus(report) {
+  if (report?.error || model.status?.type === "error") {
+    const reason = report?.refreshError || model.status?.text || "数据源不可达";
+    return `<div class="sandbox-status error"><strong>暂时无法获取数据</strong><span>${escapeHtml(reason)}</span></div>`;
+  }
+  if (model.status?.type === "ok") {
+    return `<div class="sandbox-status success"><strong>${escapeHtml(model.status.text)}</strong></div>`;
+  }
+  return "";
+}
+
+function renderMain(report, root) {
+  return `
+    <section class="panel">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">每日使用明细</h2>
+          <p class="muted">${report.generatedAt ? `最近更新：${new Date(report.generatedAt).toLocaleString("zh-CN")}` : ""}</p>
+        </div>
+        <div class="button-group">
+          <select id="dsu-days" class="input">
+            ${[7, 14, 30].map((d) => `<option value="${d}" ${model.days === d ? "selected" : ""}>近 ${d} 天</option>`).join("")}
+          </select>
+          <button class="primary" id="dsu-refresh">刷新数据</button>
+        </div>
+      </div>
+      ${renderDays(report)}
+    </section>
+  `;
 }
 
 function renderDays(report) {
-  if (!report.days.length) {
-    return `<div class="notice"><strong>暂无数据</strong><span>当前统计周期内没有审计记录。请确认网关已启用，且数据源可访问。</span></div>`;
+  if (report?.error) {
+    return renderEmptyHint("数据源不可达");
+  }
+  if (!report.days || report.days.length === 0) {
+    return renderEmptyHint("暂无数据");
   }
   return `
     <div class="dsu-day-list">
       ${report.days.map((day, index) => renderDay(day, index)).join("")}
+    </div>
+  `;
+}
+
+function renderEmptyHint(kind) {
+  if (kind === "数据源不可达") {
+    return `
+      <div class="notice">
+        <strong>数据源不可达</strong>
+        <span>当前取数方式为 gateway（n8n 网关）。请确认：① n8n 已导入并激活 <code>n8n-ds-usage-report.json</code>；② 平台能访问 <code>DS_USAGE_WEBHOOK_URL</code> 指向的 n8n；③ n8n Variables 已配置 <code>DS_AUDIT_DB_PASSWORD</code>。也可改用 <code>ssh</code> 直连跳板机，或导入本地快照后查看缓存。</span>
+      </div>
+    `;
+  }
+  return `
+    <div class="notice">
+      <strong>暂无数据</strong>
+      <span>当前统计周期内没有审计记录。请确认网关注册了审计写入，且查询窗口内有调用。</span>
     </div>
   `;
 }
@@ -135,7 +168,7 @@ function renderDay(day, index) {
         <span class="dsu-day-meta">
           <span class="chip">${day.requests} 次</span>
           <span class="chip">${day.uniqueOperators} 人</span>
-          <span class="chip ${day.successRate >= 90 ? "chip-ok" : (day.successRate >= 60 ? "chip-warn" : "chip-danger")}">成功率 ${day.successRate}%</span>
+          <span class="chip ${rateClass(day.successRate)}">成功率 ${day.successRate}%</span>
           ${day.riskActions ? `<span class="chip chip-danger">风险 ${day.riskActions}</span>` : ""}
         </span>
       </summary>
@@ -144,7 +177,7 @@ function renderDay(day, index) {
           <div class="dsu-kpi">
             ${kpi("成功 / 失败", `${day.success} / ${day.failed}`)}
             ${kpi("风险操作", day.riskActions)}
-            ${kpi("国家", day.uniqueCountries === undefined ? Object.keys(day.countries).length : day.uniqueCountries)}
+            ${kpi("国家", Object.keys(day.countries).length)}
           </div>
         </div>
         ${renderBreakdown("国家分布", day.countries, countryLabel)}
@@ -163,6 +196,13 @@ function renderDay(day, index) {
       </div>
     </details>
   `;
+}
+
+function rateClass(rate) {
+  const value = Number(rate) || 0;
+  if (value >= 90) return "chip-ok";
+  if (value >= 60) return "chip-warn";
+  return "chip-danger";
 }
 
 function kpi(label, value) {
@@ -193,7 +233,7 @@ function renderOperatorRow(op) {
       <td><strong>${escapeHtml(op.operator)}</strong></td>
       <td>${op.requests}</td>
       <td>${op.success} / ${op.failed}</td>
-      <td><span class="chip ${op.successRate >= 90 ? "chip-ok" : (op.successRate >= 60 ? "chip-warn" : "chip-danger")}">${op.successRate}%</span></td>
+      <td><span class="chip ${rateClass(op.successRate)}">${op.successRate}%</span></td>
       <td>${op.riskActions}</td>
       <td>${(op.countries || []).map((c) => `<span class="mini-tag">${escapeHtml(countryLabel(c))}</span>`).join("") || "-"}</td>
       <td>${(op.sources || []).map((s) => `<span class="mini-tag">${escapeHtml(sourceLabel(s))}</span>`).join("") || "-"}</td>
