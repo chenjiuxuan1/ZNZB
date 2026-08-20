@@ -20,6 +20,8 @@
  *
  * 环境变量：
  *   N8N_PGHOST / N8N_PGPORT / N8N_PGUSER / N8N_PGPASSWORD / N8N_PGDATABASE
+ *   N8N_DOCKER_CONTAINER（n8n Postgres 容器名，如 n8n-db；设置后通过
+ *                         docker exec 在容器内跑 psql，适用于端口未映射到宿主机的场景）
  *   N8N_WORKFLOW_NAME   （默认 ds-scheduler-router）
  *   N8N_NODE_NAMES      （逗号分隔，尝试从中提取 request_id/ds_token，
  *                         默认 "Webhook,解析并标准化请求"）
@@ -48,6 +50,7 @@ const CFG = {
   auditDatabase: env("AUDIT_DB_NAME", "warning_rule"),
   auditTable: env("AUDIT_DB_TABLE", "ds_operation_audit_log"),
   psqlBin: env("PSQL_BIN", "psql"),
+  n8nDocker: env("N8N_DOCKER_CONTAINER", ""),
   mysqlBin: env("MYSQL_BIN", "mysql"),
   dryRun: env("DRY_RUN", "") === "1",
 };
@@ -85,10 +88,21 @@ async function readN8nRows() {
     )`;
   }).join("\n  UNION\n");
   const sql = `SELECT rid, tok FROM (\n  ${inner}\n) t WHERE rid IS NOT NULL AND tok IS NOT NULL AND tok <> '';`;
-  const args = [...pgArgs(), "-c", sql];
-  if (CFG.pgPassword) args.unshift("-w");
-  const { stdout } = await run(CFG.psqlBin, args, {
-    env: { ...process.env, PGPASSWORD: CFG.pgPassword },
+  const baseArgs = [...pgArgs(), "-c", sql];
+  let cmd, cmdArgs, cmdEnv;
+  if (CFG.n8nDocker) {
+    // n8n Postgres 未映射到宿主机端口：通过 docker exec 在容器内跑 psql
+    cmd = "docker";
+    cmdArgs = ["exec", "-e", `PGPASSWORD=${CFG.pgPassword}`, CFG.n8nDocker, CFG.psqlBin, ...baseArgs];
+    cmdEnv = { ...process.env };
+  } else {
+    cmd = CFG.psqlBin;
+    cmdArgs = baseArgs;
+    if (CFG.pgPassword) cmdArgs.unshift("-w");
+    cmdEnv = { ...process.env, PGPASSWORD: CFG.pgPassword };
+  }
+  const { stdout } = await run(cmd, cmdArgs, {
+    env: cmdEnv,
     maxBuffer: 512 * 1024 * 1024,
   });
   const rows = [];
