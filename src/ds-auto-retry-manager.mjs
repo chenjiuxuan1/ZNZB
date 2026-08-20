@@ -371,7 +371,6 @@ export function createDsAutoRetryManager({
       .catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error))
       .finally(() => {
         if (manualRunToken !== token) return;
-        manualRunning = false;
         persistState();
       });
     return control();

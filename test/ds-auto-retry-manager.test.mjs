@@ -212,7 +212,9 @@ test("manual run starts immediately without enabling automatic retry", async () 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(inspected, 1);
   assert.equal(manager.control().enabled, false);
+  assert.equal(manager.control().manualRunning, true);
   assert.ok(manager.getLogs().some((item) => item.event === "manual_run"));
+  manager.stopManualRun();
 });
 
 test("manual run can be stopped independently from automatic retry", async () => {
@@ -253,6 +255,8 @@ test("manual run submits at most one retry while automatic retry is disabled", a
   await Promise.all([...manager.active.values()]);
   assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance"]);
   assert.equal(manager.control().enabled, false);
+  assert.equal(manager.control().manualRunning, true);
+  manager.stopManualRun();
 });
 
 test("skips an exact country task configured as excluded", async () => {
