@@ -374,6 +374,10 @@ function buildRetryRuns(logs) {
   return [...groups.entries()].map(([id, items]) => {
     const ordered = [...items].sort((a, b) => Date.parse(a.time || 0) - Date.parse(b.time || 0));
     const countries = [...new Set(ordered.map((item) => item.country).filter(Boolean))];
+    const controlLog = ordered.find((item) => item.event === "control_enabled") || {};
+    const selectedCountries = Array.isArray(controlLog.countries) ? controlLog.countries : [];
+    const selectedCountryNames = selectedCountries.map((country) => COUNTRY_META[country]?.name || country).join("、");
+    const matchedCountryNames = countries.map((country) => COUNTRY_META[country]?.name || country).join("、");
     const taskCount = new Set(ordered.map((item) => item.key).filter(Boolean)).size;
     const retryCount = ordered.filter((item) => item.event === "retry_submitted").length;
     const status = ordered.some((item) => item.event === "recovered") ? "success"
@@ -386,7 +390,8 @@ function buildRetryRuns(logs) {
       startedAt: ordered[0]?.time,
       endedAt: last.time,
       status,
-      countryNames: countries.length ? countries.map((country) => COUNTRY_META[country]?.name || country).join("、") : "全部国家",
+      countryNames: selectedCountries.length ? selectedCountryNames : "全部国家",
+      matchedCountryNames: matchedCountryNames || "暂无符合条件的任务",
       taskCount,
       retryCount,
       summary: last.message || retryRunStatus(status),
@@ -426,18 +431,27 @@ function renderRetryHistoryDetailPage(root, runId) {
       </div>
       <div class="hero-stats">
         ${stat("运行状态", retryRunStatus(run.status))}
-        ${stat("国家范围", run.countryNames)}
+        ${stat("选择范围", run.countryNames)}
+        ${stat("实际命中", run.matchedCountryNames)}
         ${stat("涉及任务", run.taskCount)}
         ${stat("提交重跑", run.retryCount)}
       </div>
       <div class="schedule-help"><strong>运行时间</strong><span>${formatTime(run.startedAt)} 至 ${formatTime(run.endedAt)}</span><strong>最终结果</strong><span>${escapeHtml(run.summary)}</span></div>
       <div class="table-wrap schedule-history-table ds-retry-history-table">
         <table>
-          <thead><tr><th>时间</th><th>状态</th><th>国家</th><th>事件</th><th>次数</th><th>任务</th><th>详细说明</th></tr></thead>
-          <tbody>${run.logs.map((item) => `<tr><td>${escapeHtml(formatTime(item.time))}</td><td><span class="badge ${retryLogBadge(item.level)}">${escapeHtml(retryLogStatus(item.level))}</span></td><td>${escapeHtml(COUNTRY_META[item.country]?.name || item.country || "全部")}</td><td>${escapeHtml(retryLogEvent(item.event))}</td><td>${Number(item.attempts || 0) || "—"}</td><td><code>${escapeHtml(item.key || "—")}</code></td><td>${escapeHtml(item.message || "—")}</td></tr>`).join("")}</tbody>
+          <thead><tr><th>时间</th><th>状态</th><th>国家</th><th>事件</th><th>次数</th><th>具体任务</th><th>详细说明</th></tr></thead>
+          <tbody>${run.logs.map((item) => `<tr><td>${escapeHtml(formatTime(item.time))}</td><td><span class="badge ${retryLogBadge(item.level)}">${escapeHtml(retryLogStatus(item.level))}</span></td><td>${escapeHtml(COUNTRY_META[item.country]?.name || item.country || "全部")}</td><td>${escapeHtml(retryLogEvent(item.event))}</td><td>${Number(item.attempts || 0) || "—"}</td><td>${renderRetryTaskIdentity(item)}</td><td>${escapeHtml(item.message || "—")}</td></tr>`).join("")}</tbody>
         </table>
       </div>
     </section>`;
+}
+
+function renderRetryTaskIdentity(item = {}) {
+  if (!item.key) return "—";
+  const task = item.taskName || item.taskCode || "未返回任务节点名称";
+  const workflow = item.workflowName || item.workflowCode || "未知工作流";
+  const project = item.projectName || item.projectCode || "未知项目";
+  return `<div class="ds-retry-task-identity"><strong>${escapeHtml(task)}</strong><small>项目：${escapeHtml(project)} · 工作流：${escapeHtml(workflow)} · 实例：${escapeHtml(item.instanceId || "-")}</small></div>`;
 }
 
 function retryLogBadge(level) {
