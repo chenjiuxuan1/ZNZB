@@ -294,6 +294,12 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/ds-scheduler/history") {
     return sendJson(response, 200, await api.getDsHistory(Object.fromEntries(url.searchParams.entries())));
   }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/usage") {
+    return sendJson(response, 200, await api.getDsSchedulerUsage(Object.fromEntries(url.searchParams.entries())));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/usage/refresh") {
+    return sendJson(response, 200, await api.refreshDsSchedulerUsage(await readBody(request, {})));
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 

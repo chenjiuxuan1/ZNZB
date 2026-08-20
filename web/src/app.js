@@ -11,6 +11,7 @@ import { renderFluctuationVisual } from "./views/fluctuation-visual.js?v=2026080
 import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
 import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
+import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260820-usage-v1";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
 import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260819-owner-email-v1";
 
@@ -27,6 +28,7 @@ const routes = [
   { path: "/notify-preview", label: "通知预览", short: "通", render: renderNotifyPreview },
   { path: "/ds-scheduler", label: "DS调度监控", short: "度", render: renderDsScheduler },
   { path: "/ds-failure-logs", label: "DS失败任务日志", short: "错", render: renderDsFailureLogs },
+  { path: "/ds-scheduler-usage", label: "DS网关使用统计", short: "用", render: renderDsSchedulerUsage },
   { path: "/hive-scheduler", label: "HIVE调度监控", short: "仓", render: renderHiveScheduler },
 ];
 

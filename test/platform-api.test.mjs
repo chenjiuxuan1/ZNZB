@@ -3777,3 +3777,28 @@ test("platform api sends TV notify test with explicit bot id", async () => {
   assert.deepEqual(captured.config.alerts.mentions, ["strongliu@kn.group", "jerrycai@kn.group"]);
   assert.equal(captured.message, "测试消息");
 });
+
+test("platform api returns ds scheduler gateway usage from snapshot", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({ usage: { enabled: true, source: "snapshot", days: 30 } }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler-usage-snapshot.json"),
+    JSON.stringify({
+      generatedAt: "2026-08-20T03:00:00.000Z",
+      rows: [
+        { operation_time: "2026-08-20 09:00:00", operator: "张三", source_system: "codex-skill", country: "cn", action: "list_projects", success: 1, risk_level: "low" },
+        { operation_time: "2026-08-20 10:00:00", operator: "李四", source_system: "n8n", country: "ine", action: "create_workflow", success: 0, risk_level: "high" },
+      ],
+    }),
+  );
+
+  const api = createPlatformApi({ rootDir });
+  const report = await api.getDsSchedulerUsage({ days: 30 });
+  assert.equal(report.totalRequests, 2);
+  assert.equal(report.uniqueOperators, 2);
+  assert.equal(report.dayCount, 1);
+  assert.equal(report.days[0].operators[0].operator, "张三");
+});

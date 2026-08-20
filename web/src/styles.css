@@ -5780,3 +5780,71 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* === DS scheduler gateway usage view === */
+.chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--panel-soft, #f1f5f9);
+  color: #475569;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.chip-ok { background: #dcfce7; color: #15803d; }
+.chip-warn { background: #fef3c7; color: #b45309; }
+.chip-danger { background: #fee2e2; color: #b91c1c; }
+
+.mini-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 3px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: #f1f5f9;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.dsu-day-list { margin-top: 6px; }
+.dsu-day {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  background: var(--panel, #fff);
+  overflow: hidden;
+}
+.dsu-day summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--panel-soft, #f8fafc);
+}
+.dsu-day summary::-webkit-details-marker { display: none; }
+.dsu-day[open] summary { border-bottom: 1px solid var(--border, #e2e8f0); }
+.dsu-day-date { font-size: 14px; font-weight: 700; color: #0f172a; }
+.dsu-day-meta { display: flex; flex-wrap: wrap; gap: 4px; }
+.dsu-day-body { padding: 14px; }
+
+.dsu-row { margin-bottom: 12px; }
+.dsu-kpi { display: flex; gap: 24px; flex-wrap: wrap; }
+.dsu-kpi-value { font-size: 18px; font-weight: 700; color: #0f172a; }
+.dsu-kpi-label { font-size: 11px; color: #64748b; }
+
+.dsu-breakdown { margin: 10px 0; }
+.dsu-breakdown-title { font-size: 12px; font-weight: 650; color: #475569; margin-bottom: 6px; }
+.dsu-breakdown-bars { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 20px; }
+.dsu-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.dsu-bar-label { width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #334155; }
+.dsu-bar-track { flex: 1; height: 8px; background: #eef2f7; border-radius: 4px; overflow: hidden; }
+.dsu-bar-fill { display: block; height: 100%; background: #3b82f6; border-radius: 4px; }
+.dsu-bar-count { width: 32px; text-align: right; color: #64748b; }
+
+.dsu-table-wrap { overflow-x: auto; margin-top: 6px; }
+.dsu-operator-table th { white-space: nowrap; }
