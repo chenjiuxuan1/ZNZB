@@ -54,7 +54,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /权限不足，需人工处理/);
   assert.match(source, /除 SQL\/代码错误和权限不足外，其余失败均进入持续重跑/);
   assert.match(source, /自动重跑中/);
-  assert.match(source, /重跑策略/);
+  assert.match(source, /失败分类/);
   assert.match(source, /renderCountryMultiSelect\("ds-retry-country"/);
   assert.match(source, /id="ds-retry-toggle"[^>]+role="switch"/);
   assert.match(source, /ds-retry-header-actions/);
@@ -73,8 +73,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /retryRunId=/);
   assert.match(source, /打开详情页/);
   assert.match(source, /重跑历史详情/);
-  assert.match(source, /不重跑任务配置/);
-  assert.match(source, /data-retry-exclusion-country/);
+  assert.match(source, /不重跑项目配置/);
+  assert.match(source, /data-retry-project-country/);
   assert.match(source, /立即运行测试/);
   assert.match(source, /自动重跑开关未改变/);
   assert.match(source, /在所设置的重跑分钟执行第一轮，之后按所选间隔运行/);
@@ -115,7 +115,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.doesNotMatch(monitor, /failure_policy: "scheduled_today_final_failure"/);
   assert.match(platformApi, /getDsFailureLogs\(filters = \{\}\)/);
   assert.match(platformApi, /countries: country \|\| undefined/);
-  assert.match(platformApi, /dsAutoRetryManager\?\.decorate/);
+  assert.doesNotMatch(platformApi, /dsAutoRetryManager\?\.decorate/);
+  assert.match(platformApi, /return inspectDsFailureLogs/);
 });
 
 test("sidebar and server expose the independent DS failure log module", async () => {
