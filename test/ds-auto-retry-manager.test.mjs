@@ -113,7 +113,7 @@ test("stops a suspected empty run after one hour", async () => {
     sleep: async () => { current = new Date(current.getTime() + 60 * 60 * 1000); },
   });
   await enableAndWait(manager);
-  assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance"]);
+  assert.equal(actions.filter((action) => action === "retry_instance").length, 1);
   const status = [...manager.statuses.values()][0];
   assert.equal(status.autoRetryStatus, "safety_stopped");
   assert.match(status.stopReason, /1 小时/);
@@ -262,12 +262,14 @@ test("manual run submits at most one retry while automatic retry is disabled", a
       return { success: true };
     },
     now: () => fixedNow,
+    sleep: async () => {},
   });
   manager.runNow({ countries: ["cn"] });
   await new Promise((resolve) => setImmediate(resolve));
   await Promise.all([...manager.active.values()]);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance"]);
+  assert.equal(actions.filter((action) => action === "retry_instance").length, 1);
+  assert.ok(manager.getLogs().some((item) => item.event === "retry_not_recovered"));
   assert.equal(manager.control().enabled, false);
   assert.equal(manager.control().manualRunning, false);
   assert.ok(manager.getLogs().some((item) => item.event === "manual_run_completed"));

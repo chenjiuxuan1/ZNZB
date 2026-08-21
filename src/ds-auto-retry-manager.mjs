@@ -118,6 +118,7 @@ export function createDsAutoRetryManager({
     const retryStartedAt = now().getTime();
     const taskDetail = failureTaskDetail(failure);
     let attempts = Number(statuses.get(key)?.attempts || 0);
+    let submittedThisRun = false;
     const runLog = (level, event, detail = {}) => appendLog(level, event, { runId, ...detail });
     try {
       while (true) {
@@ -185,9 +186,7 @@ export function createDsAutoRetryManager({
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", lastError: error.message, attempts });
           runLog("error", "instance_check_failed", { key, country, attempts, ...taskDetail, message: error.message });
-          if (manual) return;
-          await sleep(retryDelayMs);
-          continue;
+          return;
         }
         const state = dsStateOf(instance?.data || instance);
         if (SUCCESS_STATES.has(state)) {
@@ -212,13 +211,14 @@ export function createDsAutoRetryManager({
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", lastError: `工作流状态读取失败：${error.message}`, attempts });
           runLog("error", "workflow_check_failed", { key, country, attempts, ...taskDetail, message: error.message });
-          if (manual) return;
-          await sleep(retryDelayMs);
-          continue;
+          return;
         }
         if (RUNNING_STATES.has(state)) {
           setStatus(key, { autoRetryStatus: "running", attempts, recoveryState: state, stopReason: "" });
-          if (manual) return;
+          if (!submittedThisRun) {
+            runLog("info", "retry_already_running", { key, country, attempts, state, ...taskDetail, message: "实例当前正在运行，本轮不重复提交重跑" });
+            return;
+          }
           await sleep(retryDelayMs);
           continue;
         }
@@ -227,19 +227,24 @@ export function createDsAutoRetryManager({
           runLog("warn", "manual_review", { key, country, attempts, state, ...taskDetail, message: "实例状态无法安全重跑" });
           return;
         }
+        if (submittedThisRun) {
+          setStatus(key, { autoRetryStatus: "unresolved", stopReason: "本轮已重跑 1 次但仍未修复", attempts, recoveryState: state });
+          runLog("warn", "retry_not_recovered", { key, country, attempts, state, ...taskDetail, message: "本轮已重跑 1 次，任务仍未修复" });
+          return;
+        }
         if (manual && !manualRunning) return;
         try {
           await actionFn({ webhookUrl, country, token, action: "retry_instance", payload });
           attempts += 1;
           setStatus(key, { autoRetryStatus: "retrying", attempts, lastAttemptAt: now().toISOString(), lastError: "", stopReason: "" });
           runLog("info", "retry_submitted", { key, country, attempts, state, ...taskDetail, message: `已提交第 ${attempts} 次重跑` });
-          if (manual) return;
+          submittedThisRun = true;
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", attempts, lastError: error.message });
           runLog("error", "retry_failed", { key, country, attempts, ...taskDetail, message: error.message });
-          if (manual) return;
+          return;
         }
-        await sleep(intervalMinutes * 60_000);
+        await sleep(retryDelayMs);
       }
     } finally {
       active.delete(key);
@@ -291,7 +296,7 @@ export function createDsAutoRetryManager({
           }
         }
       }
-      if (manual && startedTasks.length) await Promise.allSettled(startedTasks);
+      if (startedTasks.length) await Promise.allSettled(startedTasks);
       return { skipped: false, failures: result.totalFailures || 0, active: active.size, started: startedTasks.length };
     } finally {
       scanning = false;
@@ -336,9 +341,7 @@ export function createDsAutoRetryManager({
         const runId = currentRunId;
         appendLog("info", "scheduled_run_started", { runId, message: "开始执行本轮定时自动重跑", countries, lastRunAt: lastRunAt.toISOString() });
         const result = await scan({ runId });
-        if (!result?.started) {
-          appendLog("success", "scheduled_run_completed", { runId, message: "本轮定时自动重跑检查已完成", countries, failures: Number(result?.failures || 0) });
-        }
+        appendLog("success", "scheduled_run_completed", { runId, message: "本轮定时自动重跑检查已完成", countries, failures: Number(result?.failures || 0) });
       } catch (error) {
         logger.error?.("[ds-auto-retry] scan failed:", error);
       } finally {
@@ -481,6 +484,7 @@ function failureTaskDetail(failure = {}) {
     taskCode: String(failure.taskCode || ""),
     taskName: String(failure.taskName || ""),
     instanceId: String(failure.instanceId || ""),
+    dsInstanceUrl: String(failure.dsInstanceUrl || ""),
     failureReason: String(failure.failureMessage || failure.retryDecision || "任务日志未返回明确失败原因"),
   };
 }
