@@ -14,6 +14,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /实际命中/);
   assert.match(source, /重跑结果/);
   assert.match(source, /buildRetryTaskRows/);
+  assert.match(source, /无失败任务/);
   assert.match(source, /renderRetryTaskIdentity/);
   assert.match(source, /已自动修复/);
   assert.match(source, /修复中/);
