@@ -242,7 +242,7 @@
           {
             "node": "合并各国结果",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -253,7 +253,7 @@
           {
             "node": "合并各国结果",
             "type": "main",
-            "index": 0
+            "index": 2
           }
         ]
       ]
@@ -264,7 +264,7 @@
           {
             "node": "合并各国结果",
             "type": "main",
-            "index": 0
+            "index": 3
           }
         ]
       ]
@@ -275,7 +275,7 @@
           {
             "node": "合并各国结果",
             "type": "main",
-            "index": 0
+            "index": 4
           }
         ]
       ]
@@ -286,7 +286,7 @@
           {
             "node": "合并各国结果",
             "type": "main",
-            "index": 0
+            "index": 5
           }
         ]
       ]
