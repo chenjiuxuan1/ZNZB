@@ -34,6 +34,16 @@ function sourceBadge(report) {
 
 export function renderDsSchedulerUsage(root) {
   paint(root);
+  loadConfigOnly(root);
+}
+
+async function loadConfigOnly(root) {
+  try {
+    model.config = await apiGet("/api/ds-scheduler/config", { timeoutMs: 30000 });
+  } catch {
+    model.config = null;
+  }
+  paint(root);
 }
 
 async function load(root) {
@@ -83,13 +93,12 @@ function paint(root) {
       <div>
         <h1 class="page-title">DS网关使用统计</h1>
         <p class="page-note">统计 n8n <code>ds-scheduler-router</code> 网关的审计记录：按国家分开展示每天谁在使用、调用了哪些动作、成功率与风险操作等，可对每个国家单独设置统计时间范围。${report ? sourceBadge(report) : ""}</p>
-        <div class="dsu-toolbar"><button class="primary" id="dsu-refresh">刷新数据</button></div>
       </div>
       ${renderHeroStats(report)}
     </div>
     ${renderStatus(report)}
     ${renderTokens()}
-    ${report ? renderMain(report) : ""}
+    ${renderMain(report)}
   `;
   root.querySelector("#dsu-refresh")?.addEventListener("click", () => refresh(root));
   root.querySelectorAll("[data-role='global-from'], [data-role='global-to']").forEach((input) => {
@@ -201,6 +210,7 @@ function renderMain(report) {
           <h2 class="panel-title">国家使用分布</h2>
           <p class="muted">${report.generatedAt ? `最近更新：${new Date(report.generatedAt).toLocaleString("zh-CN")}` : ""} · 全局时间筛选应用于所有国家</p>
         </div>
+        <div class="button-group"><button class="primary" id="dsu-refresh">刷新数据</button></div>
       </div>
       <div class="dsu-country-toolbar dsu-global-toolbar">
         <span class="dsu-filter-label">时间筛选</span>
