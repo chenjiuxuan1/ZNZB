@@ -78,6 +78,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /不重跑项目配置/);
   assert.match(source, /data-retry-project-country/);
   assert.match(source, /立即运行测试/);
+  assert.match(source, /events\.has\("manual_run"\)/);
+  assert.match(source, /events\.has\("manual_run_stopped"\)/);
   assert.match(source, /自动重跑开关未改变/);
   assert.match(source, /在所设置的重跑分钟执行第一轮，之后按所选间隔运行/);
   assert.match(source, /renderRetryLogDetail/);
@@ -94,6 +96,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /data-delete-retry-run/);
   assert.match(source, /<svg viewBox="0 0 24 24"/);
   assert.match(styles, /\.ds-retry-history-table \.danger-icon \{[\s\S]*border: 0;[\s\S]*background: transparent;/);
+  assert.match(styles, /\.ds-retry-history-table \{ overflow: visible; \}/);
   assert.match(source, /apiDelete\("\/api\/ds-failure-retry\/logs"/);
   assert.match(source, /<th>运行时间<\/th><th>状态<\/th><th>国家<\/th><th>任务<\/th><th>重跑次数<\/th><th>结果<\/th><th>明细<\/th><th>删除<\/th>/);
   assert.match(source, /retryLogBadge/);

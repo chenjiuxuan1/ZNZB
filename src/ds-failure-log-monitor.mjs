@@ -76,7 +76,7 @@ export function classifyDsFailureType(failure = {}) {
     return { failureType: "permission_error", retryable: false, retryDecision: "权限不足，需人工处理" };
   }
   if (!String(failure.taskName || "").trim() && !String(failure.taskCode || "").trim()) {
-    return { failureType: "suspected_empty_run", retryable: true, retryDecision: "疑似空跑，自动重跑最多持续 1 小时，超时后需人工确认" };
+    return { failureType: "suspected_empty_run", retryable: true, retryDecision: "疑似空跑；原失败实例运行超过 1 小时则判定为空跑，不执行重跑" };
   }
   if (RETRYABLE_FAILURE_PATTERNS.some((pattern) => pattern.test(evidence))) {
     return { failureType: "retryable", retryable: true, retryDecision: "资源、网络或运行环境故障，自动持续重跑" };
