@@ -63,14 +63,13 @@ test("buildCountryUsage aggregates per-country totals and per-day windows", () =
   assert.equal(cn.failed, 1);
   assert.equal(cn.successRate, 50);
   assert.equal(cn.riskActions, 1);
-  // 以 token 为主聚合：TOK-CN + 无 token 的 "-"
-  assert.equal(cn.uniqueOperators, 2);
+  // 以 token 为主聚合：无 token 的调用汇总为 noToken，不再作为单独 operator
+  assert.equal(cn.uniqueOperators, 1);
+  assert.equal(cn.noToken, 1);
   const cnTok = cn.operators.find((o) => o.token === "TOK-CN");
   assert.ok(cnTok);
   assert.deepEqual(cnTok.tools, ["张三"]);
-  const cnNoTok = cn.operators.find((o) => o.token === "-");
-  assert.ok(cnNoTok);
-  assert.deepEqual(cnNoTok.tools, ["张三"]);
+  assert.ok(!cn.operators.some((o) => o.token === "-"));
   // per-day window: last 1 day for cn covers 2026-08-20 (2 requests)
   const windowed = cn.daily.slice(-1);
   assert.equal(windowed.reduce((s, d) => s + d.requests, 0), 2);

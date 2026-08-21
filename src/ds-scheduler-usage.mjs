@@ -336,26 +336,28 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
     const country = row.country || "unknown";
     if (!byCountry.has(country)) byCountry.set(country, { daily: new Map() });
     const c = byCountry.get(country);
-    if (!c.daily.has(date)) c.daily.set(date, { date, requests: 0, success: 0, failed: 0, riskActions: 0, operators: new Map(), actions: new Map(), tokens: new Set() });
+    if (!c.daily.has(date)) c.daily.set(date, { date, requests: 0, success: 0, failed: 0, riskActions: 0, operators: new Map(), actions: new Map(), tokens: new Set(), noToken: 0 });
     const d = c.daily.get(date);
     d.requests += 1;
     if (row.success) d.success += 1;
     else d.failed += 1;
     if (row.riskLevel === "high" || row.riskLevel === "medium") d.riskActions += 1;
-    const tokenKey = String(row.token || "-");
-    const op = d.operators.get(tokenKey) || { token: tokenKey, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
-    op.requests += 1;
-    if (row.success) op.success += 1;
-    else op.failed += 1;
-    if (row.riskLevel === "high" || row.riskLevel === "medium") op.riskActions += 1;
-    op.durationTotalMs += row.durationMs;
-    if (row.operator) op.tools.add(row.operator);
-    plus(op.actions, row.action || "unknown");
-    d.operators.set(tokenKey, op);
-    if (!d.tokens) d.tokens = new Set();
-    if (row.token) d.tokens.add(row.token);
-    if (!d.tokens) d.tokens = new Set();
-    if (row.token) d.tokens.add(row.token);
+    const rawToken = String(row.token || "").trim();
+    if (!rawToken) {
+      d.noToken += 1;
+    } else {
+      const op = d.operators.get(rawToken) || { token: rawToken, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
+      op.requests += 1;
+      if (row.success) op.success += 1;
+      else op.failed += 1;
+      if (row.riskLevel === "high" || row.riskLevel === "medium") op.riskActions += 1;
+      op.durationTotalMs += row.durationMs;
+      if (row.operator) op.tools.add(row.operator);
+      plus(op.actions, row.action || "unknown");
+      d.operators.set(rawToken, op);
+      if (!d.tokens) d.tokens = new Set();
+      d.tokens.add(rawToken);
+    }
     plus(d.actions, row.action || "unknown");
   }
 
@@ -368,6 +370,7 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
       failed: d.failed,
       successRate: d.requests ? Math.round((d.success / d.requests) * 1000) / 10 : 0,
       riskActions: d.riskActions,
+      noToken: d.noToken || 0,
       uniqueOperators: d.operators.size,
       operators: [...d.operators.values()].map((op) => ({
         token: op.token,
@@ -385,8 +388,8 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
       tokens: d.tokens ? [...d.tokens].sort() : [],
     }));
 
-    let requests = 0, success = 0, failed = 0, riskActions = 0;
-    for (const d of daily) { requests += d.requests; success += d.success; failed += d.failed; riskActions += d.riskActions; }
+    let requests = 0, success = 0, failed = 0, riskActions = 0, noToken = 0;
+    for (const d of daily) { requests += d.requests; success += d.success; failed += d.failed; riskActions += d.riskActions; noToken += (d.noToken || 0); }
     const operatorsMap = new Map();
     for (const d of daily) {
       for (const op of d.operators) {
@@ -429,6 +432,7 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
       failed,
       successRate: requests ? Math.round((success / requests) * 1000) / 10 : 0,
       riskActions,
+      noToken,
       uniqueOperators: operators.length,
       operators,
       tokens: [...tokens].sort(),

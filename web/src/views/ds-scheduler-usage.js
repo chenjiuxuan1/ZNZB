@@ -269,7 +269,7 @@ function countryWindow(c, range) {
 
 function aggregateCountry(c, range) {
   const daily = countryWindow(c, range);
-  let requests = 0, success = 0, failed = 0, riskActions = 0;
+  let requests = 0, success = 0, failed = 0, riskActions = 0, noToken = 0;
   const operators = new Map();
   const actions = new Map();
   const tokens = new Set();
@@ -278,6 +278,7 @@ function aggregateCountry(c, range) {
     success += d.success;
     failed += d.failed;
     riskActions += d.riskActions;
+    noToken += (d.noToken || 0);
     for (const op of (d.operators || [])) {
       const agg = operators.get(op.token) || { token: op.token, user: op.user || "", requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
       agg.requests += op.requests;
@@ -311,6 +312,7 @@ function aggregateCountry(c, range) {
     failed,
     successRate: requests ? Math.round((success / requests) * 1000) / 10 : 0,
     riskActions,
+    noToken,
     uniqueOperators: opList.length,
     operators: opList,
     tokens: [...tokens].sort(),
@@ -339,6 +341,7 @@ function renderCountry(c) {
           <span class="dsu-filter-label">时间范围</span>
           <span class="muted">覆盖 ${data.daily.length} 天${data.daily.length ? `（${data.daily[0].date} ~ ${data.daily[data.daily.length - 1].date}）` : ""}</span>
         </div>
+        ${data.noToken ? `<div class="dsu-no-token">未携带 Token 调用 ${data.noToken} 次（无法归属到用户）</div>` : ""}
         <div class="dsu-row">
           <div class="dsu-kpi">
             ${kpi("成功 / 失败", `${data.success} / ${data.failed}`)}
@@ -358,7 +361,7 @@ function renderCountry(c) {
               <tr><th>Token（用户名）</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>平均耗时</th><th>主要动作</th></tr>
             </thead>
             <tbody>
-              ${data.operators.map((op) => renderCountryOperatorRow(op)).join("")}
+              ${data.operators.filter((op) => op.token && op.token !== "-").map((op) => renderCountryOperatorRow(op)).join("")}
             </tbody>
           </table>
         </div>
@@ -422,11 +425,13 @@ function renderBreakdown(title, map, labelFn) {
 }
 
 function renderCountryOperatorRow(op) {
+  const hasToken = Boolean(op.token && op.token !== "-");
   const user = (op.user || "").trim();
-  const nameTag = user ? `（${escapeHtml(user)}）` : "（未知）";
+  const tokenLabel = hasToken ? op.token : "未使用Token";
+  const nameTag = hasToken ? (user ? `（${escapeHtml(user)}）` : "（未知）") : "";
   return `
     <tr>
-      <td><code class="dsu-token-tag">${escapeHtml(op.token)}</code>${nameTag}</td>
+      <td><code class="dsu-token-tag">${escapeHtml(tokenLabel)}</code>${nameTag}</td>
       <td>${op.requests}</td>
       <td>${op.success} / ${op.failed}</td>
       <td><span class="chip ${rateClass(op.successRate)}">${op.successRate}%</span></td>
