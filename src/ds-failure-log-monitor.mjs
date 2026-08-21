@@ -68,10 +68,6 @@ const RETRYABLE_FAILURE_PATTERNS = [
 ];
 
 export function classifyDsFailureType(failure = {}) {
-  const state = String(failure.instanceState || failure.taskState || "").trim().toUpperCase();
-  if (["STOP", "STOPPED", "KILL", "KILLING", "5", "9"].includes(state)) {
-    return { failureType: "safety_stopped", retryable: false, retryDecision: "人工停止或终止，不自动重跑" };
-  }
   const evidence = [failure.failureMessage, failure.logError, failure.taskScript].filter(Boolean).join("\n");
   if (SQL_CODE_ERROR_PATTERNS.some((pattern) => pattern.test(evidence))) {
     return { failureType: "sql_code_error", retryable: false, retryDecision: "SQL/代码错误，需人工修改" };

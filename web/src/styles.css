@@ -119,20 +119,28 @@ button.ds-retry-action {
 }
 
 .ds-retry-history-table .danger-icon {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  background: #fff7f7;
-  color: #dc2626;
+  border: 0;
+  background: transparent;
+  color: #475467;
   cursor: pointer;
-  font-size: 17px;
-  line-height: 1;
 }
 
 .ds-retry-history-table .danger-icon:hover {
-  background: #fee2e2;
+  color: #dc2626;
+  background: transparent;
+}
+
+.ds-retry-history-table .danger-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .ds-failure-filter-grid {

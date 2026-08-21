@@ -472,7 +472,7 @@ function renderRetryHistoryRows(runs) {
             <td>${run.retryCount}</td>
             <td>${escapeHtml(run.summary)}</td>
             <td><a class="link-button" href="#/ds-failure-logs?retryRunId=${encodeURIComponent(run.id)}">打开详情页</a></td>
-            <td><button class="icon-button danger-icon" type="button" data-delete-retry-run="${escapeHtml(run.id)}" title="删除这条重跑历史" aria-label="删除这条重跑历史">🗑</button></td>
+            <td><button class="icon-button danger-icon" type="button" data-delete-retry-run="${escapeHtml(run.id)}" title="删除这条重跑历史" aria-label="删除这条重跑历史"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v5M14 11v5"/></svg></button></td>
           </tr>`).join("")}</tbody>
       </table>
     </div>`;

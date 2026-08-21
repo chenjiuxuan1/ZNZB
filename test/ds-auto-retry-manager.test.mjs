@@ -144,17 +144,30 @@ test("stops without retry when the workflow is offline", async () => {
   assert.match([...manager.statuses.values()][0].stopReason, /工作流已下线/);
 });
 
-test("does not retry an instance that was manually stopped", async () => {
-  let actions = 0;
+test("continues retrying a recoverable instance even when its current state is stopped", async () => {
+  const actions = [];
+  let checks = 0;
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
-    inspectFn: async () => resultWith({ instanceState: "STOP", ...classifyDsFailureType({ instanceState: "STOP" }) }),
-    actionFn: async () => { actions += 1; return {}; },
+    inspectFn: async () => resultWith({
+      instanceState: "STOP",
+      taskName: "load_orders",
+      failureMessage: "Connection reset by peer",
+      ...classifyDsFailureType({ instanceState: "STOP", taskName: "load_orders", failureMessage: "Connection reset by peer" }),
+    }),
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    actionFn: async ({ action }) => {
+      actions.push(action);
+      if (action === "get_instance") return { state: ++checks === 1 ? "STOP" : "SUCCESS" };
+      if (action === "get_workflow") return { releaseState: "ONLINE" };
+      return { success: true };
+    },
     now: () => fixedNow,
+    sleep: async () => {},
   });
   await enableAndWait(manager);
-  assert.equal(actions, 0);
-  assert.equal([...manager.statuses.values()][0].autoRetryStatus, "safety_stopped");
+  assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance", "get_instance"]);
+  assert.equal([...manager.statuses.values()][0].autoRetryStatus, "recovered");
 });
 
 test("terminates a retryable instance when its failure date is no longer today", async () => {
