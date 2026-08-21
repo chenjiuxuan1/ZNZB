@@ -201,7 +201,7 @@ test("automatic retry starts its interval clock without running immediately", as
   assert.equal(inspected, 1);
   manager.disable();
   assert.equal(manager.control().enabled, false);
-  assert.ok(manager.getLogs().some((item) => item.event === "control_disabled"));
+  assert.equal(manager.getLogs().some((item) => ["control_enabled", "control_disabled"].includes(item.event)), false);
 });
 
 test("automatic retry aligns the first run to the selected minute and then uses the hour interval", () => {
@@ -285,7 +285,7 @@ test("control counts persisted retry tasks while automatic retry is enabled", ()
 
 test("deletes every persisted log belonging to one retry run", () => {
   const manager = createDsAutoRetryManager({ rootDir: "/unused", now: () => fixedNow });
-  manager.enable({ intervalMinutes: 60, retryMinute: 10 });
+  manager.runNow();
   const runId = manager.control().currentRunId;
   assert.ok(manager.getLogs().some((item) => item.runId === runId));
   const result = manager.deleteRunLogs(runId);

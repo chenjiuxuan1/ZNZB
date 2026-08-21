@@ -55,7 +55,7 @@
 .ds-retry-run-now { background: #fff; border: 1px solid #dbe4f0; justify-content: flex-start; min-height: 42px; width: 100%; }
 .ds-retry-run-now:hover { background: #f8fafc; }
 .ds-retry-exclusion-backdrop { align-items: center; background: rgb(15 23 42 / .42); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 1000; }
-.ds-retry-exclusion-modal { max-height: calc(100vh - 48px); max-width: 1180px; overflow: auto; width: 100%; }
+.ds-retry-exclusion-modal { max-height: calc(100vh - 32px); max-width: 1440px; overflow: auto; width: calc(100vw - 32px); }
 .ds-retry-exclusion-grid { margin-top: 18px; }
 .ds-retry-exclusion-grid textarea { min-height: 96px; resize: vertical; width: 100%; }
 .ds-retry-exclusion-actions { justify-content: flex-end; margin-top: 18px; }
@@ -165,7 +165,7 @@ button.ds-retry-action {
 
 .ds-retry-exclusion-grid {
   align-items: start;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   overflow: visible;
 }
 
@@ -188,8 +188,18 @@ button.ds-retry-action {
   max-height: 280px;
   min-width: 100%;
   overflow-y: auto;
-  width: max-content;
+  width: 100%;
   z-index: 100;
+}
+
+.ds-retry-project-menu label {
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.ds-retry-project-menu label span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .ds-retry-project-empty {
