@@ -4,7 +4,7 @@ import { escapeHtml } from "../view-utils.js";
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const SOURCE_LABELS = { "codex-skill": "Codex Skill", n8n: "n8n", "duty-platform": "值班平台" };
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
-let model = { report: null, config: null, status: null, loading: false, days: 30, countryRange: {} };
+let model = { report: null, config: null, status: null, loading: false, days: 30, globalRange: null };
 
 function countryLabel(code) {
   return COUNTRY_LABELS[code] || code || "-";
@@ -92,15 +92,11 @@ function paint(root) {
     ${report ? renderMain(report) : ""}
   `;
   root.querySelector("#dsu-refresh")?.addEventListener("click", () => refresh(root));
-  root.querySelectorAll("[data-role='country-from'], [data-role='country-to']").forEach((input) => {
+  root.querySelectorAll("[data-role='global-from'], [data-role='global-to']").forEach((input) => {
     input.addEventListener("change", () => {
-      const country = input.dataset.country;
-      const fromEl = root.querySelector(`[data-role='country-from'][data-country='${country}']`);
-      const toEl = root.querySelector(`[data-role='country-to'][data-country='${country}']`);
-      model.countryRange[country] = {
-        from: fromEl ? fromEl.value : "",
-        to: toEl ? toEl.value : "",
-      };
+      const fromEl = root.querySelector("[data-role='global-from']");
+      const toEl = root.querySelector("[data-role='global-to']");
+      model.globalRange = { from: fromEl ? fromEl.value : "", to: toEl ? toEl.value : "" };
       paint(root);
     });
   });
@@ -196,16 +192,24 @@ function renderStatus(report) {
 }
 
 function renderMain(report) {
+  if (!model.globalRange) model.globalRange = globalDefaultRange(report);
+  const range = model.globalRange;
   return `
     <section class="panel">
       <div class="detail-header compact-header">
         <div>
           <h2 class="panel-title">国家使用分布</h2>
-          <p class="muted">${report.generatedAt ? `最近更新：${new Date(report.generatedAt).toLocaleString("zh-CN")}` : ""} · 展开各国可单独设置统计时间范围</p>
+          <p class="muted">${report.generatedAt ? `最近更新：${new Date(report.generatedAt).toLocaleString("zh-CN")}` : ""} · 全局时间筛选应用于所有国家</p>
         </div>
         <div class="button-group">
           <button class="primary" id="dsu-refresh">刷新数据</button>
         </div>
+      </div>
+      <div class="dsu-country-toolbar dsu-global-toolbar">
+        <span class="dsu-filter-label">时间筛选</span>
+        <label>开始<input type="date" class="input" data-role="global-from" value="${escapeHtml(range.from)}"></label>
+        <label>结束<input type="date" class="input" data-role="global-to" value="${escapeHtml(range.to)}"></label>
+        <span class="muted">对所有国家生效</span>
       </div>
       ${renderCountryList(report)}
     </section>
@@ -228,6 +232,18 @@ function renderCountryList(report) {
       ${countries.map((c) => renderCountry(c)).join("")}
     </div>
   `;
+}
+
+function globalDefaultRange(report) {
+  let min = "", max = "";
+  for (const c of (report?.countryUsage || [])) {
+    for (const d of (c.daily || [])) {
+      if (!d.date) continue;
+      if (!min || d.date < min) min = d.date;
+      if (!max || d.date > max) max = d.date;
+    }
+  }
+  return { from: min, to: max };
 }
 
 function countryDefaultRange(c) {
@@ -295,7 +311,7 @@ function aggregateCountry(c, range) {
 }
 
 function renderCountry(c) {
-  const range = model.countryRange[c.country] || countryDefaultRange(c);
+  const range = model.globalRange || countryDefaultRange(c);
   const data = aggregateCountry(c, range);
   const hasData = data.requests > 0;
   return `
@@ -311,10 +327,8 @@ function renderCountry(c) {
       </summary>
       <div class="dsu-country-body">
         <div class="dsu-country-toolbar">
-          <span class="dsu-filter-label">按天筛选</span>
-          <label>开始<input type="date" class="input" data-role="country-from" data-country="${escapeHtml(c.country)}" value="${escapeHtml(range.from)}"></label>
-          <label>结束<input type="date" class="input" data-role="country-to" data-country="${escapeHtml(c.country)}" value="${escapeHtml(range.to)}"></label>
-          <span class="muted">覆盖 ${data.daily.length} 天</span>
+          <span class="dsu-filter-label">时间范围</span>
+          <span class="muted">覆盖 ${data.daily.length} 天${data.daily.length ? `（${data.daily[0].date} ~ ${data.daily[data.daily.length - 1].date}）` : ""}</span>
         </div>
         <div class="dsu-row">
           <div class="dsu-kpi">
@@ -332,7 +346,7 @@ function renderCountry(c) {
         <div class="dsu-table-wrap">
           <table class="ds-table dsu-operator-table">
             <thead>
-              <tr><th>Token</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>使用工具</th><th>平均耗时</th><th>主要动作</th></tr>
+              <tr><th>Token（操作人）</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>平均耗时</th><th>主要动作</th></tr>
             </thead>
             <tbody>
               ${data.operators.map((op) => renderCountryOperatorRow(op)).join("")}
@@ -399,14 +413,15 @@ function renderBreakdown(title, map, labelFn) {
 }
 
 function renderCountryOperatorRow(op) {
+  const tools = (op.tools || []).filter(Boolean);
+  const nameTag = tools.length ? `（${tools.map((t) => escapeHtml(t)).join("、")}）` : "";
   return `
     <tr>
-      <td><code class="dsu-token-tag">${escapeHtml(op.token)}</code></td>
+      <td><code class="dsu-token-tag">${escapeHtml(op.token)}</code>${nameTag}</td>
       <td>${op.requests}</td>
       <td>${op.success} / ${op.failed}</td>
       <td><span class="chip ${rateClass(op.successRate)}">${op.successRate}%</span></td>
       <td>${op.riskActions}</td>
-      <td>${(op.tools || []).map((t) => escapeHtml(t)).join("、") || "-"}</td>
       <td>${fmtDuration(op.avgDurationMs)}</td>
       <td class="muted">${Object.entries(op.actions || {}).slice(0, 3).map(([a, n]) => `${escapeHtml(a)}×${n}`).join(" · ") || "-"}</td>
     </tr>
