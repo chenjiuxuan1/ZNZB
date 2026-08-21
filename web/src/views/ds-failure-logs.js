@@ -601,7 +601,7 @@ function renderRetryHistoryDetailPage(root, runId) {
       <div class="table-wrap schedule-history-table ds-retry-history-table">
         <table>
           <thead><tr><th>国家</th><th>失败任务</th><th>失败原因及处理说明</th><th>重跑次数</th><th>重跑结果</th></tr></thead>
-          <tbody>${taskRows.map((row) => `<tr><td>${escapeHtml(COUNTRY_META[row.country]?.name || row.country)}</td><td>${renderRetryTaskIdentity(row.detail, true)}</td><td>${renderRetryLogDetail(row.detail)}</td><td>${row.retryCount}</td><td><span class="badge ${retryRunBadge(row.status)}">${escapeHtml(row.result)}</span></td></tr>`).join("")}</tbody>
+          <tbody>${taskRows.map((row) => `<tr><td>${escapeHtml(COUNTRY_META[row.country]?.name || row.country)}</td><td>${row.empty ? "—" : renderRetryTaskIdentity(row.detail, true)}</td><td>${row.empty ? "本轮检查未发现失败任务" : renderRetryLogDetail(row.detail)}</td><td>${row.retryCount}</td><td><span class="badge ${retryRunBadge(row.status)}">${escapeHtml(row.result)}</span></td></tr>`).join("")}</tbody>
         </table>
       </div>
     </section>`;
@@ -614,7 +614,7 @@ function buildRetryTaskRows(run) {
     if (!groups.has(item.key)) groups.set(item.key, []);
     groups.get(item.key).push(item);
   }
-  return [...groups.values()].map((logs) => {
+  const rows = [...groups.values()].map((logs) => {
     const detail = logs[0];
     const outcome = logs.find((item) => ["recovered", "retry_not_recovered", "retry_failed", "excluded", "skipped", "safety_stopped", "manual_review", "retry_already_running"].includes(item.event));
     const status = outcome?.event === "recovered" ? "success"
@@ -623,6 +623,12 @@ function buildRetryTaskRows(run) {
     const result = ({ recovered: "重跑后已修复", retry_not_recovered: "重跑后未修复", retry_failed: "重跑提交失败", excluded: "项目配置为不重跑", skipped: "不满足重跑条件", safety_stopped: "安全停止", manual_review: "需人工确认", retry_already_running: "任务已在运行" }[outcome?.event] || "结果待确认");
     return { country: detail.country, detail: outcome || detail, retryCount: logs.filter((item) => item.event === "retry_submitted").length, status, result };
   });
+  const selectedCountries = run.selectedCountries?.length ? run.selectedCountries : COUNTRY_OPTIONS.map((item) => item.code);
+  const countriesWithTasks = new Set(rows.map((row) => row.country));
+  for (const country of selectedCountries) {
+    if (!countriesWithTasks.has(country)) rows.push({ country, detail: {}, retryCount: 0, status: "success", result: "无失败任务", empty: true });
+  }
+  return rows;
 }
 
 function scheduleRetryDetailPoll(root, runId, shouldPoll) {
