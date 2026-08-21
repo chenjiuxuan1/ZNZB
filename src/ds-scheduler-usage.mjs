@@ -273,22 +273,24 @@ export function buildCountryUsage(normalizedRows = []) {
     const country = row.country || "unknown";
     if (!byCountry.has(country)) byCountry.set(country, { daily: new Map() });
     const c = byCountry.get(country);
-    if (!c.daily.has(date)) c.daily.set(date, { date, requests: 0, success: 0, failed: 0, riskActions: 0, operators: new Map(), actions: new Map() });
+    if (!c.daily.has(date)) c.daily.set(date, { date, requests: 0, success: 0, failed: 0, riskActions: 0, operators: new Map(), actions: new Map(), tokens: new Set() });
     const d = c.daily.get(date);
     d.requests += 1;
     if (row.success) d.success += 1;
     else d.failed += 1;
     if (row.riskLevel === "high" || row.riskLevel === "medium") d.riskActions += 1;
-    const opKey = String(row.operator || "unknown");
-    const op = d.operators.get(opKey) || { operator: opKey, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tokens: new Set() };
+    const tokenKey = String(row.token || "-");
+    const op = d.operators.get(tokenKey) || { token: tokenKey, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
     op.requests += 1;
     if (row.success) op.success += 1;
     else op.failed += 1;
     if (row.riskLevel === "high" || row.riskLevel === "medium") op.riskActions += 1;
     op.durationTotalMs += row.durationMs;
-    if (row.token) op.tokens.add(row.token);
+    if (row.operator) op.tools.add(row.operator);
     plus(op.actions, row.action || "unknown");
-    d.operators.set(opKey, op);
+    d.operators.set(tokenKey, op);
+    if (!d.tokens) d.tokens = new Set();
+    if (row.token) d.tokens.add(row.token);
     if (!d.tokens) d.tokens = new Set();
     if (row.token) d.tokens.add(row.token);
     plus(d.actions, row.action || "unknown");
@@ -305,7 +307,7 @@ export function buildCountryUsage(normalizedRows = []) {
       riskActions: d.riskActions,
       uniqueOperators: d.operators.size,
       operators: [...d.operators.values()].map((op) => ({
-        operator: op.operator,
+        token: op.token,
         requests: op.requests,
         success: op.success,
         failed: op.failed,
@@ -313,7 +315,7 @@ export function buildCountryUsage(normalizedRows = []) {
         riskActions: op.riskActions,
         avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
         actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
-        tokens: [...op.tokens].sort(),
+        tools: [...op.tools].sort(),
       })).sort((a, b) => b.requests - a.requests),
       actions: Object.fromEntries([...d.actions.entries()].sort((a, b) => b[1] - a[1])),
       tokens: d.tokens ? [...d.tokens].sort() : [],
@@ -324,20 +326,20 @@ export function buildCountryUsage(normalizedRows = []) {
     const operatorsMap = new Map();
     for (const d of daily) {
       for (const op of d.operators) {
-        const key = op.operator;
-        const agg = operatorsMap.get(key) || { operator: key, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tokens: new Set() };
+        const key = op.token;
+        const agg = operatorsMap.get(key) || { token: key, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
         agg.requests += op.requests;
         agg.success += op.success;
         agg.failed += op.failed;
         agg.riskActions += op.riskActions;
         agg.durationTotalMs += op.avgDurationMs * op.requests;
         for (const [a, n] of Object.entries(op.actions || {})) plus(agg.actions, a, n);
-        for (const t of (op.tokens || [])) agg.tokens.add(t);
+        for (const t of (op.tools || [])) agg.tools.add(t);
         operatorsMap.set(key, agg);
       }
     }
     const operators = [...operatorsMap.values()].map((op) => ({
-      operator: op.operator,
+      token: op.token,
       requests: op.requests,
       success: op.success,
       failed: op.failed,
@@ -345,7 +347,7 @@ export function buildCountryUsage(normalizedRows = []) {
       riskActions: op.riskActions,
       avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
       actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
-      tokens: [...op.tokens].sort(),
+      tools: [...op.tools].sort(),
     })).sort((a, b) => b.requests - a.requests);
 
     const actions = new Map();
