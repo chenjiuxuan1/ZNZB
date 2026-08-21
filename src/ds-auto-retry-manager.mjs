@@ -28,17 +28,38 @@ function findCountryOwnerConfig(schedule, country) {
   return (schedule?.countryConfigs || []).find((item) => String(item?.countryCode || "").trim().toLowerCase() === normalizedCountry) || {};
 }
 
-function buildEmptyRunTimeoutMessage(country, failure, attempts) {
+function buildEmptyRunTimeoutMessage(country, failure, attempts, reference = new Date()) {
   return [
-    "DS 疑似空跑任务自动重跑超时",
+    "DS 空跑任务确认",
     `国家：${String(country || "").toUpperCase()}`,
     `项目：${failure.projectName || failure.projectCode || "-"}`,
     `工作流：${failure.workflowName || failure.workflowCode || "-"}`,
     `实例 ID：${failure.instanceId || "-"}`,
     `失败原因：${failure.failureMessage || failure.retryDecision || "失败节点尚未定位，可能空跑，具体原因需人工确认"}`,
+    `原失败实例运行时长：${formatDuration(failureRuntimeMs(failure, reference))}`,
     `自动重跑次数：${attempts}`,
-    "处理结果：自动重跑已满 1 小时，系统已停止继续重跑，请人工确认。",
+    "处理结果：原失败实例运行超过 1 小时，已判定为空跑；系统未提交重跑，请人工确认。",
   ].join("\n");
+}
+
+function failureRuntimeMs(failure = {}, reference = new Date()) {
+  const explicit = failure.durationMs ?? failure.runDurationMs ?? failure.duration ?? failure.runDuration;
+  if (Number.isFinite(Number(explicit)) && Number(explicit) > 0) return Number(explicit);
+  const text = String(explicit || "").trim();
+  if (text) {
+    const hours = Number(text.match(/(\d+(?:\.\d+)?)\s*h/i)?.[1] || 0);
+    const minutes = Number(text.match(/(\d+(?:\.\d+)?)\s*m/i)?.[1] || 0);
+    const seconds = Number(text.match(/(\d+(?:\.\d+)?)\s*s/i)?.[1] || 0);
+    if (hours || minutes || seconds) return ((hours * 60 + minutes) * 60 + seconds) * 1000;
+  }
+  const startedAt = Date.parse(failure.startTime || "");
+  const endedAt = Date.parse(failure.endTime || "") || reference.getTime();
+  return Number.isFinite(startedAt) && endedAt > startedAt ? endedAt - startedAt : 0;
+}
+
+function formatDuration(milliseconds) {
+  const minutes = Math.max(0, Math.floor(Number(milliseconds || 0) / 60_000));
+  return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
 }
 
 function nestedReleaseState(value) {
@@ -115,7 +136,6 @@ export function createDsAutoRetryManager({
   async function runLoop(country, failure, { manual = false, runId = currentRunId } = {}) {
     const key = failureKey(country, failure);
     const startedDate = countryDateKey(country, new Date(failure.startTime || now()));
-    const retryStartedAt = now().getTime();
     const taskDetail = failureTaskDetail(failure);
     let attempts = Number(statuses.get(key)?.attempts || 0);
     let submittedThisRun = false;
@@ -130,35 +150,6 @@ export function createDsAutoRetryManager({
         if (!enabled && !manual) {
           setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "页面已停止自动重跑", attempts });
           runLog("info", "retry_stopped", { key, country, attempts, ...taskDetail, message: "页面已停止自动重跑" });
-          return;
-        }
-        if (failure.failureType === "suspected_empty_run" && now().getTime() - retryStartedAt >= emptyRunRetryLimitMs) {
-          setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "疑似空跑任务重跑已满 1 小时，自动关闭并等待人工确认", attempts });
-          runLog("warn", "empty_run_timeout", { key, country, attempts, ...taskDetail, message: "疑似空跑任务重跑超过 1 小时，已自动关闭" });
-          try {
-            const schedule = await ownerConfigLoader(rootDir);
-            const ownerConfig = findCountryOwnerConfig(schedule, country);
-            const ownerEmails = String(ownerConfig.ownerEmails || ownerConfig.recipientEmails || "").trim();
-            if (!ownerEmails) {
-              runLog("warn", "owner_notification_skipped", { key, country, attempts, ...taskDetail, message: "未配置该国家负责人邮箱，未发送超时告警" });
-            } else {
-              const notification = await notifyFn({
-                alerts: {
-                  channel: "knBot",
-                  botToken: ownerConfig.botToken || "${KN_BOT_TOKEN}",
-                  recipientEmails: ownerEmails,
-                },
-              }, buildEmptyRunTimeoutMessage(country, failure, attempts), {
-                title: "DS 疑似空跑重跑超时",
-                severity: "warning",
-                timestamp: now().toISOString(),
-              });
-              if (!notification?.sent) throw new Error(notification?.reason || "负责人告警未发送");
-              runLog("success", "owner_notification_sent", { key, country, attempts, ...taskDetail, message: `超时告警已发送给负责人：${ownerEmails}` });
-            }
-          } catch (error) {
-            runLog("error", "owner_notification_failed", { key, country, attempts, ...taskDetail, message: `负责人告警发送失败：${error.message}` });
-          }
           return;
         }
         if (countryDateKey(country, now()) !== startedDate) {
@@ -251,6 +242,32 @@ export function createDsAutoRetryManager({
     }
   }
 
+  async function stopConfirmedEmptyRun(country, failure, key, runId) {
+    const attempts = Number(statuses.get(key)?.attempts || 0);
+    const taskDetail = failureTaskDetail(failure);
+    const runtimeMs = failureRuntimeMs(failure, now());
+    setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "原失败实例运行超过 1 小时，已判定为空跑，不执行重跑", attempts, originalRuntimeMs: runtimeMs, emptyRunConfirmed: true });
+    appendLog("warn", "empty_run_confirmed", { runId, key, country, attempts, originalRuntimeMs: runtimeMs, ...taskDetail, message: `原失败实例运行 ${formatDuration(runtimeMs)}，已判定为空跑，本轮不提交重跑` });
+    try {
+      const schedule = await ownerConfigLoader(rootDir);
+      const ownerConfig = findCountryOwnerConfig(schedule, country);
+      const ownerEmails = String(ownerConfig.ownerEmails || ownerConfig.recipientEmails || "").trim();
+      if (!ownerEmails) {
+        appendLog("warn", "owner_notification_skipped", { runId, key, country, attempts, ...taskDetail, message: "未配置该国家负责人邮箱，未发送空跑告警" });
+        return;
+      }
+      const notification = await notifyFn({ alerts: { channel: "knBot", botToken: ownerConfig.botToken || "${KN_BOT_TOKEN}", recipientEmails: ownerEmails } }, buildEmptyRunTimeoutMessage(country, failure, attempts, now()), {
+        title: "DS 空跑任务确认",
+        severity: "warning",
+        timestamp: now().toISOString(),
+      });
+      if (!notification?.sent) throw new Error(notification?.reason || "负责人告警未发送");
+      appendLog("success", "owner_notification_sent", { runId, key, country, attempts, ...taskDetail, message: `空跑告警已发送给负责人：${ownerEmails}` });
+    } catch (error) {
+      appendLog("error", "owner_notification_failed", { runId, key, country, attempts, ...taskDetail, message: `负责人告警发送失败：${error.message}` });
+    }
+  }
+
   async function scan({ force = false, manual = false, runId = currentRunId } = {}) {
     if (!enabled && !force) return { skipped: true, reason: "disabled" };
     if (!force && startAt && now().getTime() < startAt.getTime()) return { skipped: true, reason: "scheduled", startAt: startAt.toISOString() };
@@ -274,6 +291,11 @@ export function createDsAutoRetryManager({
           }
           if (failure.repairStatus === "recovered") {
             setStatus(key, { autoRetryStatus: "recovered", stopReason: "已修复" });
+            continue;
+          }
+          if (failure.failureType === "suspected_empty_run" && failureRuntimeMs(failure, now()) > emptyRunRetryLimitMs) {
+            if (statuses.get(key)?.emptyRunConfirmed) continue;
+            await stopConfirmedEmptyRun(countryResult.country, failure, key, runId);
             continue;
           }
           if (!failure.retryable) {

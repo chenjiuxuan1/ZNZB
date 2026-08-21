@@ -89,14 +89,14 @@ test("keeps retryable failures running until the instance succeeds", async () =>
   assert.equal([...manager.statuses.values()][0].attempts, 1);
 });
 
-test("stops a suspected empty run after one hour", async () => {
+test("skips retry when the original suspected empty run exceeded one hour", async () => {
   const actions = [];
   const notifications = [];
   let current = new Date(fixedNow);
   const failure = classifyDsFailureType({ failureMessage: "workflow failed without a task node" });
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
-    inspectFn: async () => resultWith(failure),
+    inspectFn: async () => resultWith({ ...failure, startTime: "2026-08-18 08:30:00" }),
     configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
     ownerConfigLoader: async () => ({ countryConfigs: [{ countryCode: "CN", ownerEmails: "cn-owner@kn.group" }] }),
     notifyFn: async (config, message, metadata) => {
@@ -113,11 +113,11 @@ test("stops a suspected empty run after one hour", async () => {
     sleep: async () => { current = new Date(current.getTime() + 60 * 60 * 1000); },
   });
   await enableAndWait(manager);
-  assert.equal(actions.filter((action) => action === "retry_instance").length, 1);
+  assert.equal(actions.length, 0);
   const status = [...manager.statuses.values()][0];
   assert.equal(status.autoRetryStatus, "safety_stopped");
   assert.match(status.stopReason, /1 小时/);
-  assert.ok(manager.getLogs().some((item) => item.event === "empty_run_timeout"));
+  assert.ok(manager.getLogs().some((item) => item.event === "empty_run_confirmed"));
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].config.alerts.recipientEmails, "cn-owner@kn.group");
   assert.match(notifications[0].message, /实例 ID：3001/);
@@ -174,7 +174,7 @@ test("terminates a retryable instance when its failure date is no longer today",
   let actions = 0;
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
-    inspectFn: async () => resultWith({ startTime: "2026-08-17 23:00:00", ...classifyDsFailureType({ failureMessage: "Connection reset by peer" }) }),
+    inspectFn: async () => resultWith({ startTime: "2026-08-17 23:00:00", taskName: "load_orders", ...classifyDsFailureType({ taskName: "load_orders", failureMessage: "Connection reset by peer" }) }),
     actionFn: async () => { actions += 1; return {}; },
     now: () => fixedNow,
     sleep: async () => {},
