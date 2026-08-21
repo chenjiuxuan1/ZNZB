@@ -83,9 +83,15 @@ export function normalizeUsageConfig(raw = {}) {
     tokenMap: { ...((raw && raw.tokenMap) || {}) },
   };
   const rawTokenMap = (raw && raw.tokenMap) || {};
+  const tokenMapMode = String((rawTokenMap && rawTokenMap.mode) || "gateway").trim().toLowerCase();
   base.tokenMap = {
     enabled: Boolean(base.tokenMap.enabled),
+    mode: ["gateway", "ssh"].includes(tokenMapMode) ? tokenMapMode : "gateway",
     sql: String(base.tokenMap.sql || DEFAULT_TOKEN_SQL).trim() || DEFAULT_TOKEN_SQL,
+    gateway: {
+      webhookUrl: resolveEnvString((rawTokenMap && rawTokenMap.gateway && rawTokenMap.gateway.webhookUrl) || "http://127.0.0.1:5678/webhook/ds-token-map"),
+      token: resolveEnvString((rawTokenMap && rawTokenMap.gateway && rawTokenMap.gateway.token) || ""),
+    },
     helperScript: resolveEnvString(base.tokenMap.helperScript || ""),
     ssh: { command: "ssh", options: ["StrictHostKeyChecking=no", "ConnectTimeout=15"], ...((rawTokenMap && rawTokenMap.ssh) || {}) },
     countries: {},
@@ -607,6 +613,27 @@ function queryDsTokenMapViaSsh(config, countryCode) {
 export async function fetchDsTokenUserMap(config = {}, onProgress) {
   const tm = (config && config.tokenMap) || {};
   if (!tm.enabled) return {};
+  if (tm.mode !== "ssh") {
+    const merged = {};
+    try {
+      const { statusCode, payload } = await postJson(tm.gateway.webhookUrl || "http://127.0.0.1:5678/webhook/ds-token-map", {
+        source: "duty-platform",
+        action: "list_user_tokens",
+        request_id: `ds-token-map-${Date.now()}`,
+        country: "all",
+      }, tm.gateway.token ? { Authorization: `Bearer ${tm.gateway.token}` } : {});
+      const body = payload && typeof payload === "object" ? payload : {};
+      const map = (body.map && typeof body.map === "object") ? body.map : (body.data && body.data.map) || {};
+      if (statusCode < 200 || statusCode >= 300 || body.success === false) {
+        throw new Error(`tokenMap 网关请求失败 (HTTP ${statusCode || "?"}): ${String(body.errors || body.error || "unknown")}`);
+      }
+      if (typeof onProgress === "function") onProgress("gateway", Object.keys(map).length, "");
+      return map;
+    } catch (error) {
+      if (typeof onProgress === "function") onProgress("gateway", 0, error.message);
+      return {};
+    }
+  }
   const merged = {};
   for (const [code, country] of Object.entries(tm.countries || {})) {
     if (!country || !country.ssh || !country.ssh.host) continue;
