@@ -10,6 +10,8 @@ import {
   normalizeUsageConfig,
   fetchAndAggregateUsage,
   saveUsageSnapshot,
+  tokenUser,
+  TOKEN_USER_MAP,
 } from "../src/ds-scheduler-usage.mjs";
 
 const SAMPLE_ROWS = [
@@ -78,6 +80,26 @@ test("buildCountryUsage aggregates per-country totals and per-day windows", () =
   assert.deepEqual(cnTok.actions, { list_projects: 1 });
 });
 
+test("tokenUser maps token to DS username", () => {
+  assert.equal(tokenUser("289e723fd059f1ea95ef0bb377eb1a95"), "jiangchuanchen");
+  assert.equal(tokenUser("a934e2b1d032aa0b421be40a1e6f7814"), "yannhao");
+  assert.equal(tokenUser("nonexistent-token"), "");
+  assert.equal(tokenUser("-"), "");
+  assert.equal(tokenUser(""), "");
+});
+
+test("buildCountryUsage exposes user field per token operator", () => {
+  const rows = [
+    { operation_time: "2026-08-20 09:00:00", operator: "张三", country: "ph", action: "list_projects", success: 1, risk_level: "low", duration_ms: 100, token: "a934e2b1d032aa0b421be40a1e6f7814" },
+    { operation_time: "2026-08-20 10:00:00", operator: "李四", country: "ph", action: "list_workflows", success: 1, risk_level: "low", duration_ms: 100, token: "unknown-token" },
+  ];
+  const countries = buildCountryUsage(rows.map(normalizeAuditRow));
+  const ph = countries.find((c) => c.country === "ph");
+  const byUser = Object.fromEntries(ph.operators.map((o) => [o.token, o.user]));
+  assert.equal(byUser["a934e2b1d032aa0b421be40a1e6f7814"], "yannhao");
+  assert.equal(byUser["unknown-token"], "");
+});
+
 test("normalizeAuditRow maps token from row or ds_token", () => {
   assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A", token: "T1" }).token, "T1");
   assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A", ds_token: "T2" }).token, "T2");
@@ -89,6 +111,34 @@ test("normalizeAuditRow handles success booleans/ints and derives date", () => {
   assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", success: true }).success, true);
   assert.equal(normalizeAuditRow({}).operator, "unknown");
   assert.equal(normalizeAuditRow({ operation_time: "x" }).date, null);
+});
+
+test("tokenUser prefers fetched tokenUserMap over static map", () => {
+  const map = { "a934e2b1d032aa0b421be40a1e6f7814": "yannhao-renamed" };
+  assert.equal(tokenUser("a934e2b1d032aa0b421be40a1e6f7814", map), "yannhao-renamed");
+  assert.equal(tokenUser("289e723fd059f1ea95ef0bb377eb1a95", {}), "jiangchuanchen");
+  assert.equal(tokenUser("totally-unknown", map), "");
+});
+
+test("buildCountryUsage uses fetched tokenUserMap when provided", () => {
+  const rows = [
+    { operation_time: "2026-08-20 09:00:00", operator: "A", country: "ph", action: "x", success: 1, risk_level: "low", duration_ms: 10, token: "TOK-X" },
+  ];
+  const countries = buildCountryUsage(rows.map(normalizeAuditRow), { tokenUserMap: { "TOK-X": "someuser" } });
+  const ph = countries.find((c) => c.country === "ph");
+  const op = ph.operators.find((o) => o.token === "TOK-X");
+  assert.equal(op.user, "someuser");
+});
+
+test("normalizeUsageConfig builds tokenMap countries with env-resolved db", () => {
+  process.env.DS_PH_DB_HOST = "dbhost";
+  const cfg = normalizeUsageConfig({
+    tokenMap: { enabled: true, countries: { ph: { ssh: { host: "10.20.10.12" }, database: { host: "${DS_PH_DB_HOST}", password: "p" } } } },
+  });
+  assert.equal(cfg.tokenMap.enabled, true);
+  assert.equal(cfg.tokenMap.countries.PH.ssh.host, "10.20.10.12");
+  assert.equal(cfg.tokenMap.countries.PH.database.host, "dbhost");
+  delete process.env.DS_PH_DB_HOST;
 });
 
 test("normalizeUsageConfig clamps days and resolves env strings", () => {
