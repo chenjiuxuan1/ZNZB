@@ -7,8 +7,35 @@ import { readJsonFile, writeJsonFileAtomic } from "./utils.mjs";
 const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
 const DEFAULT_SNAPSHOT_PATH = "config/ds-scheduler-usage-snapshot.json";
 const DEFAULT_AUDIT_TABLE = "ds_operation_audit_log";
+const DEFAULT_TOKEN_MAP_PATH = "config/ds-token-user-map.json";
 const GATEWAY_TIMEOUT_MS = 60_000;
 const SSH_TIMEOUT_MS = 45_000;
+
+// token -> DS 平台用户名 映射（缺失的显示 未知，可按需补充）
+export const TOKEN_USER_MAP = {
+  "a934e2b1d032aa0b421be40a1e6f7814": "yannhao",
+  "289e723fd059f1ea95ef0bb377eb1a95": "jiangchuanchen",
+  "59005866829ffabd3f4b84cdce2c2a3f": "binzhao",
+  "291a30d2348c1c58d06563accaaf0130": "admin",
+  "521dddb2f3ded022fa4dbb6cf9d995e4": "sylviashi",
+  "5af69ef71d2fc62860a7f0e5584f6afa": "sylviashi",
+  "374b21aa20d8958ef378f0fce2fe7b83": "hansonxiang",
+  "466bec2a4fb77a63ea6fa927286d3ac5": "moonmu",
+  "31fda8fa8c1decb6958819159f54b294": "laurasun",
+  "e5163ae952b05255c04be58e427dd26b": "binzhao",
+};
+
+export function tokenUser(token, tokenUserMap) {
+  if (!token || token === "-") return "";
+  const key = String(token);
+  if (tokenUserMap && Object.prototype.hasOwnProperty.call(tokenUserMap, key)) {
+    return String(tokenUserMap[key] || "").trim();
+  }
+  return TOKEN_USER_MAP[key] || "";
+}
+
+export const DEFAULT_TOKEN_SQL =
+  "SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> ''";
 
 export const USAGE_DEFAULT_CONFIG = {
   enabled: false,
@@ -53,7 +80,36 @@ export function normalizeUsageConfig(raw = {}) {
     gateway: { ...USAGE_DEFAULT_CONFIG.gateway, ...((raw && raw.gateway) || {}) },
     ssh: { ...USAGE_DEFAULT_CONFIG.ssh, ...((raw && raw.ssh) || {}) },
     auditDb: { ...USAGE_DEFAULT_CONFIG.auditDb, ...((raw && raw.auditDb) || {}) },
+    tokenMap: { ...((raw && raw.tokenMap) || {}) },
   };
+  const rawTokenMap = (raw && raw.tokenMap) || {};
+  base.tokenMap = {
+    enabled: Boolean(base.tokenMap.enabled),
+    sql: String(base.tokenMap.sql || DEFAULT_TOKEN_SQL).trim() || DEFAULT_TOKEN_SQL,
+    helperScript: resolveEnvString(base.tokenMap.helperScript || ""),
+    ssh: { command: "ssh", options: ["StrictHostKeyChecking=no", "ConnectTimeout=15"], ...((rawTokenMap && rawTokenMap.ssh) || {}) },
+    countries: {},
+  };
+  for (const [code, c] of Object.entries((rawTokenMap && rawTokenMap.countries) || {})) {
+    const ssh = { ...base.tokenMap.ssh, ...((c && c.ssh) || {}) };
+    base.tokenMap.countries[String(code).toUpperCase()] = {
+      name: String((c && c.name) || "").trim(),
+      ssh: {
+        host: String(ssh.host || "").trim(),
+        port: Number(ssh.port) || 22,
+        user: String(ssh.user || "root").trim(),
+        identityFile: resolveEnvString(ssh.identityFile || ""),
+        options: Array.isArray(ssh.options) ? ssh.options.map((item) => String(item)) : (base.tokenMap.ssh.options || []),
+      },
+      database: {
+        host: resolveEnvString((c && c.database && c.database.host) || ""),
+        port: Number((c && c.database && c.database.port) || 3306),
+        user: resolveEnvString((c && c.database && c.database.user) || ""),
+        password: resolveEnvString((c && c.database && c.database.password) || ""),
+        name: resolveEnvString((c && c.database && c.database.name) || ""),
+      },
+    };
+  }
   const source = String(base.source || "gateway").trim().toLowerCase();
   base.source = ["gateway", "ssh", "snapshot"].includes(source) ? source : "gateway";
   base.enabled = Boolean(base.enabled);
@@ -254,7 +310,7 @@ export function buildDailyUsage(rows = [], options = {}) {
     uniqueCountries: allCountries.size,
     uniqueActions: allActions.size,
     uniqueSources: allSources.size,
-    countryUsage: buildCountryUsage(normalized),
+    countryUsage: buildCountryUsage(normalized, { tokenUserMap: (options && options.tokenUserMap) || null }),
     days,
   };
 }
@@ -265,7 +321,8 @@ export function buildDailyUsage(rows = [], options = {}) {
  * keeps a per-day breakdown (with per-day operators) so the UI can apply an
  * independent time window per country.
  */
-export function buildCountryUsage(normalizedRows = []) {
+export function buildCountryUsage(normalizedRows = [], options = {}) {
+  const tokenUserMap = (options && options.tokenUserMap) || null;
   const byCountry = new Map();
   for (const row of normalizedRows) {
     const date = row.date;
@@ -308,6 +365,7 @@ export function buildCountryUsage(normalizedRows = []) {
       uniqueOperators: d.operators.size,
       operators: [...d.operators.values()].map((op) => ({
         token: op.token,
+        user: tokenUser(op.token, tokenUserMap),
         requests: op.requests,
         success: op.success,
         failed: op.failed,
@@ -340,6 +398,7 @@ export function buildCountryUsage(normalizedRows = []) {
     }
     const operators = [...operatorsMap.values()].map((op) => ({
       token: op.token,
+      user: tokenUser(op.token, tokenUserMap),
       requests: op.requests,
       success: op.success,
       failed: op.failed,
@@ -442,6 +501,100 @@ function queryAuditViaSsh(config) {
   });
 }
 
+function buildTokenMapRemoteScript(config, countryCode) {
+  const tm = config.tokenMap || {};
+  const country = (tm.countries && tm.countries[countryCode]) || {};
+  const db = country.database || {};
+  const sqlB64 = Buffer.from(tm.sql || DEFAULT_TOKEN_SQL, "utf8").toString("base64");
+  const lines = [
+    "set -euo pipefail",
+    `DS_DB_HOST=${shellQuote(db.host || "")}`,
+    `DS_DB_PORT=${shellQuote(String(db.port || 3306))}`,
+    `DS_DB_USER=${shellQuote(db.user || "")}`,
+    `DS_DB_PASSWORD=${shellQuote(db.password || "")}`,
+    `DS_DB_NAME=${shellQuote(db.name || "")}`,
+    `SQL_B64=${shellQuote(sqlB64)}`,
+    "if [ -n \"$DS_DB_HOST\" ] && [ -n \"$DS_DB_USER\" ] && [ -n \"$DS_DB_PASSWORD\" ]; then",
+    "  printf %s \"$SQL_B64\" | base64 -d | MYSQL_PWD=\"$DS_DB_PASSWORD\" mysql --batch --raw --skip-column-names --host=\"$DS_DB_HOST\" --port=\"$DS_DB_PORT\" --user=\"$DS_DB_USER\" --default-character-set=utf8mb4 \"$DS_DB_NAME\"",
+    "else",
+    "  echo \"__DS_TOKEN_MAP_SKIP__ no DS DB credentials configured for country\" >&2",
+    "  exit 2",
+    "fi",
+  ];
+  return lines.join("\n");
+}
+
+function queryDsTokenMapViaSsh(config, countryCode) {
+  return new Promise((resolve, reject) => {
+    const tm = config.tokenMap || {};
+    const country = (tm.countries && tm.countries[countryCode]) || {};
+    const ssh = country.ssh || tm.ssh || { host: "", port: 22, user: "root" };
+    if (!ssh.host) return reject(new Error(`tokenMap: 国家 ${countryCode} 未配置 SSH`));
+    const args = [];
+    if (ssh.port) args.push("-p", String(ssh.port));
+    if (ssh.identityFile) args.push("-i", ssh.identityFile);
+    for (const option of ssh.options || []) args.push("-o", option);
+    args.push(`${ssh.user ? `${ssh.user}@` : ""}${ssh.host}`);
+
+    const remoteScript = buildTokenMapRemoteScript(config, countryCode);
+    const child = spawn(tm.ssh.command || "ssh", args, { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => child.kill("SIGTERM"), SSH_TIMEOUT_MS);
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0 && code !== 2) {
+        reject(new Error(`tokenMap SSH 查询失败 ${countryCode} (exit ${code}): ${stderr.slice(0, 500)}`));
+        return;
+      }
+      const map = {};
+      for (const line of String(stdout).split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        const [user, token] = line.split("\t");
+        if (token && token.trim()) map[String(token).trim()] = (user || "").trim();
+      }
+      resolve(map);
+    });
+    child.stdin.end(`${remoteScript}\n`);
+  });
+}
+
+export async function fetchDsTokenUserMap(config = {}, onProgress) {
+  const tm = (config && config.tokenMap) || {};
+  if (!tm.enabled) return {};
+  const merged = {};
+  for (const [code, country] of Object.entries(tm.countries || {})) {
+    if (!country || !country.ssh || !country.ssh.host) continue;
+    try {
+      const map = await queryDsTokenMapViaSsh(config, code);
+      Object.assign(merged, map);
+      if (typeof onProgress === "function") onProgress(code, Object.keys(map).length, "");
+    } catch (error) {
+      if (typeof onProgress === "function") onProgress(code, 0, error.message);
+    }
+  }
+  return merged;
+}
+
+export async function loadDsTokenUserMap(rootDir) {
+  const p = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_TOKEN_MAP_PATH);
+  try {
+    const value = await readJsonFile(p, null);
+    return value && typeof value === "object" ? value : {};
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return {};
+  }
+}
+
+export async function saveDsTokenUserMap(rootDir, map) {
+  const p = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_TOKEN_MAP_PATH);
+  await writeJsonFileAtomic(p, map || {});
+}
+
 function postJson(urlString, body, headers = {}, timeoutMs = GATEWAY_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlString);
@@ -531,12 +684,22 @@ export async function fetchAndAggregateUsage(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   const config = normalizeUsageConfig(options.config || (await loadUsageConfig(rootDir)));
   const cached = await loadUsageSnapshot(rootDir);
-  const snapshotFresh = cached
-    && cached.generatedAt
-    && Date.now() - new Date(cached.generatedAt).getTime() < 10 * 60 * 1000;
-
+  let tokenUserMap = await loadDsTokenUserMap(rootDir);
+  if (options.cache && config.tokenMap && config.tokenMap.enabled) {
+    try {
+      const fresh = await fetchDsTokenUserMap(config);
+      if (fresh && Object.keys(fresh).length) {
+        tokenUserMap = { ...tokenUserMap, ...fresh };
+        await saveDsTokenUserMap(rootDir, tokenUserMap);
+      }
+    } catch (error) {
+      tokenUserMap.tokenMapRefreshError = String((error && error.message) || error);
+    }
+  }
+  const usageOptions = { tokenUserMap };
+  const build = (rows, extra) => buildDailyUsage(rows, { ...(extra || {}), tokenUserMap: usageOptions.tokenUserMap });
   if (!config.enabled && cached && Array.isArray(cached.rows)) {
-    return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, enabled: config.enabled };
+    return { ...build(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, enabled: config.enabled };
   }
   if (config.enabled) {
     try {
@@ -547,20 +710,20 @@ export async function fetchAndAggregateUsage(options = {}) {
         const rows = await queryAuditRows(config);
         rowsList = Array.isArray(rows) ? rows : [];
       }
-      const report = buildDailyUsage(rowsList);
+      const report = build(rowsList);
       if (options.cache !== false) {
         await saveUsageSnapshot(rootDir, { generatedAt: report.generatedAt, rows: rowsList });
       }
       return { ...report, source: config.source, cached: config.source === "snapshot", enabled: config.enabled };
     } catch (error) {
       if (cached && Array.isArray(cached.rows)) {
-        return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, refreshError: error.message, enabled: config.enabled };
+        return { ...build(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, refreshError: error.message, enabled: config.enabled };
       }
-      return { ...buildDailyUsage([]), source: config.source, cached: false, refreshError: error.message, error: true, enabled: config.enabled };
+      return { ...build([]), source: config.source, cached: false, refreshError: error.message, error: true, enabled: config.enabled };
     }
   }
   if (cached && Array.isArray(cached.rows)) {
-    return { ...buildDailyUsage(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, enabled: config.enabled };
+    return { ...build(cached.rows, { generatedAt: cached.generatedAt }), source: "snapshot", cached: true, enabled: config.enabled };
   }
-  return { ...buildDailyUsage([]), source: "empty", cached: false, enabled: config.enabled };
+  return { ...build([]), source: "empty", cached: false, enabled: config.enabled };
 }
