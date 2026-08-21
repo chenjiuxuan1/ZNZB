@@ -47,6 +47,8 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 const env = (key, def = "") => process.env[key] || def;
 
+const PG_TIMEOUT_MS = Math.max(5000, Number(env("N8N_PG_TIMEOUT_MS", "120000")) || 0);
+
 const CFG = {
   pgHost: env("N8N_PGHOST", "127.0.0.1"),
   pgPort: env("N8N_PGPORT", "5432"),
@@ -64,6 +66,15 @@ const CFG = {
   auditDatabase: env("AUDIT_DB_NAME", "warning_rule"),
   auditTable: env("AUDIT_DB_TABLE", "ds_operation_audit_log"),
   auditLimit: Math.max(0, Number(env("AUDIT_DB_LIMIT", "0")) || 0),
+  auditVia: env("AUDIT_DB_VIA", "ssh").trim().toLowerCase() || "ssh",
+  auditSsh: {
+    command: env("AUDIT_DB_SSH_COMMAND", "ssh"),
+    host: env("AUDIT_DB_SSH_HOST", "10.20.47.14"),
+    port: Number(env("AUDIT_DB_SSH_PORT", "36000")) || 22,
+    user: env("AUDIT_DB_SSH_USER", "root"),
+    identityFile: env("AUDIT_DB_SSH_IDENTITY_FILE", ""),
+    options: env("AUDIT_DB_SSH_OPTIONS", "StrictHostKeyChecking=no,ConnectTimeout=10").split(",").map((v) => v.trim()).filter(Boolean),
+  },
   psqlBin: env("PSQL_BIN", "psql"),
   mysqlBin: env("MYSQL_BIN", "mysql"),
   n8nDocker: env("N8N_DOCKER_CONTAINER", ""),
@@ -93,7 +104,7 @@ async function execPg(sql) {
     if (CFG.pgPassword) cmdArgs.unshift("-w");
     cmdEnv = { ...process.env, PGPASSWORD: CFG.pgPassword };
   }
-  const { stdout } = await run(cmd, cmdArgs, { env: cmdEnv, maxBuffer: 512 * 1024 * 1024 });
+  const { stdout } = await run(cmd, cmdArgs, { env: cmdEnv, maxBuffer: 512 * 1024 * 1024, timeout: PG_TIMEOUT_MS });
   return stdout;
 }
 
@@ -112,11 +123,12 @@ async function readN8nRows() {
   const sql = `
     SELECT
       to_char(e."startedAt" AT TIME ZONE ${sqlQuote(CFG.timezone)}, 'YYYY-MM-DD HH24:MI:SS') AS started,
-      d.data::jsonb -> (regexp_match(d.data::text, '"country"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS country,
-      d.data::jsonb -> (regexp_match(d.data::text, '"action"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS action,
-      d.data::jsonb -> (regexp_match(d.data::text, '"ds_token"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS tok
-    FROM execution_data d
-    JOIN execution_entity e ON e.id = d."executionId"
+      d -> (regexp_match(d::text, '"country"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS country,
+      d -> (regexp_match(d::text, '"action"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS action,
+      d -> (regexp_match(d::text, '"ds_token"[[:space:]]*:[[:space:]]*"([0-9]+)"'))[1]::int AS tok
+    FROM execution_data ed
+    JOIN execution_entity e ON e.id = ed."executionId"
+    CROSS JOIN LATERAL (SELECT ed.data::jsonb AS d) x
     WHERE e."workflowId" = (
       SELECT id FROM workflow_entity WHERE name = ${sqlQuote(CFG.workflowName)} LIMIT 1
     ) AND e.finished = TRUE
@@ -137,12 +149,68 @@ async function readN8nRows() {
   return rows;
 }
 
-function runMysql(sql) {
+function shQuote(value) {
+  return `'${String(value ?? "").replace(/'/g, `'\''`)}'`;
+}
+
+// 通过 SSH 到中国跳板机执行 mysql（与 n8n 使用统计工作流 / ZNZB 平台一致）。
+// script：远端要执行的 shell 脚本；extraStdin：额外写入 ssh stdin 的数据（用于大 SQL 落盘）。
+function sshExecMysql(script, extraStdin = "") {
   return new Promise((resolve, reject) => {
-    const args = [
-      "-h", CFG.auditHost, "-P", CFG.auditPort, "-u", CFG.auditUser,
-      "--default-character-set=utf8mb4", CFG.auditDatabase,
-    ];
+    const ssh = CFG.auditSsh;
+    const args = [];
+    if (ssh.port) args.push("-p", String(ssh.port));
+    if (ssh.identityFile) args.push("-i", ssh.identityFile);
+    for (const option of ssh.options) args.push("-o", option);
+    args.push(`${ssh.user}@${ssh.host}`);
+    const child = spawn(ssh.command, args, { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    child.on("error", reject);
+    child.on("close", (code) => (code === 0 ? resolve(stdout) : reject(new Error(`ssh exit ${code}: ${stderr.slice(-800)}`))));
+    child.stdin.write(script);
+    if (extraStdin) child.stdin.write("\n" + extraStdin + "\n");
+    child.stdin.end();
+  });
+}
+
+function runMysqlQuery(sql) {
+  const db = { host: CFG.auditHost, port: CFG.auditPort, user: CFG.auditUser, password: CFG.auditPassword, database: CFG.auditDatabase };
+  if (CFG.auditVia !== "direct") {
+    const script = [
+      `export MYSQL_PWD=${shQuote(db.password)}`,
+      `mysql --batch --raw --silent --default-character-set=utf8mb4 -h ${shQuote(db.host)} -P ${db.port} -u ${shQuote(db.user)} ${shQuote(db.database)} -e ${shQuote(sql)}`,
+    ].join("\n");
+    return sshExecMysql(script);
+  }
+  return new Promise((resolve, reject) => {
+    const args = ["-h", CFG.auditHost, "-P", CFG.auditPort, "-u", CFG.auditUser, "--batch", "--raw", "--silent", "--default-character-set=utf8mb4", CFG.auditDatabase, "-e", sql];
+    const child = spawn(CFG.mysqlBin, args, { env: { ...process.env, MYSQL_PWD: CFG.auditPassword } });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    child.on("error", reject);
+    child.on("close", (code) => (code === 0 ? resolve(stdout) : reject(new Error(`mysql exit ${code}: ${stderr}`))));
+    child.stdin.end();
+  });
+}
+
+function runMysqlExec(sql) {
+  const db = { host: CFG.auditHost, port: CFG.auditPort, user: CFG.auditUser, password: CFG.auditPassword, database: CFG.auditDatabase };
+  if (CFG.auditVia !== "direct") {
+    const script = [
+      `cat > /tmp/backfill-audit.sql`,
+      `export MYSQL_PWD=${shQuote(db.password)}`,
+      `mysql --default-character-set=utf8mb4 -h ${shQuote(db.host)} -P ${db.port} -u ${shQuote(db.user)} ${shQuote(db.database)} < /tmp/backfill-audit.sql`,
+      `rm -f /tmp/backfill-audit.sql`,
+    ].join("\n");
+    return sshExecMysql(script, sql);
+  }
+  return new Promise((resolve, reject) => {
+    const args = ["-h", CFG.auditHost, "-P", CFG.auditPort, "-u", CFG.auditUser, "--default-character-set=utf8mb4", CFG.auditDatabase];
     const child = spawn(CFG.mysqlBin, args, { env: { ...process.env, MYSQL_PWD: CFG.auditPassword } });
     let err = "";
     child.stderr.on("data", (d) => { err += d; });
@@ -160,12 +228,7 @@ async function readAuditRows() {
     `WHERE request_id IS NOT NULL AND request_id <> ''`,
     CFG.auditLimit ? `LIMIT ${CFG.auditLimit}` : "",
   ].filter(Boolean).join(" ");
-  const args = [
-    "-h", CFG.auditHost, "-P", CFG.auditPort, "-u", CFG.auditUser,
-    "--batch", "--raw", "--silent", "--default-character-set=utf8mb4",
-    CFG.auditDatabase, "-e", sql,
-  ];
-  const { stdout } = await run(CFG.mysqlBin, args, { env: { ...process.env, MYSQL_PWD: CFG.auditPassword }, maxBuffer: 512 * 1024 * 1024 });
+  const stdout = await runMysqlQuery(sql);
   const rows = [];
   for (const line of stdout.split("\n")) {
     if (!line.trim()) continue;
@@ -250,7 +313,7 @@ WHERE request_id = ${sqlQuote(requestId)}
     if (CFG.dryRun) console.log("[dry-run] 未执行（试跑）");
     return { updated: 0, skipped: matched.size, total: matched.size };
   }
-  await runMysql(statements.join("\n"));
+  await runMysqlExec(statements.join("\n"));
   console.log(`[audit] 已批量执行 ${statements.length} 条 UPDATE`);
   return { updated: statements.length, skipped: 0, total: matched.size };
 }
@@ -260,6 +323,7 @@ async function main() {
   if (CFG.limit) console.log(`[limit] 本次最多读取 ${CFG.limit} 条 n8n 执行记录`);
   if (CFG.auditLimit) console.log(`[limit] 本次最多读取 ${CFG.auditLimit} 条审计记录`);
   console.log(`[n8n] ${CFG.pgHost}:${CFG.pgPort} db=${CFG.pgDatabase} workflow=${CFG.workflowName}`);
+  console.log(`[audit] 访问方式=${CFG.auditVia === "direct" ? "直连 mysql" : `SSH ${CFG.auditSsh.user}@${CFG.auditSsh.host}:${CFG.auditSsh.port} → mysql ${CFG.auditHost}:${CFG.auditPort}/${CFG.auditDatabase}`}`);
   const n8nRows = await readN8nRows();
   const auditRows = await readAuditRows();
   const { updated, skipped, total } = await updateAudit(n8nRows, auditRows);

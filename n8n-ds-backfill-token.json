@@ -1,0 +1,244 @@
+{
+  "name": "DS网关历史Token回填",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "dbk-trigger",
+      "name": "手动触发回填",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -1800
+      ],
+      "notes": "手动点击运行。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "set -euo pipefail\nexport MYSQL_PWD='6JA8j2uGvZi3FrAcxM06'\nmysql --batch --raw --column-names --host='10.20.47.19' --port=3306 --user='root' --default-character-set=utf8mb4 'warning_rule' -e \"SELECT request_id, country, action, DATE_FORMAT(operation_time, '%Y-%m-%d %H:%i:%s') AS operation_time FROM ds_operation_audit_log WHERE request_id IS NOT NULL AND request_id <> '' AND operation_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)\""
+      },
+      "id": "dbk-ssh-read",
+      "name": "查询审计记录",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -1600
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "",
+          "name": "中国跳板机"
+        }
+      },
+      "notes": "通过中国跳板机查近90天审计记录（只查一次）。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst BATCHES = 10;   // 批次数，每批处理 limit 条执行记录\nconst LIMIT = 500;    // 每批执行记录条数（避免 OOM）\nconst items = [];\nfor (let i = 0; i < BATCHES; i++) {\n  items.push({ json: { batch: i, offset: i * LIMIT, limit: LIMIT, batches: BATCHES } });\n}\nreturn items;\n"
+      },
+      "id": "dbk-batches",
+      "name": "生成批次参数",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -1400
+      ],
+      "notes": "生成 N 个批次参数（offset 递增），供循环逐批处理。BATCHES/LIMIT 可改。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "dbk-loop",
+      "name": "循环批次",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        0,
+        -1200
+      ],
+      "notes": "按上游批次参数分批循环（参照告警工作流 SplitInBatches 写法）。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  to_char(e.\"startedAt\" AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') AS started,\n  d -> (regexp_match(d::text, '\"country\"[[:space:]]*:[[:space:]]*\"([0-9]+)\"'))[1]::int AS country,\n  d -> (regexp_match(d::text, '\"action\"[[:space:]]*:[[:space:]]*\"([0-9]+)\"'))[1]::int AS action,\n  d -> (regexp_match(d::text, '\"ds_token\"[[:space:]]*:[[:space:]]*\"([0-9]+)\"'))[1]::int AS tok\nFROM execution_data ed\nJOIN execution_entity e ON e.id = ed.\"executionId\"\nCROSS JOIN LATERAL (SELECT ed.data::jsonb AS d) x\nWHERE e.\"workflowId\" = (SELECT id FROM workflow_entity WHERE name = 'ds-scheduler-router' LIMIT 1)\n  AND e.finished = TRUE\nLIMIT {{ $json.limit }} OFFSET {{ $json.offset }}",
+        "options": {}
+      },
+      "id": "dbk-pg",
+      "name": "查询n8n执行历史",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -1000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "n8n自库"
+        }
+      },
+      "notes": "循环内：按当前批次 LIMIT/OFFSET 读 n8n 执行数据。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst BATCH_SIZE = 300;\nconst WINDOW_MS = 30000;\n\nconst pgItems = $('查询n8n执行历史').all();\nconst sshItems = $('查询审计记录').all();\n\nconst auditRows = [];\nfor (const it of sshItems) {\n  const raw = it.json || {};\n  const stdout = String(raw.stdout || raw.data || '');\n  const lines = stdout.split(/\\r?\\n/).filter(function (l) { return l.length > 0; });\n  if (!lines.length) continue;\n  const headers = lines[0].split('\\t');\n  for (let i = 1; i < lines.length; i++) {\n    const vals = lines[i].split('\\t');\n    const row = {};\n    for (let h = 0; h < headers.length; h++) row[headers[h]] = vals[h] != null ? vals[h] : '';\n    auditRows.push(row);\n  }\n}\n\nconst byKey = new Map();\nfor (const a of auditRows) {\n  const key = String(a.country || '').toLowerCase() + '\\u0001' + String(a.action || '');\n  if (!byKey.has(key)) byKey.set(key, []);\n  byKey.get(key).push(a);\n}\n\nfunction toTs(s) { const t = Date.parse(String(s || '')); return isNaN(t) ? null : t; }\nfunction sqlQuote(v) { return \"'\" + String(v).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\") + \"'\"; }\n\nconst statements = [];\nlet matched = 0;\nlet unmatched = 0;\nconst seen = new Set();\n\nfor (const it of pgItems) {\n  const n = it.json || {};\n  const key = String(n.country || '').toLowerCase() + '\\u0001' + String(n.action || '');\n  const bucket = byKey.get(key);\n  const nt = toTs(n.started);\n  if (!bucket || nt == null || !n.token) { unmatched++; continue; }\n  let best = null;\n  let bestDiff = Infinity;\n  for (const a of bucket) {\n    const at = toTs(a.operation_time);\n    if (at == null) continue;\n    const diff = Math.abs(at - nt);\n    if (diff <= WINDOW_MS && diff < bestDiff) { bestDiff = diff; best = a; }\n  }\n  if (best) {\n    if (!seen.has(best.request_id)) {\n      seen.add(best.request_id);\n      statements.push(\n        \"UPDATE `ds_operation_audit_log` SET request_payload = JSON_SET(COALESCE(request_payload, JSON_OBJECT()), '$.ds_token', \" +\n        sqlQuote(n.token) + \") WHERE request_id = \" + sqlQuote(best.request_id) +\n        \" AND (request_payload IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(request_payload, '$.ds_token')) IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(request_payload, '$.ds_token')) = '');\"\n      );\n      matched++;\n    }\n  } else { unmatched++; }\n}\n\nconst pgOffset = (pgItems[0] && pgItems[0].json && pgItems[0].json.offset) || 0;\nif (statements.length === 0) {\n  return [{ json: { ok: true, offset: pgOffset, statementCount: 0, matched: 0, unmatched: unmatched, n8nCount: pgItems.length, auditCount: auditRows.length, message: '本批没有需要回填的记录' } }];\n}\n\nconst batches = [];\nconst batchCount = Math.ceil(statements.length / BATCH_SIZE);\nfor (let i = 0; i < statements.length; i += BATCH_SIZE) {\n  const chunk = statements.slice(i, i + BATCH_SIZE);\n  batches.push({\n    json: {\n      ok: true,\n      offset: pgOffset,\n      batchIndex: batches.length,\n      batchCount: batchCount,\n      statementCount: statements.length,\n      matched: matched,\n      unmatched: unmatched,\n      n8nCount: pgItems.length,\n      auditCount: auditRows.length,\n      sql_b64: Buffer.from(chunk.join('\\n'), 'utf8').toString('base64'),\n    },\n  });\n}\nreturn batches;\n"
+      },
+      "id": "dbk-match",
+      "name": "匹配生成回填SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -800
+      ],
+      "notes": "按 country+action+时间(±30s) 匹配本批执行记录并生成 UPDATE。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "set -euo pipefail\nexport MYSQL_PWD='6JA8j2uGvZi3FrAcxM06'\necho '{{ $json.sql_b64 }}' | base64 -d > /tmp/backfill.sql\nif [ -s /tmp/backfill.sql ]; then\n  mysql --default-character-set=utf8mb4 --host='10.20.47.19' --port=3306 --user='root' 'warning_rule' < /tmp/backfill.sql\nfi\nrm -f /tmp/backfill.sql\necho 'batch done'"
+      },
+      "id": "dbk-ssh-write",
+      "name": "分批写回Token",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -600
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "",
+          "name": "中国跳板机"
+        }
+      },
+      "notes": "通过中国跳板机把 UPDATE 写入审计库。",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst items = $('分批写回Token').all();\nlet totalMatched = 0;\nlet totalStmts = 0;\nlet batchesDone = items.length;\nfor (const it of items) {\n  const j = it.json || {};\n  if (typeof j.matched === 'number') totalMatched += j.matched;\n  if (typeof j.statementCount === 'number') totalStmts += j.statementCount;\n}\nreturn [{ json: { ok: true, batchesDone: batchesDone, totalMatched: totalMatched, totalStatements: totalStmts, message: '回填完成' } }];\n"
+      },
+      "id": "dbk-summary",
+      "name": "汇总回填结果",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -400
+      ],
+      "notes": "循环结束后汇总所有批次结果。",
+      "notesInFlow": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "手动触发回填": {
+      "main": [
+        [
+          {
+            "node": "查询审计记录",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "查询审计记录": {
+      "main": [
+        [
+          {
+            "node": "生成批次参数",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "生成批次参数": {
+      "main": [
+        [
+          {
+            "node": "循环批次",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "循环批次": {
+      "main": [
+        [
+          {
+            "node": "汇总回填结果",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "查询n8n执行历史",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "查询n8n执行历史": {
+      "main": [
+        [
+          {
+            "node": "匹配生成回填SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "匹配生成回填SQL": {
+      "main": [
+        [
+          {
+            "node": "分批写回Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "分批写回Token": {
+      "main": [
+        [
+          {
+            "node": "循环批次",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "replace-with-a-unique-version-id",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "replace-with-workflow-id",
+  "tags": []
+}

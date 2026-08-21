@@ -255,21 +255,21 @@ function aggregateCountry(c, range) {
     failed += d.failed;
     riskActions += d.riskActions;
     for (const op of (d.operators || [])) {
-      const agg = operators.get(op.operator) || { operator: op.operator, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tokens: new Set() };
+      const agg = operators.get(op.token) || { token: op.token, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
       agg.requests += op.requests;
       agg.success += op.success;
       agg.failed += op.failed;
       agg.riskActions += op.riskActions;
       agg.durationTotalMs += (op.avgDurationMs || 0) * op.requests;
       for (const [a, n] of Object.entries(op.actions || {})) agg.actions.set(a, (agg.actions.get(a) || 0) + n);
-      for (const t of (op.tokens || [])) agg.tokens.add(t);
-      operators.set(op.operator, agg);
+      for (const t of (op.tools || [])) agg.tools.add(t);
+      operators.set(op.token, agg);
     }
     for (const [a, n] of Object.entries(d.actions || {})) actions.set(a, (actions.get(a) || 0) + n);
     for (const t of (d.tokens || [])) tokens.add(t);
   }
   const opList = [...operators.values()].map((op) => ({
-    operator: op.operator,
+    token: op.token,
     requests: op.requests,
     success: op.success,
     failed: op.failed,
@@ -277,7 +277,7 @@ function aggregateCountry(c, range) {
     riskActions: op.riskActions,
     avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
     actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
-    tokens: [...op.tokens].sort(),
+    tools: [...op.tools].sort(),
   })).sort((a, b) => b.requests - a.requests);
   return {
     country: c.country,
@@ -332,7 +332,7 @@ function renderCountry(c) {
         <div class="dsu-table-wrap">
           <table class="ds-table dsu-operator-table">
             <thead>
-              <tr><th>操作人</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>使用Token</th><th>平均耗时</th><th>主要动作</th></tr>
+              <tr><th>Token</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>使用工具</th><th>平均耗时</th><th>主要动作</th></tr>
             </thead>
             <tbody>
               ${data.operators.map((op) => renderCountryOperatorRow(op)).join("")}
@@ -401,12 +401,12 @@ function renderBreakdown(title, map, labelFn) {
 function renderCountryOperatorRow(op) {
   return `
     <tr>
-      <td><strong>${escapeHtml(op.operator)}</strong></td>
+      <td><code class="dsu-token-tag">${escapeHtml(op.token)}</code></td>
       <td>${op.requests}</td>
       <td>${op.success} / ${op.failed}</td>
       <td><span class="chip ${rateClass(op.successRate)}">${op.successRate}%</span></td>
       <td>${op.riskActions}</td>
-      <td>${(op.tokens || []).map((t) => `<code class="dsu-token-tag">${escapeHtml(t)}</code>`).join("") || "-"}</td>
+      <td>${(op.tools || []).map((t) => escapeHtml(t)).join("、") || "-"}</td>
       <td>${fmtDuration(op.avgDurationMs)}</td>
       <td class="muted">${Object.entries(op.actions || {}).slice(0, 3).map(([a, n]) => `${escapeHtml(a)}×${n}`).join(" · ") || "-"}</td>
     </tr>
