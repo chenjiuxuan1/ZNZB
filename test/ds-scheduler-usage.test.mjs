@@ -130,6 +130,14 @@ test("buildCountryUsage uses fetched tokenUserMap when provided", () => {
   assert.equal(op.user, "someuser");
 });
 
+test("normalizeUsageConfig defaults tokenMap to gateway mode with webhook url", () => {
+  const cfg = normalizeUsageConfig({ tokenMap: { enabled: true } });
+  assert.equal(cfg.tokenMap.mode, "gateway");
+  assert.equal(cfg.tokenMap.gateway.webhookUrl, "http://127.0.0.1:5678/webhook/ds-token-map");
+  const sshCfg = normalizeUsageConfig({ tokenMap: { enabled: true, mode: "SSH" } });
+  assert.equal(sshCfg.tokenMap.mode, "ssh");
+});
+
 test("normalizeUsageConfig builds tokenMap countries with env-resolved db", () => {
   process.env.DS_PH_DB_HOST = "dbhost";
   const cfg = normalizeUsageConfig({

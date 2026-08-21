@@ -1,0 +1,401 @@
+{
+  "name": "ds-token-map",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ds-token-map",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ds-token-webhook",
+      "name": "接收 DS Token 映射请求",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.body ?? $json;\n\nconst COUNTRIES = {\n  CN: { key: 'cn', name: '中国', sshHost: '10.20.47.14', sshPort: 36000 },\n  PH: { key: 'ph', name: '菲律宾', sshHost: '10.20.10.12', sshPort: null },\n  INE: { key: 'ine', name: '印尼', sshHost: '192.168.21.236', sshPort: 36000 },\n  MX: { key: 'mx', name: '墨西哥', sshHost: '172.20.220.165', sshPort: 36000 },\n  TH: { key: 'th', name: '泰国', sshHost: '192.168.20.236', sshPort: 36000 },\n  PK: { key: 'pk', name: '巴基斯坦', sshHost: '10.20.84.176', sshPort: null },\n};\n\nfunction shellQuote(value) {\n  return `'${String(value).replace(/'/g, `'\\''`)}'`;\n}\n\nconst PY_SOURCE = `import argparse, importlib.util, json, os, sys\nfrom pathlib import Path\nCOUNTRY = os.environ.get(\"COUNTRY_CODE\", \"\")\ndef load_matcher():\n    configured = Path(os.environ.get(\"DS_MATCH_SCRIPT\", \"\")).expanduser()\n    candidates = [configured] if str(configured) else []\n    candidates += [\n        Path(\"/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n        Path(\"/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n    ]\n    script = next((p for p in candidates if p.is_file()), None)\n    if not script:\n        raise RuntimeError(\"DS_MATCH_HELPER_NOT_DEPLOYED\")\n    spec = importlib.util.spec_from_file_location(\"ds_match_candidate_query\", script)\n    mod = importlib.util.module_from_spec(spec)\n    sys.modules[spec.name] = mod\n    spec.loader.exec_module(mod)\n    return mod\nout = {\"success\": False, \"countryCode\": COUNTRY, \"map\": {}, \"error\": None}\ntry:\n    matcher = load_matcher()\n    args = argparse.Namespace(ds_db_host=\"\", ds_db_port=\"\", ds_db_user=\"\", ds_db_password=\"\", ds_db_name=\"\")\n    try:\n        pid = matcher.find_ds_pid()\n        process_env = matcher.read_process_env(pid)\n        connection = matcher.discover_ds_mysql_connection(args, process_env)\n    except Exception:\n        connection = matcher.configured_ds_mysql_connection(COUNTRY)\n        if not connection:\n            raise\n    sql = \"SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> ''\"\n    rows = matcher.query_mysql_rows(connection, sql) or []\n    result = {}\n    for row in rows:\n        user = str(row.get(\"user_name\") or row.get(\"user\") or \"\")\n        token = str(row.get(\"token\") or \"\")\n        if token:\n            result[token] = user\n    out = {\"success\": True, \"countryCode\": COUNTRY, \"map\": result, \"error\": None}\nexcept Exception as e:\n    out[\"error\"] = {\"code\": \"DS_TOKEN_MAP_FAILED\", \"message\": str(e)}\nprint(\"__DS_TOKEN_META__\" + json.dumps(out, ensure_ascii=False))`;\n\nfunction buildCountryCommand(code, country, requestId) {\n  const remoteScript = [\n    'set -euo pipefail',\n    `COUNTRY_CODE=${shellQuote(country.key)}`,\n    `python3 - <<'DS_TOKEN_MAP_PY'`,\n    PY_SOURCE,\n    `DS_TOKEN_MAP_PY`,\n  ].join('\\n');\n  const sshParts = ['ssh'];\n  if (country.sshPort) sshParts.push('-p', String(country.sshPort));\n  sshParts.push('-o BatchMode=yes', '-o ConnectTimeout=20', shellQuote(`root@${country.sshHost}`), shellQuote(`bash -lc ${shellQuote(remoteScript)}`));\n  return sshParts.join(' ');\n}\n\nconst requestId = String(raw.request_id || raw.requestId || `ds-token-map-${Date.now()}`);\nconst commands = Object.fromEntries(Object.entries(COUNTRIES).map(([code, item]) => [code, buildCountryCommand(code, item, requestId)]));\nreturn [{ json: { valid: true, requestId, commands } }];"
+      },
+      "id": "ds-token-build",
+      "name": "解析请求并生成各国 SSH 命令",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ds-token-valid-condition",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ds-token-if",
+      "name": "请求是否有效",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={$json.commands.CN}"
+      },
+      "id": "ds-token-ssh-cn",
+      "name": "中国 / CN - 连接跳板机查询 DS Token",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        -420
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "wGL20YUQ7ZpN1xRA",
+          "name": "中国跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={$json.commands.PH}"
+      },
+      "id": "ds-token-ssh-ph",
+      "name": "菲律宾 / PH - 连接跳板机查询 DS Token",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        -260
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "MQWXoKIQxg8ae2Nt",
+          "name": "菲律宾跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={$json.commands.INE}"
+      },
+      "id": "ds-token-ssh-ine",
+      "name": "印尼 / INE - 连接跳板机查询 DS Token",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        -100
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "SyHW5nXUCnuULr2c",
+          "name": "印尼跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={$json.commands.MX}"
+      },
+      "id": "ds-token-ssh-mx",
+      "name": "墨西哥 / MX - 连接跳板机查询 DS Token",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        60
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "7oQDoS8H2buTjr7H",
+          "name": "墨西哥跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={$json.commands.TH}"
+      },
+      "id": "ds-token-ssh-th",
+      "name": "泰国 / TH - 连接跳板机查询 DS Token",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        220
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "SliSXhrkW6tiEFFo",
+          "name": "泰国跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={$json.commands.PK}"
+      },
+      "id": "ds-token-ssh-pk",
+      "name": "巴基斯坦 / PK - 连接跳板机查询 DS Token",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        380
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "W8NbqcmBWoI5MZ3s",
+          "name": "巴基斯坦跳板机"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst merged = {};\nconst countries = [];\nconst errors = [];\nfor (const item of items) {\n  const raw = item.json;\n  const stdout = String(raw.stdout || '');\n  const stderr = String(raw.stderr || raw.error?.message || '');\n  const metaLine = stdout.split(/\\r?\\n/).find((l) => l.startsWith('__DS_TOKEN_META__'));\n  if (!metaLine) {\n    errors.push({ country: '', error: { code: 'NO_META', message: stderr || 'no __DS_TOKEN_META__ in output' } });\n    continue;\n  }\n  let meta;\n  try {\n    meta = JSON.parse(metaLine.replace('__DS_TOKEN_META__', ''));\n  } catch (e) {\n    errors.push({ country: '', error: { code: 'BAD_META', message: String(e && e.message) } });\n    continue;\n  }\n  if (meta.success) {\n    Object.assign(merged, meta.map || {});\n    countries.push({ country: meta.countryCode, count: Object.keys(meta.map || {}).length });\n  } else {\n    errors.push({ country: meta.countryCode, error: meta.error });\n  }\n}\nreturn [{ json: { success: true, map: merged, countries, errors, total: Object.keys(merged).length } }];"
+      },
+      "id": "ds-token-parse",
+      "name": "解析查询结果",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: false, map: {}, countries: [], errors: [{ code: 'INVALID_REQUEST', message: ($json.errors || []).join('; ') || 'invalid request' }], total: 0 } }];"
+      },
+      "id": "ds-token-invalid",
+      "name": "构造请求错误响应",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "ds-token-respond",
+      "name": "返回 DS Token 映射结果",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "接收 DS Token 映射请求": {
+      "main": [
+        [
+          {
+            "node": "解析请求并生成各国 SSH 命令",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "解析请求并生成各国 SSH 命令": {
+      "main": [
+        [
+          {
+            "node": "请求是否有效",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "请求是否有效": {
+      "main": [
+        [
+          {
+            "node": "中国 / CN - 连接跳板机查询 DS Token",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "菲律宾 / PH - 连接跳板机查询 DS Token",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "印尼 / INE - 连接跳板机查询 DS Token",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "墨西哥 / MX - 连接跳板机查询 DS Token",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "泰国 / TH - 连接跳板机查询 DS Token",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "巴基斯坦 / PK - 连接跳板机查询 DS Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "构造请求错误响应",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "中国 / CN - 连接跳板机查询 DS Token": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "菲律宾 / PH - 连接跳板机查询 DS Token": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "印尼 / INE - 连接跳板机查询 DS Token": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "墨西哥 / MX - 连接跳板机查询 DS Token": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "泰国 / TH - 连接跳板机查询 DS Token": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "巴基斯坦 / PK - 连接跳板机查询 DS Token": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "构造请求错误响应": {
+      "main": [
+        [
+          {
+            "node": "返回 DS Token 映射结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "解析查询结果": {
+      "main": [
+        [
+          {
+            "node": "返回 DS Token 映射结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "replace-after-import",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "replace-after-import",
+  "tags": []
+}
