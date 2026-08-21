@@ -556,7 +556,11 @@ function buildRetryRuns(logs) {
       summary: formatRetryMessage(last.message) || retryRunStatus(status),
       logs: ordered.reverse(),
     };
-  }).filter((run) => run.logs.some((item) => ["manual_run_completed", "scheduled_run_completed"].includes(item.event)))
+  }).filter((run) => {
+    const events = new Set(run.logs.map((item) => item.event));
+    if (events.has("manual_run_stopped")) return false;
+    return events.has("manual_run_completed") || events.has("scheduled_run_completed") || events.has("manual_run");
+  })
     .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
 }
 

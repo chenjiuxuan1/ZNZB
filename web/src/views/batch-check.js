@@ -1722,7 +1722,7 @@ function renderCountryScheduleConfig(schedule) {
                 <label class="schedule-country-owner-field">
                   负责人邮箱
                   <input class="schedule-country-owner-emails" value="${escapeHtml(config.ownerEmails || "")}" placeholder="多个邮箱用逗号分隔">
-                  <small>疑似空跑自动重跑满 1 小时后，按邮箱私聊负责人并记录发送结果。</small>
+                  <small>疑似空跑会按原失败实例运行时长判断；超过 1 小时不重跑，并按邮箱私聊负责人、记录发送结果。</small>
                 </label>
                 <label class="kn-target-field">
                   接收人邮箱
