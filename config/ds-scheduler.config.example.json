@@ -163,6 +163,11 @@
             "name": "${DS_PK_DB_NAME}"
           }
         }
+      },
+      "mode": "gateway",
+      "gateway": {
+        "webhookUrl": "http://127.0.0.1:5678/webhook/ds-token-map",
+        "token": ""
       }
     }
   }
