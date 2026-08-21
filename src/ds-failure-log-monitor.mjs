@@ -39,9 +39,10 @@ const SQL_CODE_ERROR_PATTERNS = [
   /\b(?:column|table|function|database) .+ (?:does not exist|not found)\b/i,
   /\bno such (?:column|table|function|database)\b/i,
   /\b(?:cannot|could not|unable to) resolve (?:column|field|table|function)\b/i,
+  /\b(?:not defined var|undefined variable|variable .+ (?:is )?not defined)\b/i,
   /\binvalid identifier\b/i, /\bno matching function\b/i,
   /\btype mismatch\b|\bcannot cast\b|\bincompatible type\b|\bunsupported operand\b/i,
-  /字段.+不存在|表.+不存在|函数.+不存在|无法解析.+(?:字段|列|表|函数)|SQL.+语法错误/i,
+  /字段.+不存在|表.+不存在|函数.+不存在|变量.+(?:未定义|不存在)|无法解析.+(?:字段|列|表|函数|变量)|SQL.+语法错误/i,
 ];
 
 const PERMISSION_ERROR_PATTERNS = [
