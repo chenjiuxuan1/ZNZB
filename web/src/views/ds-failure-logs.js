@@ -41,7 +41,8 @@ let model = {
   nextAutoRefreshAt: 0,
   retryControl: { enabled: false, startAt: null, activeCount: 0, logCount: 0 },
   retryCountries: COUNTRY_OPTIONS.map((item) => item.code),
-  retryExcludedTasks: {},
+  retryExcludedProjects: {},
+  retryProjects: {},
   retryExclusionOpen: false,
   retryLogs: [],
   retryControlLoaded: false,
@@ -61,15 +62,17 @@ export function renderDsFailureLogs(root) {
 
 async function refreshRetryPanel(root) {
   try {
-    const [control, logResult] = await Promise.all([
+    const [control, logResult, schedulerConfig] = await Promise.all([
       apiGet("/api/ds-failure-retry/control"),
       apiGet("/api/ds-failure-retry/logs?limit=200"),
+      apiGet("/api/ds-scheduler/config"),
     ]);
     model.retryControl = control;
     model.retryCountries = Array.isArray(control.countries) && control.countries.length
       ? [...control.countries]
       : COUNTRY_OPTIONS.map((item) => item.code);
-    model.retryExcludedTasks = control.excludedTasks && typeof control.excludedTasks === "object" ? control.excludedTasks : {};
+    model.retryExcludedProjects = control.excludedProjects && typeof control.excludedProjects === "object" ? control.excludedProjects : {};
+    model.retryProjects = schedulerConfig.projects && typeof schedulerConfig.projects === "object" ? schedulerConfig.projects : {};
     model.retryLogs = logResult.logs || [];
     model.retryControlLoaded = true;
     if (isCurrentView()) paint(root);
@@ -109,7 +112,7 @@ async function toggleRetry(root) {
     } else {
       model.retryControl = await apiPost("/api/ds-failure-retry/start", {
         countries: model.retryCountries,
-        excludedTasks: model.retryExcludedTasks,
+        excludedProjects: model.retryExcludedProjects,
         intervalMinutes: selectedIntervalMinutes,
         retryMinute: selectedRetryMinute,
       });
@@ -137,7 +140,7 @@ async function runRetryNow(root) {
     } else {
       model.retryControl = await apiPost("/api/ds-failure-retry/run-now", {
         countries: model.retryCountries,
-        excludedTasks: model.retryExcludedTasks,
+        excludedProjects: model.retryExcludedProjects,
       });
       model.retryActionMessage = "已开始立即运行测试；再次点击可停止，自动重跑开关未改变。";
     }
@@ -170,23 +173,38 @@ function scheduleManualStatusPoll(root) {
 }
 
 async function saveRetryExclusions(root) {
-  const excludedTasks = {};
+  const excludedProjects = {};
   for (const option of COUNTRY_OPTIONS) {
-    const value = root.querySelector(`[data-retry-exclusion-country="${option.code}"]`)?.value || "";
-    excludedTasks[option.code] = [...new Set(value.split(/[，,；;\n]/).map((item) => item.trim()).filter(Boolean))];
+    excludedProjects[option.code] = [...root.querySelectorAll(`[data-retry-project-country="${option.code}"]:not(:checked)`)]
+      .map((item) => item.value).filter(Boolean);
   }
   model.retryActionLoading = true;
   try {
-    model.retryControl = await apiPost("/api/ds-failure-retry/config", { excludedTasks });
-    model.retryExcludedTasks = model.retryControl.excludedTasks || excludedTasks;
+    model.retryControl = await apiPost("/api/ds-failure-retry/config", { excludedProjects });
+    model.retryExcludedProjects = model.retryControl.excludedProjects || excludedProjects;
     model.retryExclusionOpen = false;
-    model.retryActionMessage = "不重跑任务配置已保存。";
+    model.retryActionMessage = "不重跑项目配置已保存。";
   } catch (error) {
-    model.retryActionMessage = `不重跑任务配置保存失败：${error.message}`;
+    model.retryActionMessage = `不重跑项目配置保存失败：${error.message}`;
   } finally {
     model.retryActionLoading = false;
     paint(root);
   }
+}
+
+async function saveRetryCountries(root, values) {
+  model.retryCountries = values;
+  if (!model.retryControl.enabled) return;
+  try {
+    model.retryControl = await apiPost("/api/ds-failure-retry/config", {
+      countries: values,
+      excludedProjects: model.retryExcludedProjects,
+    });
+    model.retryActionMessage = "重跑国家已更新，将从下一轮自动重跑开始生效。";
+  } catch (error) {
+    model.retryActionMessage = `重跑国家更新失败：${error.message}`;
+  }
+  paint(root);
 }
 
 async function load(root) {
@@ -378,16 +396,20 @@ function paint(root) {
         <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">除 SQL/代码错误和权限不足外，其余失败均进入持续重跑；人工停止、下线及跨天任务仍会安全停止。</p></div>
         <div class="ds-retry-header-actions ds-retry-control-actions">
           <button class="secondary ds-retry-action" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新日志</button>
-          <button class="secondary ds-retry-action" id="ds-retry-exclusions">不重跑任务配置</button>
+          <button class="secondary ds-retry-action" id="ds-retry-exclusions">不重跑项目配置</button>
           <button class="green-toggle" id="ds-retry-run-now" type="button" role="switch" aria-checked="${Boolean(model.retryControl.manualRunning)}" ${model.retryManualActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>${model.retryManualActionLoading ? "处理中…" : model.retryControl.manualRunning ? "停止立即测试" : "立即运行测试"}</span></button>
         </div>
       </div>
       <div class="ds-failure-filter-grid">
         ${renderRetryIntervalSelect(model.retryControl.intervalMinutes || 60, model.retryControl.enabled)}
         <label>自动重跑分钟<input id="ds-retry-minute" type="number" min="0" max="59" step="1" value="${Number(model.retryControl.retryMinute ?? 0)}" ${model.retryControl.enabled ? "disabled" : ""} placeholder="0-59"></label>
-        ${renderCountryMultiSelect("ds-retry-country", "重跑国家", model.retryCountries, model.retryControl.enabled)}
+        ${renderCountryMultiSelect("ds-retry-country", "重跑国家", model.retryCountries, false)}
         <div class="country-multi-field"><span>自动重跑</span><button class="green-toggle ds-retry-run-now" id="ds-retry-toggle" type="button" role="switch" aria-checked="${model.retryControl.enabled}" ${model.retryActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>${model.retryActionLoading ? "处理中…" : retryStateLabel}</span></button><small>开启后在所设置的重跑分钟执行第一轮，之后按所选间隔运行</small></div>
         <label>当前运行任务<input value="${Number(model.retryControl.activeCount || 0)} 个" disabled></label>
+      </div>
+      <div class="ds-retry-schedule-times">
+        <label>下次运行<input value="${escapeHtml(formatTime(model.retryControl.nextRunAt))}" disabled></label>
+        <label>上次运行<input value="${escapeHtml(formatTime(model.retryControl.lastRunAt))}" disabled></label>
       </div>
       ${model.retryActionMessage ? `<div class="sandbox-status ${/失败|错误|无效|请选择/.test(model.retryActionMessage) ? "error" : "warn"}"><span>${escapeHtml(model.retryActionMessage)}</span></div>` : ""}
       <div class="sub-panel ds-retry-history">
@@ -417,7 +439,7 @@ function paint(root) {
   root.querySelector("#ds-retry-exclusion-cancel")?.addEventListener("click", () => { model.retryExclusionOpen = false; paint(root); });
   root.querySelector("#ds-retry-exclusion-save")?.addEventListener("click", () => saveRetryExclusions(root));
   root.querySelectorAll("[data-delete-retry-run]").forEach((button) => button.addEventListener("click", () => deleteRetryRun(root, button.dataset.deleteRetryRun)));
-  bindCountryMultiSelect(root, "ds-retry-country", (values) => { model.retryCountries = values; });
+  bindCountryMultiSelect(root, "ds-retry-country", (values) => { void saveRetryCountries(root, values); });
 }
 
 function renderRetryIntervalSelect(value, disabled) {
@@ -433,15 +455,25 @@ function renderRetryExclusionModal() {
   return `<div class="modal-backdrop ds-retry-exclusion-backdrop">
     <section class="panel ds-retry-exclusion-modal" role="dialog" aria-modal="true" aria-labelledby="ds-retry-exclusion-title">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title" id="ds-retry-exclusion-title">不重跑任务配置</h2><p class="muted">按国家填写不进行自动重跑的任务名称、任务编码、工作流名称或工作流编码；多个值用逗号、分号或换行分隔，按完整名称精确匹配。</p></div>
+        <div><h2 class="panel-title" id="ds-retry-exclusion-title">不重跑项目配置</h2><p class="muted">按国家启用或关闭项目。关闭一个项目后，该项目下所有工作流都不会进入自动重跑。</p></div>
         <button class="secondary" id="ds-retry-exclusion-close" type="button">关闭</button>
       </div>
       <div class="schedule-country-grid ds-project-grid ds-retry-exclusion-grid">
-        ${COUNTRY_OPTIONS.map((option) => `<article class="schedule-country-card ds-project-card"><div class="schedule-country-card-header"><strong>${option.flag} ${option.name}</strong><span class="badge ${(model.retryExcludedTasks[option.code] || []).length ? "warn" : "idle"}">${(model.retryExcludedTasks[option.code] || []).length} 个任务</span></div><label>指定不重跑任务<textarea data-retry-exclusion-country="${option.code}" rows="4" placeholder="如：daily_order_sync，订单日汇总">${escapeHtml((model.retryExcludedTasks[option.code] || []).join("\n"))}</textarea></label></article>`).join("")}
+        ${COUNTRY_OPTIONS.map((option) => renderRetryProjectCard(option)).join("")}
       </div>
       <div class="button-group ds-retry-exclusion-actions"><button class="secondary" id="ds-retry-exclusion-cancel" type="button">取消</button><button class="primary" id="ds-retry-exclusion-save" type="button">保存配置</button></div>
     </section>
   </div>`;
+}
+
+function renderRetryProjectCard(option) {
+  const projects = Array.isArray(model.retryProjects[option.code]) ? model.retryProjects[option.code] : [];
+  const excluded = model.retryExcludedProjects[option.code] || [];
+  return `<article class="schedule-country-card ds-project-card"><div class="schedule-country-card-header"><strong>${option.flag} ${option.name}</strong><span class="badge ${excluded.length ? "warn" : "ok"}">${excluded.length} 个项目已关闭</span></div><div class="ds-retry-project-switches">${projects.length ? projects.map((project) => {
+    const identity = String(project.code || project.name || "");
+    const checked = !excluded.includes(identity);
+    return `<label><span>${escapeHtml(project.name || project.code || "未命名项目")}</span><input type="checkbox" data-retry-project-country="${option.code}" value="${escapeHtml(identity)}" ${checked ? "checked" : ""}></label>`;
+  }).join("") : '<span class="muted">该国家尚未配置 DS 项目</span>'}</div></article>`;
 }
 
 function renderCountryMultiSelect(id, label, selected, disabled = false) {
@@ -682,7 +714,7 @@ function renderCountry(country) {
 function filteredFailures(failures) {
   const keyword = model.keyword.trim().toLowerCase();
   return failures.filter((item) => {
-    const displayStatus = item.autoRetryStatus || item.failureType || item.repairStatus;
+    const displayStatus = item.repairStatus === "recovered" ? "recovered" : item.failureType || item.repairStatus;
     if (model.status && displayStatus !== model.status) return false;
     if (model.scheduleCategory && item.scheduleCategory !== model.scheduleCategory) return false;
     if (!keyword) return true;
@@ -692,7 +724,7 @@ function filteredFailures(failures) {
 }
 
 function renderFailure(item) {
-  const displayStatus = item.autoRetryStatus || item.failureType || item.repairStatus || "unresolved";
+  const displayStatus = item.repairStatus === "recovered" ? "recovered" : item.failureType || item.repairStatus || "unresolved";
   const status = STATUS_LABELS[displayStatus] || STATUS_LABELS.unresolved;
   const taskUnlocated = !item.taskName && !item.taskCode;
   const failureReason = failureReasonForDisplay(item);
@@ -721,9 +753,9 @@ function renderFailure(item) {
       <span>当天失败次数：${item.failureCount || 1}</span>
     </div>
     <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(failureReason)}</pre></div>
-    <div class="ds-failure-recovery"><strong>重跑策略</strong><span>${escapeHtml(item.retryDecision || "等待失败原因分类")}${Number(item.attempts || 0) ? ` · 已重跑 ${Number(item.attempts)} 次` : ""}${item.lastError ? ` · 最近错误：${escapeHtml(item.lastError)}` : ""}</span></div>
+    <div class="ds-failure-recovery"><strong>失败分类</strong><span>${escapeHtml(item.retryDecision || "等待失败原因分类；本模块仅查询，不执行重跑")}</span></div>
     ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
-    ${item.repairStatus !== "unresolved" || item.stopReason ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "修复结果" : "修复进度"}</strong><span>${item.stopReason ? escapeHtml(item.stopReason) : `后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}`}</span></div>` : ""}
+    ${item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "查询结果" : "后续状态"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
 }
