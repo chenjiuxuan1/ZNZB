@@ -494,7 +494,7 @@ function buildRetryRuns(logs) {
     const matchedCountryNames = countries.map((country) => COUNTRY_META[country]?.name || country).join("、");
     const taskCount = new Set(ordered.map((item) => item.key).filter(Boolean)).size;
     const retryCount = ordered.filter((item) => item.event === "retry_submitted").length;
-    const status = ordered.some((item) => item.event === "recovered") ? "success"
+    const status = ordered.some((item) => ["recovered", "manual_run_completed"].includes(item.event)) ? "success"
       : ordered.some((item) => item.level === "error") ? "failed"
         : ordered.some((item) => ["control_disabled", "manual_run_stopped", "safety_stopped", "retry_stopped"].includes(item.event)) ? "stopped"
           : "running";
@@ -613,6 +613,7 @@ function retryLogEvent(event) {
     control_enabled: "启用重跑",
     control_disabled: "停止重跑",
     manual_run: "立即运行",
+    manual_run_completed: "立即测试完成",
     manual_run_stopped: "停止立即测试",
     retry_started: "开始处理",
     retry_submitted: "提交重跑",
