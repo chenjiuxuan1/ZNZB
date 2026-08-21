@@ -82,7 +82,10 @@ function sourceBadge(report) {
   return `<span class="badge ${item.cls}">${item.text}</span>`;
 }
 
+let activeRoot = null;
+
 export function renderDsSchedulerUsage(root) {
+  activeRoot = root;
   paint(root);
   loadConfigOnly(root);
 }
@@ -133,10 +136,12 @@ async function refresh(root) {
   } finally {
     btn.dataset.busy = "0";
   }
-  paint(root);
+  const target = activeRoot || root;
+  paint(target);
 }
 
 function paint(root) {
+  activeRoot = root;
   const report = model.report;
   root.innerHTML = `
     <div class="page-header batch-hero">
@@ -270,15 +275,18 @@ function renderDailyOverview(report) {
   }
   const dates = [...byDate.keys()].sort().reverse();
   if (!dates.length) return "";
-  const rows = dates.map((date) => {
+  const rows = dates.flatMap((date) => {
     const cmap = byDate.get(date);
-    const cells = [...cmap.entries()]
+    return [...cmap.entries()]
       .sort((a, b) => { const sa=[...a[1].values()].reduce((x,y)=>x+y,0); const sb=[...b[1].values()].reduce((x,y)=>x+y,0); return sb-sa; })
       .map(([country, umap]) => {
         const users = [...umap.entries()].map(([name, req]) => `${escapeHtml(name)}×${req}`).join("、");
-        return `<span class="dsu-daily-country"><b>${escapeHtml(countryLabel(country))}</b>：${users || "—"}</span>`;
+        return `<tr>
+          <td class="muted">${escapeHtml(date)}</td>
+          <td><b>${escapeHtml(countryLabel(country))}</b></td>
+          <td class="dsu-daily-users">${users || "—"}</td>
+        </tr>`;
       });
-    return `<tr><td class="muted">${escapeHtml(date)}</td><td class="dsu-daily-cells">${cells.join("") || "—"}</td></tr>`;
   }).join("");
   return `
     <section class="panel dsu-daily-overview">
@@ -290,7 +298,7 @@ function renderDailyOverview(report) {
       </div>
       <div class="dsu-daily-body">
         <table class="ds-table">
-          <thead><tr><th>日期</th><th>国家 / 使用人（次数）</th></tr></thead>
+          <thead><tr><th>日期</th><th>国家</th><th>使用人（次数）</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>

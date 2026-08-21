@@ -8,6 +8,7 @@ const DEFAULT_CONFIG_PATH = "config/ds-scheduler.config.json";
 const DEFAULT_SNAPSHOT_PATH = "config/ds-scheduler-usage-snapshot.json";
 const DEFAULT_AUDIT_TABLE = "ds_operation_audit_log";
 const DEFAULT_TOKEN_MAP_PATH = "config/ds-token-user-map.json";
+const TOKEN_MAP_TTL_MS = 60 * 60 * 1000; // 1 小时：避免每次刷新都重拉 6 国 token 映射
 const GATEWAY_TIMEOUT_MS = 60_000;
 const SSH_TIMEOUT_MS = 45_000;
 
@@ -666,6 +667,9 @@ export async function loadDsTokenUserMap(rootDir) {
   const p = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_TOKEN_MAP_PATH);
   try {
     const value = await readJsonFile(p, null);
+    if (value && typeof value === "object" && value.map && typeof value.map === "object") {
+      return value.map;
+    }
     return value && typeof value === "object" ? value : {};
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -673,9 +677,24 @@ export async function loadDsTokenUserMap(rootDir) {
   }
 }
 
+export async function dsTokenUserMapAgeMs(rootDir) {
+  const p = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_TOKEN_MAP_PATH);
+  try {
+    const value = await readJsonFile(p, null);
+    if (value && value.generatedAt) {
+      const t = new Date(value.generatedAt).getTime();
+      if (!Number.isNaN(t)) return Math.max(0, Date.now() - t);
+    }
+    return Infinity;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return Infinity;
+  }
+}
+
 export async function saveDsTokenUserMap(rootDir, map) {
   const p = path.resolve(typeof rootDir === "string" ? rootDir : process.cwd(), DEFAULT_TOKEN_MAP_PATH);
-  await writeJsonFileAtomic(p, map || {});
+  await writeJsonFileAtomic(p, { generatedAt: new Date().toISOString(), map: map || {} });
 }
 
 function postJson(urlString, body, headers = {}, timeoutMs = GATEWAY_TIMEOUT_MS) {
@@ -769,14 +788,17 @@ export async function fetchAndAggregateUsage(options = {}) {
   const cached = await loadUsageSnapshot(rootDir);
   let tokenUserMap = await loadDsTokenUserMap(rootDir);
   if (options.cache && config.tokenMap && config.tokenMap.enabled) {
-    try {
-      const fresh = await fetchDsTokenUserMap(config);
-      if (fresh && Object.keys(fresh).length) {
-        tokenUserMap = { ...tokenUserMap, ...fresh };
-        await saveDsTokenUserMap(rootDir, tokenUserMap);
+    const age = await dsTokenUserMapAgeMs(rootDir);
+    if (age >= TOKEN_MAP_TTL_MS) {
+      try {
+        const fresh = await fetchDsTokenUserMap(config);
+        if (fresh && Object.keys(fresh).length) {
+          tokenUserMap = { ...tokenUserMap, ...fresh };
+          await saveDsTokenUserMap(rootDir, tokenUserMap);
+        }
+      } catch (error) {
+        tokenUserMap.tokenMapRefreshError = String((error && error.message) || error);
       }
-    } catch (error) {
-      tokenUserMap.tokenMapRefreshError = String((error && error.message) || error);
     }
   }
   const usageOptions = { tokenUserMap };
