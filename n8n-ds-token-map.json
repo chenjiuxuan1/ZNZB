@@ -13,69 +13,22 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -860,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const raw = $json.body ?? $json;\n\nconst COUNTRIES = {\n  CN: { key: 'cn', name: '中国', sshHost: '10.20.47.14', sshPort: 36000 },\n  PH: { key: 'ph', name: '菲律宾', sshHost: '10.20.10.12', sshPort: null },\n  INE: { key: 'ine', name: '印尼', sshHost: '192.168.21.236', sshPort: 36000 },\n  MX: { key: 'mx', name: '墨西哥', sshHost: '172.20.220.165', sshPort: 36000 },\n  TH: { key: 'th', name: '泰国', sshHost: '192.168.20.236', sshPort: 36000 },\n  PK: { key: 'pk', name: '巴基斯坦', sshHost: '10.20.84.176', sshPort: null },\n};\n\nfunction shellQuote(value) {\n  return `'${String(value).replace(/'/g, `'\\''`)}'`;\n}\n\nconst PY_SOURCE = `import argparse, importlib.util, json, os, sys\nfrom pathlib import Path\nCOUNTRY = os.environ.get(\"COUNTRY_CODE\", \"\")\ndef load_matcher():\n    configured = Path(os.environ.get(\"DS_MATCH_SCRIPT\", \"\")).expanduser()\n    candidates = [configured] if str(configured) else []\n    candidates += [\n        Path(\"/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n        Path(\"/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n    ]\n    script = next((p for p in candidates if p.is_file()), None)\n    if not script:\n        raise RuntimeError(\"DS_MATCH_HELPER_NOT_DEPLOYED\")\n    spec = importlib.util.spec_from_file_location(\"ds_match_candidate_query\", script)\n    mod = importlib.util.module_from_spec(spec)\n    sys.modules[spec.name] = mod\n    spec.loader.exec_module(mod)\n    return mod\nout = {\"success\": False, \"countryCode\": COUNTRY, \"map\": {}, \"error\": None}\ntry:\n    matcher = load_matcher()\n    args = argparse.Namespace(ds_db_host=\"\", ds_db_port=\"\", ds_db_user=\"\", ds_db_password=\"\", ds_db_name=\"\")\n    try:\n        pid = matcher.find_ds_pid()\n        process_env = matcher.read_process_env(pid)\n        connection = matcher.discover_ds_mysql_connection(args, process_env)\n    except Exception:\n        connection = matcher.configured_ds_mysql_connection(COUNTRY)\n        if not connection:\n            raise\n    sql = \"SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> ''\"\n    rows = matcher.query_mysql_rows(connection, sql) or []\n    result = {}\n    for row in rows:\n        user = str(row.get(\"user_name\") or row.get(\"user\") or \"\")\n        token = str(row.get(\"token\") or \"\")\n        if token:\n            result[token] = user\n    out = {\"success\": True, \"countryCode\": COUNTRY, \"map\": result, \"error\": None}\nexcept Exception as e:\n    out[\"error\"] = {\"code\": \"DS_TOKEN_MAP_FAILED\", \"message\": str(e)}\nprint(\"__DS_TOKEN_META__\" + json.dumps(out, ensure_ascii=False))`;\n\nfunction buildCountryCommand(code, country, requestId) {\n  const remoteScript = [\n    'set -euo pipefail',\n    `COUNTRY_CODE=${shellQuote(country.key)}`,\n    `python3 - <<'DS_TOKEN_MAP_PY'`,\n    PY_SOURCE,\n    `DS_TOKEN_MAP_PY`,\n  ].join('\\n');\n  const sshParts = ['ssh'];\n  if (country.sshPort) sshParts.push('-p', String(country.sshPort));\n  sshParts.push('-o BatchMode=yes', '-o ConnectTimeout=20', shellQuote(`root@${country.sshHost}`), shellQuote(`bash -lc ${shellQuote(remoteScript)}`));\n  return sshParts.join(' ');\n}\n\nconst requestId = String(raw.request_id || raw.requestId || `ds-token-map-${Date.now()}`);\nconst commands = Object.fromEntries(Object.entries(COUNTRIES).map(([code, item]) => [code, buildCountryCommand(code, item, requestId)]));\nreturn [{ json: { valid: true, requestId, commands } }];"
-      },
-      "id": "ds-token-build",
-      "name": "解析请求并生成各国 SSH 命令",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -620,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "ds-token-valid-condition",
-              "leftValue": "={{$json.valid}}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "id": "ds-token-if",
-      "name": "请求是否有效",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        -380,
+        -760,
         0
       ]
     },
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "={$json.commands.CN}"
+        "command": "ssh -p 36000 -o BatchMode=yes -o ConnectTimeout=20 'root@10.20.47.14' 'bash -lc '\\''set -euo pipefail\npython3 - <<'\\''\\'\\'''\\''DS_TOKEN_MAP_PY'\\''\\'\\'''\\''\nimport argparse, importlib.util, json, os, sys\nfrom pathlib import Path\nCOUNTRY = \"cn\"\ndef load_matcher():\n    configured = Path(os.environ.get(\"DS_MATCH_SCRIPT\", \"\")).expanduser()\n    candidates = [configured] if str(configured) else []\n    candidates += [\n        Path(\"/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n        Path(\"/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n    ]\n    script = next((p for p in candidates if p.is_file()), None)\n    if not script:\n        raise RuntimeError(\"DS_MATCH_HELPER_NOT_DEPLOYED\")\n    spec = importlib.util.spec_from_file_location(\"ds_match_candidate_query\", script)\n    mod = importlib.util.module_from_spec(spec)\n    sys.modules[spec.name] = mod\n    spec.loader.exec_module(mod)\n    return mod\nout = {\"success\": False, \"countryCode\": COUNTRY, \"map\": {}, \"error\": None}\ntry:\n    matcher = load_matcher()\n    args = argparse.Namespace(ds_db_host=\"\", ds_db_port=\"\", ds_db_user=\"\", ds_db_password=\"\", ds_db_name=\"\")\n    try:\n        pid = matcher.find_ds_pid()\n        process_env = matcher.read_process_env(pid)\n        connection = matcher.discover_ds_mysql_connection(args, process_env)\n    except Exception:\n        connection = matcher.configured_ds_mysql_connection(COUNTRY)\n        if not connection:\n            raise\n    sql = \"SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> '\\''\\'\\'''\\'''\\''\\'\\'''\\''\"\n    rows = matcher.query_mysql_rows(connection, sql) or []\n    result = {}\n    for row in rows:\n        user = str(row.get(\"user_name\") or row.get(\"user\") or \"\")\n        token = str(row.get(\"token\") or \"\")\n        if token:\n            result[token] = user\n    out = {\"success\": True, \"countryCode\": COUNTRY, \"map\": result, \"error\": None}\nexcept Exception as e:\n    out[\"error\"] = {\"code\": \"DS_TOKEN_MAP_FAILED\", \"message\": str(e)}\nprint(\"__DS_TOKEN_META__\" + json.dumps(out, ensure_ascii=False))\nDS_TOKEN_MAP_PY'\\'''"
       },
       "id": "ds-token-ssh-cn",
       "name": "中国 / CN - 连接跳板机查询 DS Token",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        -180,
-        -420
+        180,
+        -140
       ],
       "continueOnFail": true,
       "credentials": {
@@ -88,15 +41,15 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "={$json.commands.PH}"
+        "command": "ssh -o BatchMode=yes -o ConnectTimeout=20 'root@10.20.10.12' 'bash -lc '\\''set -euo pipefail\npython3 - <<'\\''\\'\\'''\\''DS_TOKEN_MAP_PY'\\''\\'\\'''\\''\nimport argparse, importlib.util, json, os, sys\nfrom pathlib import Path\nCOUNTRY = \"ph\"\ndef load_matcher():\n    configured = Path(os.environ.get(\"DS_MATCH_SCRIPT\", \"\")).expanduser()\n    candidates = [configured] if str(configured) else []\n    candidates += [\n        Path(\"/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n        Path(\"/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n    ]\n    script = next((p for p in candidates if p.is_file()), None)\n    if not script:\n        raise RuntimeError(\"DS_MATCH_HELPER_NOT_DEPLOYED\")\n    spec = importlib.util.spec_from_file_location(\"ds_match_candidate_query\", script)\n    mod = importlib.util.module_from_spec(spec)\n    sys.modules[spec.name] = mod\n    spec.loader.exec_module(mod)\n    return mod\nout = {\"success\": False, \"countryCode\": COUNTRY, \"map\": {}, \"error\": None}\ntry:\n    matcher = load_matcher()\n    args = argparse.Namespace(ds_db_host=\"\", ds_db_port=\"\", ds_db_user=\"\", ds_db_password=\"\", ds_db_name=\"\")\n    try:\n        pid = matcher.find_ds_pid()\n        process_env = matcher.read_process_env(pid)\n        connection = matcher.discover_ds_mysql_connection(args, process_env)\n    except Exception:\n        connection = matcher.configured_ds_mysql_connection(COUNTRY)\n        if not connection:\n            raise\n    sql = \"SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> '\\''\\'\\'''\\'''\\''\\'\\'''\\''\"\n    rows = matcher.query_mysql_rows(connection, sql) or []\n    result = {}\n    for row in rows:\n        user = str(row.get(\"user_name\") or row.get(\"user\") or \"\")\n        token = str(row.get(\"token\") or \"\")\n        if token:\n            result[token] = user\n    out = {\"success\": True, \"countryCode\": COUNTRY, \"map\": result, \"error\": None}\nexcept Exception as e:\n    out[\"error\"] = {\"code\": \"DS_TOKEN_MAP_FAILED\", \"message\": str(e)}\nprint(\"__DS_TOKEN_META__\" + json.dumps(out, ensure_ascii=False))\nDS_TOKEN_MAP_PY'\\'''"
       },
       "id": "ds-token-ssh-ph",
       "name": "菲律宾 / PH - 连接跳板机查询 DS Token",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        -180,
-        -260
+        180,
+        20
       ],
       "continueOnFail": true,
       "credentials": {
@@ -109,15 +62,15 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "={$json.commands.INE}"
+        "command": "ssh -p 36000 -o BatchMode=yes -o ConnectTimeout=20 'root@192.168.21.236' 'bash -lc '\\''set -euo pipefail\npython3 - <<'\\''\\'\\'''\\''DS_TOKEN_MAP_PY'\\''\\'\\'''\\''\nimport argparse, importlib.util, json, os, sys\nfrom pathlib import Path\nCOUNTRY = \"ine\"\ndef load_matcher():\n    configured = Path(os.environ.get(\"DS_MATCH_SCRIPT\", \"\")).expanduser()\n    candidates = [configured] if str(configured) else []\n    candidates += [\n        Path(\"/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n        Path(\"/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n    ]\n    script = next((p for p in candidates if p.is_file()), None)\n    if not script:\n        raise RuntimeError(\"DS_MATCH_HELPER_NOT_DEPLOYED\")\n    spec = importlib.util.spec_from_file_location(\"ds_match_candidate_query\", script)\n    mod = importlib.util.module_from_spec(spec)\n    sys.modules[spec.name] = mod\n    spec.loader.exec_module(mod)\n    return mod\nout = {\"success\": False, \"countryCode\": COUNTRY, \"map\": {}, \"error\": None}\ntry:\n    matcher = load_matcher()\n    args = argparse.Namespace(ds_db_host=\"\", ds_db_port=\"\", ds_db_user=\"\", ds_db_password=\"\", ds_db_name=\"\")\n    try:\n        pid = matcher.find_ds_pid()\n        process_env = matcher.read_process_env(pid)\n        connection = matcher.discover_ds_mysql_connection(args, process_env)\n    except Exception:\n        connection = matcher.configured_ds_mysql_connection(COUNTRY)\n        if not connection:\n            raise\n    sql = \"SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> '\\''\\'\\'''\\'''\\''\\'\\'''\\''\"\n    rows = matcher.query_mysql_rows(connection, sql) or []\n    result = {}\n    for row in rows:\n        user = str(row.get(\"user_name\") or row.get(\"user\") or \"\")\n        token = str(row.get(\"token\") or \"\")\n        if token:\n            result[token] = user\n    out = {\"success\": True, \"countryCode\": COUNTRY, \"map\": result, \"error\": None}\nexcept Exception as e:\n    out[\"error\"] = {\"code\": \"DS_TOKEN_MAP_FAILED\", \"message\": str(e)}\nprint(\"__DS_TOKEN_META__\" + json.dumps(out, ensure_ascii=False))\nDS_TOKEN_MAP_PY'\\'''"
       },
       "id": "ds-token-ssh-ine",
       "name": "印尼 / INE - 连接跳板机查询 DS Token",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        -180,
-        -100
+        180,
+        180
       ],
       "continueOnFail": true,
       "credentials": {
@@ -130,15 +83,15 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "={$json.commands.MX}"
+        "command": "ssh -p 36000 -o BatchMode=yes -o ConnectTimeout=20 'root@172.20.220.165' 'bash -lc '\\''set -euo pipefail\npython3 - <<'\\''\\'\\'''\\''DS_TOKEN_MAP_PY'\\''\\'\\'''\\''\nimport argparse, importlib.util, json, os, sys\nfrom pathlib import Path\nCOUNTRY = \"mx\"\ndef load_matcher():\n    configured = Path(os.environ.get(\"DS_MATCH_SCRIPT\", \"\")).expanduser()\n    candidates = [configured] if str(configured) else []\n    candidates += [\n        Path(\"/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n        Path(\"/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n    ]\n    script = next((p for p in candidates if p.is_file()), None)\n    if not script:\n        raise RuntimeError(\"DS_MATCH_HELPER_NOT_DEPLOYED\")\n    spec = importlib.util.spec_from_file_location(\"ds_match_candidate_query\", script)\n    mod = importlib.util.module_from_spec(spec)\n    sys.modules[spec.name] = mod\n    spec.loader.exec_module(mod)\n    return mod\nout = {\"success\": False, \"countryCode\": COUNTRY, \"map\": {}, \"error\": None}\ntry:\n    matcher = load_matcher()\n    args = argparse.Namespace(ds_db_host=\"\", ds_db_port=\"\", ds_db_user=\"\", ds_db_password=\"\", ds_db_name=\"\")\n    try:\n        pid = matcher.find_ds_pid()\n        process_env = matcher.read_process_env(pid)\n        connection = matcher.discover_ds_mysql_connection(args, process_env)\n    except Exception:\n        connection = matcher.configured_ds_mysql_connection(COUNTRY)\n        if not connection:\n            raise\n    sql = \"SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> '\\''\\'\\'''\\'''\\''\\'\\'''\\''\"\n    rows = matcher.query_mysql_rows(connection, sql) or []\n    result = {}\n    for row in rows:\n        user = str(row.get(\"user_name\") or row.get(\"user\") or \"\")\n        token = str(row.get(\"token\") or \"\")\n        if token:\n            result[token] = user\n    out = {\"success\": True, \"countryCode\": COUNTRY, \"map\": result, \"error\": None}\nexcept Exception as e:\n    out[\"error\"] = {\"code\": \"DS_TOKEN_MAP_FAILED\", \"message\": str(e)}\nprint(\"__DS_TOKEN_META__\" + json.dumps(out, ensure_ascii=False))\nDS_TOKEN_MAP_PY'\\'''"
       },
       "id": "ds-token-ssh-mx",
       "name": "墨西哥 / MX - 连接跳板机查询 DS Token",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        -180,
-        60
+        180,
+        340
       ],
       "continueOnFail": true,
       "credentials": {
@@ -151,15 +104,15 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "={$json.commands.TH}"
+        "command": "ssh -p 36000 -o BatchMode=yes -o ConnectTimeout=20 'root@192.168.20.236' 'bash -lc '\\''set -euo pipefail\npython3 - <<'\\''\\'\\'''\\''DS_TOKEN_MAP_PY'\\''\\'\\'''\\''\nimport argparse, importlib.util, json, os, sys\nfrom pathlib import Path\nCOUNTRY = \"th\"\ndef load_matcher():\n    configured = Path(os.environ.get(\"DS_MATCH_SCRIPT\", \"\")).expanduser()\n    candidates = [configured] if str(configured) else []\n    candidates += [\n        Path(\"/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n        Path(\"/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n    ]\n    script = next((p for p in candidates if p.is_file()), None)\n    if not script:\n        raise RuntimeError(\"DS_MATCH_HELPER_NOT_DEPLOYED\")\n    spec = importlib.util.spec_from_file_location(\"ds_match_candidate_query\", script)\n    mod = importlib.util.module_from_spec(spec)\n    sys.modules[spec.name] = mod\n    spec.loader.exec_module(mod)\n    return mod\nout = {\"success\": False, \"countryCode\": COUNTRY, \"map\": {}, \"error\": None}\ntry:\n    matcher = load_matcher()\n    args = argparse.Namespace(ds_db_host=\"\", ds_db_port=\"\", ds_db_user=\"\", ds_db_password=\"\", ds_db_name=\"\")\n    try:\n        pid = matcher.find_ds_pid()\n        process_env = matcher.read_process_env(pid)\n        connection = matcher.discover_ds_mysql_connection(args, process_env)\n    except Exception:\n        connection = matcher.configured_ds_mysql_connection(COUNTRY)\n        if not connection:\n            raise\n    sql = \"SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> '\\''\\'\\'''\\'''\\''\\'\\'''\\''\"\n    rows = matcher.query_mysql_rows(connection, sql) or []\n    result = {}\n    for row in rows:\n        user = str(row.get(\"user_name\") or row.get(\"user\") or \"\")\n        token = str(row.get(\"token\") or \"\")\n        if token:\n            result[token] = user\n    out = {\"success\": True, \"countryCode\": COUNTRY, \"map\": result, \"error\": None}\nexcept Exception as e:\n    out[\"error\"] = {\"code\": \"DS_TOKEN_MAP_FAILED\", \"message\": str(e)}\nprint(\"__DS_TOKEN_META__\" + json.dumps(out, ensure_ascii=False))\nDS_TOKEN_MAP_PY'\\'''"
       },
       "id": "ds-token-ssh-th",
       "name": "泰国 / TH - 连接跳板机查询 DS Token",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        -180,
-        220
+        180,
+        500
       ],
       "continueOnFail": true,
       "credentials": {
@@ -172,15 +125,15 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "={$json.commands.PK}"
+        "command": "ssh -o BatchMode=yes -o ConnectTimeout=20 'root@10.20.84.176' 'bash -lc '\\''set -euo pipefail\npython3 - <<'\\''\\'\\'''\\''DS_TOKEN_MAP_PY'\\''\\'\\'''\\''\nimport argparse, importlib.util, json, os, sys\nfrom pathlib import Path\nCOUNTRY = \"pk\"\ndef load_matcher():\n    configured = Path(os.environ.get(\"DS_MATCH_SCRIPT\", \"\")).expanduser()\n    candidates = [configured] if str(configured) else []\n    candidates += [\n        Path(\"/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n        Path(\"/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py\"),\n    ]\n    script = next((p for p in candidates if p.is_file()), None)\n    if not script:\n        raise RuntimeError(\"DS_MATCH_HELPER_NOT_DEPLOYED\")\n    spec = importlib.util.spec_from_file_location(\"ds_match_candidate_query\", script)\n    mod = importlib.util.module_from_spec(spec)\n    sys.modules[spec.name] = mod\n    spec.loader.exec_module(mod)\n    return mod\nout = {\"success\": False, \"countryCode\": COUNTRY, \"map\": {}, \"error\": None}\ntry:\n    matcher = load_matcher()\n    args = argparse.Namespace(ds_db_host=\"\", ds_db_port=\"\", ds_db_user=\"\", ds_db_password=\"\", ds_db_name=\"\")\n    try:\n        pid = matcher.find_ds_pid()\n        process_env = matcher.read_process_env(pid)\n        connection = matcher.discover_ds_mysql_connection(args, process_env)\n    except Exception:\n        connection = matcher.configured_ds_mysql_connection(COUNTRY)\n        if not connection:\n            raise\n    sql = \"SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> '\\''\\'\\'''\\'''\\''\\'\\'''\\''\"\n    rows = matcher.query_mysql_rows(connection, sql) or []\n    result = {}\n    for row in rows:\n        user = str(row.get(\"user_name\") or row.get(\"user\") or \"\")\n        token = str(row.get(\"token\") or \"\")\n        if token:\n            result[token] = user\n    out = {\"success\": True, \"countryCode\": COUNTRY, \"map\": result, \"error\": None}\nexcept Exception as e:\n    out[\"error\"] = {\"code\": \"DS_TOKEN_MAP_FAILED\", \"message\": str(e)}\nprint(\"__DS_TOKEN_META__\" + json.dumps(out, ensure_ascii=False))\nDS_TOKEN_MAP_PY'\\'''"
       },
       "id": "ds-token-ssh-pk",
       "name": "巴基斯坦 / PK - 连接跳板机查询 DS Token",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        -180,
-        380
+        180,
+        660
       ],
       "continueOnFail": true,
       "credentials": {
@@ -199,21 +152,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        520,
+        820,
         0
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: { success: false, map: {}, countries: [], errors: [{ code: 'INVALID_REQUEST', message: ($json.errors || []).join('; ') || 'invalid request' }], total: 0 } }];"
-      },
-      "id": "ds-token-invalid",
-      "name": "构造请求错误响应",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -120,
-        520
       ]
     },
     {
@@ -227,36 +167,89 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        820,
+        1120,
         0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "append",
+        "options": {}
+      },
+      "id": "ds-token-merge-1",
+      "name": "合并-中国菲律宾",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        180,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "append",
+        "options": {}
+      },
+      "id": "ds-token-merge-2",
+      "name": "合并-印尼墨西哥",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        360,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "append",
+        "options": {}
+      },
+      "id": "ds-token-merge-3",
+      "name": "合并-泰国巴基斯坦",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        540,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "append",
+        "options": {}
+      },
+      "id": "ds-token-merge-4",
+      "name": "合并-前两组合并",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        720,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "append",
+        "options": {}
+      },
+      "id": "ds-token-merge-5",
+      "name": "合并-全部国家",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        900,
+        720
       ]
     }
   ],
   "pinData": {},
   "connections": {
     "接收 DS Token 映射请求": {
-      "main": [
-        [
-          {
-            "node": "解析请求并生成各国 SSH 命令",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "解析请求并生成各国 SSH 命令": {
-      "main": [
-        [
-          {
-            "node": "请求是否有效",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "请求是否有效": {
       "main": [
         [
           {
@@ -289,13 +282,6 @@
             "type": "main",
             "index": 0
           }
-        ],
-        [
-          {
-            "node": "构造请求错误响应",
-            "type": "main",
-            "index": 0
-          }
         ]
       ]
     },
@@ -303,7 +289,7 @@
       "main": [
         [
           {
-            "node": "解析查询结果",
+            "node": "合并-中国菲律宾",
             "type": "main",
             "index": 0
           }
@@ -314,9 +300,9 @@
       "main": [
         [
           {
-            "node": "解析查询结果",
+            "node": "合并-中国菲律宾",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -325,7 +311,7 @@
       "main": [
         [
           {
-            "node": "解析查询结果",
+            "node": "合并-印尼墨西哥",
             "type": "main",
             "index": 0
           }
@@ -336,9 +322,9 @@
       "main": [
         [
           {
-            "node": "解析查询结果",
+            "node": "合并-印尼墨西哥",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -347,7 +333,7 @@
       "main": [
         [
           {
-            "node": "解析查询结果",
+            "node": "合并-泰国巴基斯坦",
             "type": "main",
             "index": 0
           }
@@ -358,18 +344,62 @@
       "main": [
         [
           {
-            "node": "解析查询结果",
+            "node": "合并-泰国巴基斯坦",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "合并-中国菲律宾": {
+      "main": [
+        [
+          {
+            "node": "合并-前两组合并",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "构造请求错误响应": {
+    "合并-印尼墨西哥": {
       "main": [
         [
           {
-            "node": "返回 DS Token 映射结果",
+            "node": "合并-前两组合并",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "合并-前两组合并": {
+      "main": [
+        [
+          {
+            "node": "合并-全部国家",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "合并-泰国巴基斯坦": {
+      "main": [
+        [
+          {
+            "node": "合并-全部国家",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "合并-全部国家": {
+      "main": [
+        [
+          {
+            "node": "解析查询结果",
             "type": "main",
             "index": 0
           }
