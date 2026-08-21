@@ -249,6 +249,26 @@ export function createDsAutoRetryManager({
     setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "原失败实例运行超过 1 小时，已判定为空跑，不执行重跑", attempts, originalRuntimeMs: runtimeMs, emptyRunConfirmed: true });
     appendLog("warn", "empty_run_confirmed", { runId, key, country, attempts, originalRuntimeMs: runtimeMs, ...taskDetail, message: `原失败实例运行 ${formatDuration(runtimeMs)}，已判定为空跑，本轮不提交重跑` });
     try {
+      const config = await configLoader(rootDir);
+      const countryConfig = config.countries?.[country] || {};
+      const token = String(countryConfig.token || "").trim();
+      const webhookUrl = String(config.n8nWebhookUrl || "").trim();
+      if (!token || !webhookUrl) {
+        appendLog("warn", "owner_notification_skipped", { runId, key, country, attempts, ...taskDetail, message: "无法读取 DS 实例实时状态，未发送空跑告警" });
+        return;
+      }
+      const instance = await actionFn({
+        webhookUrl,
+        country,
+        token,
+        action: "get_instance",
+        payload: { project_code: failure.projectCode, instance_id: failure.instanceId, process_instance_id: failure.instanceId },
+      });
+      const currentState = dsStateOf(instance?.data || instance);
+      if (!RUNNING_STATES.has(currentState)) {
+        appendLog("info", "owner_notification_skipped", { runId, key, country, attempts, currentState, ...taskDetail, message: `DS 实例当前状态为 ${currentState || "UNKNOWN"}，不是运行中，不发送负责人告警` });
+        return;
+      }
       const schedule = await ownerConfigLoader(rootDir);
       const ownerConfig = findCountryOwnerConfig(schedule, country);
       const ownerEmails = String(ownerConfig.ownerEmails || ownerConfig.recipientEmails || "").trim();
@@ -264,7 +284,7 @@ export function createDsAutoRetryManager({
       if (!notification?.sent) throw new Error(notification?.reason || "负责人告警未发送");
       appendLog("success", "owner_notification_sent", { runId, key, country, attempts, ...taskDetail, message: `空跑告警已发送给负责人：${ownerEmails}` });
     } catch (error) {
-      appendLog("error", "owner_notification_failed", { runId, key, country, attempts, ...taskDetail, message: `负责人告警发送失败：${error.message}` });
+      appendLog("error", "owner_notification_failed", { runId, key, country, attempts, ...taskDetail, message: `DS 实例状态确认或负责人告警发送失败：${error.message}` });
     }
   }
 
