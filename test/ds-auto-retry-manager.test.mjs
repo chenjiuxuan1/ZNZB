@@ -294,10 +294,13 @@ test("deletes every persisted log belonging to one retry run", () => {
   manager.disable();
 });
 
-test("skips an exact country task configured as excluded", async () => {
+test("skips every workflow in a country project configured as excluded", async () => {
   let actions = 0;
   const failure = {
     ...classifyDsFailureType({ failureMessage: "Connection reset by peer" }),
+    projectCode: "1001",
+    projectName: "Daily Warehouse",
+    workflowName: "daily_order_workflow",
     taskName: "daily_order_sync",
     failureMessage: "Connection reset by peer",
   };
@@ -307,12 +310,21 @@ test("skips an exact country task configured as excluded", async () => {
     actionFn: async () => { actions += 1; return {}; },
     now: () => fixedNow,
   });
-  manager.configure({ excludedTasks: { cn: ["daily_order_sync"] } });
+  manager.configure({ excludedProjects: { cn: ["1001"] } });
   await enableAndWait(manager);
   assert.equal(actions, 0);
   assert.match([...manager.statuses.values()][0].stopReason, /排除配置/);
   const excludedLog = manager.getLogs().find((item) => item.event === "excluded");
   assert.equal(excludedLog.failureReason, "Connection reset by peer");
+});
+
+test("updates selected countries while automatic retry remains enabled", () => {
+  const manager = createDsAutoRetryManager({ rootDir: "/unused", now: () => fixedNow });
+  manager.enable({ countries: ["cn"], intervalMinutes: 60, retryMinute: 10 });
+  manager.configure({ countries: ["mx", "th"] });
+  assert.equal(manager.control().enabled, true);
+  assert.deepEqual(manager.control().countries, ["mx", "th"]);
+  manager.disable();
 });
 
 test("persists enabled control, selected countries, logs, and task identity across restart", async () => {

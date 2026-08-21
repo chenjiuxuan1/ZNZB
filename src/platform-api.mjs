@@ -2602,8 +2602,7 @@ export function createPlatformApi({
 
     async getDsFailureLogs(filters = {}) {
       const country = String(filters.country || "").trim().toLowerCase();
-      const result = await inspectDsFailureLogs(rootDir, { countries: country || undefined });
-      return dsAutoRetryManager?.decorate ? dsAutoRetryManager.decorate(result) : result;
+      return inspectDsFailureLogs(rootDir, { countries: country || undefined });
     },
 
     getDsFailureRetryControl() {

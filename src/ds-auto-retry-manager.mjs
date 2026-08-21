@@ -78,11 +78,12 @@ export function createDsAutoRetryManager({
   let enabled = Boolean(persisted.enabled);
   let startAt = persisted.startAt && !Number.isNaN(Date.parse(persisted.startAt)) ? new Date(persisted.startAt) : null;
   let countries = Array.isArray(persisted.countries) ? persisted.countries : [];
-  let excludedTasks = normalizeExcludedTasks(persisted.excludedTasks);
+  let excludedProjects = normalizeExcludedTasks(persisted.excludedProjects);
   let currentRunId = persisted.currentRunId || null;
   let intervalMinutes = Math.max(1, Number(persisted.intervalMinutes) || Math.round(scanIntervalMs / 60_000) || 1);
   let retryMinute = normalizeRetryMinute(persisted.retryMinute);
   let nextRunAt = parseDate(persisted.nextRunAt);
+  let lastRunAt = parseDate(persisted.lastRunAt);
   let manualRunning = false;
   let manualRunToken = 0;
 
@@ -90,11 +91,12 @@ export function createDsAutoRetryManager({
     enabled,
     startAt: startAt?.toISOString() || null,
     countries,
-    excludedTasks,
+    excludedProjects,
     currentRunId,
     intervalMinutes,
     retryMinute,
     nextRunAt: nextRunAt?.toISOString() || null,
+    lastRunAt: lastRunAt?.toISOString() || null,
     logs: logs.slice(-500),
     statuses: [...statuses.entries()],
   }, logger);
@@ -256,11 +258,11 @@ export function createDsAutoRetryManager({
         if (countries.length && !countries.includes(countryResult.country)) continue;
         for (const failure of countryResult.failures || []) {
           const key = failureKey(countryResult.country, failure);
-          if (isExcludedFailure(countryResult.country, failure, excludedTasks)) {
+          if (isExcludedProject(countryResult.country, failure, excludedProjects)) {
             const previous = statuses.get(key);
             setStatus(key, { autoRetryStatus: "manual_review", stopReason: "已在重跑排除配置中指定为不重跑" });
             if (previous?.stopReason !== "已在重跑排除配置中指定为不重跑") {
-              appendLog("info", "excluded", { key, country: countryResult.country, ...failureTaskDetail(failure), message: "该任务已被重跑排除配置命中，不执行自动重跑" });
+              appendLog("info", "excluded", { key, country: countryResult.country, ...failureTaskDetail(failure), message: "该项目已关闭重跑，项目内所有工作流均不执行自动重跑" });
             }
             continue;
           }
@@ -328,6 +330,8 @@ export function createDsAutoRetryManager({
     scanTimer = setTimeout(async () => {
       const scheduledAt = nextRunAt;
       try {
+        lastRunAt = now();
+        appendLog("info", "scheduled_run_started", { message: "开始执行本轮定时自动重跑", countries, lastRunAt: lastRunAt.toISOString() });
         await scan();
       } catch (error) {
         logger.error?.("[ds-auto-retry] scan failed:", error);
@@ -345,12 +349,13 @@ export function createDsAutoRetryManager({
     enabled = true;
     startAt = parsed;
     countries = Array.isArray(options.countries) ? [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))] : [];
-    excludedTasks = normalizeExcludedTasks(options.excludedTasks ?? excludedTasks);
+    excludedProjects = normalizeExcludedTasks(options.excludedProjects ?? excludedProjects);
     intervalMinutes = Math.max(1, Number(options.intervalMinutes) || intervalMinutes || 1);
     retryMinute = normalizeRetryMinute(options.retryMinute);
     nextRunAt = nextMinuteOccurrence(now(), retryMinute);
+    lastRunAt = null;
     currentRunId = `ds-retry-${now().getTime()}`;
-    appendLog("info", "control_enabled", { message: `已启用自动重跑，每隔 ${intervalMinutes / 60} 小时运行；首次运行：${nextRunAt.toISOString()}`, startAt: startAt.toISOString(), countries, intervalMinutes, retryMinute, nextRunAt: nextRunAt.toISOString() });
+    appendLog("info", "control_enabled", { message: "等待第一次自动重跑", startAt: startAt.toISOString(), countries, intervalMinutes, retryMinute, nextRunAt: nextRunAt.toISOString() });
     scheduleAutomaticScan();
     return control();
   }
@@ -360,7 +365,7 @@ export function createDsAutoRetryManager({
     if (Array.isArray(options.countries)) {
       countries = [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
     }
-    excludedTasks = normalizeExcludedTasks(options.excludedTasks ?? excludedTasks);
+    excludedProjects = normalizeExcludedTasks(options.excludedProjects ?? excludedProjects);
     currentRunId = `ds-retry-manual-${now().getTime()}`;
     const runId = currentRunId;
     manualRunning = true;
@@ -384,7 +389,10 @@ export function createDsAutoRetryManager({
   }
 
   function configure(options = {}) {
-    excludedTasks = normalizeExcludedTasks(options.excludedTasks);
+    if (options.excludedProjects !== undefined) excludedProjects = normalizeExcludedTasks(options.excludedProjects);
+    if (Array.isArray(options.countries)) {
+      countries = [...new Set(options.countries.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
+    }
     persistState();
     return control();
   }
@@ -405,7 +413,7 @@ export function createDsAutoRetryManager({
         if (status?.runId === currentRunId && ACTIVE_RETRY_STATUSES.has(status?.autoRetryStatus)) activeKeys.add(key);
       }
     }
-    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedTasks, intervalMinutes, retryMinute, nextRunAt: nextRunAt?.toISOString() || null, manualRunning, activeCount: activeKeys.size, logCount: logs.length, currentRunId };
+    return { enabled, startAt: startAt?.toISOString() || null, countries, excludedProjects, intervalMinutes, retryMinute, nextRunAt: nextRunAt?.toISOString() || null, lastRunAt: lastRunAt?.toISOString() || null, manualRunning, activeCount: activeKeys.size, logCount: logs.length, currentRunId };
   }
 
   function getLogs(limit = 200) {
@@ -482,10 +490,10 @@ function normalizeExcludedTasks(value) {
   return result;
 }
 
-function isExcludedFailure(country, failure, excludedTasks) {
-  const configured = excludedTasks[String(country || "").trim().toLowerCase()] || [];
+function isExcludedProject(country, failure, excludedProjects) {
+  const configured = excludedProjects[String(country || "").trim().toLowerCase()] || [];
   if (!configured.length) return false;
-  const identities = [failure.taskName, failure.taskCode, failure.workflowName, failure.workflowCode]
+  const identities = [failure.projectName, failure.projectCode]
     .map((item) => String(item || "").trim().toLowerCase())
     .filter(Boolean);
   return configured.some((item) => identities.includes(String(item).trim().toLowerCase()));
