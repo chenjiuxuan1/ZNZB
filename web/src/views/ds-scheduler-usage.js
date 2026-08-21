@@ -10,6 +10,56 @@ function countryLabel(code) {
   return COUNTRY_LABELS[code] || code || "-";
 }
 
+const ACTION_LABELS = {
+  resolve_project: "解析项目",
+  list_alert_groups: "告警组列表",
+  list_projects: "项目列表",
+  list_workflows: "工作流列表",
+  create_workflow: "创建工作流",
+  list_schedules: "调度列表",
+  get_schedule: "获取调度",
+  create_schedule: "创建调度",
+  update_schedule: "更新调度",
+  batch_update_schedule_alerts: "批量更新调度告警",
+  online_schedule: "上线调度",
+  offline_schedule: "下线调度",
+  schedule_blast_radius: "调度影响范围",
+  get_workflow: "获取工作流",
+  online_workflow: "上线工作流",
+  offline_workflow: "下线工作流",
+  trigger_workflow: "触发工作流",
+  list_instances: "实例列表",
+  get_instance: "获取实例",
+  list_task_instances: "任务实例列表",
+  get_task_log: "任务日志",
+  retry_instance: "重试实例",
+  stop_instance: "停止实例",
+  force_fail_instance: "强制失败实例",
+  check_failed_instances: "检查失败实例",
+  list_datasources: "数据源列表",
+  get_datasource: "获取数据源",
+  extract_task_runtime_config: "提取任务运行配置",
+  list_resources: "资源列表",
+  view_resource_file: "查看资源文件",
+  search_resource_sql: "搜索资源SQL",
+  find_resource_usage: "资源使用查询",
+  search_country_git_sql: "搜索国家Git SQL",
+  append_task: "追加任务",
+  append_sql_task: "追加SQL任务",
+  append_shell_task: "追加Shell任务",
+  update_task: "更新任务",
+  update_sql_task: "更新SQL任务",
+  update_shell_task: "更新Shell任务",
+  disable_tasks_except: "禁用指定之外任务",
+  disable_task: "禁用任务",
+  delete_task: "删除任务",
+  dump_workflow_graph: "导出工作流图",
+};
+
+function actionLabel(key) {
+  return ACTION_LABELS[key] || key || "-";
+}
+
 function sourceLabel(source) {
   return SOURCE_LABELS[source] || source || "-";
 }
@@ -32,7 +82,10 @@ function sourceBadge(report) {
   return `<span class="badge ${item.cls}">${item.text}</span>`;
 }
 
+let activeRoot = null;
+
 export function renderDsSchedulerUsage(root) {
+  activeRoot = root;
   paint(root);
   loadConfigOnly(root);
 }
@@ -83,10 +136,12 @@ async function refresh(root) {
   } finally {
     btn.dataset.busy = "0";
   }
-  paint(root);
+  const target = activeRoot || root;
+  paint(target);
 }
 
 function paint(root) {
+  activeRoot = root;
   const report = model.report;
   root.innerHTML = `
     <div class="page-header batch-hero">
@@ -200,10 +255,62 @@ function renderStatus(report) {
   return "";
 }
 
+function renderDailyOverview(report) {
+  const countries = (report && report.countryUsage) || [];
+  if (!countries.length) return "";
+  const range = model.globalRange || {};
+  const byDate = new Map();
+  for (const c of countries) {
+    for (const d of countryWindow(c, range)) {
+      if (!d.date) continue;
+      if (!byDate.has(d.date)) byDate.set(d.date, new Map());
+      const cmap = byDate.get(d.date);
+      let umap = cmap.get(c.country);
+      if (!umap) { umap = new Map(); cmap.set(c.country, umap); }
+      for (const op of (d.operators || [])) {
+        const name = op.user || "未知";
+        umap.set(name, (umap.get(name) || 0) + op.requests);
+      }
+    }
+  }
+  const dates = [...byDate.keys()].sort().reverse();
+  if (!dates.length) return "";
+  const rows = dates.flatMap((date) => {
+    const cmap = byDate.get(date);
+    return [...cmap.entries()]
+      .sort((a, b) => { const sa=[...a[1].values()].reduce((x,y)=>x+y,0); const sb=[...b[1].values()].reduce((x,y)=>x+y,0); return sb-sa; })
+      .map(([country, umap]) => {
+        const users = [...umap.entries()].map(([name, req]) => `${escapeHtml(name)}×${req}`).join("、");
+        return `<tr>
+          <td class="muted">${escapeHtml(date)}</td>
+          <td><b>${escapeHtml(countryLabel(country))}</b></td>
+          <td class="dsu-daily-users">${users || "—"}</td>
+        </tr>`;
+      });
+  }).join("");
+  return `
+    <section class="panel dsu-daily-overview">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">每日使用概览</h2>
+          <p class="muted">每天各国家 / 使用人（次数）</p>
+        </div>
+      </div>
+      <div class="dsu-daily-body">
+        <table class="ds-table">
+          <thead><tr><th>日期</th><th>国家</th><th>使用人（次数）</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function renderMain(report) {
   if (!model.globalRange) model.globalRange = globalDefaultRange(report);
   const range = model.globalRange;
   return `
+    ${renderDailyOverview(report)}
     <section class="panel">
       <div class="detail-header compact-header">
         <div>
@@ -354,7 +461,7 @@ function renderCountry(c) {
           <span class="dsu-filter-label">使用 Token</span>
           <span class="dsu-token-tags">${data.tokens.map((t) => `<code class="dsu-token-tag">${escapeHtml(t)}</code>`).join("")}</span>
         </div>` : ""}
-        ${renderBreakdown("动作分布", data.actions, (key) => key)}
+        ${renderBreakdown("动作分布", data.actions, (key) => actionLabel(key))}
         <div class="dsu-table-wrap">
           <table class="ds-table dsu-operator-table">
             <thead>
@@ -437,7 +544,7 @@ function renderCountryOperatorRow(op) {
       <td><span class="chip ${rateClass(op.successRate)}">${op.successRate}%</span></td>
       <td>${op.riskActions}</td>
       <td>${fmtDuration(op.avgDurationMs)}</td>
-      <td class="muted">${Object.entries(op.actions || {}).slice(0, 3).map(([a, n]) => `${escapeHtml(a)}×${n}`).join(" · ") || "-"}</td>
+      <td class="muted">${Object.entries(op.actions || {}).slice(0, 3).map(([a, n]) => `${escapeHtml(actionLabel(a))}×${n}`).join(" · ") || "-"}</td>
     </tr>
   `;
 }
