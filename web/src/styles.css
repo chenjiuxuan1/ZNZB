@@ -172,6 +172,12 @@ button.ds-retry-action {
 .ds-retry-exclusion-grid .ds-project-card {
   min-height: 150px;
   overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.ds-retry-exclusion-grid .ds-project-card:has(details[open]) {
+  z-index: 50;
 }
 
 .ds-retry-project-filter {
@@ -183,6 +189,7 @@ button.ds-retry-action {
   min-width: 100%;
   overflow-y: auto;
   width: max-content;
+  z-index: 100;
 }
 
 .ds-retry-project-empty {
