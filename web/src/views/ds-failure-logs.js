@@ -52,6 +52,7 @@ let model = {
 };
 
 let autoRefreshTimer = null;
+let retryDetailPollTimer = null;
 let queryController = null;
 
 export function renderDsFailureLogs(root) {
@@ -352,6 +353,8 @@ function paint(root) {
     renderRetryHistoryDetailPage(root, retryRunId);
     return;
   }
+  clearTimeout(retryDetailPollTimer);
+  retryDetailPollTimer = null;
   const result = model.result
     ? aggregateResult(model.result.countries.filter((item) => !model.countries.length || model.countries.includes(item.country)))
     : {};
@@ -526,7 +529,7 @@ function buildRetryRuns(logs) {
   return [...groups.entries()].map(([id, items]) => {
     const ordered = [...items].sort((a, b) => Date.parse(a.time || 0) - Date.parse(b.time || 0));
     const countries = [...new Set(ordered.map((item) => item.country).filter(Boolean))];
-    const controlLog = ordered.find((item) => item.event === "control_enabled") || {};
+    const controlLog = ordered.find((item) => Array.isArray(item.countries)) || {};
     const selectedCountries = Array.isArray(controlLog.countries) ? controlLog.countries : [];
     const selectedCountryNames = selectedCountries.map((country) => COUNTRY_META[country]?.name || country).join("、");
     const matchedCountryNames = countries.map((country) => COUNTRY_META[country]?.name || country).join("、");
@@ -542,6 +545,7 @@ function buildRetryRuns(logs) {
       startedAt: ordered[0]?.time,
       endedAt: last.time,
       status,
+      selectedCountries,
       countryNames: selectedCountries.length ? selectedCountryNames : "全部国家",
       matchedCountryNames: matchedCountryNames || "暂无符合条件的任务",
       taskCount,
@@ -576,6 +580,7 @@ function renderRetryHistoryDetailPage(root, runId) {
     root.innerHTML = `<section class="panel history-detail-page"><div class="detail-header compact-header"><div><h2 class="panel-title">重跑历史详情</h2><p class="muted">未找到该次重跑记录，可能已超出最近 200 条日志范围。</p></div><a class="link-button" href="#/ds-failure-logs">返回失败任务日志</a></div></section>`;
     return;
   }
+  const countryRows = buildRetryCountryRows(run);
   root.innerHTML = `
     <section class="panel history-detail-page">
       <div class="detail-header compact-header">
@@ -592,11 +597,55 @@ function renderRetryHistoryDetailPage(root, runId) {
       <div class="schedule-help"><strong>运行时间</strong><span>${formatTime(run.startedAt)} 至 ${formatTime(run.endedAt)}</span><strong>最终结果</strong><span>${escapeHtml(run.summary)}</span></div>
       <div class="table-wrap schedule-history-table ds-retry-history-table">
         <table>
-          <thead><tr><th>时间</th><th>状态</th><th>国家</th><th>事件</th><th>次数</th><th>具体任务</th><th>详细说明</th></tr></thead>
-          <tbody>${run.logs.map((item) => `<tr><td>${escapeHtml(formatTime(item.time))}</td><td><span class="badge ${retryLogBadge(item.level)}">${escapeHtml(retryLogStatus(item.level))}</span></td><td>${escapeHtml(COUNTRY_META[item.country]?.name || item.country || "全部")}</td><td>${escapeHtml(retryLogEvent(item.event))}</td><td>${Number(item.attempts || 0) || "—"}</td><td>${renderRetryTaskIdentity(item)}</td><td>${renderRetryLogDetail(item)}</td></tr>`).join("")}</tbody>
+          <thead><tr><th>更新时间</th><th>国家</th><th>当前状态</th><th>涉及任务</th><th>重跑次数</th><th>最新事件</th><th>详细说明</th></tr></thead>
+          <tbody>${countryRows.map((row) => `<tr><td>${escapeHtml(formatTime(row.updatedAt))}</td><td>${escapeHtml(COUNTRY_META[row.country]?.name || row.country)}</td><td><span class="badge ${retryRunBadge(row.status)}">${escapeHtml(retryCountryStatus(row.status))}</span></td><td>${row.taskCount} 个</td><td>${row.retryCount}</td><td>${escapeHtml(retryLogEvent(row.latest.event))}</td><td>${renderRetryLogDetail(row.latest)}</td></tr>`).join("")}</tbody>
         </table>
       </div>
     </section>`;
+  scheduleRetryDetailPoll(root, runId, run.status === "running");
+}
+
+function buildRetryCountryRows(run) {
+  const selected = run.selectedCountries?.length ? run.selectedCountries : COUNTRY_OPTIONS.map((item) => item.code);
+  const observed = run.logs.map((item) => item.country).filter(Boolean);
+  const countries = [...new Set([...selected, ...observed])];
+  return countries.map((country) => {
+    const logs = run.logs.filter((item) => item.country === country);
+    const latest = logs[0] || { event: "waiting", message: "等待该国家开始本轮重跑检查" };
+    const stateLog = logs.find((item) => ["recovered", "retry_failed", "configuration_error", "instance_check_failed", "workflow_check_failed", "retry_stopped", "safety_stopped", "skipped", "empty_run_timeout", "retry_started", "retry_submitted"].includes(item.event));
+    const status = stateLog?.event === "recovered" ? "success"
+      : stateLog?.level === "error" ? "failed"
+        : ["retry_stopped", "safety_stopped", "skipped", "empty_run_timeout"].includes(stateLog?.event) ? "stopped"
+          : logs.length ? "running" : "waiting";
+    return {
+      country,
+      latest,
+      status,
+      updatedAt: latest.time || run.startedAt,
+      taskCount: new Set(logs.map((item) => item.key).filter(Boolean)).size,
+      retryCount: logs.filter((item) => item.event === "retry_submitted").length,
+    };
+  });
+}
+
+function retryCountryStatus(status) {
+  return ({ success: "已恢复", failed: "运行失败", stopped: "已停止", running: "处理中", waiting: "等待运行" }[status] || "等待运行");
+}
+
+function scheduleRetryDetailPoll(root, runId, shouldPoll) {
+  clearTimeout(retryDetailPollTimer);
+  retryDetailPollTimer = null;
+  if (!shouldPoll) return;
+  retryDetailPollTimer = setTimeout(async () => {
+    if (retryHistoryRunId() !== runId || !isCurrentView()) return;
+    try {
+      const logResult = await apiGet("/api/ds-failure-retry/logs?limit=200");
+      model.retryLogs = logResult.logs || [];
+      paint(root);
+    } catch {
+      scheduleRetryDetailPoll(root, runId, true);
+    }
+  }, 2000);
 }
 
 function renderRetryLogDetail(item = {}) {
@@ -668,6 +717,7 @@ function retryLogEvent(event) {
     owner_notification_failed: "负责人告警发送失败",
     owner_notification_skipped: "未配置负责人",
     manual_review: "转人工确认",
+    waiting: "等待运行",
   }[event] || event || "状态更新");
 }
 
