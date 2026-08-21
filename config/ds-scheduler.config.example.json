@@ -4,12 +4,30 @@
   "checkRetries": 1,
   "checkRetryDelayMs": 1000,
   "countries": {
-    "cn": { "name": "中国", "token": "" },
-    "ine": { "name": "印尼", "token": "" },
-    "ph": { "name": "菲律宾", "token": "" },
-    "th": { "name": "泰国", "token": "" },
-    "pk": { "name": "巴基斯坦", "token": "" },
-    "mx": { "name": "墨西哥", "token": "" }
+    "cn": {
+      "name": "中国",
+      "token": ""
+    },
+    "ine": {
+      "name": "印尼",
+      "token": ""
+    },
+    "ph": {
+      "name": "菲律宾",
+      "token": ""
+    },
+    "th": {
+      "name": "泰国",
+      "token": ""
+    },
+    "pk": {
+      "name": "巴基斯坦",
+      "token": ""
+    },
+    "mx": {
+      "name": "墨西哥",
+      "token": ""
+    }
   },
   "alerts": {
     "channel": "tv",
@@ -33,7 +51,10 @@
       "port": 36000,
       "user": "root",
       "identityFile": "",
-      "options": ["StrictHostKeyChecking=no", "ConnectTimeout=10"]
+      "options": [
+        "StrictHostKeyChecking=no",
+        "ConnectTimeout=10"
+      ]
     },
     "auditDb": {
       "host": "10.20.47.19",
@@ -42,6 +63,107 @@
       "password": "${DS_AUDIT_DB_PASSWORD}",
       "database": "warning_rule",
       "table": "ds_operation_audit_log"
+    },
+    "tokenMap": {
+      "enabled": true,
+      "sql": "SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> ''",
+      "ssh": {
+        "command": "ssh",
+        "options": [
+          "StrictHostKeyChecking=no",
+          "ConnectTimeout=15"
+        ]
+      },
+      "countries": {
+        "CN": {
+          "name": "中国",
+          "ssh": {
+            "host": "10.20.47.14",
+            "port": 36000,
+            "user": "root"
+          },
+          "database": {
+            "host": "${DS_CN_DB_HOST}",
+            "port": 3306,
+            "user": "${DS_CN_DB_USER}",
+            "password": "${DS_CN_DB_PASSWORD}",
+            "name": "${DS_CN_DB_NAME}"
+          }
+        },
+        "INE": {
+          "name": "印尼",
+          "ssh": {
+            "host": "192.168.21.236",
+            "port": 36000,
+            "user": "root"
+          },
+          "database": {
+            "host": "${DS_INE_DB_HOST}",
+            "port": 3306,
+            "user": "${DS_INE_DB_USER}",
+            "password": "${DS_INE_DB_PASSWORD}",
+            "name": "${DS_INE_DB_NAME}"
+          }
+        },
+        "PH": {
+          "name": "菲律宾",
+          "ssh": {
+            "host": "10.20.10.12",
+            "user": "root"
+          },
+          "database": {
+            "host": "${DS_PH_DB_HOST}",
+            "port": 3306,
+            "user": "${DS_PH_DB_USER}",
+            "password": "${DS_PH_DB_PASSWORD}",
+            "name": "${DS_PH_DB_NAME}"
+          }
+        },
+        "MX": {
+          "name": "墨西哥",
+          "ssh": {
+            "host": "172.20.220.165",
+            "port": 36000,
+            "user": "root"
+          },
+          "database": {
+            "host": "${DS_MX_DB_HOST}",
+            "port": 3306,
+            "user": "${DS_MX_DB_USER}",
+            "password": "${DS_MX_DB_PASSWORD}",
+            "name": "${DS_MX_DB_NAME}"
+          }
+        },
+        "TH": {
+          "name": "泰国",
+          "ssh": {
+            "host": "192.168.20.236",
+            "port": 36000,
+            "user": "root"
+          },
+          "database": {
+            "host": "${DS_TH_DB_HOST}",
+            "port": 3306,
+            "user": "${DS_TH_DB_USER}",
+            "password": "${DS_TH_DB_PASSWORD}",
+            "name": "${DS_TH_DB_NAME}"
+          }
+        },
+        "PK": {
+          "name": "巴基斯坦",
+          "ssh": {
+            "host": "10.20.84.176",
+            "user": "root"
+          },
+          "database": {
+            "host": "${DS_PK_DB_HOST}",
+            "port": 3306,
+            "user": "${DS_PK_DB_USER}",
+            "password": "${DS_PK_DB_PASSWORD}",
+            "name": "${DS_PK_DB_NAME}"
+          }
+        }
+      }
     }
   }
 }

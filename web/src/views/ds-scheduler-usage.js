@@ -271,7 +271,7 @@ function aggregateCountry(c, range) {
     failed += d.failed;
     riskActions += d.riskActions;
     for (const op of (d.operators || [])) {
-      const agg = operators.get(op.token) || { token: op.token, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
+      const agg = operators.get(op.token) || { token: op.token, user: op.user || "", requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
       agg.requests += op.requests;
       agg.success += op.success;
       agg.failed += op.failed;
@@ -286,6 +286,7 @@ function aggregateCountry(c, range) {
   }
   const opList = [...operators.values()].map((op) => ({
     token: op.token,
+    user: op.user || "",
     requests: op.requests,
     success: op.success,
     failed: op.failed,
@@ -346,7 +347,7 @@ function renderCountry(c) {
         <div class="dsu-table-wrap">
           <table class="ds-table dsu-operator-table">
             <thead>
-              <tr><th>Token（操作人）</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>平均耗时</th><th>主要动作</th></tr>
+              <tr><th>Token（用户名）</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>平均耗时</th><th>主要动作</th></tr>
             </thead>
             <tbody>
               ${data.operators.map((op) => renderCountryOperatorRow(op)).join("")}
@@ -413,8 +414,8 @@ function renderBreakdown(title, map, labelFn) {
 }
 
 function renderCountryOperatorRow(op) {
-  const tools = (op.tools || []).filter(Boolean);
-  const nameTag = tools.length ? `（${tools.map((t) => escapeHtml(t)).join("、")}）` : "";
+  const user = (op.user || "").trim();
+  const nameTag = user ? `（${escapeHtml(user)}）` : "（未知）";
   return `
     <tr>
       <td><code class="dsu-token-tag">${escapeHtml(op.token)}</code>${nameTag}</td>
