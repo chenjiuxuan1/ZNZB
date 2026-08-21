@@ -5922,6 +5922,11 @@ body {
 
 .dsu-row { margin-bottom: 12px; }
 .dsu-no-token { font-size: 12px; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; }
+.dsu-daily-overview { margin-bottom: 16px; }
+.dsu-daily-overview .dsu-daily-body { overflow-x: auto; }
+.dsu-daily-overview .dsu-daily-cells { display: flex; flex-wrap: wrap; gap: 8px; }
+.dsu-daily-overview .dsu-daily-country { background: var(--panel-soft, #f1f5f9); border: 1px solid var(--border, #e2e8f0); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+
 .dsu-kpi { display: flex; gap: 24px; flex-wrap: wrap; }
 .dsu-kpi-value { font-size: 18px; font-weight: 700; color: #0f172a; }
 .dsu-kpi-label { font-size: 11px; color: #64748b; }
