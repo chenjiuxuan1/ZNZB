@@ -157,7 +157,12 @@ function scheduleManualStatusPoll(root) {
   setTimeout(async () => {
     if (!isCurrentView()) return;
     try {
+      const wasRunning = Boolean(model.retryControl.manualRunning);
       model.retryControl = await apiGet("/api/ds-failure-retry/control");
+      if (wasRunning && !model.retryControl.manualRunning) {
+        const logResult = await apiGet("/api/ds-failure-retry/logs?limit=200");
+        model.retryLogs = logResult.logs || [];
+      }
       paint(root);
       scheduleManualStatusPoll(root);
     } catch {}
@@ -511,7 +516,7 @@ function buildRetryRuns(logs) {
       summary: formatRetryMessage(last.message) || retryRunStatus(status),
       logs: ordered.reverse(),
     };
-  }).filter((run) => run.status === "running" || run.logs.some((item) => item.event === "control_enabled"))
+  }).filter((run) => run.status === "running" || run.logs.some((item) => ["control_enabled", "manual_run_completed"].includes(item.event)))
     .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
 }
 
