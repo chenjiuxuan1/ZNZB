@@ -12,8 +12,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /DS 失败任务日志/);
   assert.match(source, /选择范围/);
   assert.match(source, /实际命中/);
-  assert.match(source, /当前状态/);
-  assert.match(source, /buildRetryCountryRows/);
+  assert.match(source, /重跑结果/);
+  assert.match(source, /buildRetryTaskRows/);
   assert.match(source, /renderRetryTaskIdentity/);
   assert.match(source, /已自动修复/);
   assert.match(source, /修复中/);
@@ -53,7 +53,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /AUTO_REFRESH_INTERVAL_MS = 60 \* 60 \* 1000/);
   assert.match(source, /SQL错误，需人工修改/);
   assert.match(source, /权限不足，需人工处理/);
-  assert.match(source, /除 SQL\/代码错误和权限不足外，其余失败均进入持续重跑/);
+  assert.match(source, /每轮最多提交一次重跑/);
   assert.match(source, /自动重跑中/);
   assert.match(source, /失败分类/);
   assert.match(source, /renderCountryMultiSelect\("ds-retry-country"/);
@@ -87,7 +87,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(styles, /\.ds-failure-retry-control \.ds-failure-filter-grid \{[\s\S]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(source, /返回失败任务日志/);
   assert.match(source, /buildRetryRuns/);
-  assert.match(source, /\["manual_run", "scheduled_run_started"\]\.includes\(item\.event\)/);
+  assert.match(source, /\["manual_run_completed", "scheduled_run_completed"\]\.includes\(item\.event\)/);
   assert.match(source, /wasRunning && !model\.retryControl\.manualRunning/);
   assert.match(source, /apiGet\("\/api\/ds-failure-retry\/logs\?limit=200"\)/);
   assert.match(source, /data-delete-retry-run/);

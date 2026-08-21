@@ -49,6 +49,7 @@ let model = {
   retryActionLoading: false,
   retryManualActionLoading: false,
   retryActionMessage: "",
+  pendingDeleteRunId: "",
 };
 
 let autoRefreshTimer = null;
@@ -396,7 +397,7 @@ function paint(root) {
     </section>
     <section class="panel ds-failure-retry-control">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">除 SQL/代码错误和权限不足外，其余失败均进入持续重跑；人工停止、下线及跨天任务仍会安全停止。</p></div>
+        <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">除 SQL/代码错误和权限不足外，其余失败每轮最多提交一次重跑；提交后仅检查修复结果，人工停止、下线及跨天任务仍会安全停止。</p></div>
         <div class="ds-retry-header-actions ds-retry-control-actions">
           <button class="secondary ds-retry-action" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新日志</button>
           <button class="secondary ds-retry-action" id="ds-retry-exclusions">不重跑项目配置</button>
@@ -442,6 +443,8 @@ function paint(root) {
   root.querySelector("#ds-retry-exclusion-cancel")?.addEventListener("click", () => { model.retryExclusionOpen = false; paint(root); });
   root.querySelector("#ds-retry-exclusion-save")?.addEventListener("click", () => saveRetryExclusions(root));
   root.querySelectorAll("[data-delete-retry-run]").forEach((button) => button.addEventListener("click", () => deleteRetryRun(root, button.dataset.deleteRetryRun)));
+  root.querySelectorAll("[data-confirm-delete-retry-run]").forEach((button) => button.addEventListener("click", () => confirmDeleteRetryRun(root, button.dataset.confirmDeleteRetryRun)));
+  root.querySelectorAll("[data-cancel-delete-retry-run]").forEach((button) => button.addEventListener("click", () => { model.pendingDeleteRunId = ""; paint(root); }));
   bindCountryMultiSelect(root, "ds-retry-country", (values) => { void saveRetryCountries(root, values); });
 }
 
@@ -513,7 +516,7 @@ function renderRetryHistoryRows(runs) {
             <td>${run.retryCount}</td>
             <td>${escapeHtml(run.summary)}</td>
             <td><a class="link-button" href="#/ds-failure-logs?retryRunId=${encodeURIComponent(run.id)}">打开详情页</a></td>
-            <td><button class="icon-button danger-icon" type="button" data-delete-retry-run="${escapeHtml(run.id)}" title="删除这条重跑历史" aria-label="删除这条重跑历史"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v5M14 11v5"/></svg></button></td>
+            <td><div class="ds-retry-delete-wrap"><button class="icon-button danger-icon" type="button" data-delete-retry-run="${escapeHtml(run.id)}" title="删除这条重跑历史" aria-label="删除这条重跑历史"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v5M14 11v5"/></svg></button>${model.pendingDeleteRunId === run.id ? `<div class="ds-retry-delete-confirm"><span>确定删除这条记录？</span><div><button class="secondary" type="button" data-cancel-delete-retry-run="${escapeHtml(run.id)}">取消</button><button class="primary" type="button" data-confirm-delete-retry-run="${escapeHtml(run.id)}">确认</button></div></div>` : ""}</div></td>
           </tr>`).join("")}</tbody>
       </table>
     </div>`;
@@ -535,8 +538,8 @@ function buildRetryRuns(logs) {
     const matchedCountryNames = countries.map((country) => COUNTRY_META[country]?.name || country).join("、");
     const taskCount = new Set(ordered.map((item) => item.key).filter(Boolean)).size;
     const retryCount = ordered.filter((item) => item.event === "retry_submitted").length;
-    const status = ordered.some((item) => ["recovered", "manual_run_completed", "scheduled_run_completed"].includes(item.event)) ? "success"
-      : ordered.some((item) => item.level === "error") ? "failed"
+    const status = ordered.some((item) => ["retry_failed", "retry_not_recovered", "configuration_error", "instance_check_failed", "workflow_check_failed"].includes(item.event)) ? "failed"
+      : ordered.some((item) => ["manual_run_completed", "scheduled_run_completed"].includes(item.event)) ? "success"
         : ordered.some((item) => ["control_disabled", "manual_run_stopped", "safety_stopped", "retry_stopped"].includes(item.event)) ? "stopped"
           : "running";
     const last = ordered.at(-1) || {};
@@ -553,7 +556,7 @@ function buildRetryRuns(logs) {
       summary: formatRetryMessage(last.message) || retryRunStatus(status),
       logs: ordered.reverse(),
     };
-  }).filter((run) => run.logs.some((item) => ["manual_run", "scheduled_run_started"].includes(item.event)))
+  }).filter((run) => run.logs.some((item) => ["manual_run_completed", "scheduled_run_completed"].includes(item.event)))
     .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
 }
 
@@ -580,7 +583,7 @@ function renderRetryHistoryDetailPage(root, runId) {
     root.innerHTML = `<section class="panel history-detail-page"><div class="detail-header compact-header"><div><h2 class="panel-title">重跑历史详情</h2><p class="muted">未找到该次重跑记录，可能已超出最近 200 条日志范围。</p></div><a class="link-button" href="#/ds-failure-logs">返回失败任务日志</a></div></section>`;
     return;
   }
-  const countryRows = buildRetryCountryRows(run);
+  const taskRows = buildRetryTaskRows(run);
   root.innerHTML = `
     <section class="panel history-detail-page">
       <div class="detail-header compact-header">
@@ -597,39 +600,29 @@ function renderRetryHistoryDetailPage(root, runId) {
       <div class="schedule-help"><strong>运行时间</strong><span>${formatTime(run.startedAt)} 至 ${formatTime(run.endedAt)}</span><strong>最终结果</strong><span>${escapeHtml(run.summary)}</span></div>
       <div class="table-wrap schedule-history-table ds-retry-history-table">
         <table>
-          <thead><tr><th>更新时间</th><th>国家</th><th>当前状态</th><th>涉及任务</th><th>重跑次数</th><th>最新事件</th><th>详细说明</th></tr></thead>
-          <tbody>${countryRows.map((row) => `<tr><td>${escapeHtml(formatTime(row.updatedAt))}</td><td>${escapeHtml(COUNTRY_META[row.country]?.name || row.country)}</td><td><span class="badge ${retryRunBadge(row.status)}">${escapeHtml(retryCountryStatus(row.status))}</span></td><td>${row.taskCount} 个</td><td>${row.retryCount}</td><td>${escapeHtml(retryLogEvent(row.latest.event))}</td><td>${renderRetryLogDetail(row.latest)}</td></tr>`).join("")}</tbody>
+          <thead><tr><th>国家</th><th>失败任务</th><th>失败原因及处理说明</th><th>重跑次数</th><th>重跑结果</th></tr></thead>
+          <tbody>${taskRows.map((row) => `<tr><td>${escapeHtml(COUNTRY_META[row.country]?.name || row.country)}</td><td>${renderRetryTaskIdentity(row.detail, true)}</td><td>${renderRetryLogDetail(row.detail)}</td><td>${row.retryCount}</td><td><span class="badge ${retryRunBadge(row.status)}">${escapeHtml(row.result)}</span></td></tr>`).join("")}</tbody>
         </table>
       </div>
     </section>`;
   scheduleRetryDetailPoll(root, runId, run.status === "running");
 }
 
-function buildRetryCountryRows(run) {
-  const selected = run.selectedCountries?.length ? run.selectedCountries : COUNTRY_OPTIONS.map((item) => item.code);
-  const observed = run.logs.map((item) => item.country).filter(Boolean);
-  const countries = [...new Set([...selected, ...observed])];
-  return countries.map((country) => {
-    const logs = run.logs.filter((item) => item.country === country);
-    const latest = logs[0] || { event: "waiting", message: "等待该国家开始本轮重跑检查" };
-    const stateLog = logs.find((item) => ["recovered", "retry_failed", "configuration_error", "instance_check_failed", "workflow_check_failed", "retry_stopped", "safety_stopped", "skipped", "empty_run_timeout", "retry_started", "retry_submitted"].includes(item.event));
-    const status = stateLog?.event === "recovered" ? "success"
-      : stateLog?.level === "error" ? "failed"
-        : ["retry_stopped", "safety_stopped", "skipped", "empty_run_timeout"].includes(stateLog?.event) ? "stopped"
-          : logs.length ? "running" : "waiting";
-    return {
-      country,
-      latest,
-      status,
-      updatedAt: latest.time || run.startedAt,
-      taskCount: new Set(logs.map((item) => item.key).filter(Boolean)).size,
-      retryCount: logs.filter((item) => item.event === "retry_submitted").length,
-    };
+function buildRetryTaskRows(run) {
+  const groups = new Map();
+  for (const item of run.logs.filter((entry) => entry.key)) {
+    if (!groups.has(item.key)) groups.set(item.key, []);
+    groups.get(item.key).push(item);
+  }
+  return [...groups.values()].map((logs) => {
+    const detail = logs[0];
+    const outcome = logs.find((item) => ["recovered", "retry_not_recovered", "retry_failed", "excluded", "skipped", "safety_stopped", "manual_review", "retry_already_running"].includes(item.event));
+    const status = outcome?.event === "recovered" ? "success"
+      : ["retry_not_recovered", "retry_failed"].includes(outcome?.event) ? "failed"
+        : ["excluded", "skipped", "safety_stopped", "manual_review"].includes(outcome?.event) ? "stopped" : "running";
+    const result = ({ recovered: "重跑后已修复", retry_not_recovered: "重跑后未修复", retry_failed: "重跑提交失败", excluded: "项目配置为不重跑", skipped: "不满足重跑条件", safety_stopped: "安全停止", manual_review: "需人工确认", retry_already_running: "任务已在运行" }[outcome?.event] || "结果待确认");
+    return { country: detail.country, detail: outcome || detail, retryCount: logs.filter((item) => item.event === "retry_submitted").length, status, result };
   });
-}
-
-function retryCountryStatus(status) {
-  return ({ success: "已恢复", failed: "运行失败", stopped: "已停止", running: "处理中", waiting: "等待运行" }[status] || "等待运行");
 }
 
 function scheduleRetryDetailPoll(root, runId, shouldPoll) {
@@ -654,8 +647,14 @@ function renderRetryLogDetail(item = {}) {
   return `<div class="ds-retry-log-detail"><strong>失败原因</strong><span>${escapeHtml(reason)}</span>${item.message ? `<small>处理记录：${escapeHtml(formatRetryMessage(item.message))}</small>` : ""}</div>`;
 }
 
-async function deleteRetryRun(root, runId) {
-  if (!runId || !window.confirm("确定删除这条重跑历史吗？删除后无法恢复。")) return;
+function deleteRetryRun(root, runId) {
+  if (!runId) return;
+  model.pendingDeleteRunId = model.pendingDeleteRunId === runId ? "" : runId;
+  paint(root);
+}
+
+async function confirmDeleteRetryRun(root, runId) {
+  if (!runId) return;
   try {
     await apiDelete("/api/ds-failure-retry/logs", { runId });
     model.retryLogs = model.retryLogs.filter((item) => String(item.runId || `legacy-${item.id}`) !== runId);
@@ -663,6 +662,7 @@ async function deleteRetryRun(root, runId) {
   } catch (error) {
     model.retryActionMessage = `删除重跑历史失败：${error.message}`;
   }
+  model.pendingDeleteRunId = "";
   paint(root);
 }
 
@@ -673,12 +673,13 @@ function formatRetryMessage(message) {
   );
 }
 
-function renderRetryTaskIdentity(item = {}) {
+function renderRetryTaskIdentity(item = {}, withLink = false) {
   if (!item.key) return "—";
   const task = item.taskName || item.taskCode || "未返回任务节点名称";
   const workflow = item.workflowName || item.workflowCode || "未知工作流";
   const project = item.projectName || item.projectCode || "未知项目";
-  return `<div class="ds-retry-task-identity"><strong>${escapeHtml(task)}</strong><small>项目：${escapeHtml(project)} · 工作流：${escapeHtml(workflow)} · 实例：${escapeHtml(item.instanceId || "-")}</small></div>`;
+  const link = withLink && item.dsInstanceUrl ? `<a href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener">工作流实例 ↗</a>` : "";
+  return `<div class="ds-retry-task-identity ds-retry-task-card"><div><strong>${escapeHtml(task)}</strong>${link}</div><small>项目：${escapeHtml(project)} · 工作流：${escapeHtml(workflow)} · 实例：${escapeHtml(item.instanceId || "-")}</small></div>`;
 }
 
 function retryLogBadge(level) {
@@ -705,6 +706,8 @@ function retryLogEvent(event) {
     retry_started: "开始处理",
     retry_submitted: "提交重跑",
     retry_failed: "提交失败",
+    retry_not_recovered: "重跑后未修复",
+    retry_already_running: "任务已在运行",
     retry_stopped: "停止处理",
     recovered: "恢复成功",
     skipped: "跳过任务",
