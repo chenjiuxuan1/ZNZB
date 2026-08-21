@@ -259,46 +259,39 @@ function renderDailyOverview(report) {
   const countries = (report && report.countryUsage) || [];
   if (!countries.length) return "";
   const range = model.globalRange || {};
-  const byDate = new Map();
+  const byCountry = new Map();
   for (const c of countries) {
     for (const d of countryWindow(c, range)) {
       if (!d.date) continue;
-      if (!byDate.has(d.date)) byDate.set(d.date, new Map());
-      const cmap = byDate.get(d.date);
-      let umap = cmap.get(c.country);
-      if (!umap) { umap = new Map(); cmap.set(c.country, umap); }
+      let umap = byCountry.get(c.country);
+      if (!umap) { umap = new Map(); byCountry.set(c.country, umap); }
       for (const op of (d.operators || [])) {
         const name = op.user || "未知";
         umap.set(name, (umap.get(name) || 0) + op.requests);
       }
     }
   }
-  const dates = [...byDate.keys()].sort().reverse();
-  if (!dates.length) return "";
-  const rows = dates.flatMap((date) => {
-    const cmap = byDate.get(date);
-    return [...cmap.entries()]
-      .sort((a, b) => { const sa=[...a[1].values()].reduce((x,y)=>x+y,0); const sb=[...b[1].values()].reduce((x,y)=>x+y,0); return sb-sa; })
-      .map(([country, umap]) => {
-        const users = [...umap.entries()].map(([name, req]) => `${escapeHtml(name)}×${req}`).join("、");
-        return `<tr>
-          <td class="muted">${escapeHtml(date)}</td>
-          <td><b>${escapeHtml(countryLabel(country))}</b></td>
-          <td class="dsu-daily-users">${users || "—"}</td>
-        </tr>`;
-      });
-  }).join("");
+  if (!byCountry.size) return "";
+  const rows = [...byCountry.entries()]
+    .sort((a, b) => { const sa=[...a[1].values()].reduce((x,y)=>x+y,0); const sb=[...b[1].values()].reduce((x,y)=>x+y,0); return sb-sa; })
+    .map(([country, umap]) => {
+      const users = [...umap.entries()].map(([name, req]) => `${escapeHtml(name)}×${req}`).join("、");
+      return `<tr>
+        <td><b>${escapeHtml(countryLabel(country))}</b></td>
+        <td class="dsu-daily-users">${users || "—"}</td>
+      </tr>`;
+    }).join("");
   return `
     <section class="panel dsu-daily-overview">
       <div class="detail-header compact-header">
         <div>
-          <h2 class="panel-title">每日使用概览</h2>
-          <p class="muted">每天各国家 / 使用人（次数）</p>
+          <h2 class="panel-title">国家使用概览</h2>
+          <p class="muted">按国家合并（使用人 × 次数）</p>
         </div>
       </div>
       <div class="dsu-daily-body">
         <table class="ds-table">
-          <thead><tr><th>日期</th><th>国家</th><th>使用人（次数）</th></tr></thead>
+          <thead><tr><th>国家</th><th>使用人（次数）</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
