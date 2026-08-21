@@ -175,7 +175,7 @@ function scheduleManualStatusPoll(root) {
 async function saveRetryExclusions(root) {
   const excludedProjects = {};
   for (const option of COUNTRY_OPTIONS) {
-    excludedProjects[option.code] = [...root.querySelectorAll(`[data-retry-project-country="${option.code}"]:not(:checked)`)]
+    excludedProjects[option.code] = [...root.querySelectorAll(`[data-retry-project-country="${option.code}"]:checked`)]
       .map((item) => item.value).filter(Boolean);
   }
   model.retryActionLoading = true;
@@ -407,9 +407,9 @@ function paint(root) {
         <div class="country-multi-field"><span>自动重跑</span><button class="green-toggle ds-retry-run-now" id="ds-retry-toggle" type="button" role="switch" aria-checked="${model.retryControl.enabled}" ${model.retryActionLoading ? "disabled" : ""}><span class="green-toggle-track"></span><span>${model.retryActionLoading ? "处理中…" : retryStateLabel}</span></button><small>开启后在所设置的重跑分钟执行第一轮，之后按所选间隔运行</small></div>
         <label>当前运行任务<input value="${Number(model.retryControl.activeCount || 0)} 个" disabled></label>
       </div>
-      <div class="ds-retry-schedule-times">
-        <label>下次运行<input value="${escapeHtml(formatTime(model.retryControl.nextRunAt))}" disabled></label>
-        <label>上次运行<input value="${escapeHtml(formatTime(model.retryControl.lastRunAt))}" disabled></label>
+      <div class="schedule-overview ds-retry-schedule-times">
+        <div class="info-item"><span>下次运行</span><strong>${escapeHtml(formatScheduleTime(model.retryControl.nextRunAt))}</strong></div>
+        <div class="info-item"><span>上次运行</span><strong>${escapeHtml(formatScheduleTime(model.retryControl.lastRunAt))}</strong></div>
       </div>
       ${model.retryActionMessage ? `<div class="sandbox-status ${/失败|错误|无效|请选择/.test(model.retryActionMessage) ? "error" : "warn"}"><span>${escapeHtml(model.retryActionMessage)}</span></div>` : ""}
       <div class="sub-panel ds-retry-history">
@@ -455,7 +455,7 @@ function renderRetryExclusionModal() {
   return `<div class="modal-backdrop ds-retry-exclusion-backdrop">
     <section class="panel ds-retry-exclusion-modal" role="dialog" aria-modal="true" aria-labelledby="ds-retry-exclusion-title">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title" id="ds-retry-exclusion-title">不重跑项目配置</h2><p class="muted">按国家启用或关闭项目。关闭一个项目后，该项目下所有工作流都不会进入自动重跑。</p></div>
+        <div><h2 class="panel-title" id="ds-retry-exclusion-title">不重跑项目配置</h2><p class="muted">在六个国家模块中选择不参与重跑的项目。默认不选择；选中一个项目后，该项目下所有工作流都不会进入自动重跑。</p></div>
         <button class="secondary" id="ds-retry-exclusion-close" type="button">关闭</button>
       </div>
       <div class="schedule-country-grid ds-project-grid ds-retry-exclusion-grid">
@@ -469,11 +469,12 @@ function renderRetryExclusionModal() {
 function renderRetryProjectCard(option) {
   const projects = Array.isArray(model.retryProjects[option.code]) ? model.retryProjects[option.code] : [];
   const excluded = model.retryExcludedProjects[option.code] || [];
-  return `<article class="schedule-country-card ds-project-card"><div class="schedule-country-card-header"><strong>${option.flag} ${option.name}</strong><span class="badge ${excluded.length ? "warn" : "ok"}">${excluded.length} 个项目已关闭</span></div><div class="ds-retry-project-switches">${projects.length ? projects.map((project) => {
+  const selectedNames = projects.filter((project) => excluded.includes(String(project.code || project.name || ""))).map((project) => project.name || project.code);
+  const summary = selectedNames.length ? `已选择 ${selectedNames.length} 个项目` : "未选择项目";
+  return `<article class="schedule-country-card ds-project-card"><div class="schedule-country-card-header"><strong>${option.flag} ${option.name}</strong><span class="badge ${excluded.length ? "warn" : "ok"}">${excluded.length} 个项目不重跑</span></div>${projects.length ? `<div class="country-multi-field ds-retry-project-filter"><span>不重跑项目</span><details class="country-multi-select"><summary>${escapeHtml(summary)}</summary><div class="country-multi-menu ds-retry-project-menu">${projects.map((project) => {
     const identity = String(project.code || project.name || "");
-    const checked = !excluded.includes(identity);
-    return `<label><span>${escapeHtml(project.name || project.code || "未命名项目")}</span><input type="checkbox" data-retry-project-country="${option.code}" value="${escapeHtml(identity)}" ${checked ? "checked" : ""}></label>`;
-  }).join("") : '<span class="muted">该国家尚未配置 DS 项目</span>'}</div></article>`;
+    return `<label><input type="checkbox" data-retry-project-country="${option.code}" value="${escapeHtml(identity)}" ${excluded.includes(identity) ? "checked" : ""}><span>${escapeHtml(project.name || project.code || "未命名项目")}</span></label>`;
+  }).join("")}</div></details></div>` : '<span class="muted ds-retry-project-empty">该国家尚未配置 DS 项目</span>'}</article>`;
 }
 
 function renderCountryMultiSelect(id, label, selected, disabled = false) {
@@ -792,4 +793,17 @@ function formatTime(value) {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? escapeHtml(value) : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatScheduleTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value || "-") : date.toLocaleString("zh-CN", {
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
