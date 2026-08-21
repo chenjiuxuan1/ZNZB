@@ -790,15 +790,17 @@ export async function fetchAndAggregateUsage(options = {}) {
   if (options.cache && config.tokenMap && config.tokenMap.enabled) {
     const age = await dsTokenUserMapAgeMs(rootDir);
     if (age >= TOKEN_MAP_TTL_MS) {
-      try {
-        const fresh = await fetchDsTokenUserMap(config);
-        if (fresh && Object.keys(fresh).length) {
-          tokenUserMap = { ...tokenUserMap, ...fresh };
-          await saveDsTokenUserMap(rootDir, tokenUserMap);
-        }
-      } catch (error) {
-        tokenUserMap.tokenMapRefreshError = String((error && error.message) || error);
-      }
+      // 后台异步刷新 token -> 用户名 映射，不阻塞本次响应（否则首次刷新会卡在 6 国 SSH 拉取）
+      fetchDsTokenUserMap(config)
+        .then(async (fresh) => {
+          if (fresh && Object.keys(fresh).length) {
+            const current = await loadDsTokenUserMap(rootDir);
+            await saveDsTokenUserMap(rootDir, { ...current, ...fresh });
+          }
+        })
+        .catch((error) => {
+          console.error(`[token-map] 后台刷新失败: ${(error && error.message) || error}`);
+        });
     }
   }
   const usageOptions = { tokenUserMap };
