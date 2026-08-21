@@ -365,6 +365,7 @@ export function createDsAutoRetryManager({
     }
     excludedTasks = normalizeExcludedTasks(options.excludedTasks ?? excludedTasks);
     currentRunId = `ds-retry-manual-${now().getTime()}`;
+    const runId = currentRunId;
     manualRunning = true;
     const token = ++manualRunToken;
     appendLog("info", "manual_run", { message: "已手动立即运行一次重跑检查", countries });
@@ -372,7 +373,8 @@ export function createDsAutoRetryManager({
       .catch((error) => logger.error?.("[ds-auto-retry] manual scan failed:", error))
       .finally(() => {
         if (manualRunToken !== token) return;
-        persistState();
+        manualRunning = false;
+        appendLog("success", "manual_run_completed", { runId, message: "立即运行测试已完成", countries });
       });
     return control();
   }
