@@ -162,12 +162,37 @@ button.ds-retry-action {
 }
 
 .ds-failure-toolbar .ds-failure-filter-grid {
-  grid-template-columns: 300px 180px 210px minmax(280px, 1fr);
+  grid-template-columns: minmax(240px, 1.1fr) minmax(160px, .7fr) minmax(180px, .8fr) minmax(260px, 1.4fr);
 }
 
 .ds-failure-retry-control .ds-failure-filter-grid {
   align-items: start;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  row-gap: 16px;
+}
+
+.ds-failure-retry-control .ds-failure-filter-grid > :nth-child(1),
+.ds-failure-retry-control .ds-failure-filter-grid > :nth-child(2) { grid-column: span 3; }
+.ds-failure-retry-control .ds-failure-filter-grid > :nth-child(3) { grid-column: span 6; }
+.ds-failure-retry-control .ds-failure-filter-grid > :nth-child(4),
+.ds-failure-retry-control .ds-failure-filter-grid > :nth-child(5) { grid-column: span 6; }
+
+.ds-failure-toolbar .ds-failure-filter-grid > *,
+.ds-failure-toolbar .ds-failure-filter-grid input,
+.ds-failure-toolbar .ds-failure-filter-grid select {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 1180px) {
+  .ds-failure-toolbar .ds-failure-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ds-failure-retry-control .ds-failure-filter-grid > * { grid-column: span 6; }
+}
+
+@media (max-width: 760px) {
+  .ds-failure-toolbar .ds-failure-filter-grid { grid-template-columns: 1fr; }
+  .ds-failure-retry-control .ds-failure-filter-grid > * { grid-column: 1 / -1; }
 }
 
 .ds-retry-schedule-times {

@@ -27,6 +27,7 @@ async function enableAndWait(manager) {
 
 test("retries every failure except SQL/code and permission errors", () => {
   assert.equal(classifyDsFailureType({ failureMessage: "SQL syntax error near FROM" }).failureType, "sql_code_error");
+  assert.equal(classifyDsFailureType({ failureMessage: "not defined var: v_start_dt" }).failureType, "sql_code_error");
   assert.equal(classifyDsFailureType({ taskName: "etl", failureMessage: "Container killed: out of memory" }).failureType, "retryable");
   assert.equal(classifyDsFailureType({ taskName: "etl", failureMessage: "Connection reset by peer" }).retryable, true);
   assert.deepEqual(classifyDsFailureType({ failureMessage: "Permission denied for table ads.orders" }), {
@@ -89,7 +90,7 @@ test("keeps retryable failures running until the instance succeeds", async () =>
   assert.equal([...manager.statuses.values()][0].attempts, 1);
 });
 
-test("skips retry when the original suspected empty run exceeded one hour", async () => {
+test("does not notify the owner when an over-one-hour suspected empty run is stopped", async () => {
   const actions = [];
   const notifications = [];
   let current = new Date(fixedNow);
@@ -105,7 +106,7 @@ test("skips retry when the original suspected empty run exceeded one hour", asyn
     },
     actionFn: async ({ action }) => {
       actions.push(action);
-      if (action === "get_instance") return { state: "FAILURE" };
+      if (action === "get_instance") return { state: "STOP" };
       if (action === "get_workflow") return { releaseState: "ONLINE" };
       return { success: true };
     },
@@ -113,11 +114,31 @@ test("skips retry when the original suspected empty run exceeded one hour", asyn
     sleep: async () => { current = new Date(current.getTime() + 60 * 60 * 1000); },
   });
   await enableAndWait(manager);
-  assert.equal(actions.length, 0);
+  assert.deepEqual(actions, ["get_instance"]);
   const status = [...manager.statuses.values()][0];
   assert.equal(status.autoRetryStatus, "safety_stopped");
   assert.match(status.stopReason, /1 小时/);
   assert.ok(manager.getLogs().some((item) => item.event === "empty_run_confirmed"));
+  assert.equal(notifications.length, 0);
+  assert.ok(manager.getLogs().some((item) => item.event === "owner_notification_skipped" && /不是运行中/.test(item.message)));
+});
+
+test("notifies the country owner only when a suspected empty run is still running after one hour", async () => {
+  const notifications = [];
+  const failure = classifyDsFailureType({ failureMessage: "workflow failed without a task node" });
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({ ...failure, startTime: "2026-08-18 08:30:00" }),
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    ownerConfigLoader: async () => ({ countryConfigs: [{ countryCode: "CN", ownerEmails: "cn-owner@kn.group" }] }),
+    notifyFn: async (config, message, metadata) => {
+      notifications.push({ config, message, metadata });
+      return { sent: true };
+    },
+    actionFn: async ({ action }) => action === "get_instance" ? { state: "RUNNING_EXECUTION" } : {},
+    now: () => fixedNow,
+  });
+  await enableAndWait(manager);
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].config.alerts.recipientEmails, "cn-owner@kn.group");
   assert.match(notifications[0].message, /实例 ID：3001/);
