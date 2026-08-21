@@ -159,33 +159,35 @@ button.ds-retry-action {
 }
 
 .ds-retry-schedule-times {
-  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
   margin-top: 12px;
 }
 
-.ds-retry-project-switches {
-  display: grid;
-  gap: 8px;
+.ds-retry-exclusion-grid {
+  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: visible;
+}
+
+.ds-retry-exclusion-grid .ds-project-card {
+  min-height: 150px;
+  overflow: visible;
+}
+
+.ds-retry-project-filter {
   margin-top: 12px;
 }
 
-.ds-retry-project-switches label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 9px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
+.ds-retry-project-menu {
+  max-height: 280px;
+  min-width: 100%;
+  overflow-y: auto;
+  width: max-content;
 }
 
-.ds-retry-project-switches input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+.ds-retry-project-empty {
+  display: block;
+  margin-top: 18px;
 }
 
 .ds-failure-retry-control .ds-failure-filter-grid > * {
