@@ -627,7 +627,17 @@ export async function fetchDsTokenUserMap(config = {}, onProgress) {
       if (statusCode < 200 || statusCode >= 300 || body.success === false) {
         throw new Error(`tokenMap 网关请求失败 (HTTP ${statusCode || "?"}): ${String(body.errors || body.error || "unknown")}`);
       }
-      if (typeof onProgress === "function") onProgress("gateway", Object.keys(map).length, "");
+      if (typeof onProgress === "function") {
+        onProgress("gateway", Object.keys(map).length, "");
+        if (Array.isArray(body.countries)) {
+          for (const c of body.countries) onProgress(`  ${c.country}`, Number(c.count) || 0, "");
+        }
+        if (Array.isArray(body.errors)) {
+          for (const e of body.errors) onProgress(`  ${e.country || "?"}`, 0, JSON.stringify(e.error || e));
+        }
+      } else {
+        console.log(`[token-map] gateway map=${Object.keys(map).length} countries=${JSON.stringify(body.countries || [])} errors=${JSON.stringify(body.errors || [])}`);
+      }
       return map;
     } catch (error) {
       if (typeof onProgress === "function") onProgress("gateway", 0, error.message);

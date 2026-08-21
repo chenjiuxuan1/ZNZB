@@ -33,8 +33,17 @@ function sourceBadge(report) {
 }
 
 export function renderDsSchedulerUsage(root) {
-  root.innerHTML = `<section class="panel"><p class="muted">正在加载网关使用统计…</p></section>`;
-  load(root);
+  paint(root);
+  loadConfigOnly(root);
+}
+
+async function loadConfigOnly(root) {
+  try {
+    model.config = await apiGet("/api/ds-scheduler/config", { timeoutMs: 30000 });
+  } catch {
+    model.config = null;
+  }
+  paint(root);
 }
 
 async function load(root) {
@@ -89,7 +98,7 @@ function paint(root) {
     </div>
     ${renderStatus(report)}
     ${renderTokens()}
-    ${report ? renderMain(report) : ""}
+    ${renderMain(report)}
   `;
   root.querySelector("#dsu-refresh")?.addEventListener("click", () => refresh(root));
   root.querySelectorAll("[data-role='global-from'], [data-role='global-to']").forEach((input) => {
@@ -199,11 +208,9 @@ function renderMain(report) {
       <div class="detail-header compact-header">
         <div>
           <h2 class="panel-title">国家使用分布</h2>
-          <p class="muted">${report.generatedAt ? `最近更新：${new Date(report.generatedAt).toLocaleString("zh-CN")}` : ""} · 全局时间筛选应用于所有国家</p>
+          <p class="muted">${report?.generatedAt ? `最近更新：${new Date(report.generatedAt).toLocaleString("zh-CN")}` : ""} · 全局时间筛选应用于所有国家</p>
         </div>
-        <div class="button-group">
-          <button class="primary" id="dsu-refresh">刷新数据</button>
-        </div>
+        <div class="button-group"><button class="primary" id="dsu-refresh">刷新数据</button></div>
       </div>
       <div class="dsu-country-toolbar dsu-global-toolbar">
         <span class="dsu-filter-label">时间筛选</span>
@@ -223,7 +230,7 @@ function renderCountryList(report) {
   if (report?.enabled === false) {
     return renderEmptyHint("未启用");
   }
-  const countries = report.countryUsage || [];
+  const countries = (report && report.countryUsage) || [];
   if (!countries.length) {
     return renderEmptyHint("暂无数据");
   }
