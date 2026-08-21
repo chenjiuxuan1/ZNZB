@@ -192,11 +192,6 @@ export function createDsAutoRetryManager({
           appendLog("success", "recovered", { key, country, attempts, state, ...taskDetail, message: "实例重跑成功" });
           return;
         }
-        if (STOP_STATES.has(state)) {
-          setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "实例已被人工停止或终止", attempts, recoveryState: state });
-          appendLog("warn", "safety_stopped", { key, country, attempts, state, ...taskDetail, message: "实例已被人工停止或终止" });
-          return;
-        }
         try {
           const workflow = await actionFn({
             webhookUrl,
@@ -224,7 +219,7 @@ export function createDsAutoRetryManager({
           await sleep(retryDelayMs);
           continue;
         }
-        if (!FAILURE_STATES.has(state)) {
+        if (!FAILURE_STATES.has(state) && !STOP_STATES.has(state)) {
           setStatus(key, { autoRetryStatus: "manual_review", stopReason: `实例状态 ${state || "UNKNOWN"} 无法安全重跑`, attempts });
           appendLog("warn", "manual_review", { key, country, attempts, state, ...taskDetail, message: "实例状态无法安全重跑" });
           return;
@@ -305,10 +300,12 @@ export function createDsAutoRetryManager({
       ...result,
       countries: (result.countries || []).map((country) => ({
         ...country,
-        failures: (country.failures || []).map((failure) => ({
-          ...failure,
-          ...(statuses.get(failureKey(country.country, failure)) || {}),
-        })),
+        failures: (country.failures || []).map((failure) => {
+          const decorated = { ...failure, ...(statuses.get(failureKey(country.country, failure)) || {}) };
+          return failure.repairStatus === "recovered"
+            ? { ...decorated, autoRetryStatus: "recovered", stopReason: "已检测到后续成功实例" }
+            : decorated;
+        }),
       })),
     };
   }

@@ -88,6 +88,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /buildRetryRuns/);
   assert.match(source, /run\.status === "running" \|\| run\.logs\.some\(\(item\) => item\.event === "control_enabled"\)/);
   assert.match(source, /data-delete-retry-run/);
+  assert.match(source, /<svg viewBox="0 0 24 24"/);
+  assert.match(styles, /\.ds-retry-history-table \.danger-icon \{[\s\S]*border: 0;[\s\S]*background: transparent;/);
   assert.match(source, /apiDelete\("\/api\/ds-failure-retry\/logs"/);
   assert.match(source, /<th>运行时间<\/th><th>状态<\/th><th>国家<\/th><th>任务<\/th><th>重跑次数<\/th><th>结果<\/th><th>明细<\/th><th>删除<\/th>/);
   assert.match(source, /retryLogBadge/);
@@ -107,6 +109,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(monitor, /"extract_task_runtime_config"/);
   assert.match(monitor, /PROJECT_QUERY_CONCURRENCY = 3/);
   assert.match(monitor, /自动重试 1 次/);
+  assert.doesNotMatch(monitor, /人工停止或终止，不自动重跑/);
   assert.doesNotMatch(monitor, /failure_policy: "scheduled_today_final_failure"/);
   assert.match(platformApi, /getDsFailureLogs\(filters = \{\}\)/);
   assert.match(platformApi, /countries: country \|\| undefined/);
