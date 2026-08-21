@@ -505,20 +505,62 @@ function buildTokenMapRemoteScript(config, countryCode) {
   const tm = config.tokenMap || {};
   const country = (tm.countries && tm.countries[countryCode]) || {};
   const db = country.database || {};
+  const helper = tm.helperScript || "";
   const sqlB64 = Buffer.from(tm.sql || DEFAULT_TOKEN_SQL, "utf8").toString("base64");
+  const py = [
+    "import argparse, importlib.util, os, sys",
+    "from pathlib import Path",
+    'COUNTRY = os.environ.get("COUNTRY_CODE", "")',
+    'SQL = os.environ.get("TOKEN_SQL", "")',
+    "def load_matcher():",
+    '    configured = Path(os.environ.get("DS_MATCH_SCRIPT", "")).expanduser()',
+    "    candidates = [configured] if str(configured) else []",
+    '    candidates += [',
+    '        Path("/tmp/KN-YCGJ-TZ-governance-automation/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py"),',
+    '        Path("/root/KN-YCGJ-TZ/alert-sql-notification/governance-automation/remote_scripts/ds_match_candidate_query.py"),',
+    "    ]",
+    "    script = next((p for p in candidates if p.is_file()), None)",
+    "    if not script:",
+    '        raise RuntimeError("DS_MATCH_HELPER_NOT_DEPLOYED")',
+    '    spec = importlib.util.spec_from_file_location("ds_match_candidate_query", script)',
+    "    mod = importlib.util.module_from_spec(spec)",
+    "    sys.modules[spec.name] = mod",
+    "    spec.loader.exec_module(mod)",
+    "    return mod",
+    "matcher = load_matcher()",
+    'args = argparse.Namespace(ds_db_host="", ds_db_port="", ds_db_user="", ds_db_password="", ds_db_name="")',
+    "try:",
+    "    pid = matcher.find_ds_pid()",
+    "    process_env = matcher.read_process_env(pid)",
+    "    connection = matcher.discover_ds_mysql_connection(args, process_env)",
+    "except Exception as discover_error:",
+    "    connection = matcher.configured_ds_mysql_connection(COUNTRY)",
+    "    if not connection:",
+    '        raise RuntimeError("DS_CONNECTION_DISCOVERY_FAILED: " + str(discover_error))',
+    "rows = matcher.query_mysql_rows(connection, SQL) or []",
+    "for row in rows:",
+    '    user = str(row.get("user_name") or row.get("user") or "")',
+    '    token = str(row.get("token") or "")',
+    "    if token:",
+    '        print(user + "\t" + token)',
+  ].join("\n");
+
   const lines = [
     "set -euo pipefail",
+    `COUNTRY_CODE=${shellQuote(countryCode)}`,
+    `DS_MATCH_SCRIPT=${shellQuote(helper)}`,
+    `TOKEN_SQL=${shellQuote(Buffer.from(sqlB64, "base64").toString("utf8"))}`,
     `DS_DB_HOST=${shellQuote(db.host || "")}`,
     `DS_DB_PORT=${shellQuote(String(db.port || 3306))}`,
     `DS_DB_USER=${shellQuote(db.user || "")}`,
     `DS_DB_PASSWORD=${shellQuote(db.password || "")}`,
     `DS_DB_NAME=${shellQuote(db.name || "")}`,
-    `SQL_B64=${shellQuote(sqlB64)}`,
     "if [ -n \"$DS_DB_HOST\" ] && [ -n \"$DS_DB_USER\" ] && [ -n \"$DS_DB_PASSWORD\" ]; then",
-    "  printf %s \"$SQL_B64\" | base64 -d | MYSQL_PWD=\"$DS_DB_PASSWORD\" mysql --batch --raw --skip-column-names --host=\"$DS_DB_HOST\" --port=\"$DS_DB_PORT\" --user=\"$DS_DB_USER\" --default-character-set=utf8mb4 \"$DS_DB_NAME\"",
+    "  printf %s \"$TOKEN_SQL\" | MYSQL_PWD=\"$DS_DB_PASSWORD\" mysql --batch --raw --skip-column-names --host=\"$DS_DB_HOST\" --port=\"$DS_DB_PORT\" --user=\"$DS_DB_USER\" --default-character-set=utf8mb4 \"$DS_DB_NAME\"",
     "else",
-    "  echo \"__DS_TOKEN_MAP_SKIP__ no DS DB credentials configured for country\" >&2",
-    "  exit 2",
+    `  python3 - <<'DS_TOKEN_MAP_PY'
+${py}
+DS_TOKEN_MAP_PY`,
     "fi",
   ];
   return lines.join("\n");
