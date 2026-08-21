@@ -234,16 +234,17 @@ function renderCountryList(report) {
   `;
 }
 
+function dsDateStr(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function globalDefaultRange(report) {
-  let min = "", max = "";
-  for (const c of (report?.countryUsage || [])) {
-    for (const d of (c.daily || [])) {
-      if (!d.date) continue;
-      if (!min || d.date < min) min = d.date;
-      if (!max || d.date > max) max = d.date;
-    }
-  }
-  return { from: min, to: max };
+  return { from: dsDateStr(-1), to: dsDateStr(0) };
 }
 
 function countryDefaultRange(c) {
