@@ -160,7 +160,11 @@ export function normalizeAuditRow(row = {}) {
     traceId: String(r.trace_id || r.traceId || "").trim(),
     operator: String(r.operator || r.operator_name || "").trim() || "unknown",
     source: String(r.source_system || r.sourceSystem || r.source || "").trim() || "unknown",
-    token: String(r.token || r.ds_token || "").trim(),
+    token: String(r.token || r.ds_token || "")
+      .trim()
+      .replace(/,$/, "")
+      .replace(/^['"]+|['"]+$/g, "")
+      .trim(),
     country: String(r.country || "").trim().toLowerCase(),
     action: String(r.action || "").trim(),
     targetType: String(r.target_type || r.targetType || "").trim(),
