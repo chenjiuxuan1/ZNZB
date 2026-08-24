@@ -531,18 +531,22 @@ function buildRetryRuns(logs) {
   }
   return [...groups.entries()].map(([id, items]) => {
     const ordered = [...items].sort((a, b) => Date.parse(a.time || 0) - Date.parse(b.time || 0));
-    const countries = [...new Set(ordered.map((item) => item.country).filter(Boolean))];
-    const controlLog = ordered.find((item) => Array.isArray(item.countries)) || {};
+    // Excluded projects are outside both manual-test and scheduled-retry scope.
+    // Keep their audit events in the backend log, but omit them from user-facing
+    // retry history and from all matched-task/country counters.
+    const historyLogs = ordered.filter((item) => item.event !== "excluded");
+    const countries = [...new Set(historyLogs.map((item) => item.country).filter(Boolean))];
+    const controlLog = historyLogs.find((item) => Array.isArray(item.countries)) || {};
     const selectedCountries = Array.isArray(controlLog.countries) ? controlLog.countries : [];
     const selectedCountryNames = selectedCountries.map((country) => COUNTRY_META[country]?.name || country).join("、");
     const matchedCountryNames = countries.map((country) => COUNTRY_META[country]?.name || country).join("、");
-    const taskCount = new Set(ordered.map((item) => item.key).filter(Boolean)).size;
-    const retryCount = ordered.filter((item) => item.event === "retry_submitted").length;
-    const status = ordered.some((item) => ["retry_failed", "retry_not_recovered", "configuration_error", "instance_check_failed", "workflow_check_failed"].includes(item.event)) ? "failed"
-      : ordered.some((item) => ["manual_run_completed", "scheduled_run_completed"].includes(item.event)) ? "success"
-        : ordered.some((item) => ["control_disabled", "manual_run_stopped", "safety_stopped", "retry_stopped"].includes(item.event)) ? "stopped"
+    const taskCount = new Set(historyLogs.map((item) => item.key).filter(Boolean)).size;
+    const retryCount = historyLogs.filter((item) => item.event === "retry_submitted").length;
+    const status = historyLogs.some((item) => ["retry_failed", "retry_not_recovered", "configuration_error", "instance_check_failed", "workflow_check_failed"].includes(item.event)) ? "failed"
+      : historyLogs.some((item) => ["manual_run_completed", "scheduled_run_completed"].includes(item.event)) ? "success"
+        : historyLogs.some((item) => ["control_disabled", "manual_run_stopped", "safety_stopped", "retry_stopped"].includes(item.event)) ? "stopped"
           : "running";
-    const last = ordered.at(-1) || {};
+    const last = historyLogs.at(-1) || {};
     return {
       id,
       startedAt: ordered[0]?.time,
@@ -554,7 +558,7 @@ function buildRetryRuns(logs) {
       taskCount,
       retryCount,
       summary: formatRetryMessage(last.message) || retryRunStatus(status),
-      logs: ordered.reverse(),
+      logs: historyLogs.reverse(),
     };
   }).filter((run) => {
     const events = new Set(run.logs.map((item) => item.event));
