@@ -13,6 +13,13 @@ test("DS failure reasons distinguish SQL errors from recoverable infrastructure 
   assert.equal(classifyDsFailureReason("business validation failed"), "unknown");
 });
 
+test("DS failure reason extracts an explicit stop explanation from task logs", () => {
+  assert.equal(
+    extractDsFailureReason("INFO process started\nWARN workflow was manually stopped by operator millie"),
+    "WARN workflow was manually stopped by operator millie",
+  );
+});
+
 test("DS failure records distinguish scheduled and non-scheduled triggers", () => {
   const failures = classifyWorkflowFailures([
     { workflowDefinitionCode: "scheduled", workflowInstanceId: "s-1", workflowInstanceName: "scheduled", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-19 08:00:00" },
