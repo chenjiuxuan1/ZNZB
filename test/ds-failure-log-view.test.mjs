@@ -90,6 +90,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(styles, /\.ds-failure-retry-control \.ds-failure-filter-grid \{[\s\S]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(source, /返回失败任务日志/);
   assert.match(source, /buildRetryRuns/);
+  assert.match(source, /historyLogs = ordered\.filter\(\(item\) => item\.event !== "excluded"\)/);
   assert.match(source, /\["manual_run_completed", "scheduled_run_completed"\]\.includes\(item\.event\)/);
   assert.match(source, /wasRunning && !model\.retryControl\.manualRunning/);
   assert.match(source, /apiGet\("\/api\/ds-failure-retry\/logs\?limit=200"\)/);
