@@ -70,15 +70,17 @@ test("does not start retry loop for permission errors", async () => {
 
 test("keeps retryable failures running until the instance succeeds", async () => {
   const actions = [];
+  const retryPayloads = [];
   let instanceChecks = 0;
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
     inspectFn: async () => resultWith({ ...classifyDsFailureType({ failureMessage: "Memory limit exceeded" }) }),
     configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
-    actionFn: async ({ action }) => {
+    actionFn: async ({ action, payload }) => {
       actions.push(action);
       if (action === "get_instance") return { state: ++instanceChecks === 1 ? "FAILURE" : "SUCCESS" };
       if (action === "get_workflow") return { releaseState: "ONLINE" };
+      if (action === "retry_instance") retryPayloads.push(payload);
       return { success: true };
     },
     now: () => fixedNow,
@@ -86,6 +88,7 @@ test("keeps retryable failures running until the instance succeeds", async () =>
   });
   await enableAndWait(manager);
   assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance", "get_instance"]);
+  assert.equal(retryPayloads[0].execution_type, "START_FAILURE_TASK_PROCESS");
   assert.equal([...manager.statuses.values()][0].autoRetryStatus, "recovered");
   assert.equal([...manager.statuses.values()][0].attempts, 1);
 });
@@ -167,6 +170,7 @@ test("stops without retry when the workflow is offline", async () => {
 
 test("continues retrying a recoverable instance even when its current state is stopped", async () => {
   const actions = [];
+  const retryPayloads = [];
   let checks = 0;
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
@@ -177,10 +181,11 @@ test("continues retrying a recoverable instance even when its current state is s
       ...classifyDsFailureType({ instanceState: "STOP", taskName: "load_orders", failureMessage: "Connection reset by peer" }),
     }),
     configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
-    actionFn: async ({ action }) => {
+    actionFn: async ({ action, payload }) => {
       actions.push(action);
       if (action === "get_instance") return { state: ++checks === 1 ? "STOP" : "SUCCESS" };
       if (action === "get_workflow") return { releaseState: "ONLINE" };
+      if (action === "retry_instance") retryPayloads.push(payload);
       return { success: true };
     },
     now: () => fixedNow,
@@ -188,6 +193,7 @@ test("continues retrying a recoverable instance even when its current state is s
   });
   await enableAndWait(manager);
   assert.deepEqual(actions, ["get_instance", "get_workflow", "retry_instance", "get_instance"]);
+  assert.equal(retryPayloads[0].execution_type, "REPEAT_RUNNING");
   assert.equal([...manager.statuses.values()][0].autoRetryStatus, "recovered");
 });
 

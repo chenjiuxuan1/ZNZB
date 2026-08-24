@@ -225,10 +225,27 @@ export function createDsAutoRetryManager({
         }
         if (manual && !manualRunning) return;
         try {
-          await actionFn({ webhookUrl, country, token, action: "retry_instance", payload });
+          const executionType = STOP_STATES.has(state) ? "REPEAT_RUNNING" : "START_FAILURE_TASK_PROCESS";
+          await actionFn({
+            webhookUrl,
+            country,
+            token,
+            action: "retry_instance",
+            payload: { ...payload, execution_type: executionType },
+          });
           attempts += 1;
           setStatus(key, { autoRetryStatus: "retrying", attempts, lastAttemptAt: now().toISOString(), lastError: "", stopReason: "" });
-          runLog("info", "retry_submitted", { key, country, attempts, state, ...taskDetail, message: `已提交第 ${attempts} 次重跑` });
+          runLog("info", "retry_submitted", {
+            key,
+            country,
+            attempts,
+            state,
+            executionType,
+            ...taskDetail,
+            message: STOP_STATES.has(state)
+              ? `停止态实例已按整实例方式提交第 ${attempts} 次重跑`
+              : `失败态实例已按失败节点恢复方式提交第 ${attempts} 次重跑`,
+          });
           submittedThisRun = true;
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", attempts, lastError: error.message });

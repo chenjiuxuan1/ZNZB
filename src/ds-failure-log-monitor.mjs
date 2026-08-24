@@ -29,6 +29,7 @@ const COUNTRY_DS_UI_BASE_URLS = {
 };
 
 const FAILED_STATES = new Set(["FAILURE", "KILL", "STOP", "STOPPED", "6", "9", "5"]);
+const STOPPED_STATES = new Set(["KILL", "STOP", "STOPPED", "9", "5"]);
 const SUCCESS_STATES = new Set(["SUCCESS", "7"]);
 const RUNNING_STATES = new Set(["SUBMITTED_SUCCESS", "RUNNING_EXECUTION", "WAITING_THREAD", "WAITING_DEPEND", "DELAY_EXECUTION", "0", "1", "10", "11", "12"]);
 
@@ -284,6 +285,7 @@ export function extractDsFailureReason(log, fallback = "") {
     if (/Caused by\s*:/i.test(line)) score = 100;
     else if (/(?:SQLSTATE|detailMessage|errCode|does not exist|unknown (?:column|table)|permission denied|syntax error|unsupported operand|no such)/i.test(line)) score = 90;
     else if (/(?:Exception|SQLException|Error)\s*[:：]/i.test(line)) score = 80;
+    else if (/(?:stopped|killed|cancelled|canceled|terminated|manual(?:ly)? stop|人工停止|手动停止|任务终止|被终止)/i.test(line)) score = 70;
     else if (/(?:\bERROR\b|\bFAILED\b|\bfailure\b)/i.test(line)) score = 60;
     return score ? { line, score, index } : null;
   }).filter(Boolean).sort((a, b) => b.score - a.score || b.index - a.index);
@@ -297,6 +299,14 @@ export function extractDsFailureReason(log, fallback = "") {
     .replace(/^.*?Caused by\s*:\s*/i, "")
     .replace(/^.*?\bERROR\b\s*[-:：]?\s*/i, "")
     .trim().slice(0, 1000) || candidate.slice(0, 1000);
+}
+
+function stoppedFailureReason(failure = {}, reason = "") {
+  const state = String(failure.instanceState || "").trim().toUpperCase();
+  if (!STOPPED_STATES.has(state)) return reason;
+  const normalized = String(reason || "").trim();
+  if (normalized && normalized !== "任务日志未返回明确失败原因") return normalized;
+  return `工作流实例状态为 ${state || "STOP"}；DS 未返回明确停止原因，可能由人工停止、上游终止或系统调度终止`;
 }
 
 export function extractTaskScript(data = {}) {
@@ -559,13 +569,19 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       const enriched = {
         ...failure,
         ...runtime,
-        failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
+        failureMessage: stoppedFailureReason(
+          failure,
+          extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
+        ),
       };
       return { ...enriched, ...classifyDsFailureType(enriched) };
     }
     const resolved = await resolveFailureTask(failure, { webhookUrl, country, token });
     if (!resolved) {
-      const enriched = { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
+      const enriched = {
+        ...failure,
+        failureMessage: stoppedFailureReason(failure, extractDsFailureReason("", failure.failureMessage)),
+      };
       return { ...enriched, ...classifyDsFailureType(enriched) };
     }
     const { taskInstanceId, taskName, taskCode, taskType, taskState, logData, workflowCode: resolvedWorkflowCode, workflowInstanceId, taskQueryPages, taskQueryReadCount, taskQueryTotal } = resolved;
@@ -584,13 +600,16 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       taskQueryPages,
       taskQueryReadCount,
       taskQueryTotal,
-      failureMessage: extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
+      failureMessage: stoppedFailureReason(
+        failure,
+        extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
+      ),
     };
     return { ...enriched, ...classifyDsFailureType(enriched) };
   } catch (error) {
     const enriched = {
       ...failure,
-      failureMessage: extractDsFailureReason("", failure.failureMessage),
+      failureMessage: stoppedFailureReason(failure, extractDsFailureReason("", failure.failureMessage)),
       logError: error.message,
     };
     return { ...enriched, ...classifyDsFailureType(enriched) };

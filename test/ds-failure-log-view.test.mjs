@@ -86,6 +86,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /function formatRetryMessage/);
   assert.match(source, /timeZone: "Asia\/Shanghai"/);
   assert.match(source, /function failureReasonForDisplay/);
+  assert.match(source, /const stopped = \["STOP", "STOPPED", "KILL", "5", "9"\]/);
   assert.match(source, /失败节点尚未定位，可能为空跑，具体原因需人工确认/);
   assert.match(styles, /\.ds-failure-retry-control \.ds-failure-filter-grid \{[\s\S]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(source, /返回失败任务日志/);

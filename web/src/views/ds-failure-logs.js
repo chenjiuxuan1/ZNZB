@@ -829,7 +829,8 @@ function renderFailure(item) {
 }
 
 function failureReasonForDisplay(item = {}) {
-  if (!item.taskName && !item.taskCode) return "失败节点尚未定位，可能为空跑，具体原因需人工确认";
+  const stopped = ["STOP", "STOPPED", "KILL", "5", "9"].includes(String(item.instanceState || "").toUpperCase());
+  if (!item.taskName && !item.taskCode && !stopped) return "失败节点尚未定位，可能为空跑，具体原因需人工确认";
   return describeFailureReason(item.failureReason || item.failureMessage || "任务日志未返回明确失败原因");
 }
 
