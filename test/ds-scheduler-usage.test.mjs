@@ -105,6 +105,12 @@ test("normalizeAuditRow maps token from row or ds_token", () => {
   assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A" }).token, "");
 });
 
+test("normalizeAuditRow strips SQL wrapper from token", () => {
+  assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A", token: "'abc123'," }).token, "abc123");
+  assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A", token: '"abc123",' }).token, "abc123");
+  assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", operator: "A", token: "abc123," }).token, "abc123");
+});
+
 test("normalizeAuditRow handles success booleans/ints and derives date", () => {
   assert.equal(normalizeAuditRow({ operation_time: "2026-08-20 12:34:56", operator: "A", success: 1 }).date, "2026-08-20");
   assert.equal(normalizeAuditRow({ operation_time: "2026-08-20", success: true }).success, true);
