@@ -161,11 +161,6 @@ export function createDsAutoRetryManager({
           runLog("info", "retry_stopped", { key, country, attempts, ...taskDetail, message: "页面已停止自动重跑" });
           return;
         }
-        if (countryDateKey(country, now()) !== startedDate) {
-          setStatus(key, { autoRetryStatus: "safety_stopped", stopReason: "失败实例已跨天，自动重跑终止", attempts });
-          runLog("warn", "safety_stopped", { key, country, attempts, ...taskDetail, message: "失败实例已跨天" });
-          return;
-        }
         const config = await configLoader(rootDir);
         const countryConfig = config.countries?.[country] || {};
         const token = String(countryConfig.token || "").trim();
@@ -192,6 +187,29 @@ export function createDsAutoRetryManager({
         if (SUCCESS_STATES.has(state)) {
           setStatus(key, { autoRetryStatus: "recovered", stopReason: "重跑成功", attempts, recoveryState: state });
           runLog("success", "recovered", { key, country, attempts, state, ...taskDetail, message: "实例重跑成功" });
+          return;
+        }
+        const currentDate = countryDateKey(country, now());
+        if (currentDate !== startedDate) {
+          const stopReason = `DS 最新实例状态为 ${state || "UNKNOWN"}，失败实例日期 ${startedDate} 与当前业务日期 ${currentDate} 不一致；为避免跨日误重跑，已安全停止`;
+          setStatus(key, {
+            autoRetryStatus: "safety_stopped",
+            stopReason,
+            attempts,
+            recoveryState: state,
+            failureDate: startedDate,
+            currentDate,
+          });
+          runLog("warn", "safety_stopped", {
+            key,
+            country,
+            attempts,
+            state,
+            failureDate: startedDate,
+            currentDate,
+            ...taskDetail,
+            message: stopReason,
+          });
           return;
         }
         try {
