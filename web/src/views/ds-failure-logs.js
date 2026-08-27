@@ -733,6 +733,8 @@ function retryLogEvent(event) {
     owner_notification_sent: "负责人告警已发送",
     owner_notification_failed: "负责人告警发送失败",
     owner_notification_skipped: "未配置负责人",
+    owner_notification_test_sent: "负责人通知测试成功",
+    owner_notification_test_failed: "负责人通知测试失败",
     manual_review: "转人工确认",
     waiting: "等待运行",
   }[event] || event || "状态更新");
