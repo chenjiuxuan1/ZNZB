@@ -148,6 +148,31 @@ test("notifies the country owner only when a suspected empty run is still runnin
   assert.ok(manager.getLogs().some((item) => item.event === "owner_notification_sent"));
 });
 
+test("tests country-owner notifications and persists the result in retry logs", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-owner-notification-test-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  const sent = [];
+  const manager = createDsAutoRetryManager({
+    rootDir,
+    ownerConfigLoader: async () => ({
+      countryConfigs: [{ countryCode: "MX", ownerEmails: "mx-owner@kn.group" }],
+    }),
+    notifyFn: async (config, message) => {
+      sent.push({ config, message });
+      return { sent: true, status: 200 };
+    },
+    now: () => fixedNow,
+  });
+
+  const result = await manager.testOwnerNotification({ country: "mx" });
+  assert.equal(result.sent, true);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /不代表真实生产故障/);
+  assert.ok(manager.getLogs().some((item) => item.event === "owner_notification_test_sent"));
+  const persisted = JSON.parse(await fs.readFile(path.join(rootDir, "config", "ds-failure-retry-state.json"), "utf8"));
+  assert.ok(persisted.logs.some((item) => item.event === "owner_notification_test_sent"));
+});
+
 test("stops without retry when the workflow is offline", async () => {
   const actions = [];
   const manager = createDsAutoRetryManager({

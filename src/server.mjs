@@ -282,6 +282,9 @@ async function handleApi(request, response, url) {
   if (method === "DELETE" && url.pathname === "/api/ds-failure-retry/logs") {
     return sendJson(response, 200, api.deleteDsFailureRetryRun(await readBody(request, {})));
   }
+  if (method === "POST" && url.pathname === "/api/ds-failure-retry/notification/test") {
+    return sendJson(response, 200, await api.testDsFailureOwnerNotification(await readBody(request, {})));
+  }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/notification") {
     return sendJson(response, 200, await api.getDsNotificationConfig());
   }
