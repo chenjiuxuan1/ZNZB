@@ -500,12 +500,65 @@ export function createDsAutoRetryManager({
     return { deleted: before - logs.length, runId: target, logCount: logs.length };
   }
 
+  async function testOwnerNotification(options = {}) {
+    const requestedCountry = String(options.country || "").trim().toLowerCase();
+    const schedule = await ownerConfigLoader(rootDir);
+    const targets = (schedule?.countryConfigs || [])
+      .map((item) => ({
+        country: String(item?.countryCode || "").trim().toLowerCase(),
+        emails: String(item?.ownerEmails || item?.recipientEmails || "").trim(),
+        botToken: item?.botToken || "${KN_BOT_TOKEN}",
+      }))
+      .filter((item) => item.country && item.emails && (!requestedCountry || item.country === requestedCountry));
+    if (!targets.length) {
+      throw new Error(requestedCountry ? `国家 ${requestedCountry.toUpperCase()} 未配置负责人邮箱` : "未配置可测试的国家负责人邮箱");
+    }
+
+    const runId = `ds-owner-notification-test-${now().getTime()}`;
+    const results = [];
+    for (const target of targets) {
+      try {
+        const notification = await notifyFn({
+          alerts: {
+            channel: "knBot",
+            botToken: target.botToken,
+            recipientEmails: target.emails,
+          },
+        }, [
+          "DS 失败任务负责人通知测试",
+          `国家：${target.country.toUpperCase()}`,
+          `测试时间：${now().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}`,
+          "这是一条通知链路测试消息，不代表真实生产故障，无需处理。",
+        ].join("\n"), {
+          title: "DS 失败任务负责人通知测试",
+          severity: "info",
+          timestamp: now().toISOString(),
+        });
+        if (!notification?.sent) throw new Error(notification?.reason || "负责人测试通知未发送");
+        appendLog("success", "owner_notification_test_sent", {
+          runId,
+          country: target.country,
+          message: `负责人通知测试发送成功（${target.emails.split(/[，,；;\n]/).filter(Boolean).length} 个接收人）`,
+        });
+        results.push({ country: target.country, sent: true });
+      } catch (error) {
+        appendLog("error", "owner_notification_test_failed", {
+          runId,
+          country: target.country,
+          message: `负责人通知测试发送失败：${error.message}`,
+        });
+        results.push({ country: target.country, sent: false, reason: error.message });
+      }
+    }
+    return { sent: results.every((item) => item.sent), runId, results };
+  }
+
   function stop() {
     if (scanTimer) clearTimeout(scanTimer);
     scanTimer = null;
   }
 
-  return { start, stop, scan, enable, disable, configure, runNow, stopManualRun, control, getLogs, deleteRunLogs, decorate, statuses, active, logs };
+  return { start, stop, scan, enable, disable, configure, runNow, stopManualRun, control, getLogs, deleteRunLogs, testOwnerNotification, decorate, statuses, active, logs };
 }
 
 function normalizeRetryMinute(value) {
