@@ -272,7 +272,7 @@ test("scheduled patrol exposes a green start and stop query switch", () => {
 
 test("app cache-busts the scheduled patrol stop controls", () => {
   const app = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
-  assert.match(app, /batch-check\.js\?v=20260819-patrol-restart-v4/);
+  assert.match(app, /batch-check\.js\?v=20260821-empty-runtime-copy-v5/);
 });
 
 test("scheduled country progress details stay open across polling rerenders", () => {

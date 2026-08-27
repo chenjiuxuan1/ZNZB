@@ -19,6 +19,8 @@ config/runtime-discovered-panels*.json
 config/runtime-discovered-public-dashboards*.json
 .DS_Store
 config/ds-scheduler.config.json
+config/ds-scheduler-access-policy.json
+config/ds-scheduler-access-gateway.json
 config/ds-failure-retry-state.json
 n8n-metabase-anomaly-agent.json
 n8n-metabase-anomaly-evidence-agent.local.json

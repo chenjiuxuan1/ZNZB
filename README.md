@@ -335,6 +335,23 @@ npm run watch
 - 接口：`GET /api/ds-scheduler/usage`、`POST /api/ds-scheduler/usage/refresh`。
 - 详细说明见 [调度网关使用统计](./docs/ds-scheduler-gateway-usage.md)。
 
+### 用户权限与管控（极端情况限制）
+
+「DS网关使用统计」页内置「**用户权限与管控**」区块，为网关的每个用户提供管控能力：
+
+- **不允许大量新建/删除**：按小时/日限额拦截 `create_workflow`、`delete_task`、`disable_task` 等批量操作；
+- **删除动作只对个别用户开放**：`delete` 类动作默认受限，只有显式开放删除权限的用户（通常管理员）可执行；
+- **可配置用户权限**：按用户名配置角色（只读/运维/高级/管理员）、动作黑/白名单、独立限额；
+- **对每个用户的管理能力**：封锁/解封、移除显式配置、模拟校验、违规记录、一键封锁超限用户。
+
+管控分两层：值班平台负责配置与违规检测，`ds-scheduler-gateway` 的 `gateway/access.py` 在每次请求执行前真正拦截。
+配置后需「下发策略」并部署网关代码到 6 国机器才生效。
+
+- 配置：`config/ds-scheduler-access-policy.json`（gitignore；示例见 `config/ds-scheduler-access-policy.example.json`）
+- 接口：`GET/PUT /api/ds-scheduler/access*`、`PUT/DELETE /api/ds-scheduler/access/users/:name`、`POST /api/ds-scheduler/access/evaluate|publish`
+- 下发脚本：`scripts/publish-ds-access-policy.mjs`（`--dry-run` 先看计划）
+- 详细说明见 [DS 网关用户权限与管控](./docs/ds-scheduler-access-control.md)。
+
 ## 规则类型
 
 Metabase 数据缺失、动态更新周期、各国时区、执行时间截止、查询重试和本次对话全部改造记录见 [Metabase 巡检改造完整说明](./docs/metabase-missing-rule-adjustments.md)。
