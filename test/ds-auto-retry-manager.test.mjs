@@ -173,6 +173,22 @@ test("tests country-owner notifications and persists the result in retry logs", 
   assert.ok(persisted.logs.some((item) => item.event === "owner_notification_test_sent"));
 });
 
+test("keeps complete retry runs for seven days and removes older history", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-retry-retention-test-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config", "ds-failure-retry-state.json"), JSON.stringify({
+    logs: [
+      { id: "old-1", runId: "old-run", time: "2026-08-10T10:00:00.000Z", event: "manual_run" },
+      { id: "recent-1", runId: "recent-run", time: "2026-08-17T02:01:00.000Z", event: "manual_run" },
+      { id: "recent-2", runId: "recent-run", time: "2026-08-18T01:00:00.000Z", event: "manual_run_completed" },
+    ],
+  }));
+  const manager = createDsAutoRetryManager({ rootDir, now: () => fixedNow });
+  const logs = manager.getLogs();
+  assert.equal(logs.some((item) => item.runId === "old-run"), false);
+  assert.equal(logs.filter((item) => item.runId === "recent-run").length, 2);
+});
+
 test("stops without retry when the workflow is offline", async () => {
   const actions = [];
   const manager = createDsAutoRetryManager({

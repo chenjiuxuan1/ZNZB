@@ -50,6 +50,7 @@ let model = {
   retryManualActionLoading: false,
   retryActionMessage: "",
   pendingDeleteRunId: "",
+  retryHistoryPage: 1,
 };
 
 let autoRefreshTimer = null;
@@ -420,7 +421,7 @@ function paint(root) {
         <div class="detail-header compact-header">
           <div><h3 class="panel-title">重跑历史</h3><p class="muted">每次启动形成一条历史记录，点击“打开详情页”查看该次重跑的完整过程。</p></div>
         </div>
-        ${renderRetryHistoryRows(buildRetryRuns(model.retryLogs))}
+        ${renderRetryHistoryRows(buildRetryRuns(model.retryLogs), model.retryHistoryPage)}
       </div>
     </section>
     ${renderRetryExclusionModal()}
@@ -445,6 +446,11 @@ function paint(root) {
   root.querySelectorAll("[data-delete-retry-run]").forEach((button) => button.addEventListener("click", () => deleteRetryRun(root, button.dataset.deleteRetryRun)));
   root.querySelectorAll("[data-confirm-delete-retry-run]").forEach((button) => button.addEventListener("click", () => confirmDeleteRetryRun(root, button.dataset.confirmDeleteRetryRun)));
   root.querySelectorAll("[data-cancel-delete-retry-run]").forEach((button) => button.addEventListener("click", () => { model.pendingDeleteRunId = ""; paint(root); }));
+  root.querySelectorAll("[data-retry-history-page]").forEach((button) => button.addEventListener("click", () => {
+    model.retryHistoryPage = Number(button.dataset.retryHistoryPage) || 1;
+    model.pendingDeleteRunId = "";
+    paint(root);
+  }));
   bindCountryMultiSelect(root, "ds-retry-country", (values) => { void saveRetryCountries(root, values); });
 }
 
@@ -501,13 +507,18 @@ function bindCountryMultiSelect(root, id, onChange) {
   }));
 }
 
-function renderRetryHistoryRows(runs) {
+function renderRetryHistoryRows(runs, requestedPage = 1) {
   if (!runs.length) return `<p class="muted">暂无重跑历史。启动一次重跑计划后，这里会生成一条可打开详情页的历史记录。</p>`;
+  const pageSize = 10;
+  const pageCount = Math.max(1, Math.ceil(runs.length / pageSize));
+  const page = Math.max(1, Math.min(pageCount, Number(requestedPage) || 1));
+  if (model.retryHistoryPage !== page) model.retryHistoryPage = page;
+  const pageRuns = runs.slice((page - 1) * pageSize, page * pageSize);
   return `
     <div class="table-wrap schedule-history-table ds-retry-history-table">
       <table>
         <thead><tr><th>运行时间</th><th>状态</th><th>国家</th><th>任务</th><th>重跑次数</th><th>结果</th><th>明细</th><th>删除</th></tr></thead>
-        <tbody>${runs.map((run) => `
+        <tbody>${pageRuns.map((run) => `
           <tr>
             <td>${escapeHtml(formatTime(run.startedAt))}</td>
             <td><span class="badge ${retryRunBadge(run.status)}">${escapeHtml(retryRunStatus(run.status))}</span></td>
@@ -519,7 +530,8 @@ function renderRetryHistoryRows(runs) {
             <td><div class="ds-retry-delete-wrap"><button class="icon-button danger-icon" type="button" data-delete-retry-run="${escapeHtml(run.id)}" title="删除这条重跑历史" aria-label="删除这条重跑历史"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v5M14 11v5"/></svg></button>${model.pendingDeleteRunId === run.id ? `<div class="ds-retry-delete-confirm"><span>确定删除这条记录？</span><div><button class="secondary" type="button" data-cancel-delete-retry-run="${escapeHtml(run.id)}">取消</button><button class="primary" type="button" data-confirm-delete-retry-run="${escapeHtml(run.id)}">确认</button></div></div>` : ""}</div></td>
           </tr>`).join("")}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${pageCount > 1 ? `<div class="ds-retry-history-pagination"><span>共 ${runs.length} 条，第 ${page} / ${pageCount} 页</span><div><button class="secondary" type="button" data-retry-history-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>上一页</button>${Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => `<button class="${number === page ? "primary" : "secondary"}" type="button" data-retry-history-page="${number}">${number}</button>`).join("")}<button class="secondary" type="button" data-retry-history-page="${page + 1}" ${page >= pageCount ? "disabled" : ""}>下一页</button></div></div>` : ""}`;
 }
 
 function buildRetryRuns(logs) {

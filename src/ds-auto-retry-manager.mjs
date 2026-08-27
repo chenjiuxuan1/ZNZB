@@ -10,6 +10,7 @@ const RUNNING_STATES = new Set(["SUBMITTED_SUCCESS", "RUNNING_EXECUTION", "WAITI
 const STOP_STATES = new Set(["STOP", "STOPPED", "KILL", "KILLING", "5", "9"]);
 const FAILURE_STATES = new Set(["FAILURE", "FAILED", "6"]);
 const ACTIVE_RETRY_STATUSES = new Set(["retrying", "running", "retry_wait"]);
+const RETRY_LOG_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -93,7 +94,7 @@ export function createDsAutoRetryManager({
   const persisted = loadRetryState(stateFile);
   const active = new Map();
   const statuses = new Map(Array.isArray(persisted.statuses) ? persisted.statuses : []);
-  const logs = Array.isArray(persisted.logs) ? persisted.logs.slice(-500) : [];
+  const logs = pruneExpiredRetryLogs(Array.isArray(persisted.logs) ? persisted.logs : [], now()).slice(-500);
   let scanTimer = null;
   let scanning = false;
   let enabled = Boolean(persisted.enabled);
@@ -122,8 +123,16 @@ export function createDsAutoRetryManager({
     statuses: [...statuses.entries()],
   }, logger);
 
+  const pruneLogs = () => {
+    const retained = pruneExpiredRetryLogs(logs, now());
+    if (retained.length === logs.length) return false;
+    logs.splice(0, logs.length, ...retained);
+    return true;
+  };
+
   const appendLog = (level, event, detail = {}) => {
     logs.push({ id: `${now().getTime()}-${logs.length + 1}`, runId: detail.runId || currentRunId, time: now().toISOString(), level, event, ...detail });
+    pruneLogs();
     if (logs.length > 500) logs.splice(0, logs.length - 500);
     persistState();
   };
@@ -485,6 +494,7 @@ export function createDsAutoRetryManager({
   }
 
   function getLogs(limit = 200) {
+    if (pruneLogs()) persistState();
     const safeLimit = Math.max(1, Math.min(500, Number(limit) || 200));
     return logs.slice(-safeLimit).reverse();
   }
@@ -640,4 +650,18 @@ function saveRetryState(filePath, state, logger) {
   } catch (error) {
     logger.warn?.(`[ds-auto-retry] state persistence failed: ${error.message}`);
   }
+}
+
+function pruneExpiredRetryLogs(logs, reference = new Date()) {
+  const cutoff = reference.getTime() - RETRY_LOG_RETENTION_MS;
+  const newestByRun = new Map();
+  for (const item of logs) {
+    const runId = String(item?.runId || `legacy-${item?.id || ""}`);
+    const timestamp = Date.parse(item?.time || "");
+    newestByRun.set(runId, Math.max(newestByRun.get(runId) || 0, Number.isFinite(timestamp) ? timestamp : 0));
+  }
+  return logs.filter((item) => {
+    const runId = String(item?.runId || `legacy-${item?.id || ""}`);
+    return (newestByRun.get(runId) || 0) >= cutoff;
+  });
 }
