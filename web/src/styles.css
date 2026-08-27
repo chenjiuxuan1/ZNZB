@@ -6145,3 +6145,59 @@ body {
   color: #334155;
   white-space: nowrap;
 }
+
+/* ---- DS 网关用户权限与管控 ---- */
+.dsu-access-panel { margin-top: 16px; }
+.dsu-access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.dsu-access-card {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--panel-soft, #fbfcfe);
+}
+.dsu-access-card-title { font-size: 14px; font-weight: 700; color: #0f172a; margin: 0 0 8px; }
+.dsu-access-field { margin-bottom: 10px; }
+.dsu-access-field label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #475569; font-weight: 600; }
+.dsu-access-field .check { display: flex; flex-direction: row; align-items: center; gap: 6px; font-weight: 600; color: #0f172a; }
+.dsu-access-field select, .dsu-access-field input { margin-top: 2px; }
+.dsu-access-field .muted { font-weight: 400; font-size: 11px; }
+.dsu-limit-title { font-size: 12px; font-weight: 700; color: #475569; margin: 8px 0 6px; }
+.dsu-limit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.dsu-limit-item { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #64748b; font-weight: 600; }
+.dsu-limit-item input { padding: 5px 8px; }
+.dsu-access-actions { margin-top: 8px; }
+.dsu-access-block { border-top: 1px solid var(--border, #e2e8f0); padding-top: 12px; margin-bottom: 14px; }
+.dsu-user-list { display: flex; flex-direction: column; gap: 8px; }
+.dsu-user-row { border: 1px solid var(--border, #e2e8f0); border-radius: 10px; background: #fff; }
+.dsu-user-row summary {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 10px 14px; cursor: pointer; list-style: none;
+}
+.dsu-user-row summary::-webkit-details-marker { display: none; }
+.dsu-user-row[open] summary { border-bottom: 1px solid var(--border, #e2e8f0); }
+.dsu-user-name { font-weight: 700; color: #0f172a; min-width: 120px; }
+.dsu-user-summary-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.dsu-user-edit { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.dsu-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.dsu-edit-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #475569; font-weight: 600; }
+.dsu-edit-grid .check { flex-direction: row; align-items: center; }
+.dsu-denied-title { font-size: 12px; font-weight: 700; color: #475569; }
+.dsu-denied-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.dsu-denied-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; padding: 2px 7px; border-radius: 5px;
+  border: 1px solid var(--border, #e2e8f0); background: #f8fafc; color: #64748b; cursor: pointer;
+}
+.dsu-denied-chip.active { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+.dsu-edit-tokens { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dsu-publish-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.dsu-code { display: inline-block; margin-top: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #7c3aed; }
+.dsu-publish-block #dsu-publish-result .muted { display: block; margin-top: 4px; }
+@media (max-width: 760px) {
+  .dsu-user-summary-actions { margin-left: 0; }
+}

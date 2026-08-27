@@ -11,7 +11,7 @@ import { renderFluctuationVisual } from "./views/fluctuation-visual.js?v=2026080
 import { renderWattrelAlerts } from "./views/wattrel-alerts.js?v=20260708-wattrel-page";
 import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?v=20260708-quality-generation";
 import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
-import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260820-usage-v6-token";
+import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260826-access-v1";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
 import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260824-stop-rerun-reason-v21";
 

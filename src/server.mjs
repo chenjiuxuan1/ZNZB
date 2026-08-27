@@ -315,6 +315,29 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/ds-scheduler/usage/refresh") {
     return sendJson(response, 200, await api.refreshDsSchedulerUsage(await readBody(request, {})));
   }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/access") {
+    return sendJson(response, 200, await api.getDsSchedulerAccess(Object.fromEntries(url.searchParams.entries())));
+  }
+  if (method === "PUT" && url.pathname === "/api/ds-scheduler/access/policy") {
+    return sendJson(response, 200, await api.saveDsAccessPolicy(await readBody(request, {})));
+  }
+  if (method === "PUT" && url.pathname.startsWith("/api/ds-scheduler/access/users/")) {
+    const username = decodeURIComponent(url.pathname.slice("/api/ds-scheduler/access/users/".length));
+    return sendJson(response, 200, await api.saveDsAccessUser({ ...(await readBody(request, {})), username }));
+  }
+  if (method === "DELETE" && url.pathname.startsWith("/api/ds-scheduler/access/users/")) {
+    const username = decodeURIComponent(url.pathname.slice("/api/ds-scheduler/access/users/".length));
+    return sendJson(response, 200, await api.deleteDsAccessUser({ username }));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/access/evaluate") {
+    return sendJson(response, 200, await api.evaluateDsAccess(await readBody(request, {})));
+  }
+  if (method === "GET" && url.pathname === "/api/ds-scheduler/access/violations") {
+    return sendJson(response, 200, await api.getDsAccessViolations(Object.fromEntries(url.searchParams.entries())));
+  }
+  if (method === "POST" && url.pathname === "/api/ds-scheduler/access/publish") {
+    return sendJson(response, 200, await api.publishDsAccessPolicy());
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 

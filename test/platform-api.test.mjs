@@ -3802,3 +3802,68 @@ test("platform api returns ds scheduler gateway usage from snapshot", async () =
   assert.equal(report.dayCount, 1);
   assert.equal(report.days[0].operators[0].operator, "张三");
 });
+
+test("platform api manages ds gateway access policy, users, evaluate and publish", async () => {
+  const rootDir = await makeFixture();
+  const pad = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const hour = pad(now.getHours());
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler-usage-snapshot.json"),
+    JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      rows: [
+        { operation_time: `${dateStr} ${hour}:00:00`, action: "create_workflow", token: "TOK-Z", success: 1, risk_level: "medium" },
+        { operation_time: `${dateStr} ${hour}:10:00`, action: "create_workflow", token: "TOK-Z", success: 1, risk_level: "medium" },
+        { operation_time: `${dateStr} ${hour}:20:00`, action: "create_workflow", token: "TOK-Z", success: 1, risk_level: "medium" },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-token-user-map.json"),
+    JSON.stringify({ generatedAt: new Date().toISOString(), map: { "TOK-Z": "zhang" } }),
+  );
+
+  const api = createPlatformApi({ rootDir });
+
+  // Save a global policy with a tight create quota.
+  const savedPolicy = await api.saveDsAccessPolicy({ enforcement: true, defaultRole: "operator", globalLimits: { maxCreatesPerHour: 2 } });
+  assert.equal(savedPolicy.policy.globalLimits.maxCreatesPerHour, 2);
+  assert.equal(savedPolicy.policy.globalLimits.maxActionsPerHour, 200);
+
+  // Save a user with delete permission.
+  const savedUser = await api.saveDsAccessUser({ username: "zhang", role: "admin", enabled: true, deleteAllowed: true, tokens: ["TOK-Z"] });
+  assert.equal(savedUser.user.role, "admin");
+  assert.equal(savedUser.user.deleteAllowed, true);
+
+  // Evaluate: admin delete allowed, unconfigured user create blocked by quota preview.
+  const deleteDecision = await api.evaluateDsAccess({ username: "zhang", action: "delete_task" });
+  assert.equal(deleteDecision.allowed, true);
+  const createDecision = await api.evaluateDsAccess({ username: "zhang", action: "create_workflow" });
+  assert.equal(createDecision.allowed, false);
+  assert.equal(createDecision.code, "ACCESS_LIMIT_EXCEEDED");
+
+  // Access overview exposes users + violations.
+  const access = await api.getDsSchedulerAccess({ days: 7 });
+  const zhang = access.users.find((u) => u.username === "zhang");
+  assert.ok(zhang);
+  assert.equal(zhang.configured, true);
+  assert.equal(zhang.role, "admin");
+  assert.ok(access.violations.some((v) => v.username === "zhang"));
+
+  // Publish writes a token-indexed gateway policy.
+  const published = await api.publishDsAccessPolicy();
+  assert.equal(published.ok, true);
+  const gatewayFile = published.file;
+  const gatewayPolicy = JSON.parse(await fs.readFile(gatewayFile, "utf8"));
+  assert.equal(gatewayPolicy.enforce, true);
+  assert.equal(gatewayPolicy.tokens["TOK-Z"].role, "admin");
+  assert.equal(gatewayPolicy.tokens["TOK-Z"].deleteAllowed, true);
+
+  // Remove user config reverts to default role.
+  await api.deleteDsAccessUser({ username: "zhang" });
+  const after = await api.getDsSchedulerAccess({ days: 7 });
+  assert.equal(after.users.find((u) => u.username === "zhang").configured, false);
+  assert.equal(after.users.find((u) => u.username === "zhang").role, "operator");
+});
