@@ -239,17 +239,39 @@ test("continues retrying a recoverable instance even when its current state is s
 });
 
 test("terminates a retryable instance when its failure date is no longer today", async () => {
-  let actions = 0;
+  const actions = [];
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
     inspectFn: async () => resultWith({ startTime: "2026-08-17 23:00:00", taskName: "load_orders", ...classifyDsFailureType({ taskName: "load_orders", failureMessage: "Connection reset by peer" }) }),
-    actionFn: async () => { actions += 1; return {}; },
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    actionFn: async ({ action }) => { actions.push(action); return action === "get_instance" ? { state: "FAILURE" } : {}; },
     now: () => fixedNow,
     sleep: async () => {},
   });
   await enableAndWait(manager);
-  assert.equal(actions, 0);
-  assert.match([...manager.statuses.values()][0].stopReason, /跨天/);
+  assert.deepEqual(actions, ["get_instance"]);
+  const status = [...manager.statuses.values()][0];
+  assert.match(status.stopReason, /DS 最新实例状态为 FAILURE/);
+  assert.match(status.stopReason, /失败实例日期 2026-08-17/);
+  assert.match(status.stopReason, /当前业务日期 2026-08-18/);
+});
+
+test("marks a cross-day instance recovered when DS reports the latest state as successful", async () => {
+  const actions = [];
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({ startTime: "2026-08-17 23:00:00", taskName: "load_orders", ...classifyDsFailureType({ taskName: "load_orders", failureMessage: "Connection reset by peer" }) }),
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    actionFn: async ({ action }) => { actions.push(action); return action === "get_instance" ? { state: "SUCCESS" } : {}; },
+    now: () => fixedNow,
+    sleep: async () => {},
+  });
+  await enableAndWait(manager);
+  assert.deepEqual(actions, ["get_instance"]);
+  const status = [...manager.statuses.values()][0];
+  assert.equal(status.autoRetryStatus, "recovered");
+  assert.equal(status.stopReason, "重跑成功");
+  assert.equal(manager.getLogs().some((item) => item.event === "safety_stopped"), false);
 });
 
 test("automatic retry starts its interval clock without running immediately", async () => {

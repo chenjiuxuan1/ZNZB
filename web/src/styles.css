@@ -151,20 +151,57 @@ button.ds-retry-action {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 14px;
-  margin-top: 14px;
+  gap: 7px;
+  margin-top: 10px;
   color: var(--muted);
-}
-
-.ds-retry-history-pagination > div {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 12px;
 }
 
 .ds-retry-history-pagination button {
-  min-width: 36px;
-  padding: 7px 10px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 3px 7px;
+  border: 1px solid #dbe3ef;
+  border-radius: 4px;
+  background: #fff;
+  color: #344054;
+}
+
+.ds-retry-history-pagination button.active {
+  border-color: #409eff;
+  color: #1677ff;
+}
+
+.ds-retry-history-pagination button:disabled {
+  background: #f5f7fa;
+  color: #c0c4cc;
+  cursor: not-allowed;
+}
+
+.ds-pagination-ellipsis {
+  min-width: 20px;
+  text-align: center;
+}
+
+.ds-pagination-size {
+  width: 76px;
+  min-height: 28px;
+  padding: 3px 7px;
+  font-size: 12px;
+}
+
+.ds-pagination-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.ds-pagination-jump input {
+  width: 52px;
+  min-height: 28px;
+  padding: 3px 7px;
+  font-size: 12px;
 }
 
 .ds-retry-delete-wrap { display: inline-block; position: relative; z-index: 2; }
