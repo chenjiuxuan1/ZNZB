@@ -451,6 +451,18 @@ function paint(root) {
     model.pendingDeleteRunId = "";
     paint(root);
   }));
+  const retryHistoryJump = root.querySelector("#ds-retry-history-jump");
+  const jumpRetryHistoryPage = () => {
+    const target = Number(retryHistoryJump?.value);
+    if (!Number.isInteger(target) || target < 1) return;
+    model.retryHistoryPage = target;
+    model.pendingDeleteRunId = "";
+    paint(root);
+  };
+  retryHistoryJump?.addEventListener("change", jumpRetryHistoryPage);
+  retryHistoryJump?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") jumpRetryHistoryPage();
+  });
   bindCountryMultiSelect(root, "ds-retry-country", (values) => { void saveRetryCountries(root, values); });
 }
 
@@ -531,7 +543,28 @@ function renderRetryHistoryRows(runs, requestedPage = 1) {
           </tr>`).join("")}</tbody>
       </table>
     </div>
-    ${pageCount > 1 ? `<div class="ds-retry-history-pagination"><span>共 ${runs.length} 条，第 ${page} / ${pageCount} 页</span><div><button class="secondary" type="button" data-retry-history-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>上一页</button>${Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => `<button class="${number === page ? "primary" : "secondary"}" type="button" data-retry-history-page="${number}">${number}</button>`).join("")}<button class="secondary" type="button" data-retry-history-page="${page + 1}" ${page >= pageCount ? "disabled" : ""}>下一页</button></div></div>` : ""}`;
+    <div class="ds-retry-history-pagination">
+      <span>总条目为: ${runs.length}</span>
+      <button class="ds-pagination-arrow" type="button" data-retry-history-page="${page - 1}" ${page <= 1 ? "disabled" : ""} aria-label="上一页">‹</button>
+      ${retryPaginationItems(page, pageCount).map((item) => item === "…"
+        ? `<span class="ds-pagination-ellipsis">…</span>`
+        : `<button class="ds-pagination-page ${item === page ? "active" : ""}" type="button" data-retry-history-page="${item}">${item}</button>`).join("")}
+      <button class="ds-pagination-arrow" type="button" data-retry-history-page="${page + 1}" ${page >= pageCount ? "disabled" : ""} aria-label="下一页">›</button>
+      <select class="ds-pagination-size" aria-label="每页条数"><option value="10">10 / 页</option></select>
+      <label class="ds-pagination-jump">跳至<input id="ds-retry-history-jump" type="number" min="1" max="${pageCount}" value="${page}"></label>
+    </div>`;
+}
+
+function retryPaginationItems(page, pageCount) {
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1);
+  const pages = new Set([1, pageCount, page - 1, page, page + 1].filter((item) => item >= 1 && item <= pageCount));
+  const ordered = [...pages].sort((a, b) => a - b);
+  const result = [];
+  for (const number of ordered) {
+    if (result.length && number - result.at(-1) > 1) result.push("…");
+    result.push(number);
+  }
+  return result;
 }
 
 function buildRetryRuns(logs) {
