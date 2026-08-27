@@ -1,0 +1,40 @@
+{
+  "_comment": "DS 网关用户权限与管控策略。运行中由值班平台「DS网关使用统计 → 用户权限与管控」维护到 config/ds-scheduler-access-policy.json（已 gitignore）。本文件为示例/默认值，可作为首次部署的初始内容。",
+  "version": 1,
+  "updatedAt": "",
+  "enforcement": true,
+  "defaultRole": "operator",
+  "enforceUnknown": true,
+  "globalLimits": {
+    "maxActionsPerHour": 200,
+    "maxActionsPerDay": 500,
+    "maxCreatesPerHour": 10,
+    "maxCreatesPerDay": 30,
+    "maxDeletesPerDay": 20,
+    "maxTriggersPerHour": 30
+  },
+  "users": {
+    "jiangchuanchen": {
+      "username": "jiangchuanchen",
+      "tokens": ["289e723fd059f1ea95ef0bb377eb1a95"],
+      "role": "admin",
+      "enabled": true,
+      "note": "网关维护人",
+      "deleteAllowed": true,
+      "allowedActions": null,
+      "deniedActions": [],
+      "limits": null
+    },
+    "zhangsan": {
+      "username": "zhangsan",
+      "tokens": [],
+      "role": "operator",
+      "enabled": true,
+      "note": "示例：运维角色，不允许删除类动作",
+      "deleteAllowed": false,
+      "allowedActions": null,
+      "deniedActions": ["delete_task"],
+      "limits": null
+    }
+  }
+}

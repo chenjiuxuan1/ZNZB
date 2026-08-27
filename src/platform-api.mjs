@@ -46,6 +46,24 @@ import {
   normalizeUsageConfig,
 } from "./ds-scheduler-usage.mjs";
 import {
+  ACTION_CLASSES,
+  buildGatewayPolicy,
+  collectUsers,
+  DEFAULT_LIMITS,
+  detectViolations,
+  evaluateAccess,
+  LIMIT_LABELS,
+  loadAccessPolicy,
+  loadDsTokenUserMap as loadAccessTokenUserMap,
+  loadUsageRows,
+  normalizeAccessPolicy,
+  normalizeUserEntry,
+  ROLE_CLASSES,
+  ROLE_LABELS,
+  saveAccessPolicy,
+  saveGatewayPolicy,
+} from "./ds-scheduler-access.mjs";
+import {
   mapWattrelRowsToAnomalies,
   queryWattrelAlerts as queryWattrelAlertRows,
 } from "./wattrel-client.mjs";
@@ -2768,6 +2786,126 @@ export function createPlatformApi({
       const days = Math.max(1, Math.min(90, Number(filters.days || 0) || 30));
       const config = await loadUsageConfig(rootDir);
       return fetchAndAggregateUsage({ rootDir, config: { ...config, days }, cache: true });
+    },
+
+    // ---- DS 网关用户权限与管控 ----
+
+    async getDsSchedulerAccess(filters = {}) {
+      const days = Math.max(1, Math.min(90, Number(filters.days || 0) || 7));
+      const [policy, tokenUserMap, rows] = await Promise.all([
+        loadAccessPolicy(rootDir),
+        loadAccessTokenUserMap(rootDir),
+        loadUsageRows(rootDir),
+      ]);
+      const users = collectUsers({ rows, tokenUserMap, policy, days });
+      const violations = detectViolations({ rows, tokenUserMap, policy, days });
+      const gatewayPreview = buildGatewayPolicy({ policy, tokenUserMap });
+      return {
+        policy,
+        users,
+        violations,
+        gatewayPreview,
+        meta: {
+          actionClasses: ACTION_CLASSES,
+          roles: Object.keys(ROLE_CLASSES),
+          roleLabels: ROLE_LABELS,
+          defaultLimits: DEFAULT_LIMITS,
+          limitLabels: LIMIT_LABELS,
+          tokenCount: Object.keys(tokenUserMap || {}).length,
+          rowCount: rows.length,
+        },
+      };
+    },
+
+    async saveDsAccessPolicy(input = {}) {
+      const current = await loadAccessPolicy(rootDir);
+      const next = normalizeAccessPolicy({
+        ...current,
+        ...(input || {}),
+        globalLimits: (input && input.globalLimits) ? { ...current.globalLimits, ...input.globalLimits } : current.globalLimits,
+      });
+      const saved = await saveAccessPolicy(rootDir, next);
+      return { ok: true, policy: saved };
+    },
+
+    async saveDsAccessUser(input = {}) {
+      const username = String(input.username || "").trim();
+      if (!username) {
+        const err = new Error("username is required");
+        err.statusCode = 400;
+        throw err;
+      }
+      const current = await loadAccessPolicy(rootDir);
+      const entry = normalizeUserEntry({ ...(current.users[username] || {}), ...input, username });
+      current.users[username] = entry;
+      const saved = await saveAccessPolicy(rootDir, current);
+      return { ok: true, user: saved.users[username] };
+    },
+
+    async deleteDsAccessUser(input = {}) {
+      const username = String(input.username || "").trim();
+      if (!username) {
+        const err = new Error("username is required");
+        err.statusCode = 400;
+        throw err;
+      }
+      const current = await loadAccessPolicy(rootDir);
+      if (Object.prototype.hasOwnProperty.call(current.users, username)) {
+        delete current.users[username];
+        await saveAccessPolicy(rootDir, current);
+      }
+      return { ok: true, removed: username };
+    },
+
+    async evaluateDsAccess(input = {}) {
+      const [policy, tokenUserMap, rows] = await Promise.all([
+        loadAccessPolicy(rootDir),
+        loadAccessTokenUserMap(rootDir),
+        loadUsageRows(rootDir),
+      ]);
+      return evaluateAccess({
+        username: String(input.username || "").trim(),
+        token: String(input.token || "").trim(),
+        action: String(input.action || "").trim(),
+        country: String(input.country || "").trim(),
+        policy,
+        tokenUserMap,
+        rows,
+      });
+    },
+
+    async getDsAccessViolations(filters = {}) {
+      const days = Math.max(1, Math.min(90, Number(filters.days || 0) || 7));
+      const [policy, tokenUserMap, rows] = await Promise.all([
+        loadAccessPolicy(rootDir),
+        loadAccessTokenUserMap(rootDir),
+        loadUsageRows(rootDir),
+      ]);
+      return { violations: detectViolations({ rows, tokenUserMap, policy, days }) };
+    },
+
+    async publishDsAccessPolicy() {
+      const [policy, tokenUserMap] = await Promise.all([
+        loadAccessPolicy(rootDir),
+        loadAccessTokenUserMap(rootDir),
+      ]);
+      const gatewayPolicy = buildGatewayPolicy({ policy, tokenUserMap });
+      const filePath = await saveGatewayPolicy(rootDir, gatewayPolicy);
+      const target = "config/access_policy.json";
+      return {
+        ok: true,
+        file: filePath,
+        target,
+        summary: {
+          enforce: gatewayPolicy.enforce,
+          tokenCount: Object.keys(gatewayPolicy.tokens || {}).length,
+          configuredUserCount: Object.keys(policy.users || {}).length,
+          generatedAt: gatewayPolicy.generatedAt,
+          warnings: gatewayPolicy.warnings || [],
+          deployHint: `将生成文件复制到各国机器 ${target}（或执行 scripts/publish-ds-access-policy.mjs 自动下发）`,
+        },
+        gatewayPolicy,
+      };
     },
   };
 }

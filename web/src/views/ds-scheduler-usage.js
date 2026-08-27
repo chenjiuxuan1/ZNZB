@@ -1,10 +1,10 @@
-import { apiGet, apiPost } from "../api.js";
+import { apiDelete, apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
 const SOURCE_LABELS = { "codex-skill": "Codex Skill", n8n: "n8n", "duty-platform": "值班平台" };
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
-let model = { report: null, config: null, status: null, loading: false, days: 30, globalRange: null };
+let model = { report: null, config: null, status: null, loading: false, days: 30, globalRange: null, access: null, accessStatus: null };
 
 function countryLabel(code) {
   return COUNTRY_LABELS[code] || code || "-";
@@ -88,6 +88,7 @@ export function renderDsSchedulerUsage(root) {
   activeRoot = root;
   paint(root);
   loadConfigOnly(root);
+  loadAccess(root);
 }
 
 async function loadConfigOnly(root) {
@@ -154,6 +155,7 @@ function paint(root) {
     ${renderStatus(report)}
     ${renderTokens()}
     ${renderMain(report)}
+    ${renderAccess(root)}
   `;
   root.querySelector("#dsu-refresh")?.addEventListener("click", () => refresh(root));
   root.querySelectorAll("[data-role='global-from'], [data-role='global-to']").forEach((input) => {
@@ -167,6 +169,7 @@ function paint(root) {
   root.querySelectorAll("[data-token-action='copy']").forEach((btn) => {
     btn.addEventListener("click", () => copyToken(btn));
   });
+  bindAccessEvents(root);
 }
 
 function renderHeroStats(report) {
@@ -540,4 +543,456 @@ function renderCountryOperatorRow(op) {
       <td class="muted">${Object.entries(op.actions || {}).slice(0, 3).map(([a, n]) => `${escapeHtml(actionLabel(a))}×${n}`).join(" · ") || "-"}</td>
     </tr>
   `;
+}
+
+// ---------------------------------------------------------------------------
+// 用户权限与管控（DS 网关）
+// ---------------------------------------------------------------------------
+
+const ROLE_BADGE = {
+  admin: { cls: "chip-ok", label: "管理员" },
+  power: { cls: "chip-warn", label: "高级" },
+  operator: { cls: "chip", label: "运维" },
+  readonly: { cls: "chip", label: "只读" },
+};
+
+async function loadAccess(root) {
+  try {
+    model.access = await apiGet("/api/ds-scheduler/access", { timeoutMs: 40000 });
+    model.accessStatus = null;
+  } catch (error) {
+    model.access = null;
+    model.accessStatus = { type: "error", text: `加载管控数据失败：${error.message}` };
+  }
+  const target = activeRoot || root;
+  paint(target);
+}
+
+function renderAccess(root) {
+  const access = model.access;
+  if (!access) {
+    return `
+      <section class="panel dsu-access-panel">
+        <div class="detail-header compact-header">
+          <div><h2 class="panel-title">用户权限与管控</h2>
+            <p class="muted">为每个用户配置 DS 网关动作权限与频率限额，删除类动作默认仅对白名单用户开放；配置后「下发策略」到网关真正生效。</p>
+          </div>
+        </div>
+        ${model.accessStatus ? `<div class="sandbox-status error"><strong>${escapeHtml(model.accessStatus.text)}</strong></div>` : `<div class="sandbox-status"><span class="btn-spinner"></span>加载管控数据…</div>`}
+      </section>`;
+  }
+  const meta = access.meta || {};
+  return `
+    <section class="panel dsu-access-panel" data-access-section="true">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">用户权限与管控</h2>
+          <p class="muted">权限按用户名配置并绑定 Token；删除/禁用类动作默认仅对开放删除权限的用户可用。改完记得「下发策略」，否则网关仍按旧策略执行。</p>
+        </div>
+        <div class="button-group"><button class="primary" id="dsu-access-reload">刷新</button></div>
+      </div>
+      ${renderAccessStatus(access)}
+      <div class="dsu-access-grid">
+        ${renderGlobalCard(access)}
+        ${renderEvaluateCard(access, meta)}
+      </div>
+      ${renderViolationsCard(access)}
+      ${renderUsersCard(access, meta)}
+      ${renderPublishCard(access)}
+    </section>
+  `;
+}
+
+function renderAccessStatus(access) {
+  if (model.accessStatus) {
+    const type = model.accessStatus.type === "error" ? "error" : model.accessStatus.type === "warn" ? "warn" : "success";
+    return `<div class="sandbox-status ${type}"><strong>${escapeHtml(model.accessStatus.text)}</strong></div>`;
+  }
+  const p = access.policy || {};
+  const tokens = Object.keys((access.gatewayPreview && access.gatewayPreview.tokens) || {}).length;
+  const configured = Object.keys(p.users || {}).length;
+  const violationCount = (access.violations || []).length;
+  const status = p.enforcement ? `已启用拦截 · ${tokens} 个 Token · ${configured} 个已配置用户` : `已停用拦截（仅保存配置，网关不拦截）`;
+  const warn = violationCount ? ` · <strong class="chip chip-danger">${violationCount} 条违规</strong>` : "";
+  return `<div class="sandbox-status success"><strong>管控状态：${escapeHtml(status)}</strong><span>审计快照 ${escapeHtml(String((access.meta && access.meta.rowCount) || 0))} 条${warn}</span></div>`;
+}
+
+function renderGlobalCard(access) {
+  const p = access.policy || {};
+  const limits = p.globalLimits || {};
+  const roles = (access.meta && access.meta.roles) || ["readonly", "operator", "power", "admin"];
+  const roleLabels = (access.meta && access.meta.roleLabels) || {};
+  return `
+    <div class="dsu-access-card">
+      <h3 class="dsu-access-card-title">全局策略</h3>
+      <div class="dsu-access-field">
+        <label class="check"><input type="checkbox" id="dsu-global-enforce" ${p.enforcement ? "checked" : ""}> <strong>网关强制执行</strong></label>
+        <span class="muted">开启后网关按策略拦截违规动作；关闭则仅保存配置不拦截。</span>
+      </div>
+      <div class="dsu-access-field">
+        <label class="check"><input type="checkbox" id="dsu-global-unknown" ${p.enforceUnknown ? "checked" : ""}> 未知 Token 仅允许只读</label>
+        <span class="muted">未绑定到任何用户的 Token 只允许读取类动作，写/删除/触发被拒绝。</span>
+      </div>
+      <div class="dsu-access-field">
+        <label>未配置用户的默认角色
+          <select id="dsu-global-role">${roles.map((r) => `<option value="${r}" ${p.defaultRole === r ? "selected" : ""}>${escapeHtml(roleLabels[r] || r)}</option>`).join("")}</select>
+        </label>
+      </div>
+      <div class="dsu-limit-title">全局限额（超出即拦截）</div>
+      <div class="dsu-limit-grid">${limitInputs(limits, "dsu-global-")}</div>
+      <div class="button-group dsu-access-actions">
+        <button class="primary" id="dsu-save-global">保存全局策略</button>
+      </div>
+    </div>
+  `;
+}
+
+function limitInputs(values = {}, prefix = "") {
+  const labels = {
+    maxActionsPerHour: "总操作/小时",
+    maxActionsPerDay: "总操作/日",
+    maxCreatesPerHour: "新建/小时",
+    maxCreatesPerDay: "新建/日",
+    maxDeletesPerDay: "删除禁用/日",
+    maxTriggersPerHour: "触发/小时",
+  };
+  return Object.keys(labels).map((key) => `
+    <label class="dsu-limit-item">${labels[key]}<input class="input" type="number" min="0" data-limit-key="${key}" data-limit-prefix="${prefix}" value="${values[key] != null ? escapeHtml(String(values[key])) : ""}"></label>
+  `).join("");
+}
+
+function renderEvaluateCard(access, meta) {
+  const actions = Object.keys(meta.actionClasses || {}).sort();
+  const roles = meta.roles || [];
+  return `
+    <div class="dsu-access-card">
+      <h3 class="dsu-access-card-title">模拟校验</h3>
+      <p class="muted">输入用户名或 Token，选择动作，查看按当前策略是否放行。</p>
+      <div class="dsu-access-field">
+        <label>用户名或 Token<input class="input" id="dsu-eval-user" placeholder="如 jiangchuanchen 或 Token 前 8 位"></label>
+      </div>
+      <div class="dsu-access-field">
+        <label>动作<select class="input" id="dsu-eval-action">${actions.map((a) => `<option value="${escapeHtml(a)}">${escapeHtml(actionLabel(a))}</option>`).join("")}</select></label>
+      </div>
+      <div class="dsu-access-field">
+        <label>国家<select class="input" id="dsu-eval-country">${COUNTRY_ORDER.map((c) => `<option value="${c}">${escapeHtml(countryLabel(c))}</option>`).join("")}</select></label>
+      </div>
+      <div class="button-group dsu-access-actions">
+        <button id="dsu-eval-run">校验</button>
+      </div>
+      <div id="dsu-eval-result"></div>
+    </div>
+  `;
+}
+
+function renderViolationsCard(access) {
+  const violations = access.violations || [];
+  if (!violations.length) {
+    return `<div class="dsu-access-block"><h3 class="dsu-access-card-title">违规记录</h3><p class="muted">当前窗口内未检测到超出限额的操作。</p></div>`;
+  }
+  const rows = violations.slice(0, 100).map((v) => `
+    <tr>
+      <td><b>${escapeHtml(v.username)}</b></td>
+      <td>${escapeHtml(v.metricLabel || v.metric)}</td>
+      <td><span class="chip chip-danger">${v.actual} / ${v.limit}</span></td>
+      <td class="muted">${escapeHtml(v.windowType === "hour" ? `${v.window} 时` : v.window)}</td>
+      <td><button class="secondary small" data-violation-block="${escapeHtml(v.username)}">封锁该用户</button></td>
+    </tr>`).join("");
+  return `
+    <div class="dsu-access-block">
+      <div class="detail-header compact-header">
+        <div><h3 class="dsu-access-card-title">违规记录（超出限额）</h3>
+          <p class="muted">基于审计快照统计最近 7 天内任一小时/当日窗口超限的情况。</p>
+        </div>
+      </div>
+      <div class="dsu-table-wrap"><table class="ds-table">
+        <thead><tr><th>用户</th><th>指标</th><th>实际/上限</th><th>窗口</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+function renderUsersCard(access, meta) {
+  const users = access.users || [];
+  const roles = meta.roles || [];
+  const roleLabels = meta.roleLabels || {};
+  const configured = users.filter((u) => u.configured).length;
+  return `
+    <div class="dsu-access-block">
+      <div class="detail-header compact-header">
+        <div><h3 class="dsu-access-card-title">用户列表（${users.length} 人 · 已配置 ${configured} 人）</h3>
+          <p class="muted">打开行可配置角色 / 删除权限 / 动作黑名单 / 独立限额；未配置用户按「默认角色」执行。</p>
+        </div>
+        <div class="button-group">
+          <button id="dsu-add-user">新增用户</button>
+        </div>
+      </div>
+      ${users.length ? `<div class="dsu-user-list">${users.map((u) => renderUserRow(u, roles, roleLabels)).join("")}</div>` : `<p class="muted">暂无用户数据（需先刷新使用统计生成审计快照）。</p>`}
+    </div>
+  `;
+}
+
+function renderUserRow(user, roles, roleLabels) {
+  const roleBadge = ROLE_BADGE[user.role] || { cls: "chip", label: user.role || "?" };
+  const status = user.status === "blocked"
+    ? `<span class="chip chip-danger">已封锁</span>`
+    : user.status === "limited"
+      ? `<span class="chip chip-danger">超限 ${user.violations.length}</span>`
+      : `<span class="chip chip-ok">正常</span>`;
+  const delBadge = user.deleteAllowed ? `<span class="chip chip-danger">可删除</span>` : `<span class="chip">禁删除</span>`;
+  const configBadge = user.configured ? "" : `<span class="chip chip-warn">默认角色</span>`;
+  const limitHtml = limitInputs(user.limits || {}, `u-${encodeURIComponent(user.username)}-`);
+  const tokens = (user.tokens || []).slice(0, 4).map((t) => `<code class="dsu-token-tag" title="${escapeHtml(t)}">${escapeHtml(t.length > 12 ? `${t.slice(0, 6)}…${t.slice(-4)}` : t)}</code>`).join(" ");
+  const tokenMore = (user.tokens || []).length > 4 ? `<span class="muted">等 ${user.tokens.length} 个</span>` : "";
+  const allActions = Object.keys(ACTION_LABELS);
+  const selectedDenied = new Set(user.deniedActions || []);
+  const actionChips = allActions.map((a) => `<span class="dsu-denied-chip ${selectedDenied.has(a) ? "active" : ""}" data-action="${escapeHtml(a)}" title="${escapeHtml(actionLabel(a))}">${escapeHtml(a)}</span>`).join("");
+  return `
+    <details class="dsu-user-row" data-username="${escapeHtml(user.username)}">
+      <summary>
+        <span class="dsu-user-name">${escapeHtml(user.username)}${configBadge}</span>
+        <span class="chip ${roleBadge.cls}">${escapeHtml(roleBadge.label)}</span>
+        ${delBadge}${status}
+        <span class="chip">${(user.tokens || []).length} Token</span>
+        <span class="chip">${user.requests} 次</span>
+        <span class="dsu-user-summary-actions">
+          <button class="secondary small" data-action="block">${user.enabled ? "封锁" : "解封"}</button>
+          <button class="secondary small" data-action="remove" ${user.configured ? "" : "disabled"}>移除配置</button>
+        </span>
+      </summary>
+      <div class="dsu-user-edit">
+        <div class="dsu-edit-grid">
+          <label>角色<select data-field="role">${roles.map((r) => `<option value="${r}" ${user.role === r ? "selected" : ""}>${escapeHtml(roleLabels[r] || r)}</option>`).join("")}</select></label>
+          <label class="check"><input type="checkbox" data-field="enabled" ${user.enabled ? "checked" : ""}> 启用</label>
+          <label class="check"><input type="checkbox" data-field="deleteAllowed" ${user.deleteAllowed ? "checked" : ""}> 允许删除类操作</label>
+          <label>备注<input class="input" data-field="note" placeholder="选填" value="${escapeHtml(user.note || "")}"></label>
+        </div>
+        <div class="dsu-denied-title">动作黑名单（点击切换，命中的动作即使角色允许也会被拒绝）</div>
+        <div class="dsu-denied-chips">${actionChips}</div>
+        <div class="dsu-limit-title">该用户独立限额（留空则用全局）</div>
+        <div class="dsu-limit-grid">${limitHtml}</div>
+        <div class="dsu-edit-tokens">
+          <span class="dsu-filter-label">绑定 Token（逗号/空格分隔，可增删）</span>
+          <input class="input" data-field="tokens" placeholder="留空=沿用已有绑定" value="${escapeHtml((user.tokens || []).join(", "))}">
+          <div class="muted">当前绑定：${tokens} ${tokenMore}</div>
+        </div>
+        <div class="button-group dsu-access-actions">
+          <button class="primary" data-action="save-user">保存该用户</button>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
+function renderPublishCard(access) {
+  const p = access.policy || {};
+  const gw = access.gatewayPreview || {};
+  const tokenCount = Object.keys(gw.tokens || {}).length;
+  return `
+    <div class="dsu-access-block dsu-publish-block">
+      <div class="detail-header compact-header">
+        <div><h3 class="dsu-access-card-title">下发策略到网关</h3>
+          <p class="muted">把上面的用户权限与限额打包成 <code>config/ds-scheduler-access-gateway.json</code>，再复制到各国机器 <code>config/access_policy.json</code> 即可生效（或运行 <code>scripts/publish-ds-access-policy.mjs</code> 自动下发）。</p>
+        </div>
+        <div class="button-group">
+          <button class="primary" id="dsu-publish">生成网关策略</button>
+        </div>
+      </div>
+      <div class="dsu-publish-meta">
+        <span class="chip">拦截状态：${p.enforcement ? "开启" : "关闭"}</span>
+        <span class="chip">包含 Token：${tokenCount}</span>
+        <span class="chip">默认角色：${escapeHtml(p.defaultRole || "-")}</span>
+      </div>
+      <div id="dsu-publish-result"></div>
+    </div>
+  `;
+}
+
+function bindAccessEvents(root) {
+  root.querySelector("#dsu-access-reload")?.addEventListener("click", () => loadAccess(root));
+  root.querySelector("#dsu-save-global")?.addEventListener("click", () => saveGlobalPolicy(root));
+  root.querySelector("#dsu-eval-run")?.addEventListener("click", () => runEvaluate(root));
+  root.querySelector("#dsu-publish")?.addEventListener("click", () => publishAccess(root));
+  root.querySelector("#dsu-add-user")?.addEventListener("click", () => addUser(root));
+  root.querySelectorAll("[data-violation-block]").forEach((btn) => {
+    btn.addEventListener("click", () => toggleBlockUser(root, btn.dataset.violationBlock, false));
+  });
+  root.querySelectorAll("[data-action='block']").forEach((btn) => {
+    const row = btn.closest("[data-username]");
+    if (!row) return;
+    btn.addEventListener("click", () => toggleBlockUser(root, row.dataset.username, null));
+  });
+  root.querySelectorAll("[data-action='remove']").forEach((btn) => {
+    const row = btn.closest("[data-username]");
+    if (!row) return;
+    btn.addEventListener("click", () => removeUserConfig(root, row.dataset.username));
+  });
+  root.querySelectorAll("[data-action='save-user']").forEach((btn) => {
+    const row = btn.closest("[data-username]");
+    if (!row) return;
+    btn.addEventListener("click", () => saveUser(root, row));
+  });
+  root.querySelectorAll(".dsu-denied-chip").forEach((chip) => {
+    chip.addEventListener("click", () => chip.classList.toggle("active"));
+  });
+}
+
+function readGlobalPolicy(root) {
+  const p = model.access.policy;
+  const limits = {};
+  root.querySelectorAll("[data-limit-prefix='dsu-global-']").forEach((input) => {
+    limits[input.dataset.limitKey] = input.value === "" ? p.globalLimits?.[input.dataset.limitKey] : Number(input.value);
+  });
+  return {
+    enforcement: Boolean(root.querySelector("#dsu-global-enforce")?.checked),
+    enforceUnknown: Boolean(root.querySelector("#dsu-global-unknown")?.checked),
+    defaultRole: root.querySelector("#dsu-global-role")?.value || "operator",
+    globalLimits: limits,
+  };
+}
+
+async function saveGlobalPolicy(root) {
+  const btn = root.querySelector("#dsu-save-global");
+  if (!btn || btn.dataset.busy === "1") return;
+  btn.dataset.busy = "1";
+  try {
+    await apiPut("/api/ds-scheduler/access/policy", readGlobalPolicy(root), { timeoutMs: 30000 });
+    model.accessStatus = { type: "ok", text: "全局策略已保存。" };
+  } catch (error) {
+    model.accessStatus = { type: "error", text: `保存失败：${error.message}` };
+  } finally {
+    btn.dataset.busy = "0";
+  }
+  await loadAccess(root);
+}
+
+async function runEvaluate(root) {
+  const resultEl = root.querySelector("#dsu-eval-result");
+  if (!resultEl) return;
+  const value = root.querySelector("#dsu-eval-user")?.value?.trim() || "";
+  const action = root.querySelector("#dsu-eval-action")?.value || "";
+  const country = root.querySelector("#dsu-eval-country")?.value || "";
+  // 命中已知用户名 -> 按用户名校验；否则当作 Token 校验。
+  const knownUsers = new Set((model.access.users || []).map((u) => u.username));
+  const payload = knownUsers.has(value)
+    ? { username: value, action, country }
+    : { token: value, action, country };
+  resultEl.innerHTML = `<div class="sandbox-status"><span class="btn-spinner"></span>校验中…</div>`;
+  try {
+    const decision = await apiPost("/api/ds-scheduler/access/evaluate", payload, { timeoutMs: 30000 });
+    const ok = decision.allowed;
+    resultEl.innerHTML = `
+      <div class="sandbox-status ${ok ? "success" : "error"}">
+        <strong>${ok ? "✅ 放行" : "🚫 拦截"}</strong>
+        <span>${escapeHtml(decision.message || (ok ? "该用户可按当前策略执行该动作。" : "不符合当前策略。"))}</span>
+        ${decision.code ? `<code class="dsu-code">${escapeHtml(decision.code)}</code>` : ""}
+      </div>`;
+  } catch (error) {
+    resultEl.innerHTML = `<div class="sandbox-status error"><strong>校验失败</strong><span>${escapeHtml(error.message)}</span></div>`;
+  }
+}
+
+async function publishAccess(root) {
+  const btn = root.querySelector("#dsu-publish");
+  const resultEl = root.querySelector("#dsu-publish-result");
+  if (!btn || btn.dataset.busy === "1") return;
+  btn.dataset.busy = "1";
+  btn.innerHTML = `<span class="btn-spinner"></span>生成中…`;
+  try {
+    const res = await apiPost("/api/ds-scheduler/access/publish", {}, { timeoutMs: 40000 });
+    const warnings = (res.summary?.warnings || []).map((w) => `<div class="sandbox-status warn">⚠ ${escapeHtml(w.message)}</div>`).join("");
+    resultEl.innerHTML = `
+      <div class="sandbox-status success">
+        <strong>已生成网关策略</strong>
+        <span>${escapeHtml(res.summary?.deployHint || "")}</span>
+        <span class="muted">文件：<code>${escapeHtml(res.file || "")}</code></span>
+      </div>${warnings}`;
+  } catch (error) {
+    resultEl.innerHTML = `<div class="sandbox-status error"><strong>生成失败</strong><span>${escapeHtml(error.message)}</span></div>`;
+  } finally {
+    btn.dataset.busy = "0";
+    btn.textContent = "生成网关策略";
+  }
+}
+
+async function toggleBlockUser(root, username, force) {
+  if (!username) return;
+  const current = (model.access.users || []).find((u) => u.username === username);
+  const enabled = force === null ? !(current ? current.enabled : true) : force;
+  const verb = enabled ? "解封" : "封锁";
+  if (!window.confirm(`${verb}用户 ${username}？${enabled ? "解封后该用户可继续使用网关。" : "封锁后该用户通过网关的所有操作都会被拒绝。"}`)) return;
+  try {
+    await apiPut(`/api/ds-scheduler/access/users/${encodeURIComponent(username)}`, { enabled, username }, { timeoutMs: 30000 });
+    model.accessStatus = { type: "ok", text: `用户 ${username} 已${verb}。` };
+  } catch (error) {
+    model.accessStatus = { type: "error", text: `${verb}失败：${error.message}` };
+  }
+  await loadAccess(root);
+}
+
+async function removeUserConfig(root, username) {
+  if (!username) return;
+  if (!window.confirm(`移除用户 ${username} 的显式配置？移除后按默认角色执行（不会删除审计记录）。`)) return;
+  try {
+    await apiDelete(`/api/ds-scheduler/access/users/${encodeURIComponent(username)}`, {}, { timeoutMs: 30000 });
+    model.accessStatus = { type: "ok", text: `已移除 ${username} 的显式配置。` };
+  } catch (error) {
+    model.accessStatus = { type: "error", text: `移除失败：${error.message}` };
+  }
+  await loadAccess(root);
+}
+
+async function saveUser(root, row) {
+  const username = row.dataset.username;
+  if (!username) return;
+  const limits = {};
+  row.querySelectorAll("[data-limit-prefix]").forEach((input) => {
+    const value = input.value.trim();
+    if (value !== "") limits[input.dataset.limitKey] = Number(value);
+  });
+  const deniedActions = [...row.querySelectorAll(".dsu-denied-chip.active")].map((c) => c.dataset.action);
+  const payload = {
+    username,
+    role: row.querySelector("[data-field='role']")?.value,
+    enabled: Boolean(row.querySelector("[data-field='enabled']")?.checked),
+    deleteAllowed: Boolean(row.querySelector("[data-field='deleteAllowed']")?.checked),
+    note: row.querySelector("[data-field='note']")?.value || "",
+    deniedActions,
+    limits,
+  };
+  // 绑定 Token：留空 = 沿用已有绑定（不覆盖）；填写则整体替换。
+  const tokensValue = (row.querySelector("[data-field='tokens']")?.value || "").trim();
+  if (tokensValue) {
+    payload.tokens = tokensValue.split(/[\s,，]+/).map((t) => t.trim()).filter(Boolean);
+  }
+  const btn = row.querySelector("[data-action='save-user']");
+  if (btn) btn.dataset.busy = "1";
+  try {
+    await apiPut(`/api/ds-scheduler/access/users/${encodeURIComponent(username)}`, payload, { timeoutMs: 30000 });
+    model.accessStatus = { type: "ok", text: `用户 ${username} 已保存。` };
+  } catch (error) {
+    model.accessStatus = { type: "error", text: `保存失败：${error.message}` };
+  }
+  if (btn) btn.dataset.busy = "0";
+  await loadAccess(root);
+}
+
+async function addUser(root) {
+  const username = window.prompt("新增用户的用户名（DS 平台用户名）：");
+  if (!username) return;
+  const token = window.prompt("绑定 Token（可选，可先留空再在行内配置）：") || "";
+  try {
+    await apiPut(`/api/ds-scheduler/access/users/${encodeURIComponent(username)}`, {
+      username,
+      tokens: token ? [token] : [],
+      role: model.access?.policy?.defaultRole || "operator",
+      enabled: true,
+      deleteAllowed: false,
+    }, { timeoutMs: 30000 });
+    model.accessStatus = { type: "ok", text: `已新增用户 ${username}。` };
+  } catch (error) {
+    model.accessStatus = { type: "error", text: `新增失败：${error.message}` };
+  }
+  await loadAccess(root);
 }
