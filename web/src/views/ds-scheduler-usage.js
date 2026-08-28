@@ -71,6 +71,34 @@ export function fmtDuration(ms) {
   return `${(value / 1000).toFixed(1)}s`;
 }
 
+export function filterAccessUsers(users = [], query = "", status = "all") {
+  const needle = String(query || "").trim().toLowerCase();
+  const selectedStatus = String(status || "all");
+  return users.filter((user) => {
+    const matchesQuery = !needle || [user.username, ...(user.tokens || [])]
+      .some((value) => String(value || "").toLowerCase().includes(needle));
+    const matchesStatus = selectedStatus === "all"
+      || (selectedStatus === "configured" && user.configured)
+      || (selectedStatus === "default" && !user.configured)
+      || user.status === selectedStatus;
+    return matchesQuery && matchesStatus;
+  });
+}
+
+export function paginateAccessUsers(users = [], requestedPage = 0, pageSize = 8) {
+  const size = Math.max(1, Number(pageSize) || 8);
+  const totalPages = Math.max(1, Math.ceil(users.length / size));
+  const page = Math.max(0, Math.min(totalPages - 1, Number(requestedPage) || 0));
+  const offset = page * size;
+  return {
+    page,
+    totalPages,
+    start: users.length ? offset + 1 : 0,
+    end: Math.min(users.length, offset + size),
+    items: users.slice(offset, offset + size),
+  };
+}
+
 function sourceBadge(report) {
   const map = {
     snapshot: { cls: "ok", text: "缓存快照" },
