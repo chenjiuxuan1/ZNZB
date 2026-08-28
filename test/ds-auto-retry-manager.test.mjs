@@ -173,6 +173,26 @@ test("tests country-owner notifications and persists the result in retry logs", 
   assert.ok(persisted.logs.some((item) => item.event === "owner_notification_test_sent"));
 });
 
+test("uses the shared n8n and scheduled-retry country owner configuration", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-shared-owner-test-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config", "ds-scheduled-failure-watch.json"), JSON.stringify({ owners: { ph: "ph-owner@kn.group" } }));
+  const sent = [];
+  const manager = createDsAutoRetryManager({
+    rootDir,
+    notifyFn: async (config) => {
+      sent.push(config);
+      return { sent: true };
+    },
+    now: () => fixedNow,
+  });
+
+  const result = await manager.testOwnerNotification({ country: "ph" });
+  assert.equal(result.sent, true);
+  assert.equal(sent[0].alerts.recipientEmails, "ph-owner@kn.group");
+  await fs.rm(rootDir, { recursive: true, force: true });
+});
+
 test("keeps complete retry runs for seven days and removes older history", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-retry-retention-test-"));
   await fs.mkdir(path.join(rootDir, "config"), { recursive: true });

@@ -21,12 +21,16 @@ function failureKey(country, failure) {
 }
 
 async function loadCountryOwnerConfig(rootDir) {
-  return readJsonFile(path.join(rootDir, "config", "batch-check-schedule.json"), { countryConfigs: [] });
+  const shared = await readJsonFile(path.join(rootDir, "config", "ds-scheduled-failure-watch.json"), { owners: {} });
+  const legacy = await readJsonFile(path.join(rootDir, "config", "batch-check-schedule.json"), { countryConfigs: [] });
+  return { ...legacy, sharedOwners: shared.owners || {} };
 }
 
 function findCountryOwnerConfig(schedule, country) {
   const normalizedCountry = String(country || "").trim().toLowerCase();
-  return (schedule?.countryConfigs || []).find((item) => String(item?.countryCode || "").trim().toLowerCase() === normalizedCountry) || {};
+  const sharedOwner = String(schedule?.sharedOwners?.[normalizedCountry] || "").trim();
+  const legacy = (schedule?.countryConfigs || []).find((item) => String(item?.countryCode || "").trim().toLowerCase() === normalizedCountry) || {};
+  return sharedOwner ? { ...legacy, ownerEmails: sharedOwner } : legacy;
 }
 
 function buildEmptyRunTimeoutMessage(country, failure, attempts, reference = new Date()) {
@@ -531,12 +535,19 @@ export function createDsAutoRetryManager({
   async function testOwnerNotification(options = {}) {
     const requestedCountry = String(options.country || "").trim().toLowerCase();
     const schedule = await ownerConfigLoader(rootDir);
-    const targets = (schedule?.countryConfigs || [])
-      .map((item) => ({
-        country: String(item?.countryCode || "").trim().toLowerCase(),
-        emails: String(item?.ownerEmails || item?.recipientEmails || "").trim(),
-        botToken: item?.botToken || "${KN_BOT_TOKEN}",
-      }))
+    const countryCodes = new Set([
+      ...Object.keys(schedule?.sharedOwners || {}),
+      ...(schedule?.countryConfigs || []).map((item) => String(item?.countryCode || "").trim().toLowerCase()),
+    ]);
+    const targets = [...countryCodes]
+      .map((country) => {
+        const owner = findCountryOwnerConfig(schedule, country);
+        return {
+          country,
+          emails: String(owner.ownerEmails || owner.recipientEmails || "").trim(),
+          botToken: owner.botToken || "${KN_BOT_TOKEN}",
+        };
+      })
       .filter((item) => item.country && item.emails && (!requestedCountry || item.country === requestedCountry));
     if (!targets.length) {
       throw new Error(requestedCountry ? `国家 ${requestedCountry.toUpperCase()} 未配置负责人邮箱` : "未配置可测试的国家负责人邮箱");
