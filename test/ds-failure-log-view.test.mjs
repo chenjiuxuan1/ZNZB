@@ -27,12 +27,15 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /失败任务/);
   assert.match(source, /出错 SQL/);
   assert.match(source, /\/api\/ds-failure-logs/);
+  assert.match(source, /任务首次失败自动重跑观察/);
+  assert.match(source, /data-ds-failure-tab="scheduled"/);
+  assert.match(source, /\/api\/ds-scheduled-failure-watch/);
   assert.match(source, /DS调度监控/);
   assert.match(source, /重新查询/);
   assert.match(source, /尚未查询/);
   assert.doesNotMatch(source, /type="date"/);
   assert.doesNotMatch(source, /\?date=/);
-  assert.match(source, /renderDsFailureLogs\(root\) \{\s*syncAutoRefresh\(root\);\s*paint\(root\);\s*if \(!model\.retryControlLoaded\) refreshRetryPanel\(root\);\s*\}/);
+  assert.match(source, /renderDsFailureLogs\(root\) \{\s*syncAutoRefresh\(root\);\s*paint\(root\);\s*if \(!model\.retryControlLoaded\) refreshRetryPanel\(root\);\s*if \(!model\.scheduledConfigLoaded\) refreshScheduledConfig\(root\);\s*\}/);
   assert.doesNotMatch(source, /ds-country-choice/);
   assert.match(source, /\?country=/);
   assert.match(source, /Promise\.all\(selected\.map/);

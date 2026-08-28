@@ -33,7 +33,7 @@ import {
   checkAllCountries,
   notifyDsSchedulerCheck,
 } from "./ds-scheduler-monitor.mjs";
-import { inspectDsFailureLogs } from "./ds-failure-log-monitor.mjs";
+import { inspectDsFailureLogs, inspectOriginalScheduledFailures } from "./ds-failure-log-monitor.mjs";
 import {
   loadHiveSchedulerConfig,
   saveHiveSchedulerConfig,
@@ -100,6 +100,7 @@ const FILES = {
   dsSchedule: "config/ds-scheduler-schedule.json",
   dsHistory: "config/ds-scheduler-history.json",
   dsNotification: "config/ds-scheduler-notification.json",
+  dsScheduledFailureWatch: "config/ds-scheduled-failure-watch.json",
   hiveScheduler: "config/hive-scheduler.config.json",
   hiveSchedule: "config/hive-scheduler-schedule.json",
   hiveHistory: "config/hive-scheduler-history.json",
@@ -2621,6 +2622,86 @@ export function createPlatformApi({
     async getDsFailureLogs(filters = {}) {
       const country = String(filters.country || "").trim().toLowerCase();
       return inspectDsFailureLogs(rootDir, { countries: country || undefined });
+    },
+
+    async getDsScheduledFailureWatchConfig() {
+      const stored = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
+      const owners = {};
+      for (const country of ["cn", "ine", "ph", "th", "pk", "mx"]) {
+        owners[country] = String(stored.owners?.[country] || "").trim();
+      }
+      return {
+        enabled: stored.enabled !== false,
+        intervalMinutes: Math.max(1, Number(stored.intervalMinutes || 5)),
+        owners,
+        lastCheckedAt: stored.lastCheckedAt || null,
+        lastNotificationAt: stored.lastNotificationAt || null,
+        lastError: stored.lastError || null,
+      };
+    },
+
+    async saveDsScheduledFailureWatchConfig(input = {}) {
+      const current = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
+      const owners = {};
+      for (const country of ["cn", "ine", "ph", "th", "pk", "mx"]) {
+        owners[country] = String(input.owners?.[country] ?? current.owners?.[country] ?? "").trim();
+      }
+      const saved = {
+        ...current,
+        enabled: input.enabled !== false,
+        intervalMinutes: Math.max(1, Number(input.intervalMinutes || current.intervalMinutes || 5)),
+        owners,
+      };
+      await writeJsonAtomic(resolve("dsScheduledFailureWatch"), saved);
+      return this.getDsScheduledFailureWatchConfig();
+    },
+
+    async checkDsScheduledFailures(filters = {}) {
+      const country = String(filters.country || "").trim().toLowerCase();
+      const result = await inspectOriginalScheduledFailures(rootDir, { countries: country || undefined });
+      const state = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
+      const notified = new Set(Array.isArray(state.notifiedInstanceIds) ? state.notifiedInstanceIds.map(String) : []);
+      const notificationConfig = await this.getDsNotificationConfig();
+      let notificationCount = 0;
+      const notificationErrors = [];
+      for (const countryResult of result.countries || []) {
+        const ownerEmails = String(state.owners?.[countryResult.country] || "").trim();
+        if (!ownerEmails) continue;
+        for (const failure of countryResult.failures || []) {
+          const key = `${countryResult.country}:${failure.instanceId}`;
+          if (!failure.instanceId || notified.has(key)) continue;
+          const message = [
+            `DS 定时任务首次失败｜${countryResult.countryName || countryResult.country}`,
+            `项目：${failure.projectName || failure.projectCode || "-"}`,
+            `工作流：${failure.workflowName || "-"}`,
+            `失败任务：${failure.taskName || "未返回任务节点名称"}`,
+            `实例：${failure.instanceId}`,
+            `失败原因：${failure.failureReason || failure.failureMessage || "未从 DS 实例详情中解析到明确失败原因，请查看 DS 实例日志"}`,
+            failure.dsInstanceUrl ? `工作流实例：${failure.dsInstanceUrl}` : "",
+          ].filter(Boolean).join("\n");
+          try {
+            const alerts = { ...notificationConfig, recipientEmails: ownerEmails };
+            await notifyTextFn({ alerts }, message, {
+              title: "DS 定时任务首次失败",
+              severity: "warning",
+              timestamp: result.checkedAt,
+            });
+            notified.add(key);
+            notificationCount += 1;
+          } catch (error) {
+            notificationErrors.push(`${countryResult.country}:${failure.instanceId}：${error.message}`);
+          }
+        }
+      }
+      const retained = [...notified].slice(-2000);
+      await writeJsonAtomic(resolve("dsScheduledFailureWatch"), {
+        ...state,
+        notifiedInstanceIds: retained,
+        lastCheckedAt: result.checkedAt,
+        lastNotificationAt: notificationCount ? new Date().toISOString() : state.lastNotificationAt || null,
+        lastError: notificationErrors.join("；") || null,
+      });
+      return { ...result, notificationCount, notificationErrors };
     },
 
     getDsFailureRetryControl() {
