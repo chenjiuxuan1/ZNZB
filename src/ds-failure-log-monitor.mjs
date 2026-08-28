@@ -137,7 +137,13 @@ function runTimesOf(item = {}) {
 }
 
 function isFailureRetry(item = {}) {
-  return commandTypeOf(item) === "START_FAILURE_TASK_PROCESS" || runTimesOf(item) > 1;
+  return new Set([
+    "START_FAILURE_TASK_PROCESS",
+    "REPEAT_RUNNING",
+    "RECOVER_SUSPENDED_PROCESS",
+    "START_CURRENT_TASK_PROCESS",
+    "RECOVER_TOLERANCE_FAULT_PROCESS",
+  ]).has(commandTypeOf(item)) || runTimesOf(item) > 1;
 }
 
 function scheduleCategoryOf(item = {}) {
@@ -303,18 +309,31 @@ export function extractDsFailureReason(log, fallback = "") {
 
 export function classifyOriginalScheduledFailures(instances = [], { projectName = "", projectCode = "" } = {}) {
   const ordered = [...instances].sort((a, b) => timestamp(instanceTime(a)) - timestamp(instanceTime(b)));
-  return ordered
-    .filter((item) => commandTypeOf(item) === "SCHEDULER" && FAILED_STATES.has(stateOf(item)))
+  const originalFailures = ordered.filter((item) => commandTypeOf(item) === "SCHEDULER" && FAILED_STATES.has(stateOf(item)));
+  return originalFailures
     .map((item) => {
       const failedAt = timestamp(instanceTime(item));
+      const identity = workflowCode(item) || workflowName(item);
+      const nextScheduledAt = ordered
+        .filter((candidate) => (
+          commandTypeOf(candidate) === "SCHEDULER"
+          && (workflowCode(candidate) || workflowName(candidate)) === identity
+          && timestamp(instanceTime(candidate)) > failedAt
+        ))
+        .map((candidate) => timestamp(instanceTime(candidate)))
+        .find(Boolean) || Number.POSITIVE_INFINITY;
       const later = ordered.filter((candidate) => (
-        (workflowCode(candidate) || workflowName(candidate)) === (workflowCode(item) || workflowName(item))
+        (workflowCode(candidate) || workflowName(candidate)) === identity
         && timestamp(instanceTime(candidate)) > failedAt
+        && timestamp(instanceTime(candidate)) < nextScheduledAt
+        && isFailureRetry(candidate)
       ));
-      const restarted = later.find((candidate) => isFailureRetry(candidate) && SUCCESS_STATES.has(stateOf(candidate)));
-      const restarting = !restarted
-        ? later.find((candidate) => isFailureRetry(candidate) && RUNNING_STATES.has(stateOf(candidate)))
-        : null;
+      const latestRetry = later.at(-1) || null;
+      const latestRetryState = stateOf(latestRetry || {});
+      const restarted = latestRetry && SUCCESS_STATES.has(latestRetryState) ? latestRetry : null;
+      const restarting = latestRetry && RUNNING_STATES.has(latestRetryState) ? latestRetry : null;
+      const retryFailed = latestRetry && !restarted && !restarting;
+      const retryCount = later.reduce((count, candidate) => Math.max(count, runTimesOf(candidate) - 1), later.length);
       return {
       projectName,
       projectCode,
@@ -325,9 +344,20 @@ export function classifyOriginalScheduledFailures(instances = [], { projectName 
       startTime: instanceTime(item),
       endTime: endTime(item),
       repairStatus: restarted ? "recovered" : restarting ? "repairing" : "unresolved",
-      recoveryInstanceId: instanceId(restarted || restarting || {}),
-      recoveryState: stateOf(restarted || restarting || {}),
-      recoveryTime: endTime(restarted || restarting || {}) || instanceTime(restarted || restarting || {}),
+      recoveryInstanceId: instanceId(latestRetry || {}),
+      recoveryState: latestRetryState,
+      recoveryTime: endTime(latestRetry || {}) || instanceTime(latestRetry || {}),
+      retryCount,
+      retryTriggered: Boolean(latestRetry),
+      retryResult: restarted ? "recovered" : restarting ? "running" : retryFailed ? "failed" : "not_triggered",
+      retryAttempts: later.map((candidate) => ({
+        instanceId: instanceId(candidate),
+        state: stateOf(candidate),
+        commandType: commandTypeOf(candidate),
+        runTimes: runTimesOf(candidate),
+        startTime: instanceTime(candidate),
+        endTime: endTime(candidate),
+      })),
       failureMessage: String(item.failure_message || item.failureMessage || item.error_message || item.errorMessage || "").trim(),
       failureCount: 1,
       scheduleCategory: "scheduled_online",
