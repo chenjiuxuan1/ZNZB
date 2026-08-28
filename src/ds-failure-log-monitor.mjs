@@ -302,9 +302,20 @@ export function extractDsFailureReason(log, fallback = "") {
 }
 
 export function classifyOriginalScheduledFailures(instances = [], { projectName = "", projectCode = "" } = {}) {
-  return instances
+  const ordered = [...instances].sort((a, b) => timestamp(instanceTime(a)) - timestamp(instanceTime(b)));
+  return ordered
     .filter((item) => commandTypeOf(item) === "SCHEDULER" && FAILED_STATES.has(stateOf(item)))
-    .map((item) => ({
+    .map((item) => {
+      const failedAt = timestamp(instanceTime(item));
+      const later = ordered.filter((candidate) => (
+        (workflowCode(candidate) || workflowName(candidate)) === (workflowCode(item) || workflowName(item))
+        && timestamp(instanceTime(candidate)) > failedAt
+      ));
+      const restarted = later.find((candidate) => isFailureRetry(candidate) && SUCCESS_STATES.has(stateOf(candidate)));
+      const restarting = !restarted
+        ? later.find((candidate) => isFailureRetry(candidate) && RUNNING_STATES.has(stateOf(candidate)))
+        : null;
+      return {
       projectName,
       projectCode,
       workflowCode: workflowCode(item),
@@ -313,15 +324,16 @@ export function classifyOriginalScheduledFailures(instances = [], { projectName 
       instanceState: stateOf(item) || "FAILURE",
       startTime: instanceTime(item),
       endTime: endTime(item),
-      repairStatus: "unresolved",
-      recoveryInstanceId: "",
-      recoveryState: "",
-      recoveryTime: null,
+      repairStatus: restarted ? "recovered" : restarting ? "repairing" : "unresolved",
+      recoveryInstanceId: instanceId(restarted || restarting || {}),
+      recoveryState: stateOf(restarted || restarting || {}),
+      recoveryTime: endTime(restarted || restarting || {}) || instanceTime(restarted || restarting || {}),
       failureMessage: String(item.failure_message || item.failureMessage || item.error_message || item.errorMessage || "").trim(),
       failureCount: 1,
       scheduleCategory: "scheduled_online",
       originalScheduledFailure: true,
-    }))
+      };
+    })
     .sort((a, b) => timestamp(b.startTime) - timestamp(a.startTime));
 }
 
@@ -777,9 +789,16 @@ function totalPages(data = {}) {
   return null;
 }
 
-async function listProjectInstances({ webhookUrl, country, token, projectCode, targetDate, timeZone }) {
+function shiftDate(date, days) {
+  const [year, month, day] = String(date).split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  return shifted.toISOString().slice(0, 10);
+}
+
+async function listProjectInstances({ webhookUrl, country, token, projectCode, targetDate, timeZone, lookbackDays = 1 }) {
   const instances = [];
   const seen = new Set();
+  const startDate = shiftDate(targetDate, -(Math.max(1, Number(lookbackDays) || 1) - 1));
   for (let pageNo = 1; pageNo <= MAX_INSTANCE_PAGES; pageNo += 1) {
     const data = await postAction(webhookUrl, country, token, "list_instances", {
       project_code: projectCode,
@@ -787,14 +806,14 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
       search_val: "",
       page_no: pageNo,
       page_size: INSTANCE_PAGE_SIZE,
-      start_time: `${targetDate} 00:00:00`,
+      start_time: `${startDate} 00:00:00`,
       end_time: `${targetDate} 23:59:59`,
       timezone_id: timeZone,
     });
     const records = recordList(data);
     const reachedOlderRecords = records.some((item) => {
       const start = instanceTime(item);
-      return Boolean(start) && localDate(start, timeZone) < targetDate;
+      return Boolean(start) && localDate(start, timeZone) < startDate;
     });
     for (const item of records) {
       const key = instanceId(item) || `${workflowCode(item)}:${instanceTime(item)}:${stateOf(item)}`;
@@ -808,11 +827,12 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
   }
   return instances.filter((item) => {
     const start = instanceTime(item);
-    return Boolean(start) && localDate(start, timeZone) === targetDate;
+    const date = start && localDate(start, timeZone);
+    return Boolean(date) && date >= startDate && date <= targetDate;
   });
 }
 
-async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl, originalScheduledOnly = false }) {
+async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl, originalScheduledOnly = false, lookbackDays = 1 }) {
   try {
     const instances = await listProjectInstances({
       webhookUrl,
@@ -821,6 +841,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
       projectCode: project.code,
       targetDate,
       timeZone,
+      lookbackDays,
     });
     const failures = (originalScheduledOnly ? classifyOriginalScheduledFailures : classifyWorkflowFailures)(instances, { projectName: project.name, projectCode: project.code })
       .map((failure) => ({
@@ -835,7 +856,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
   }
 }
 
-async function inspectCountry(config, country, now, originalScheduledOnly = false) {
+async function inspectCountry(config, country, now, originalScheduledOnly = false, lookbackDays = 1) {
   const countryConfig = config.countries?.[country] || {};
   const countryName = countryConfig.name || COUNTRY_LABELS[country];
   const token = String(countryConfig.token || "").trim();
@@ -867,6 +888,7 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
     timeZone,
     dsUiBaseUrl,
     originalScheduledOnly,
+    lookbackDays,
   }));
   const failures = projectResults.flatMap((item) => item.failures || []);
   return {
@@ -909,20 +931,21 @@ export async function inspectDsFailureLogs(rootDir, { now = new Date(), countrie
 export async function inspectOriginalScheduledFailures(rootDir, { now = new Date(), countries: requestedCountries } = {}) {
   const config = await loadDsSchedulerConfig(rootDir);
   const selectedCountries = normalizeCountrySelection(requestedCountries);
-  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true)));
+  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true, 7)));
   const failures = countries.flatMap((item) => item.failures || []);
   return {
     checkedAt: new Date().toISOString(),
-    dateMode: "country-local-today",
-    mode: "original-scheduled-failures",
+    dateMode: "country-local-last-7-days",
+    lookbackDays: 7,
+    mode: "n8n-failure-restart-watch",
     totalCountries: selectedCountries.length,
     configuredCountries: countries.filter((item) => item.configured).length,
     checkedProjects: countries.reduce((sum, item) => sum + item.checkedProjects, 0),
     checkedInstances: countries.reduce((sum, item) => sum + item.checkedInstances, 0),
     totalFailures: failures.length,
-    recoveredCount: 0,
-    repairingCount: 0,
-    unresolvedCount: failures.length,
+    recoveredCount: failures.filter((item) => item.repairStatus === "recovered").length,
+    repairingCount: failures.filter((item) => item.repairStatus === "repairing").length,
+    unresolvedCount: failures.filter((item) => item.repairStatus === "unresolved").length,
     failedCountries: countries.filter((item) => item.configured && !item.success).length,
     countries,
   };

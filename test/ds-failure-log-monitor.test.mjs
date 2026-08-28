@@ -18,6 +18,27 @@ test("original scheduled failure view excludes manual and retry instances", () =
   assert.equal(failures[0].scheduleCategory, "scheduled_online");
 });
 
+test("n8n restart watch keeps every original failure and reflects a later successful restart", () => {
+  const failures = classifyOriginalScheduledFailures([
+    { id: 1, commandType: "SCHEDULER", state: "FAILURE", workflowDefinitionCode: 10, workflowInstanceName: "scheduled failed", startTime: "2026-08-25 08:00:00" },
+    { id: 2, commandType: "START_FAILURE_TASK_PROCESS", state: "SUCCESS", workflowDefinitionCode: 10, workflowInstanceName: "scheduled failed", startTime: "2026-08-25 08:05:00", endTime: "2026-08-25 08:10:00", runTimes: 2 },
+    { id: 3, commandType: "SCHEDULER", state: "FAILURE", workflowDefinitionCode: 10, workflowInstanceName: "scheduled failed", startTime: "2026-08-26 08:00:00" },
+  ]);
+  assert.equal(failures.length, 2);
+  assert.equal(failures.find((item) => item.instanceId === "1").repairStatus, "recovered");
+  assert.equal(failures.find((item) => item.instanceId === "1").recoveryInstanceId, "2");
+  assert.equal(failures.find((item) => item.instanceId === "3").repairStatus, "unresolved");
+});
+
+test("n8n restart watch does not treat the next regular schedule as a restart recovery", () => {
+  const failures = classifyOriginalScheduledFailures([
+    { id: 1, commandType: "SCHEDULER", state: "FAILURE", workflowDefinitionCode: 10, startTime: "2026-08-25 08:00:00" },
+    { id: 2, commandType: "SCHEDULER", state: "SUCCESS", workflowDefinitionCode: 10, startTime: "2026-08-26 08:00:00" },
+  ]);
+  assert.equal(failures[0].repairStatus, "unresolved");
+  assert.equal(failures[0].recoveryInstanceId, "");
+});
+
 test("DS failure reasons distinguish SQL errors from recoverable infrastructure errors", () => {
   assert.equal(classifyDsFailureReason("Unknown column 'loan_id'"), "sql_error");
   assert.equal(classifyDsFailureReason("type mismatch: bigint and varchar"), "sql_error");
