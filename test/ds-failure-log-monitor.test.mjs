@@ -27,7 +27,28 @@ test("n8n restart watch keeps every original failure and reflects a later succes
   assert.equal(failures.length, 2);
   assert.equal(failures.find((item) => item.instanceId === "1").repairStatus, "recovered");
   assert.equal(failures.find((item) => item.instanceId === "1").recoveryInstanceId, "2");
+  assert.equal(failures.find((item) => item.instanceId === "1").retryCount, 1);
+  assert.equal(failures.find((item) => item.instanceId === "1").retryResult, "recovered");
   assert.equal(failures.find((item) => item.instanceId === "3").repairStatus, "unresolved");
+  assert.equal(failures.find((item) => item.instanceId === "3").retryResult, "not_triggered");
+});
+
+test("n8n restart watch associates supported retry commands and keeps them before the next schedule", () => {
+  const failures = classifyOriginalScheduledFailures([
+    { id: 1, commandType: "SCHEDULER", state: "FAILURE", workflowDefinitionCode: 10, startTime: "2026-08-25 08:00:00" },
+    { id: 2, commandType: "REPEAT_RUNNING", state: "FAILURE", workflowDefinitionCode: 10, startTime: "2026-08-25 08:05:00" },
+    { id: 3, commandType: "RECOVER_SUSPENDED_PROCESS", state: "SUCCESS", workflowDefinitionCode: 10, startTime: "2026-08-25 08:10:00" },
+    { id: 4, commandType: "SCHEDULER", state: "FAILURE", workflowDefinitionCode: 10, startTime: "2026-08-26 08:00:00" },
+    { id: 5, commandType: "REPEAT_RUNNING", state: "RUNNING_EXECUTION", workflowDefinitionCode: 10, startTime: "2026-08-26 08:05:00" },
+  ]);
+  const first = failures.find((item) => item.instanceId === "1");
+  const second = failures.find((item) => item.instanceId === "4");
+  assert.equal(first.retryCount, 2);
+  assert.equal(first.retryResult, "recovered");
+  assert.equal(first.recoveryInstanceId, "3");
+  assert.equal(second.retryCount, 1);
+  assert.equal(second.retryResult, "running");
+  assert.equal(second.recoveryInstanceId, "5");
 });
 
 test("n8n restart watch does not treat the next regular schedule as a restart recovery", () => {
