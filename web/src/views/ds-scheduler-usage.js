@@ -83,6 +83,7 @@ function sourceBadge(report) {
 }
 
 let activeRoot = null;
+let accessUsersPage = 0; // 用户列表当前页码（0 基），支持翻页
 
 export function renderDsSchedulerUsage(root) {
   activeRoot = root;
@@ -713,11 +714,25 @@ function renderViolationsCard(access) {
   `;
 }
 
+const ACCESS_USERS_PAGE_SIZE = 8;
+
 function renderUsersCard(access, meta) {
   const users = access.users || [];
   const roles = meta.roles || [];
   const roleLabels = meta.roleLabels || {};
   const configured = users.filter((u) => u.configured).length;
+  const totalPages = Math.max(1, Math.ceil(users.length / ACCESS_USERS_PAGE_SIZE));
+  if (accessUsersPage >= totalPages) accessUsersPage = totalPages - 1;
+  if (accessUsersPage < 0) accessUsersPage = 0;
+  const pageUsers = users.slice(accessUsersPage * ACCESS_USERS_PAGE_SIZE, (accessUsersPage + 1) * ACCESS_USERS_PAGE_SIZE);
+  const start = users.length ? accessUsersPage * ACCESS_USERS_PAGE_SIZE + 1 : 0;
+  const end = Math.min(users.length, (accessUsersPage + 1) * ACCESS_USERS_PAGE_SIZE);
+  const pager = users.length > ACCESS_USERS_PAGE_SIZE ? `
+    <div class="dsu-pager">
+      <button class="secondary small" data-users-page="${accessUsersPage - 1}" ${accessUsersPage === 0 ? "disabled" : ""}>上一页</button>
+      <span class="muted">第 ${accessUsersPage + 1} / ${totalPages} 页 · 共 ${users.length} 人（显示 ${start}–${end}）</span>
+      <button class="secondary small" data-users-page="${accessUsersPage + 1}" ${accessUsersPage >= totalPages - 1 ? "disabled" : ""}>下一页</button>
+    </div>` : "";
   return `
     <div class="dsu-access-block">
       <div class="detail-header compact-header">
@@ -728,7 +743,9 @@ function renderUsersCard(access, meta) {
           <button id="dsu-add-user">新增用户</button>
         </div>
       </div>
-      ${users.length ? `<div class="dsu-user-list">${users.map((u) => renderUserRow(u, roles, roleLabels)).join("")}</div>` : `<p class="muted">暂无用户数据（需先刷新使用统计生成审计快照）。</p>`}
+      ${pager}
+      ${users.length ? `<div class="dsu-user-list">${pageUsers.map((u) => renderUserRow(u, roles, roleLabels)).join("")}</div>` : `<p class="muted">暂无用户数据（需先刷新使用统计生成审计快照）。</p>`}
+      ${pager}
     </div>
   `;
 }
@@ -815,6 +832,14 @@ function bindAccessEvents(root) {
   root.querySelector("#dsu-eval-run")?.addEventListener("click", () => runEvaluate(root));
   root.querySelector("#dsu-publish")?.addEventListener("click", () => publishAccess(root));
   root.querySelector("#dsu-add-user")?.addEventListener("click", () => addUser(root));
+  root.querySelectorAll("[data-users-page]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const page = Number(btn.dataset.usersPage);
+      if (!Number.isFinite(page) || page < 0) return;
+      accessUsersPage = page;
+      loadAccess(root);
+    });
+  });
   root.querySelectorAll("[data-violation-block]").forEach((btn) => {
     btn.addEventListener("click", () => toggleBlockUser(root, btn.dataset.violationBlock, false));
   });
