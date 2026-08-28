@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost } from "../api.js";
+import { apiDelete, apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
 const COUNTRY_OPTIONS = [
@@ -28,6 +28,7 @@ const STATUS_LABELS = {
 };
 
 let model = {
+  activeTab: "today",
   result: null,
   loading: false,
   error: "",
@@ -51,6 +52,13 @@ let model = {
   retryActionMessage: "",
   pendingDeleteRunId: "",
   retryHistoryPage: 1,
+  scheduledResult: null,
+  scheduledLoading: false,
+  scheduledCountries: [],
+  scheduledKeyword: "",
+  scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {} },
+  scheduledConfigLoaded: false,
+  scheduledMessage: "",
 };
 
 let autoRefreshTimer = null;
@@ -61,6 +69,48 @@ export function renderDsFailureLogs(root) {
   syncAutoRefresh(root);
   paint(root);
   if (!model.retryControlLoaded) refreshRetryPanel(root);
+  if (!model.scheduledConfigLoaded) refreshScheduledConfig(root);
+}
+
+async function refreshScheduledConfig(root) {
+  try {
+    model.scheduledConfig = await apiGet("/api/ds-scheduled-failure-watch/config");
+  } catch (error) {
+    model.scheduledMessage = readableQueryError(error);
+  } finally {
+    model.scheduledConfigLoaded = true;
+    if (isCurrentView()) paint(root);
+  }
+}
+
+async function loadScheduledFailures(root) {
+  if (model.scheduledLoading) return;
+  const selected = COUNTRY_OPTIONS.filter((item) => !model.scheduledCountries.length || model.scheduledCountries.includes(item.code));
+  model.scheduledLoading = true;
+  model.scheduledMessage = "";
+  model.scheduledResult = aggregateResult(selected.map(queryingCountry));
+  paint(root);
+  try {
+    const response = await apiGet(`/api/ds-scheduled-failure-watch?country=${encodeURIComponent(selected.map((item) => item.code).join(","))}`);
+    model.scheduledResult = aggregateResult(response.countries || []);
+    if (response.notificationErrors?.length) model.scheduledMessage = response.notificationErrors.join("；");
+  } catch (error) {
+    model.scheduledResult = aggregateResult(selected.map((option) => failedCountry(option, readableQueryError(error))));
+  }
+  model.scheduledLoading = false;
+  if (isCurrentView()) paint(root);
+}
+
+async function saveScheduledOwners(root) {
+  const owners = {};
+  for (const option of COUNTRY_OPTIONS) owners[option.code] = root.querySelector(`[data-scheduled-owner="${option.code}"]`)?.value || "";
+  try {
+    model.scheduledConfig = await apiPut("/api/ds-scheduled-failure-watch/config", { ...model.scheduledConfig, owners });
+    model.scheduledMessage = "负责人邮箱已保存，后续发现新的定时调度失败实例时将按国家通知。";
+  } catch (error) {
+    model.scheduledMessage = `负责人配置保存失败：${error.message}`;
+  }
+  paint(root);
 }
 
 async function refreshRetryPanel(root) {
@@ -381,8 +431,13 @@ function paint(root) {
         ${stat("修复中 / 待修复", hasResult ? `${result.repairingCount || 0} / ${result.unresolvedCount || 0}` : "—")}
       </div>
     </div>
+    <div class="workspace-tabs ds-failure-page-tabs" role="tablist">
+      <button class="${model.activeTab === "today" ? "active" : ""}" data-ds-failure-tab="today"><small>01</small><strong>当天失败任务</strong><span>查询当天全部失败实例</span></button>
+      <button class="${model.activeTab === "scheduled" ? "active" : ""}" data-ds-failure-tab="scheduled"><small>02</small><strong>定时任务失败监控</strong><span>观察原始定时调度首次失败</span></button>
+      <button class="${model.activeTab === "retry" ? "active" : ""}" data-ds-failure-tab="retry"><small>03</small><strong>失败任务重跑控制</strong><span>手动测试、定时重跑与历史</span></button>
+    </div>
     ${model.error ? `<div class="sandbox-status error"><strong>无法查询</strong><span>${escapeHtml(model.error)}</span></div>` : ""}
-    <section class="panel ds-failure-toolbar">
+    <section class="panel ds-failure-toolbar" ${model.activeTab === "today" ? "" : 'style="display:none"'}>
       ${autoRefreshNotice}
       <div class="detail-header compact-header">
         <div><h2 class="panel-title">当天失败任务</h2><p class="muted">选择需要观察的国家后点击查询。每个国家独立返回，查询中的国家不会阻塞已完成国家的结果。</p></div>
@@ -396,7 +451,8 @@ function paint(root) {
       </div>
       <div class="ds-failure-legend"><span class="badge ok">已自动修复</span><span>最新失败实例后出现成功实例</span><span class="badge warn">修复中</span><span>最新失败实例后出现运行中实例</span><span class="badge danger">待修复</span><span>最新失败实例后没有成功或运行中实例</span></div>
     </section>
-    <section class="panel ds-failure-retry-control">
+    ${renderScheduledFailureWatch()}
+    <section class="panel ds-failure-retry-control" ${model.activeTab === "retry" ? "" : 'style="display:none"'}>
       <div class="detail-header compact-header">
         <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">除 SQL/代码错误和权限不足外，其余失败每轮最多提交一次重跑；提交后仅检查修复结果，人工停止、下线及跨天任务仍会安全停止。</p></div>
         <div class="ds-retry-header-actions ds-retry-control-actions">
@@ -425,10 +481,15 @@ function paint(root) {
       </div>
     </section>
     ${renderRetryExclusionModal()}
-    <section class="ds-failure-country-list">
+    <section class="ds-failure-country-list" ${model.activeTab === "today" ? "" : 'style="display:none"'}>
       ${hasResult ? renderCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">选择需要观察的国家，然后点击“查询”。</p></section>`}
     </section>
   `;
+
+  root.querySelectorAll("[data-ds-failure-tab]").forEach((button) => button.addEventListener("click", () => {
+    model.activeTab = button.dataset.dsFailureTab;
+    paint(root);
+  }));
 
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
   root.querySelector("#ds-failure-stop-query")?.addEventListener("click", () => stopQuery(root));
@@ -464,6 +525,33 @@ function paint(root) {
     if (event.key === "Enter") jumpRetryHistoryPage();
   });
   bindCountryMultiSelect(root, "ds-retry-country", (values) => { void saveRetryCountries(root, values); });
+  bindCountryMultiSelect(root, "ds-scheduled-country", (values) => { model.scheduledCountries = values; });
+  root.querySelector("#ds-scheduled-query")?.addEventListener("click", () => loadScheduledFailures(root));
+  root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); });
+  root.querySelector("#ds-scheduled-owner-save")?.addEventListener("click", () => saveScheduledOwners(root));
+}
+
+function renderScheduledFailureWatch() {
+  const result = model.scheduledResult || {};
+  const owners = model.scheduledConfig.owners || {};
+  return `<section class="ds-scheduled-failure-watch" ${model.activeTab === "scheduled" ? "" : 'style="display:none"'}>
+    <section class="panel ds-failure-toolbar">
+      <div class="detail-header compact-header">
+        <div><h2 class="panel-title">任务首次失败自动重跑观察</h2><p class="muted">仅监控由定时调度（SCHEDULER）产生的原始失败实例；后续重跑检查与重跑实例不会计入本模块。</p></div>
+        <button class="primary" id="ds-scheduled-query" ${model.scheduledLoading ? "disabled" : ""}>${model.scheduledLoading ? "正在查询…" : model.scheduledResult ? "重新查询" : "查询"}</button>
+      </div>
+      <div class="ds-failure-filter-grid ds-scheduled-filter-grid">
+        ${renderCountryMultiSelect("ds-scheduled-country", "国家", model.scheduledCountries, model.scheduledLoading)}
+        <label>搜索项目或任务<input id="ds-scheduled-keyword" value="${escapeHtml(model.scheduledKeyword)}" placeholder="项目、工作流、失败任务或原因"></label>
+      </div>
+      ${model.scheduledMessage ? `<div class="sandbox-status ${/失败|错误/.test(model.scheduledMessage) ? "error" : "warn"}"><span>${escapeHtml(model.scheduledMessage)}</span></div>` : ""}
+    </section>
+    <section class="panel ds-scheduled-owner-panel">
+      <div class="detail-header compact-header"><div><h3 class="panel-title">对应国家负责人配置</h3><p class="muted">每个邮箱单独接收对应国家的新失败通知；多个邮箱请用逗号分隔。</p></div><button class="primary" id="ds-scheduled-owner-save">保存负责人</button></div>
+      <div class="ds-scheduled-owner-grid">${COUNTRY_OPTIONS.map((option) => `<label><span>${option.flag} ${option.name}</span><input data-scheduled-owner="${option.code}" value="${escapeHtml(owners[option.code] || "")}" placeholder="负责人邮箱，多个用逗号分隔"></label>`).join("")}</div>
+    </section>
+    <section class="ds-failure-country-list">${model.scheduledResult ? renderScheduledCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">后台会持续监控并通知；也可选择国家后手动查询当前结果。</p></section>`}</section>
+  </section>`;
 }
 
 function renderRetryIntervalSelect(value, disabled) {
@@ -798,14 +886,24 @@ function renderCountries(countries) {
   return visible.map((country) => renderCountry(country)).join("");
 }
 
-function renderCountry(country) {
+function renderScheduledCountries(countries) {
+  const visible = countries.filter((country) => !model.scheduledCountries.length || model.scheduledCountries.includes(country.country));
+  if (!visible.length) return `<section class="panel"><p class="muted">所选国家尚未查询，请点击“重新查询”。</p></section>`;
+  return visible.map((country) => renderCountry(country, {
+    keyword: model.scheduledKeyword,
+    status: "",
+    scheduleCategory: "scheduled_online",
+  })).join("");
+}
+
+function renderCountry(country, filters = null) {
   const meta = COUNTRY_META[country.country] || {};
   if (country.querying) {
     return `<section class="panel ds-failure-country-card ds-failure-querying">
       <div class="detail-header compact-header"><div><h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)}</h2><p class="muted">正在读取当天实例、失败任务和日志…</p></div><span class="badge warn">查询中</span></div>
     </section>`;
   }
-  const failures = filteredFailures(country.failures || []);
+  const failures = filteredFailures(country.failures || [], filters);
   const allFailureCount = (country.failures || []).length;
   const configuredBadge = country.configured
     ? `<span class="badge ${country.success ? "ok" : "danger"}">${country.success ? "已检查" : "检查失败"}</span>`
@@ -826,12 +924,14 @@ function renderCountry(country) {
   </section>`;
 }
 
-function filteredFailures(failures) {
-  const keyword = model.keyword.trim().toLowerCase();
+function filteredFailures(failures, filters = null) {
+  const keyword = String(filters?.keyword ?? model.keyword).trim().toLowerCase();
+  const statusFilter = filters?.status ?? model.status;
+  const scheduleFilter = filters?.scheduleCategory ?? model.scheduleCategory;
   return failures.filter((item) => {
     const displayStatus = item.repairStatus === "recovered" ? "recovered" : item.failureType || item.repairStatus;
-    if (model.status && displayStatus !== model.status) return false;
-    if (model.scheduleCategory && item.scheduleCategory !== model.scheduleCategory) return false;
+    if (statusFilter && displayStatus !== statusFilter) return false;
+    if (scheduleFilter && item.scheduleCategory !== scheduleFilter) return false;
     if (!keyword) return true;
     return [item.projectName, item.workflowName, item.workflowCode, item.taskName, item.failureMessage]
       .some((value) => String(value || "").toLowerCase().includes(keyword));

@@ -23,6 +23,7 @@ config/ds-scheduler.config.json
 config/ds-scheduler-access-policy.json
 config/ds-scheduler-access-gateway.json
 config/ds-failure-retry-state.json
+config/ds-scheduled-failure-watch.json
 n8n-metabase-anomaly-agent.json
 n8n-metabase-anomaly-evidence-agent.local.json
 n8n-metabase-anomaly-dify-orchestrator.local.json
