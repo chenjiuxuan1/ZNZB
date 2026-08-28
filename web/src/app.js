@@ -13,7 +13,7 @@ import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?
 import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
 import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260826-access-v1";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
-import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260824-stop-rerun-reason-v21";
+import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260828-scheduled-failure-watch-v22";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
