@@ -71,6 +71,34 @@ export function fmtDuration(ms) {
   return `${(value / 1000).toFixed(1)}s`;
 }
 
+export function filterAccessUsers(users = [], query = "", status = "all") {
+  const needle = String(query || "").trim().toLowerCase();
+  const selectedStatus = String(status || "all");
+  return users.filter((user) => {
+    const matchesQuery = !needle || [user.username, ...(user.tokens || [])]
+      .some((value) => String(value || "").toLowerCase().includes(needle));
+    const matchesStatus = selectedStatus === "all"
+      || (selectedStatus === "configured" && user.configured)
+      || (selectedStatus === "default" && !user.configured)
+      || user.status === selectedStatus;
+    return matchesQuery && matchesStatus;
+  });
+}
+
+export function paginateAccessUsers(users = [], requestedPage = 0, pageSize = 8) {
+  const size = Math.max(1, Number(pageSize) || 8);
+  const totalPages = Math.max(1, Math.ceil(users.length / size));
+  const page = Math.max(0, Math.min(totalPages - 1, Number(requestedPage) || 0));
+  const offset = page * size;
+  return {
+    page,
+    totalPages,
+    start: users.length ? offset + 1 : 0,
+    end: Math.min(users.length, offset + size),
+    items: users.slice(offset, offset + size),
+  };
+}
+
 function sourceBadge(report) {
   const map = {
     snapshot: { cls: "ok", text: "缓存快照" },
@@ -84,6 +112,8 @@ function sourceBadge(report) {
 
 let activeRoot = null;
 let accessUsersPage = 0; // 用户列表当前页码（0 基），支持翻页
+let accessUsersQuery = "";
+let accessUsersStatus = "all";
 
 export function renderDsSchedulerUsage(root) {
   activeRoot = root;
@@ -146,17 +176,24 @@ function paint(root) {
   activeRoot = root;
   const report = model.report;
   root.innerHTML = `
-    <div class="page-header batch-hero">
-      <div>
-        <h1 class="page-title">DS网关使用统计</h1>
-        <p class="page-note">统计 n8n <code>ds-scheduler-router</code> 网关的审计记录：按国家分开展示每天谁在使用、调用了哪些动作、成功率与风险操作等，可对每个国家单独设置统计时间范围。${report ? sourceBadge(report) : ""}</p>
+    <div class="dsu-page">
+      <div class="page-header batch-hero dsu-page-hero">
+        <div class="dsu-hero-copy">
+          <span class="dsu-eyebrow">DolphinScheduler · 网关治理</span>
+          <h1 class="page-title">DS 网关使用统计</h1>
+          <p class="page-note">查看各国调用、Token 使用与风险操作，并统一管理用户权限和限额。</p>
+          <div class="dsu-hero-meta">
+            ${report ? sourceBadge(report) : sourceBadge({ source: "empty" })}
+            ${report?.generatedAt ? `<span>更新于 ${escapeHtml(new Date(report.generatedAt).toLocaleString("zh-CN"))}</span>` : `<span>等待加载统计数据</span>`}
+          </div>
+        </div>
+        ${renderHeroStats(report)}
       </div>
-      ${renderHeroStats(report)}
+      ${renderStatus(report)}
+      ${renderTokens()}
+      ${renderMain(report)}
+      ${renderAccess(root)}
     </div>
-    ${renderStatus(report)}
-    ${renderTokens()}
-    ${renderMain(report)}
-    ${renderAccess(root)}
   `;
   root.querySelector("#dsu-refresh")?.addEventListener("click", () => refresh(root));
   root.querySelectorAll("[data-role='global-from'], [data-role='global-to']").forEach((input) => {
@@ -175,7 +212,7 @@ function paint(root) {
 
 function renderHeroStats(report) {
   return `
-    <div class="hero-stats" aria-label="网关使用统计概览">
+    <div class="hero-stats dsu-overview-stats" aria-label="网关使用统计概览">
       <article><span>统计天数</span><strong>${report?.dayCount ?? "—"}</strong></article>
       <article><span>调用总次数</span><strong>${report?.totalRequests ?? "—"}</strong></article>
       <article><span>使用人数</span><strong>${report?.uniqueOperators ?? "—"}</strong></article>
@@ -308,11 +345,12 @@ function renderMain(report) {
   const range = model.globalRange;
   return `
     ${renderDailyOverview(report)}
-    <section class="panel">
+    <section class="panel dsu-usage-panel">
       <div class="detail-header compact-header">
         <div>
+          <span class="dsu-section-kicker">使用分析</span>
           <h2 class="panel-title">国家使用分布</h2>
-          <p class="muted">${report?.generatedAt ? `最近更新：${new Date(report.generatedAt).toLocaleString("zh-CN")}` : ""} · 全局时间筛选应用于所有国家</p>
+          <p class="muted">统一时间范围，展开国家查看 Token、成功率和主要动作。</p>
         </div>
         <div class="button-group"><button class="primary" id="dsu-refresh">刷新数据</button></div>
       </div>
@@ -587,8 +625,9 @@ function renderAccess(root) {
     <section class="panel dsu-access-panel" data-access-section="true">
       <div class="detail-header compact-header">
         <div>
+          <span class="dsu-section-kicker">访问控制</span>
           <h2 class="panel-title">用户权限与管控</h2>
-          <p class="muted">权限按用户名配置并绑定 Token；删除/禁用类动作默认仅对开放删除权限的用户可用。改完记得「下发策略」，否则网关仍按旧策略执行。</p>
+          <p class="muted">配置默认权限、处理违规用户，并将最新策略下发到各国网关。</p>
         </div>
         <div class="button-group"><button class="primary" id="dsu-access-reload">刷新</button></div>
       </div>
@@ -703,7 +742,7 @@ function renderViolationsCard(access) {
     <div class="dsu-access-block">
       <div class="detail-header compact-header">
         <div><h3 class="dsu-access-card-title">违规记录（超出限额）</h3>
-          <p class="muted">基于审计快照统计最近 7 天内任一小时/当日窗口超限的情况。</p>
+          <p class="muted">最近 7 天触发小时或当日限额的记录。</p>
         </div>
       </div>
       <div class="dsu-table-wrap"><table class="ds-table">
@@ -721,30 +760,47 @@ function renderUsersCard(access, meta) {
   const roles = meta.roles || [];
   const roleLabels = meta.roleLabels || {};
   const configured = users.filter((u) => u.configured).length;
-  const totalPages = Math.max(1, Math.ceil(users.length / ACCESS_USERS_PAGE_SIZE));
-  if (accessUsersPage >= totalPages) accessUsersPage = totalPages - 1;
-  if (accessUsersPage < 0) accessUsersPage = 0;
-  const pageUsers = users.slice(accessUsersPage * ACCESS_USERS_PAGE_SIZE, (accessUsersPage + 1) * ACCESS_USERS_PAGE_SIZE);
-  const start = users.length ? accessUsersPage * ACCESS_USERS_PAGE_SIZE + 1 : 0;
-  const end = Math.min(users.length, (accessUsersPage + 1) * ACCESS_USERS_PAGE_SIZE);
-  const pager = users.length > ACCESS_USERS_PAGE_SIZE ? `
+  const filteredUsers = filterAccessUsers(users, accessUsersQuery, accessUsersStatus);
+  const pageData = paginateAccessUsers(filteredUsers, accessUsersPage, ACCESS_USERS_PAGE_SIZE);
+  accessUsersPage = pageData.page;
+  const pager = filteredUsers.length > ACCESS_USERS_PAGE_SIZE ? `
     <div class="dsu-pager">
       <button class="secondary small" data-users-page="${accessUsersPage - 1}" ${accessUsersPage === 0 ? "disabled" : ""}>上一页</button>
-      <span class="muted">第 ${accessUsersPage + 1} / ${totalPages} 页 · 共 ${users.length} 人（显示 ${start}–${end}）</span>
-      <button class="secondary small" data-users-page="${accessUsersPage + 1}" ${accessUsersPage >= totalPages - 1 ? "disabled" : ""}>下一页</button>
+      <span class="muted">${pageData.start}–${pageData.end} / ${filteredUsers.length} 人 · 第 ${accessUsersPage + 1} / ${pageData.totalPages} 页</span>
+      <button class="secondary small" data-users-page="${accessUsersPage + 1}" ${accessUsersPage >= pageData.totalPages - 1 ? "disabled" : ""}>下一页</button>
     </div>` : "";
   return `
-    <div class="dsu-access-block">
+    <div class="dsu-access-block dsu-users-block" id="dsu-users-card">
       <div class="detail-header compact-header">
         <div><h3 class="dsu-access-card-title">用户列表（${users.length} 人 · 已配置 ${configured} 人）</h3>
-          <p class="muted">打开行可配置角色 / 删除权限 / 动作黑名单 / 独立限额；未配置用户按「默认角色」执行。</p>
+          <p class="muted">展开用户可配置角色、Token、动作黑名单和独立限额。</p>
         </div>
         <div class="button-group">
           <button id="dsu-add-user">新增用户</button>
         </div>
       </div>
-      ${pager}
-      ${users.length ? `<div class="dsu-user-list">${pageUsers.map((u) => renderUserRow(u, roles, roleLabels)).join("")}</div>` : `<p class="muted">暂无用户数据（需先刷新使用统计生成审计快照）。</p>`}
+      <div class="dsu-user-toolbar" role="search">
+        <label class="dsu-user-search">搜索用户或 Token
+          <input class="input" id="dsu-user-search" value="${escapeHtml(accessUsersQuery)}" placeholder="输入用户名或 Token">
+        </label>
+        <label>状态
+          <select class="input" id="dsu-user-status">
+            <option value="all" ${accessUsersStatus === "all" ? "selected" : ""}>全部状态</option>
+            <option value="configured" ${accessUsersStatus === "configured" ? "selected" : ""}>已配置</option>
+            <option value="default" ${accessUsersStatus === "default" ? "selected" : ""}>默认角色</option>
+            <option value="ok" ${accessUsersStatus === "ok" ? "selected" : ""}>正常</option>
+            <option value="limited" ${accessUsersStatus === "limited" ? "selected" : ""}>超限</option>
+            <option value="blocked" ${accessUsersStatus === "blocked" ? "selected" : ""}>已封锁</option>
+          </select>
+        </label>
+        <span class="dsu-filter-count">找到 ${filteredUsers.length} 人</span>
+      </div>
+      ${pageData.items.length ? `<div class="dsu-user-list">${pageData.items.map((u) => renderUserRow(u, roles, roleLabels)).join("")}</div>` : users.length ? `
+        <div class="dsu-empty-filter">
+          <strong>没有匹配的用户</strong>
+          <span>换一个关键词或状态试试。</span>
+          <button class="secondary small" id="dsu-clear-user-filter">清除筛选</button>
+        </div>` : `<p class="muted">暂无用户数据，请先刷新使用统计。</p>`}
       ${pager}
     </div>
   `;
@@ -774,8 +830,8 @@ function renderUserRow(user, roles, roleLabels) {
         <span class="chip">${(user.tokens || []).length} Token</span>
         <span class="chip">${user.requests} 次</span>
         <span class="dsu-user-summary-actions">
-          <button class="secondary small" data-action="block">${user.enabled ? "封锁" : "解封"}</button>
-          <button class="secondary small" data-action="remove" ${user.configured ? "" : "disabled"}>移除配置</button>
+          <button class="small ${user.enabled ? "danger" : "secondary"}" data-action="block">${user.enabled ? "封锁" : "解封"}</button>
+          <button class="small quiet-danger" data-action="remove" ${user.configured ? "" : "disabled"}>移除配置</button>
         </span>
       </summary>
       <div class="dsu-user-edit">
@@ -810,10 +866,10 @@ function renderPublishCard(access) {
     <div class="dsu-access-block dsu-publish-block">
       <div class="detail-header compact-header">
         <div><h3 class="dsu-access-card-title">下发策略到网关</h3>
-          <p class="muted">把上面的用户权限与限额打包成 <code>config/ds-scheduler-access-gateway.json</code>，再复制到各国机器 <code>config/access_policy.json</code> 即可生效（或运行 <code>scripts/publish-ds-access-policy.mjs</code> 自动下发）。</p>
+          <p class="muted">生成最新权限文件；策略需部署到各国网关后才会生效。</p>
         </div>
         <div class="button-group">
-          <button class="primary" id="dsu-publish">生成网关策略</button>
+          <button class="primary" id="dsu-publish">生成并保存策略文件</button>
         </div>
       </div>
       <div class="dsu-publish-meta">
@@ -832,12 +888,34 @@ function bindAccessEvents(root) {
   root.querySelector("#dsu-eval-run")?.addEventListener("click", () => runEvaluate(root));
   root.querySelector("#dsu-publish")?.addEventListener("click", () => publishAccess(root));
   root.querySelector("#dsu-add-user")?.addEventListener("click", () => addUser(root));
+  root.querySelector("#dsu-user-search")?.addEventListener("input", (event) => {
+    accessUsersQuery = event.currentTarget.value;
+    accessUsersPage = 0;
+    paint(root);
+    const input = root.querySelector("#dsu-user-search");
+    if (input) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+  });
+  root.querySelector("#dsu-user-status")?.addEventListener("change", (event) => {
+    accessUsersStatus = event.currentTarget.value;
+    accessUsersPage = 0;
+    paint(root);
+  });
+  root.querySelector("#dsu-clear-user-filter")?.addEventListener("click", () => {
+    accessUsersQuery = "";
+    accessUsersStatus = "all";
+    accessUsersPage = 0;
+    paint(root);
+  });
   root.querySelectorAll("[data-users-page]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const page = Number(btn.dataset.usersPage);
       if (!Number.isFinite(page) || page < 0) return;
       accessUsersPage = page;
-      loadAccess(root);
+      paint(root);
+      root.querySelector("#dsu-users-card")?.scrollIntoView({ block: "start", behavior: "smooth" });
     });
   });
   root.querySelectorAll("[data-violation-block]").forEach((btn) => {
@@ -846,12 +924,20 @@ function bindAccessEvents(root) {
   root.querySelectorAll("[data-action='block']").forEach((btn) => {
     const row = btn.closest("[data-username]");
     if (!row) return;
-    btn.addEventListener("click", () => toggleBlockUser(root, row.dataset.username, null));
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleBlockUser(root, row.dataset.username, null);
+    });
   });
   root.querySelectorAll("[data-action='remove']").forEach((btn) => {
     const row = btn.closest("[data-username]");
     if (!row) return;
-    btn.addEventListener("click", () => removeUserConfig(root, row.dataset.username));
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      removeUserConfig(root, row.dataset.username);
+    });
   });
   root.querySelectorAll("[data-action='save-user']").forEach((btn) => {
     const row = btn.closest("[data-username]");
