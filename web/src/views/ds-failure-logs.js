@@ -56,6 +56,7 @@ let model = {
   scheduledLoading: false,
   scheduledCountries: [],
   scheduledKeyword: "",
+  scheduledCountryPages: {},
   scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {} },
   scheduledConfigLoaded: false,
   scheduledMessage: "",
@@ -87,6 +88,7 @@ async function loadScheduledFailures(root) {
   if (model.scheduledLoading) return;
   const selected = COUNTRY_OPTIONS.filter((item) => !model.scheduledCountries.length || model.scheduledCountries.includes(item.code));
   model.scheduledLoading = true;
+  model.scheduledCountryPages = {};
   model.scheduledMessage = "";
   model.scheduledResult = aggregateResult(selected.map(queryingCountry));
   paint(root);
@@ -527,8 +529,15 @@ function paint(root) {
   bindCountryMultiSelect(root, "ds-retry-country", (values) => { void saveRetryCountries(root, values); });
   bindCountryMultiSelect(root, "ds-scheduled-country", (values) => { model.scheduledCountries = values; });
   root.querySelector("#ds-scheduled-query")?.addEventListener("click", () => loadScheduledFailures(root));
-  root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); });
+  root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; model.scheduledCountryPages = {}; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); });
   root.querySelector("#ds-scheduled-owner-save")?.addEventListener("click", () => saveScheduledOwners(root));
+  root.querySelectorAll("[data-scheduled-country-page]").forEach((button) => button.addEventListener("click", () => {
+    const country = String(button.dataset.scheduledCountry || "");
+    const page = Number(button.dataset.scheduledCountryPage) || 1;
+    if (!country) return;
+    model.scheduledCountryPages = { ...model.scheduledCountryPages, [country]: page };
+    paint(root);
+  }));
 }
 
 function renderScheduledFailureWatch() {
@@ -894,6 +903,7 @@ function renderScheduledCountries(countries) {
     status: "",
     scheduleCategory: "scheduled_online",
     historical: true,
+    page: model.scheduledCountryPages[country.country] || 1,
   })).join("");
 }
 
@@ -905,6 +915,10 @@ function renderCountry(country, filters = null) {
     </section>`;
   }
   const failures = filteredFailures(country.failures || [], filters);
+  const pageSize = filters?.historical ? 4 : Math.max(1, failures.length);
+  const pageCount = Math.max(1, Math.ceil(failures.length / pageSize));
+  const page = Math.max(1, Math.min(pageCount, Number(filters?.page) || 1));
+  const visibleFailures = filters?.historical ? failures.slice((page - 1) * pageSize, page * pageSize) : failures;
   const allFailureCount = (country.failures || []).length;
   const configuredBadge = country.configured
     ? `<span class="badge ${country.success ? "ok" : "danger"}">${country.success ? "已检查" : "检查失败"}</span>`
@@ -921,8 +935,20 @@ function renderCountry(country, filters = null) {
     ${country.error ? `<div class="sandbox-status ${country.configured ? "error" : "warn"}"><strong>${country.queryFailed ? "国家查询失败" : country.configured ? "部分项目读取失败" : "尚未接入"}</strong><span>${escapeHtml(country.error)}${country.configured ? "" : '，请先前往 <a href="#/ds-scheduler">DS调度监控</a> 完成 Token 和项目配置。'}</span></div>` : ""}
     ${country.configured && country.success && failures.length === 0
       ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : filters?.historical ? "该国家最近 7 天没有 n8n 失败重启任务。" : "该国家当天没有失败任务。"}</div>`
-      : failures.map((failure) => renderFailure(failure, filters)).join("")}
+      : visibleFailures.map((failure) => renderFailure(failure, filters)).join("")}
+    ${filters?.historical && failures.length > pageSize ? renderScheduledCountryPagination(country.country, failures.length, page, pageCount) : ""}
   </section>`;
+}
+
+function renderScheduledCountryPagination(country, total, page, pageCount) {
+  const pages = Array.from({ length: pageCount }, (_, index) => index + 1);
+  return `<div class="ds-retry-history-pagination ds-scheduled-country-pagination">
+    <span>总条目为: ${total}</span>
+    <button class="ds-pagination-arrow" type="button" data-scheduled-country="${escapeHtml(country)}" data-scheduled-country-page="${page - 1}" ${page <= 1 ? "disabled" : ""} aria-label="上一页">‹</button>
+    ${pages.map((item) => `<button class="ds-pagination-page ${item === page ? "active" : ""}" type="button" data-scheduled-country="${escapeHtml(country)}" data-scheduled-country-page="${item}">${item}</button>`).join("")}
+    <button class="ds-pagination-arrow" type="button" data-scheduled-country="${escapeHtml(country)}" data-scheduled-country-page="${page + 1}" ${page >= pageCount ? "disabled" : ""} aria-label="下一页">›</button>
+    <select class="ds-pagination-size" aria-label="每页条数" disabled><option value="4">4 / 页</option></select>
+  </div>`;
 }
 
 function filteredFailures(failures, filters = null) {
@@ -949,6 +975,14 @@ function renderFailure(item, filters = null) {
     : "";
   const taskLabel = item.taskName || item.taskCode || "未定位到失败任务";
   const scriptLabel = item.taskType === "SQL" ? "出错 SQL" : "任务执行脚本";
+  const retryCount = Number(item.retryCount || 0);
+  const retryResult = item.retryResult === "recovered"
+    ? "已恢复"
+    : item.retryResult === "running"
+      ? "重跑中"
+      : item.retryResult === "failed"
+        ? "重跑后仍失败"
+        : "尚未触发后续重跑";
   return `<article class="ds-failure-item ${escapeHtml(displayStatus)}">
     <div class="ds-failure-item-head">
       <div><span class="badge ${status.className}">${status.label}</span><strong>${escapeHtml(item.workflowName || item.workflowCode || "未命名工作流")}</strong></div>
@@ -971,7 +1005,7 @@ function renderFailure(item, filters = null) {
     <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(failureReason)}</pre></div>
     <div class="ds-failure-recovery"><strong>失败分类</strong><span>${escapeHtml(item.retryDecision || "等待失败原因分类；本模块仅查询，不执行重跑")}</span></div>
     ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
-    ${item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "查询结果" : "后续状态"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
+    ${filters?.historical ? `<div class="ds-failure-recovery"><strong>后续重跑结果</strong><span>${escapeHtml(retryResult)} · 重跑 ${retryCount} 次${item.recoveryInstanceId ? ` · 最新重跑实例 ${escapeHtml(item.recoveryInstanceId)} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}` : ""}</span></div>` : item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "查询结果" : "后续状态"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
 }
