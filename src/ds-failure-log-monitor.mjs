@@ -301,6 +301,30 @@ export function extractDsFailureReason(log, fallback = "") {
     .trim().slice(0, 1000) || candidate.slice(0, 1000);
 }
 
+export function classifyOriginalScheduledFailures(instances = [], { projectName = "", projectCode = "" } = {}) {
+  return instances
+    .filter((item) => commandTypeOf(item) === "SCHEDULER" && FAILED_STATES.has(stateOf(item)))
+    .map((item) => ({
+      projectName,
+      projectCode,
+      workflowCode: workflowCode(item),
+      workflowName: workflowName(item),
+      instanceId: instanceId(item),
+      instanceState: stateOf(item) || "FAILURE",
+      startTime: instanceTime(item),
+      endTime: endTime(item),
+      repairStatus: "unresolved",
+      recoveryInstanceId: "",
+      recoveryState: "",
+      recoveryTime: null,
+      failureMessage: String(item.failure_message || item.failureMessage || item.error_message || item.errorMessage || "").trim(),
+      failureCount: 1,
+      scheduleCategory: "scheduled_online",
+      originalScheduledFailure: true,
+    }))
+    .sort((a, b) => timestamp(b.startTime) - timestamp(a.startTime));
+}
+
 function stoppedFailureReason(failure = {}, reason = "") {
   const state = String(failure.instanceState || "").trim().toUpperCase();
   if (!STOPPED_STATES.has(state)) return reason;
@@ -788,7 +812,7 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
   });
 }
 
-async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl }) {
+async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl, originalScheduledOnly = false }) {
   try {
     const instances = await listProjectInstances({
       webhookUrl,
@@ -798,7 +822,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
       targetDate,
       timeZone,
     });
-    const failures = classifyWorkflowFailures(instances, { projectName: project.name, projectCode: project.code })
+    const failures = (originalScheduledOnly ? classifyOriginalScheduledFailures : classifyWorkflowFailures)(instances, { projectName: project.name, projectCode: project.code })
       .map((failure) => ({
         ...failure,
         dsInstanceUrl: buildDsInstanceUrl(country, project.code, failure.instanceId, dsUiBaseUrl),
@@ -811,7 +835,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
   }
 }
 
-async function inspectCountry(config, country, now) {
+async function inspectCountry(config, country, now, originalScheduledOnly = false) {
   const countryConfig = config.countries?.[country] || {};
   const countryName = countryConfig.name || COUNTRY_LABELS[country];
   const token = String(countryConfig.token || "").trim();
@@ -842,6 +866,7 @@ async function inspectCountry(config, country, now) {
     targetDate,
     timeZone,
     dsUiBaseUrl,
+    originalScheduledOnly,
   }));
   const failures = projectResults.flatMap((item) => item.failures || []);
   return {
@@ -876,6 +901,28 @@ export async function inspectDsFailureLogs(rootDir, { now = new Date(), countrie
     recoveredCount: failures.filter((item) => item.repairStatus === "recovered").length,
     repairingCount: failures.filter((item) => item.repairStatus === "repairing").length,
     unresolvedCount: failures.filter((item) => item.repairStatus === "unresolved").length,
+    failedCountries: countries.filter((item) => item.configured && !item.success).length,
+    countries,
+  };
+}
+
+export async function inspectOriginalScheduledFailures(rootDir, { now = new Date(), countries: requestedCountries } = {}) {
+  const config = await loadDsSchedulerConfig(rootDir);
+  const selectedCountries = normalizeCountrySelection(requestedCountries);
+  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true)));
+  const failures = countries.flatMap((item) => item.failures || []);
+  return {
+    checkedAt: new Date().toISOString(),
+    dateMode: "country-local-today",
+    mode: "original-scheduled-failures",
+    totalCountries: selectedCountries.length,
+    configuredCountries: countries.filter((item) => item.configured).length,
+    checkedProjects: countries.reduce((sum, item) => sum + item.checkedProjects, 0),
+    checkedInstances: countries.reduce((sum, item) => sum + item.checkedInstances, 0),
+    totalFailures: failures.length,
+    recoveredCount: 0,
+    repairingCount: 0,
+    unresolvedCount: failures.length,
     failedCountries: countries.filter((item) => item.configured && !item.success).length,
     countries,
   };
