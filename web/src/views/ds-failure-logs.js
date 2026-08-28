@@ -106,7 +106,7 @@ async function saveScheduledOwners(root) {
   for (const option of COUNTRY_OPTIONS) owners[option.code] = root.querySelector(`[data-scheduled-owner="${option.code}"]`)?.value || "";
   try {
     model.scheduledConfig = await apiPut("/api/ds-scheduled-failure-watch/config", { ...model.scheduledConfig, owners });
-    model.scheduledMessage = "负责人邮箱已保存，后续发现新的定时调度失败实例时将按国家通知。";
+    model.scheduledMessage = "负责人邮箱已保存，将同时用于 n8n 失败重启监控和定时失败任务重跑通知。";
   } catch (error) {
     model.scheduledMessage = `负责人配置保存失败：${error.message}`;
   }
@@ -433,8 +433,8 @@ function paint(root) {
     </div>
     <div class="workspace-tabs ds-failure-page-tabs" role="tablist">
       <button class="${model.activeTab === "today" ? "active" : ""}" data-ds-failure-tab="today"><small>01</small><strong>当天失败任务</strong><span>查询当天全部失败实例</span></button>
-      <button class="${model.activeTab === "scheduled" ? "active" : ""}" data-ds-failure-tab="scheduled"><small>02</small><strong>定时任务失败监控</strong><span>观察原始定时调度首次失败</span></button>
-      <button class="${model.activeTab === "retry" ? "active" : ""}" data-ds-failure-tab="retry"><small>03</small><strong>失败任务重跑控制</strong><span>手动测试、定时重跑与历史</span></button>
+      <button class="${model.activeTab === "retry" ? "active" : ""}" data-ds-failure-tab="retry"><small>02</small><strong>定时失败任务重跑</strong><span>手动测试、定时重跑与历史</span></button>
+      <button class="${model.activeTab === "scheduled" ? "active" : ""}" data-ds-failure-tab="scheduled"><small>03</small><strong>n8n失败重启监控</strong><span>查看最近 7 天 n8n 失败重启任务</span></button>
     </div>
     ${model.error ? `<div class="sandbox-status error"><strong>无法查询</strong><span>${escapeHtml(model.error)}</span></div>` : ""}
     <section class="panel ds-failure-toolbar" ${model.activeTab === "today" ? "" : 'style="display:none"'}>
@@ -454,7 +454,7 @@ function paint(root) {
     ${renderScheduledFailureWatch()}
     <section class="panel ds-failure-retry-control" ${model.activeTab === "retry" ? "" : 'style="display:none"'}>
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">失败任务重跑控制</h2><p class="muted">除 SQL/代码错误和权限不足外，其余失败每轮最多提交一次重跑；提交后仅检查修复结果，人工停止、下线及跨天任务仍会安全停止。</p></div>
+        <div><h2 class="panel-title">定时失败任务重跑</h2><p class="muted">除 SQL/代码错误和权限不足外，其余失败每轮最多提交一次重跑；提交后仅检查修复结果，人工停止、下线及跨天任务仍会安全停止。</p></div>
         <div class="ds-retry-header-actions ds-retry-control-actions">
           <button class="secondary ds-retry-action" id="ds-retry-refresh-logs" ${model.retryActionLoading ? "disabled" : ""}>刷新日志</button>
           <button class="secondary ds-retry-action" id="ds-retry-exclusions">不重跑项目配置</button>
@@ -537,7 +537,7 @@ function renderScheduledFailureWatch() {
   return `<section class="ds-scheduled-failure-watch" ${model.activeTab === "scheduled" ? "" : 'style="display:none"'}>
     <section class="panel ds-failure-toolbar">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">任务首次失败自动重跑观察</h2><p class="muted">仅监控由定时调度（SCHEDULER）产生的原始失败实例；后续重跑检查与重跑实例不会计入本模块。</p></div>
+        <div><h2 class="panel-title">n8n失败重启监控</h2><p class="muted">记录最近 7 天由定时调度（SCHEDULER）产生失败、并由 n8n 告警触发器观察重启结果的任务；每次原始失败均单独展示。</p></div>
         <button class="primary" id="ds-scheduled-query" ${model.scheduledLoading ? "disabled" : ""}>${model.scheduledLoading ? "正在查询…" : model.scheduledResult ? "重新查询" : "查询"}</button>
       </div>
       <div class="ds-failure-filter-grid ds-scheduled-filter-grid">
@@ -547,7 +547,7 @@ function renderScheduledFailureWatch() {
       ${model.scheduledMessage ? `<div class="sandbox-status ${/失败|错误/.test(model.scheduledMessage) ? "error" : "warn"}"><span>${escapeHtml(model.scheduledMessage)}</span></div>` : ""}
     </section>
     <section class="panel ds-scheduled-owner-panel">
-      <div class="detail-header compact-header"><div><h3 class="panel-title">对应国家负责人配置</h3><p class="muted">每个邮箱单独接收对应国家的新失败通知；多个邮箱请用逗号分隔。</p></div><button class="primary" id="ds-scheduled-owner-save">保存负责人</button></div>
+      <div class="detail-header compact-header"><div><h3 class="panel-title">两个重跑模块共用负责人配置</h3><p class="muted">负责人同时接收 n8n 失败重启监控和定时失败任务重跑的对应国家通知；多个邮箱请用逗号分隔。</p></div><button class="primary" id="ds-scheduled-owner-save">保存负责人</button></div>
       <div class="ds-scheduled-owner-grid">${COUNTRY_OPTIONS.map((option) => `<label><span>${option.flag} ${option.name}</span><input data-scheduled-owner="${option.code}" value="${escapeHtml(owners[option.code] || "")}" placeholder="负责人邮箱，多个用逗号分隔"></label>`).join("")}</div>
     </section>
     <section class="ds-failure-country-list">${model.scheduledResult ? renderScheduledCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">后台会持续监控并通知；也可选择国家后手动查询当前结果。</p></section>`}</section>
@@ -893,6 +893,7 @@ function renderScheduledCountries(countries) {
     keyword: model.scheduledKeyword,
     status: "",
     scheduleCategory: "scheduled_online",
+    historical: true,
   })).join("");
 }
 
@@ -900,7 +901,7 @@ function renderCountry(country, filters = null) {
   const meta = COUNTRY_META[country.country] || {};
   if (country.querying) {
     return `<section class="panel ds-failure-country-card ds-failure-querying">
-      <div class="detail-header compact-header"><div><h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)}</h2><p class="muted">正在读取当天实例、失败任务和日志…</p></div><span class="badge warn">查询中</span></div>
+      <div class="detail-header compact-header"><div><h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)}</h2><p class="muted">正在读取${filters?.historical ? "最近 7 天" : "当天"}实例、失败任务和日志…</p></div><span class="badge warn">查询中</span></div>
     </section>`;
   }
   const failures = filteredFailures(country.failures || [], filters);
@@ -913,14 +914,14 @@ function renderCountry(country, filters = null) {
     <div class="detail-header compact-header">
       <div>
         <h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)} ${configuredBadge}</h2>
-        <p class="muted">监控项目：${escapeHtml(projects || "尚未配置")} · 当地日期：${escapeHtml(country.targetDate || "-")} · 已读取实例：${country.checkedInstances || 0}</p>
+        <p class="muted">监控项目：${escapeHtml(projects || "尚未配置")} · ${filters?.historical ? `截至当地日期：${escapeHtml(country.targetDate || "-")}（最近 7 天）` : `当地日期：${escapeHtml(country.targetDate || "-")}`} · 已读取实例：${country.checkedInstances || 0}</p>
       </div>
       <div class="ds-failure-country-count"><strong>${allFailureCount}</strong><span>个失败工作流</span></div>
     </div>
     ${country.error ? `<div class="sandbox-status ${country.configured ? "error" : "warn"}"><strong>${country.queryFailed ? "国家查询失败" : country.configured ? "部分项目读取失败" : "尚未接入"}</strong><span>${escapeHtml(country.error)}${country.configured ? "" : '，请先前往 <a href="#/ds-scheduler">DS调度监控</a> 完成 Token 和项目配置。'}</span></div>` : ""}
     ${country.configured && country.success && failures.length === 0
-      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : "该国家当天没有失败任务。"}</div>`
-      : failures.map(renderFailure).join("")}
+      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : filters?.historical ? "该国家最近 7 天没有 n8n 失败重启任务。" : "该国家当天没有失败任务。"}</div>`
+      : failures.map((failure) => renderFailure(failure, filters)).join("")}
   </section>`;
 }
 
@@ -938,7 +939,7 @@ function filteredFailures(failures, filters = null) {
   });
 }
 
-function renderFailure(item) {
+function renderFailure(item, filters = null) {
   const displayStatus = item.repairStatus === "recovered" ? "recovered" : item.failureType || item.repairStatus || "unresolved";
   const status = STATUS_LABELS[displayStatus] || STATUS_LABELS.unresolved;
   const taskUnlocated = !item.taskName && !item.taskCode;
@@ -965,7 +966,7 @@ function renderFailure(item) {
     <div class="ds-failure-meta">
       <span>失败实例：${escapeHtml(item.instanceId || "-")}</span>
       <span>失败状态：${escapeHtml(item.instanceState || "FAILURE")}</span>
-      <span>当天失败次数：${item.failureCount || 1}</span>
+      <span>${filters?.historical ? "本次原始失败" : "当天失败次数"}：${filters?.historical ? 1 : item.failureCount || 1}</span>
     </div>
     <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(failureReason)}</pre></div>
     <div class="ds-failure-recovery"><strong>失败分类</strong><span>${escapeHtml(item.retryDecision || "等待失败原因分类；本模块仅查询，不执行重跑")}</span></div>

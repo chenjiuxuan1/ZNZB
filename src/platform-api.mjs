@@ -2662,6 +2662,11 @@ export function createPlatformApi({
       const state = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
       const notified = new Set(Array.isArray(state.notifiedInstanceIds) ? state.notifiedInstanceIds.map(String) : []);
       const notificationConfig = await this.getDsNotificationConfig();
+      const checkedAtMs = Date.parse(result.checkedAt) || Date.now();
+      const previousCheckMs = Date.parse(state.lastCheckedAt || "");
+      const notificationCutoffMs = Number.isFinite(previousCheckMs)
+        ? previousCheckMs
+        : checkedAtMs - Math.max(10, Number(state.intervalMinutes || 5) * 2) * 60_000;
       let notificationCount = 0;
       const notificationErrors = [];
       for (const countryResult of result.countries || []) {
@@ -2669,9 +2674,10 @@ export function createPlatformApi({
         if (!ownerEmails) continue;
         for (const failure of countryResult.failures || []) {
           const key = `${countryResult.country}:${failure.instanceId}`;
-          if (!failure.instanceId || notified.has(key)) continue;
+          const failedAtMs = Date.parse(failure.startTime || "");
+          if (!failure.instanceId || notified.has(key) || !Number.isFinite(failedAtMs) || failedAtMs < notificationCutoffMs) continue;
           const message = [
-            `DS 定时任务首次失败｜${countryResult.countryName || countryResult.country}`,
+            `n8n 失败重启监控｜${countryResult.countryName || countryResult.country}`,
             `项目：${failure.projectName || failure.projectCode || "-"}`,
             `工作流：${failure.workflowName || "-"}`,
             `失败任务：${failure.taskName || "未返回任务节点名称"}`,
@@ -2682,7 +2688,7 @@ export function createPlatformApi({
           try {
             const alerts = { ...notificationConfig, recipientEmails: ownerEmails };
             await notifyTextFn({ alerts }, message, {
-              title: "DS 定时任务首次失败",
+              title: "n8n 失败重启监控",
               severity: "warning",
               timestamp: result.checkedAt,
             });

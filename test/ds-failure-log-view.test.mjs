@@ -27,7 +27,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /失败任务/);
   assert.match(source, /出错 SQL/);
   assert.match(source, /\/api\/ds-failure-logs/);
-  assert.match(source, /任务首次失败自动重跑观察/);
+  assert.match(source, /n8n失败重启监控/);
+  assert.match(source, /最近 7 天/);
+  assert.match(source, /定时失败任务重跑/);
+  assert.match(source, /两个重跑模块共用负责人配置/);
   assert.match(source, /data-ds-failure-tab="scheduled"/);
   assert.match(source, /\/api\/ds-scheduled-failure-watch/);
   assert.match(source, /DS调度监控/);
@@ -111,6 +114,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /工作流状态为失败或停止/);
   assert.match(monitor, /const targetDate = todayInTimeZone\(timeZone, now\)/);
   assert.match(monitor, /dateMode: "country-local-today"/);
+  assert.match(monitor, /dateMode: "country-local-last-7-days"/);
+  assert.match(monitor, /lookbackDays: 7/);
   assert.match(monitor, /mapWithConcurrency\(projects, PROJECT_QUERY_CONCURRENCY/);
   assert.match(monitor, /"list_instances"/);
   assert.match(monitor, /state_type: ""/);
