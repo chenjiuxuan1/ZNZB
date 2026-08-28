@@ -7,6 +7,7 @@ __pycache__/
 tmp-*.png
 *.png
 .playwright-mcp/
+.worktrees/
 config/public-check-baseline-cache.json
 config/public-check-cadence-observations.json
 config/cadence-validation-report.json
