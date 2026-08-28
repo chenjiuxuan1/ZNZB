@@ -3,7 +3,20 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyDsFailureReason, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
+import { classifyDsFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
+
+test("original scheduled failure view excludes manual and retry instances", () => {
+  const failures = classifyOriginalScheduledFailures([
+    { id: 1, commandType: "SCHEDULER", state: "FAILURE", workflowDefinitionCode: 10, workflowInstanceName: "scheduled failed", startTime: "2026-08-28 08:00:00" },
+    { id: 2, commandType: "START_FAILURE_TASK_PROCESS", state: "FAILURE", workflowDefinitionCode: 10, workflowInstanceName: "retry failed", startTime: "2026-08-28 08:05:00", runTimes: 2 },
+    { id: 3, commandType: "START_PROCESS", state: "FAILURE", workflowDefinitionCode: 11, workflowInstanceName: "manual failed", startTime: "2026-08-28 08:10:00" },
+    { id: 4, commandType: "SCHEDULER", state: "SUCCESS", workflowDefinitionCode: 12, workflowInstanceName: "scheduled success", startTime: "2026-08-28 08:15:00" },
+  ], { projectName: "project", projectCode: "99" });
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].instanceId, "1");
+  assert.equal(failures[0].originalScheduledFailure, true);
+  assert.equal(failures[0].scheduleCategory, "scheduled_online");
+});
 
 test("DS failure reasons distinguish SQL errors from recoverable infrastructure errors", () => {
   assert.equal(classifyDsFailureReason("Unknown column 'loan_id'"), "sql_error");

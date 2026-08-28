@@ -53,6 +53,7 @@ startBatchScheduler();
 startDsScheduler();
 startHiveScheduler();
 dsAutoRetryManager.start();
+startDsScheduledFailureWatch();
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";
@@ -258,6 +259,15 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/ds-failure-logs") {
     return sendJson(response, 200, await api.getDsFailureLogs(Object.fromEntries(url.searchParams.entries())));
   }
+  if (method === "GET" && url.pathname === "/api/ds-scheduled-failure-watch/config") {
+    return sendJson(response, 200, await api.getDsScheduledFailureWatchConfig());
+  }
+  if (method === "PUT" && url.pathname === "/api/ds-scheduled-failure-watch/config") {
+    return sendJson(response, 200, await api.saveDsScheduledFailureWatchConfig(await readBody(request, {})));
+  }
+  if (method === "GET" && url.pathname === "/api/ds-scheduled-failure-watch") {
+    return sendJson(response, 200, await api.checkDsScheduledFailures(Object.fromEntries(url.searchParams.entries())));
+  }
   if (method === "GET" && url.pathname === "/api/ds-failure-retry/control") {
     return sendJson(response, 200, api.getDsFailureRetryControl());
   }
@@ -402,6 +412,30 @@ function startHiveScheduler() {
   const timer = setInterval(tick, 60_000);
   timer.unref?.();
   setTimeout(tick, 10_000).unref?.();
+}
+
+function startDsScheduledFailureWatch() {
+  let running = false;
+  let lastRunAt = 0;
+  const tick = async () => {
+    if (running) return;
+    const config = await api.getDsScheduledFailureWatchConfig().catch(() => ({ enabled: false }));
+    const intervalMs = Math.max(1, Number(config.intervalMinutes || 5)) * 60_000;
+    if (!config.enabled || Date.now() - lastRunAt < intervalMs) return;
+    running = true;
+    lastRunAt = Date.now();
+    try {
+      const result = await api.checkDsScheduledFailures();
+      if (result.notificationCount) console.log(`DS scheduled failure watch sent ${result.notificationCount} notification(s)`);
+    } catch (error) {
+      console.error("DS scheduled failure watch failed:", error);
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(tick, 60_000);
+  timer.unref?.();
+  setTimeout(tick, 15_000).unref?.();
 }
 
 async function readBody(request, fallback = null) {
