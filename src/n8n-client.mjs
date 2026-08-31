@@ -7,6 +7,8 @@
  *   const client = new N8nClient({ baseUrl, apiKey });
  *   const workflows = await client.listWorkflows({ active: true });
  */
+import { fetchCompatible } from "./fetch-compatible.mjs";
+
 export class N8nClient {
   constructor({ baseUrl, apiKey, timeoutMs = 20000 } = {}) {
     this.baseUrl = (baseUrl || "").replace(/\/+$/, "");
@@ -19,7 +21,7 @@ export class N8nClient {
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const url = path.startsWith("http") ? path : this.baseUrl + path;
-      const response = await fetch(url, {
+      const response = await fetchCompatible(url, {
         ...options,
         headers: {
           Accept: "application/json",
