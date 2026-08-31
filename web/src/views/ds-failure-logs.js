@@ -555,7 +555,7 @@ function renderScheduledFailureWatch() {
   return `<section class="ds-scheduled-failure-watch" ${model.activeTab === "scheduled" ? "" : 'style="display:none"'}>
     <section class="panel ds-failure-toolbar">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">n8n失败重启监控</h2><p class="muted">按设置的查询天数读取由定时调度（SCHEDULER）产生的失败，并关联 n8n 告警触发器的后续重启结果；每次原始失败均单独展示。</p></div>
+        <div><h2 class="panel-title">n8n失败重启监控</h2><p class="muted">采用 Global-Intelligent-Alarm-Repair-Assistant 的处理口径：忽略重跑产生的二次告警，仅可恢复故障最多重跑 3 次并观察 30 分钟；SQL/代码错误和未知故障转人工处理。</p></div>
         <button class="primary" id="ds-scheduled-query" ${model.scheduledLoading ? "disabled" : ""}>${model.scheduledLoading ? "正在查询…" : model.scheduledResult ? "重新查询" : "查询"}</button>
       </div>
       <div class="ds-failure-filter-grid ds-scheduled-filter-grid">
@@ -999,6 +999,8 @@ function renderFailure(item, filters = null) {
     ? "已恢复"
     : item.retryResult === "running"
       ? "重跑中"
+      : item.retryResult === "timeout_needs_owner"
+        ? "观察超过 30 分钟，需负责人处理"
       : item.retryResult === "failed"
         ? "重跑后仍失败"
         : "尚未触发后续重跑";
@@ -1023,6 +1025,7 @@ function renderFailure(item, filters = null) {
     </div>
     <div class="ds-failure-reason"><strong>失败原因</strong><pre>${escapeHtml(failureReason)}</pre></div>
     <div class="ds-failure-recovery"><strong>失败分类</strong><span>${escapeHtml(item.retryDecision || "等待失败原因分类；本模块仅查询，不执行重跑")}</span></div>
+    ${filters?.historical && item.n8nDecision ? `<div class="ds-failure-recovery"><strong>n8n 处理规则</strong><span>${escapeHtml(item.n8nDecision)}</span></div>` : ""}
     ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
     ${filters?.historical ? `<div class="ds-failure-recovery"><strong>后续重跑结果</strong><span>${escapeHtml(retryResult)} · 重跑 ${retryCount} 次${item.recoveryInstanceId ? ` · 最新重跑实例 ${escapeHtml(item.recoveryInstanceId)} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}` : ""}</span></div>` : item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "查询结果" : "后续状态"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
