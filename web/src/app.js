@@ -7,9 +7,11 @@ import { renderNotifyPreview } from "./views/notify-preview.js?v=20260706-ui16";
 import { renderRules } from "./views/rules.js?v=20260706-ui16";
 import { renderSandbox } from "./views/sandbox.js?v=20260706-ui16";
 import { renderBatchCheck } from "./views/batch-check.js?v=20260706-ui16";
+import { renderAlertCenter } from "./views/alert-center.js?v=20260831-ac1";
 
 const routes = [
   { path: "/dashboard", label: "总览", render: renderDashboard },
+  { path: "/alerts", label: "告警中心", render: renderAlertCenter },
   { path: "/countries", label: "国家配置", render: renderCountries },
   { path: "/inventory", label: "看板与卡片", render: renderInventory },
   { path: "/rules", label: "规则配置", render: renderRules },
