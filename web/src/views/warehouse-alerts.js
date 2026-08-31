@@ -2,15 +2,15 @@ import { apiGet } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
 /**
- * 告警中心：综合看板（夜莺 + n8n + Grafana）+ 告警管理（查看）。
+ * 数仓告警平台：综合看板（夜莺 + n8n + Grafana）+ 告警管理（查看）。
  * 手动刷新，不做定时轮询。
  */
-export function renderAlertCenter(root, { reload }) {
+export function renderWarehouseAlerts(root, { reload }) {
   root.innerHTML = `
     <div class="page-header">
       <div>
-        <h1 class="page-title">告警中心</h1>
-        <p class="page-note">综合查看夜莺、n8n、Grafana 三边告警状态。点"刷新数据"拉取最新。</p>
+        <h1 class="page-title">数仓告警平台</h1>
+        <p class="page-note">综合查看夜莺、n8n、Grafana 三边告警状态（数仓告警平台）。点"刷新数据"拉取最新。</p>
       </div>
       <div class="header-actions">
         <span id="ac-refresh-time" class="muted"></span>
