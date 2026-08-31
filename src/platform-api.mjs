@@ -2621,7 +2621,7 @@ export function createPlatformApi({
 
     async getDsFailureLogs(filters = {}) {
       const country = String(filters.country || "").trim().toLowerCase();
-      return inspectDsFailureLogs(rootDir, { countries: country || undefined });
+      return inspectDsFailureLogs(rootDir, { countries: country || undefined, lookbackDays: filters.days });
     },
 
     async getDsScheduledFailureWatchConfig() {
@@ -2658,7 +2658,7 @@ export function createPlatformApi({
 
     async checkDsScheduledFailures(filters = {}) {
       const country = String(filters.country || "").trim().toLowerCase();
-      const result = await inspectOriginalScheduledFailures(rootDir, { countries: country || undefined });
+      const result = await inspectOriginalScheduledFailures(rootDir, { countries: country || undefined, lookbackDays: filters.days });
       const state = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
       const notified = new Set(Array.isArray(state.notifiedInstanceIds) ? state.notifiedInstanceIds.map(String) : []);
       const notificationConfig = await this.getDsNotificationConfig();

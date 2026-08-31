@@ -32,7 +32,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /尚未触发后续重跑/);
   assert.match(source, /data-scheduled-country-page/);
   assert.match(source, /4 \/ 页/);
-  assert.match(source, /最近 7 天/);
+  assert.match(source, /id="ds-failure-lookback-days"[^>]+min="1" max="90"/);
+  assert.match(source, /id="ds-scheduled-lookback-days"[^>]+min="1" max="90"/);
+  assert.match(source, /days=\$\{lookbackDays\}/);
+  assert.match(source, /按自定义天数查看 n8n 失败重启任务/);
   assert.match(source, /定时失败任务重跑/);
   assert.match(source, /两个重跑模块共用负责人配置/);
   assert.match(source, /data-ds-failure-tab="scheduled"/);
@@ -117,9 +120,9 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /查看节点日志/);
   assert.match(source, /工作流状态为失败或停止/);
   assert.match(monitor, /const targetDate = todayInTimeZone\(timeZone, now\)/);
-  assert.match(monitor, /dateMode: "country-local-today"/);
-  assert.match(monitor, /dateMode: "country-local-last-7-days"/);
-  assert.match(monitor, /lookbackDays: 7/);
+  assert.match(monitor, /dateMode: lookbackDays === 1 \? "country-local-today" : "country-local-lookback"/);
+  assert.match(monitor, /dateMode: "country-local-lookback"/);
+  assert.match(monitor, /normalizeLookbackDays\(requestedLookbackDays, 7\)/);
   assert.match(monitor, /mapWithConcurrency\(projects, PROJECT_QUERY_CONCURRENCY/);
   assert.match(monitor, /"list_instances"/);
   assert.match(monitor, /state_type: ""/);

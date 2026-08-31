@@ -35,6 +35,7 @@ let model = {
   status: "",
   scheduleCategory: "",
   keyword: "",
+  lookbackDays: 1,
   completed: 0,
   total: 0,
   runId: 0,
@@ -56,6 +57,7 @@ let model = {
   scheduledLoading: false,
   scheduledCountries: [],
   scheduledKeyword: "",
+  scheduledLookbackDays: 7,
   scheduledCountryPages: {},
   scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {} },
   scheduledConfigLoaded: false,
@@ -86,6 +88,8 @@ async function refreshScheduledConfig(root) {
 
 async function loadScheduledFailures(root) {
   if (model.scheduledLoading) return;
+  const lookbackDays = normalizeUiLookbackDays(root.querySelector("#ds-scheduled-lookback-days")?.value, 7);
+  model.scheduledLookbackDays = lookbackDays;
   const selected = COUNTRY_OPTIONS.filter((item) => !model.scheduledCountries.length || model.scheduledCountries.includes(item.code));
   model.scheduledLoading = true;
   model.scheduledCountryPages = {};
@@ -93,7 +97,7 @@ async function loadScheduledFailures(root) {
   model.scheduledResult = aggregateResult(selected.map(queryingCountry));
   paint(root);
   try {
-    const response = await apiGet(`/api/ds-scheduled-failure-watch?country=${encodeURIComponent(selected.map((item) => item.code).join(","))}`);
+    const response = await apiGet(`/api/ds-scheduled-failure-watch?country=${encodeURIComponent(selected.map((item) => item.code).join(","))}&days=${lookbackDays}`);
     model.scheduledResult = aggregateResult(response.countries || []);
     if (response.notificationErrors?.length) model.scheduledMessage = response.notificationErrors.join("；");
   } catch (error) {
@@ -265,6 +269,8 @@ async function saveRetryCountries(root, values) {
 async function load(root) {
   if (model.loading) return;
   clearAutoRefresh();
+  const lookbackDays = normalizeUiLookbackDays(root.querySelector("#ds-failure-lookback-days")?.value, 1);
+  model.lookbackDays = lookbackDays;
   const selected = COUNTRY_OPTIONS.filter((item) => !model.countries.length || model.countries.includes(item.code));
 
   const runId = ++model.runId;
@@ -280,7 +286,7 @@ async function load(root) {
   await Promise.all(selected.map(async (option) => {
     let country;
     try {
-      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}`, { signal });
+      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}&days=${lookbackDays}`, { signal });
       country = response.countries?.[0] || failedCountry(option, "接口未返回该国家的检查结果");
     } catch (error) {
       country = failedCountry(option, readableQueryError(error));
@@ -436,7 +442,7 @@ function paint(root) {
     <div class="workspace-tabs ds-failure-page-tabs" role="tablist">
       <button class="${model.activeTab === "today" ? "active" : ""}" data-ds-failure-tab="today"><small>01</small><strong>当天失败任务</strong><span>查询当天全部失败实例</span></button>
       <button class="${model.activeTab === "retry" ? "active" : ""}" data-ds-failure-tab="retry"><small>02</small><strong>定时失败任务重跑</strong><span>手动测试、定时重跑与历史</span></button>
-      <button class="${model.activeTab === "scheduled" ? "active" : ""}" data-ds-failure-tab="scheduled"><small>03</small><strong>n8n失败重启监控</strong><span>查看最近 7 天 n8n 失败重启任务</span></button>
+      <button class="${model.activeTab === "scheduled" ? "active" : ""}" data-ds-failure-tab="scheduled"><small>03</small><strong>n8n失败重启监控</strong><span>按自定义天数查看 n8n 失败重启任务</span></button>
     </div>
     ${model.error ? `<div class="sandbox-status error"><strong>无法查询</strong><span>${escapeHtml(model.error)}</span></div>` : ""}
     <section class="panel ds-failure-toolbar" ${model.activeTab === "today" ? "" : 'style="display:none"'}>
@@ -447,6 +453,7 @@ function paint(root) {
       </div>
       <div class="ds-failure-filter-grid">
         ${renderCountryMultiSelect("ds-failure-country", "国家", model.countries, model.loading)}
+        <label>查询最近几天<input id="ds-failure-lookback-days" type="number" min="1" max="90" step="1" value="${model.lookbackDays}" ${model.loading ? "disabled" : ""} placeholder="1-90"></label>
         <label>修复状态<select id="ds-failure-status"><option value="">全部状态</option>${Object.entries(STATUS_LABELS).map(([value, item]) => `<option value="${value}" ${model.status === value ? "selected" : ""}>${item.label}</option>`).join("")}</select></label>
         <label>定时状态<select id="ds-failure-schedule-category"><option value="">全部任务</option><option value="scheduled_online" ${model.scheduleCategory === "scheduled_online" ? "selected" : ""}>定时上线任务</option><option value="non_scheduled_online" ${model.scheduleCategory === "non_scheduled_online" ? "selected" : ""}>非定时上线任务</option></select></label>
         <label>搜索项目或任务<input id="ds-failure-keyword" value="${escapeHtml(model.keyword)}" placeholder="项目、工作流、失败任务或原因"></label>
@@ -496,6 +503,7 @@ function paint(root) {
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
   root.querySelector("#ds-failure-stop-query")?.addEventListener("click", () => stopQuery(root));
   bindCountryMultiSelect(root, "ds-failure-country", (values) => { model.countries = values; });
+  root.querySelector("#ds-failure-lookback-days")?.addEventListener("input", (event) => { model.lookbackDays = normalizeUiLookbackDays(event.target.value, 1); });
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
   root.querySelector("#ds-failure-schedule-category")?.addEventListener("change", (event) => { model.scheduleCategory = event.target.value; paint(root); });
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
@@ -528,6 +536,7 @@ function paint(root) {
   });
   bindCountryMultiSelect(root, "ds-retry-country", (values) => { void saveRetryCountries(root, values); });
   bindCountryMultiSelect(root, "ds-scheduled-country", (values) => { model.scheduledCountries = values; });
+  root.querySelector("#ds-scheduled-lookback-days")?.addEventListener("input", (event) => { model.scheduledLookbackDays = normalizeUiLookbackDays(event.target.value, 7); });
   root.querySelector("#ds-scheduled-query")?.addEventListener("click", () => loadScheduledFailures(root));
   root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; model.scheduledCountryPages = {}; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); });
   root.querySelector("#ds-scheduled-owner-save")?.addEventListener("click", () => saveScheduledOwners(root));
@@ -546,11 +555,12 @@ function renderScheduledFailureWatch() {
   return `<section class="ds-scheduled-failure-watch" ${model.activeTab === "scheduled" ? "" : 'style="display:none"'}>
     <section class="panel ds-failure-toolbar">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">n8n失败重启监控</h2><p class="muted">记录最近 7 天由定时调度（SCHEDULER）产生失败、并由 n8n 告警触发器观察重启结果的任务；每次原始失败均单独展示。</p></div>
+        <div><h2 class="panel-title">n8n失败重启监控</h2><p class="muted">按设置的查询天数读取由定时调度（SCHEDULER）产生的失败，并关联 n8n 告警触发器的后续重启结果；每次原始失败均单独展示。</p></div>
         <button class="primary" id="ds-scheduled-query" ${model.scheduledLoading ? "disabled" : ""}>${model.scheduledLoading ? "正在查询…" : model.scheduledResult ? "重新查询" : "查询"}</button>
       </div>
       <div class="ds-failure-filter-grid ds-scheduled-filter-grid">
         ${renderCountryMultiSelect("ds-scheduled-country", "国家", model.scheduledCountries, model.scheduledLoading)}
+        <label>查询最近几天<input id="ds-scheduled-lookback-days" type="number" min="1" max="90" step="1" value="${model.scheduledLookbackDays}" ${model.scheduledLoading ? "disabled" : ""} placeholder="1-90"></label>
         <label>搜索项目或任务<input id="ds-scheduled-keyword" value="${escapeHtml(model.scheduledKeyword)}" placeholder="项目、工作流、失败任务或原因"></label>
       </div>
       ${model.scheduledMessage ? `<div class="sandbox-status ${/失败|错误/.test(model.scheduledMessage) ? "error" : "warn"}"><span>${escapeHtml(model.scheduledMessage)}</span></div>` : ""}
@@ -892,7 +902,7 @@ function toDateTimeLocal(value) {
 function renderCountries(countries) {
   const visible = countries.filter((country) => !model.countries.length || model.countries.includes(country.country));
   if (!visible.length) return `<section class="panel"><p class="muted">所选国家尚未查询，请点击“重新查询”。</p></section>`;
-  return visible.map((country) => renderCountry(country)).join("");
+  return visible.map((country) => renderCountry(country, { lookbackDays: model.lookbackDays })).join("");
 }
 
 function renderScheduledCountries(countries) {
@@ -903,15 +913,24 @@ function renderScheduledCountries(countries) {
     status: "",
     scheduleCategory: "scheduled_online",
     historical: true,
+    lookbackDays: model.scheduledLookbackDays,
     page: model.scheduledCountryPages[country.country] || 1,
   })).join("");
 }
 
+function normalizeUiLookbackDays(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(90, Math.trunc(parsed)));
+}
+
 function renderCountry(country, filters = null) {
   const meta = COUNTRY_META[country.country] || {};
+  const lookbackDays = normalizeUiLookbackDays(filters?.lookbackDays ?? country.lookbackDays, filters?.historical ? 7 : 1);
+  const rangeLabel = lookbackDays === 1 ? "当天" : `最近 ${lookbackDays} 天`;
   if (country.querying) {
     return `<section class="panel ds-failure-country-card ds-failure-querying">
-      <div class="detail-header compact-header"><div><h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)}</h2><p class="muted">正在读取${filters?.historical ? "最近 7 天" : "当天"}实例、失败任务和日志…</p></div><span class="badge warn">查询中</span></div>
+      <div class="detail-header compact-header"><div><h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)}</h2><p class="muted">正在读取${rangeLabel}实例、失败任务和日志…</p></div><span class="badge warn">查询中</span></div>
     </section>`;
   }
   const failures = filteredFailures(country.failures || [], filters);
@@ -928,13 +947,13 @@ function renderCountry(country, filters = null) {
     <div class="detail-header compact-header">
       <div>
         <h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)} ${configuredBadge}</h2>
-        <p class="muted">监控项目：${escapeHtml(projects || "尚未配置")} · ${filters?.historical ? `截至当地日期：${escapeHtml(country.targetDate || "-")}（最近 7 天）` : `当地日期：${escapeHtml(country.targetDate || "-")}`} · 已读取实例：${country.checkedInstances || 0}</p>
+        <p class="muted">监控项目：${escapeHtml(projects || "尚未配置")} · ${lookbackDays === 1 ? `当地日期：${escapeHtml(country.targetDate || "-")}` : `截至当地日期：${escapeHtml(country.targetDate || "-")}（${rangeLabel}）`} · 已读取实例：${country.checkedInstances || 0}</p>
       </div>
       <div class="ds-failure-country-count"><strong>${allFailureCount}</strong><span>个失败工作流</span></div>
     </div>
     ${country.error ? `<div class="sandbox-status ${country.configured ? "error" : "warn"}"><strong>${country.queryFailed ? "国家查询失败" : country.configured ? "部分项目读取失败" : "尚未接入"}</strong><span>${escapeHtml(country.error)}${country.configured ? "" : '，请先前往 <a href="#/ds-scheduler">DS调度监控</a> 完成 Token 和项目配置。'}</span></div>` : ""}
     ${country.configured && country.success && failures.length === 0
-      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : filters?.historical ? "该国家最近 7 天没有 n8n 失败重启任务。" : "该国家当天没有失败任务。"}</div>`
+      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : filters?.historical ? `该国家${rangeLabel}没有 n8n 失败重启任务。` : `该国家${rangeLabel}没有失败任务。`}</div>`
       : visibleFailures.map((failure) => renderFailure(failure, filters)).join("")}
     ${filters?.historical && failures.length > pageSize ? renderScheduledCountryPagination(country.country, failures.length, page, pageCount) : ""}
   </section>`;
