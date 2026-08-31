@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyDsFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays } from "../src/ds-failure-log-monitor.mjs";
+import { classifyDsFailureReason, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays } from "../src/ds-failure-log-monitor.mjs";
 
 test("lookback days accepts manual ranges and applies safe limits", () => {
   assert.equal(normalizeLookbackDays("7", 1), 7);
@@ -47,7 +47,7 @@ test("n8n restart watch associates supported retry commands and keeps them befor
     { id: 3, commandType: "RECOVER_SUSPENDED_PROCESS", state: "SUCCESS", workflowDefinitionCode: 10, startTime: "2026-08-25 08:10:00" },
     { id: 4, commandType: "SCHEDULER", state: "FAILURE", workflowDefinitionCode: 10, startTime: "2026-08-26 08:00:00" },
     { id: 5, commandType: "REPEAT_RUNNING", state: "RUNNING_EXECUTION", workflowDefinitionCode: 10, startTime: "2026-08-26 08:05:00" },
-  ]);
+  ], { now: new Date("2026-08-26T08:10:00+08:00") });
   const first = failures.find((item) => item.instanceId === "1");
   const second = failures.find((item) => item.instanceId === "4");
   assert.equal(first.retryCount, 2);
@@ -56,6 +56,30 @@ test("n8n restart watch associates supported retry commands and keeps them befor
   assert.equal(second.retryCount, 1);
   assert.equal(second.retryResult, "running");
   assert.equal(second.recoveryInstanceId, "5");
+});
+
+test("n8n project rules only retry explicitly recoverable failures", () => {
+  assert.equal(classifyN8nFailureReason("Unknown column 'loan_id'"), "sql_error");
+  assert.equal(classifyN8nFailureReason("Connection refused by remote worker"), "recoverable");
+  assert.equal(classifyN8nFailureReason("business validation failed"), "unknown");
+});
+
+test("n8n restart watch recognizes a DS instance rerun in place", () => {
+  const [failure] = classifyOriginalScheduledFailures([
+    { id: 11, commandType: "START_FAILURE_TASK_PROCESS", state: "SUCCESS", workflowDefinitionCode: 20, workflowInstanceName: "in-place retry", startTime: "2026-08-25 08:00:00", endTime: "2026-08-25 08:12:00", runTimes: 3 },
+  ], { now: new Date("2026-08-25T08:15:00+08:00") });
+  assert.equal(failure.instanceId, "11");
+  assert.equal(failure.retryCount, 2);
+  assert.equal(failure.retryResult, "recovered");
+  assert.equal(failure.recoveryInstanceId, "11");
+});
+
+test("n8n restart watch marks an unrecovered run after 30 minutes for owner handling", () => {
+  const [failure] = classifyOriginalScheduledFailures([
+    { id: 12, commandType: "START_FAILURE_TASK_PROCESS", state: "RUNNING_EXECUTION", workflowDefinitionCode: 21, workflowInstanceName: "timed retry", startTime: "2026-08-25 08:00:00", runTimes: 2 },
+  ], { now: new Date("2026-08-25T08:31:00+08:00") });
+  assert.equal(failure.retryResult, "timeout_needs_owner");
+  assert.equal(failure.n8nMonitorTimedOut, true);
 });
 
 test("n8n restart watch does not treat the next regular schedule as a restart recovery", () => {

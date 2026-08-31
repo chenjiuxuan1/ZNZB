@@ -28,6 +28,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /出错 SQL/);
   assert.match(source, /\/api\/ds-failure-logs/);
   assert.match(source, /n8n失败重启监控/);
+  assert.match(source, /Global-Intelligent-Alarm-Repair-Assistant/);
+  assert.match(source, /最多重跑 3 次并观察 30 分钟/);
+  assert.match(source, /n8n 处理规则/);
+  assert.match(source, /观察超过 30 分钟，需负责人处理/);
   assert.match(source, /后续重跑结果/);
   assert.match(source, /尚未触发后续重跑/);
   assert.match(source, /data-scheduled-country-page/);
