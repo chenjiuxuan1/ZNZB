@@ -20,7 +20,7 @@
 }
 
 .ds-failure-page-tabs { margin-bottom: 14px; }
-.ds-scheduled-filter-grid { grid-template-columns: minmax(260px, .8fr) minmax(360px, 2fr) !important; }
+.ds-scheduled-filter-grid { grid-template-columns: minmax(240px, .8fr) minmax(150px, .45fr) minmax(360px, 2fr) !important; }
 .ds-scheduled-owner-panel { margin-bottom: 14px; }
 .ds-scheduled-owner-grid {
   display: grid;
@@ -237,7 +237,7 @@ button.ds-retry-action {
 }
 
 .ds-failure-toolbar .ds-failure-filter-grid {
-  grid-template-columns: minmax(240px, 1.1fr) minmax(160px, .7fr) minmax(180px, .8fr) minmax(260px, 1.4fr);
+  grid-template-columns: minmax(220px, 1.1fr) minmax(140px, .55fr) minmax(150px, .65fr) minmax(170px, .75fr) minmax(250px, 1.35fr);
 }
 
 .ds-failure-retry-control .ds-failure-filter-grid {
