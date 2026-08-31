@@ -2,23 +2,37 @@ import { apiGet } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
 /**
- * 告警中心：综合看板（夜莺 + n8n + Grafana）+ 告警管理（查看）。
+ * 告警中心：告警实时看板。
+ *
+ * 形态参考 Wattrel 告警页面（实时看板样式）：
+ *   - hero 统计卡片：当前告警 / 涉及业务组 / 严重告警 / n8n失败 / 更新时间
+ *   - 按业务组卡片展示当前活跃告警，点击卡片查看该组明细
+ *   - n8n 最近失败执行
  * 手动刷新，不做定时轮询。
  */
 export function renderAlertCenter(root, { reload }) {
   root.innerHTML = `
-    <div class="page-header">
+    <div class="page-header batch-hero">
       <div>
         <h1 class="page-title">告警中心</h1>
-        <p class="page-note">综合查看夜莺、n8n、Grafana 三边告警状态。点"刷新数据"拉取最新。</p>
+        <p class="page-note">实时查看夜莺当前活跃告警，按业务组聚合展示；n8n 失败执行一目了然。点"刷新真实数据"拉取最新。</p>
       </div>
-      <div class="header-actions">
-        <span id="ac-refresh-time" class="muted"></span>
-        <button class="primary" id="ac-refresh">刷新数据</button>
-      </div>
+      ${renderHeroStats(null)}
     </div>
-    <div id="ac-loading" class="notice">正在加载告警数据…</div>
-    <div id="ac-content"></div>
+
+    <section class="panel wattrel-panel">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">当前告警看板</h2>
+          <p class="muted">实时查询夜莺活跃告警，按业务组聚合；点击业务组卡片查看该组当前告警明细。</p>
+        </div>
+        <div class="wattrel-button-row">
+          <button id="ac-refresh" class="primary">刷新真实数据</button>
+        </div>
+      </div>
+      <div id="ac-status"></div>
+      <div id="ac-content"><div class="notice">正在加载告警数据…</div></div>
+    </section>
   `;
 
   root.querySelector("#ac-refresh").addEventListener("click", () => {
@@ -29,210 +43,214 @@ export function renderAlertCenter(root, { reload }) {
 }
 
 async function loadData(root, reload) {
-  const loading = root.querySelector("#ac-loading");
+  const statusEl = root.querySelector("#ac-status");
   const content = root.querySelector("#ac-content");
-  loading.style.display = "";
-  content.innerHTML = "";
+  setStatus(statusEl, "loading", "正在查询当前告警", "正在实时拉取夜莺活跃告警与 n8n 失败执行。");
 
-  const [overview, config] = await Promise.all([
+  const [overview, active, config] = await Promise.all([
     apiGet("/api/alerts/overview").catch((error) => ({ error: error.message })),
+    apiGet("/api/alerts/active?limit=200").catch((error) => ({ error: error.message })),
     apiGet("/api/alerts/config").catch(() => ({})),
   ]);
 
-  loading.style.display = "none";
-  const timeLabel = root.querySelector("#ac-refresh-time");
-  timeLabel.textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN")}`;
-
-  if (overview?.error) {
-    content.innerHTML = `<div class="error">${escapeHtml(overview.error)}</div>`;
+  if (overview?.error || active?.error) {
+    const message = overview?.error || active?.error;
+    setStatus(statusEl, "error", "告警实时查询失败", "请检查夜莺/n8n 凭据与网络（配置见 .env）。");
+    content.innerHTML = `<div class="error">${escapeHtml(message)}</div>`;
     return;
   }
 
-  renderOverview(content, overview, config);
-  renderTabs(content, reload);
+  const timeLabel = formatDateTime(new Date().toISOString());
+  const stats = buildStats(overview, active, config);
+  renderHeroStats(stats, true);
+  setStatus(statusEl, "success",
+    (stats.activeCount || 0) > 0 ? "当前告警已更新" : "当前无活跃告警",
+    `${stats.activeCount || 0} 条活跃告警，涉及 ${stats.groupCount || 0} 个业务组，n8n 失败执行 ${stats.failedCount || 0} 条。${timeLabel}`);
+
+  renderContent(root, content, overview, active, stats);
 }
 
-// ---------------------------------------------------------------------------
-// 综合看板
-// ---------------------------------------------------------------------------
-
-function renderOverview(root, overview, config) {
+function buildStats(overview, active, config) {
   const n9e = overview.nightingale || {};
   const n8n = overview.n8n || {};
+  const activeList = Array.isArray(active) ? active : [];
+  const byGroup = n9e.byGroup || {};
   const sev = n9e.severityCount || {};
-
-  root.innerHTML += `
-    <div class="grid cols-3">
-      <section class="panel">
-        <h2 class="panel-title">夜莺活跃告警 ${config.nightingale?.hasToken ? "" : "(未配置)"}</h2>
-        <div class="grid cols-2">
-          ${metricCard("活跃告警", n9e.activeCount || 0)}
-          ${metricCard("严重/警告/提示", `${sev[0] || 0} / ${sev[1] || 0} / ${sev[2] || 0}`)}
-        </div>
-        ${renderGroupBars(n9e.byGroup)}
-      </section>
-      <section class="panel">
-        <h2 class="panel-title">n8n 失败执行 ${config.n8n?.hasKey ? "" : "(未配置)"}</h2>
-        <div class="grid cols-1">
-          ${metricCard("失败执行数", n8n.failedCount || 0)}
-        </div>
-        ${renderN8nLatest(n8n.latest)}
-      </section>
-      <section class="panel">
-        <h2 class="panel-title">Grafana 巡检</h2>
-        <p class="muted">Grafana 报表巡检沿用值班平台现有能力（总览页查看最近巡检结果）。</p>
-        <p class="muted">后续可将三边告警合并推送。</p>
-      </section>
-    </div>
-  `;
+  const severity0 = activeList.filter((a) => Number(a.severity) === 0).length || sev[0] || 0;
+  return {
+    activeCount: n9e.activeCount || activeList.length || 0,
+    groupCount: Object.keys(byGroup).length || 0,
+    severity0,
+    severity1: sev[1] || 0,
+    severity2: sev[2] || 0,
+    failedCount: n8n.failedCount || 0,
+    checkedAt: overview.checkedAt || new Date().toISOString(),
+    n9eConfigured: Boolean(config.nightingale?.hasToken) || n9e.configured,
+    n8nConfigured: Boolean(config.n8n?.hasKey) || n8n.configured,
+  };
 }
 
-function metricCard(label, value) {
-  return `
-    <div class="metric">
-      <div class="metric-label">${label}</div>
-      <div class="metric-value">${escapeHtml(value)}</div>
-    </div>
-  `;
-}
-
-function renderGroupBars(byGroup = {}) {
-  const entries = Object.entries(byGroup).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  if (!entries.length) {
-    return `<p class="muted">当前无活跃告警。</p>`;
+function renderHeroStats(stats, show = false) {
+  const el = document.querySelector?.("#ac-hero-stats");
+  const host = document.querySelector?.(".page-header.batch-hero") || null;
+  if (!show || !stats) {
+    return "";
   }
-  const max = Math.max(...entries.map(([, count]) => count));
-  return `
-    <h3 class="section-title">按业务组</h3>
-    <div class="bar-list">
-      ${entries.map(([name, count]) => `
-        <div class="bar-row">
-          <span class="bar-label" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(8, (count / max) * 100)}%"></div></div>
-          <span class="bar-count">${count}</span>
-        </div>
-      `).join("")}
+  const markup = `
+    <div id="ac-hero-stats" class="hero-stats" aria-label="告警中心概览">
+      <article><span>当前告警</span><strong>${escapeHtml(stats.activeCount)}</strong></article>
+      <article><span>涉及业务组</span><strong>${escapeHtml(stats.groupCount)}</strong></article>
+      <article><span>严重告警</span><strong>${escapeHtml(stats.severity0)}</strong></article>
+      <article><span>n8n失败执行</span><strong>${escapeHtml(stats.failedCount)}</strong></article>
+      <article><span>更新时间</span><strong>${escapeHtml(formatTimeShort(stats.checkedAt))}</strong></article>
     </div>
   `;
-}
-
-function renderN8nLatest(latest = []) {
-  if (!latest.length) {
-    return `<p class="muted">无失败执行。</p>`;
+  if (el) {
+    el.outerHTML = markup;
+  } else if (host) {
+    host.insertAdjacentHTML("beforeend", markup);
   }
-  return `
-    <h3 class="section-title">最近失败执行</h3>
-    <ul class="plain-list">
-      ${latest.map((exec) => `
-        <li>
-          <strong>${escapeHtml(exec.workflowName || `#${exec.id}`)}</strong>
-          <span class="muted"> ${escapeHtml(formatTime(exec.startedAt))}</span>
-          ${exec.errorMessage ? `<div class="muted small">${escapeHtml(exec.errorMessage).slice(0, 120)}</div>` : ""}
-        </li>
-      `).join("")}
-    </ul>
+  return markup;
+}
+
+function setStatus(el, type, title, detail) {
+  if (!el) return;
+  el.innerHTML = `
+    <div class="sandbox-status ${escapeHtml(type)}">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(detail || "")}</span>
+    </div>
   `;
 }
 
-// ---------------------------------------------------------------------------
-// Tabs
-// ---------------------------------------------------------------------------
+function renderContent(root, content, overview, active, stats) {
+  const activeList = Array.isArray(active) ? active : [];
+  const byGroup = buildGroupMap(activeList, overview);
 
-function renderTabs(root, reload) {
-  const tabs = [
-    { key: "active", label: "活跃告警" },
-    { key: "history", label: "历史告警" },
-    { key: "rules", label: "告警规则" },
-    { key: "notify", label: "通知规则" },
-    { key: "n8n-workflows", label: "n8n工作流" },
-    { key: "n8n-executions", label: "n8n执行" },
-  ];
+  if (!byGroup.size) {
+    content.innerHTML = `
+      <div class="auto-summary">
+        ${summaryItem("当前告警", 0)}
+        ${summaryItem("业务组", 0)}
+        ${summaryItem("n8n失败", stats.failedCount || 0)}
+      </div>
+      <p class="${stats.n9eConfigured ? "success" : "muted"}">${stats.n9eConfigured ? "已连接的业务组当前没有活跃告警。" : "夜莺未配置凭据（N9E_BASE_URL/N9E_TOKEN），无法查询活跃告警。"}</p>
+      ${renderN8nFailures(overview.n8n || {})}
+    `;
+    return;
+  }
 
-  root.innerHTML += `
-    <div class="tabs" id="ac-tabs">
-      ${tabs.map((tab) => `<button class="tab-btn" data-tab="${tab.key}">${tab.label}</button>`).join("")}
+  content.innerHTML = `
+    <div class="auto-summary">
+      ${summaryItem("当前告警", stats.activeCount)}
+      ${summaryItem("业务组", byGroup.size)}
+      ${summaryItem("严重告警", stats.severity0)}
+      ${summaryItem("n8n失败", stats.failedCount)}
     </div>
-    <div id="ac-tab-content" class="tab-content"></div>
+    ${renderGroupGrid(byGroup)}
+    ${renderGroupDetail(byGroup)}
+    ${renderN8nFailures(overview.n8n || {})}
   `;
 
-  root.querySelectorAll("[data-tab]").forEach((button) => {
+  root.querySelectorAll("[data-ac-group]").forEach((button) => {
     button.addEventListener("click", () => {
-      root.querySelectorAll("[data-tab]").forEach((btn) => btn.classList.remove("active"));
-      button.classList.add("active");
-      switchTab(root, button.dataset.tab, reload);
+      const group = button.getAttribute("data-ac-group") || "";
+      root.querySelectorAll("[data-ac-group]").forEach((b) => b.classList.remove("is-selected"));
+      button.classList.add("is-selected");
+      const detail = root.querySelector("#ac-group-detail");
+      if (detail) {
+        detail.innerHTML = renderGroupDetailRows(byGroup.get(group) || []);
+      }
     });
   });
-
-  // 默认打开第一个 tab
-  root.querySelector('[data-tab="active"]').classList.add("active");
-  switchTab(root, "active", reload);
 }
 
-async function switchTab(root, tab, reload) {
-  const container = root.querySelector("#ac-tab-content");
-  container.innerHTML = `<div class="notice">加载中…</div>`;
-  try {
-    if (tab === "active") {
-      const list = await apiGet("/api/alerts/active");
-      container.innerHTML = renderActiveList(list);
-    } else if (tab === "history") {
-      container.innerHTML = renderHistoryForm();
-      await loadHistory(container);
-    } else if (tab === "rules") {
-      container.innerHTML = renderRulesForm();
-      await loadRules(container);
-    } else if (tab === "notify") {
-      const data = await apiGet("/api/alerts/notify-rules");
-      container.innerHTML = renderNotifyRules(data);
-    } else if (tab === "n8n-workflows") {
-      const list = await apiGet("/api/alerts/n8n/workflows");
-      container.innerHTML = renderN8nWorkflows(list);
-    } else if (tab === "n8n-executions") {
-      const list = await apiGet("/api/alerts/n8n/executions?status=error&limit=50");
-      container.innerHTML = renderN8nExecutions(list);
+function buildGroupMap(activeList, overview) {
+  const map = new Map();
+  for (const alert of activeList) {
+    const group = alert.groupName || "未归属";
+    if (!map.has(group)) map.set(group, []);
+    map.get(group).push(alert);
+  }
+  // 合并 overview.byGroup 里未出现在 activeList 的组
+  const byGroup = overview.nightingale?.byGroup || {};
+  for (const [name, count] of Object.entries(byGroup)) {
+    if (!map.has(name)) {
+      map.set(name, Array.from({ length: Math.min(count, 10) }, (_, i) => ({
+        ruleName: `${name} 告警${i + 1}`,
+        groupName: name,
+        severity: null,
+        severityLabel: "未知",
+        target: "",
+        triggerTime: null,
+        source: "夜莺",
+      })));
     }
-    bindTabEvents(root, tab, container);
-  } catch (error) {
-    container.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
   }
+  return map;
 }
 
-function bindTabEvents(root, tab, container) {
-  if (tab === "history") {
-    container.querySelector("#history-load")?.addEventListener("click", () => loadHistory(container));
-  }
-  if (tab === "rules") {
-    container.querySelector("#rules-load")?.addEventListener("click", () => loadRules(container));
-  }
+function renderGroupGrid(byGroup) {
+  const entries = [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length);
+  return `
+    <section class="sub-panel">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">按业务组当前告警</h2>
+          <p class="muted">点击业务组卡片查看该组当前告警明细。</p>
+        </div>
+      </div>
+      <div class="wattrel-country-grid">
+        ${entries.map(([name, alerts]) => {
+          const sev0 = alerts.filter((a) => Number(a.severity) === 0).length;
+          return `
+            <button type="button" class="wattrel-country-card" data-ac-group="${escapeHtml(name)}">
+              <div>
+                <strong>${escapeHtml(name)}</strong>
+                <span>${sev0 ? `严重 ${sev0} 条 · ` : ""}共 ${alerts.length} 条告警</span>
+              </div>
+              <p>${escapeHtml(alerts.slice(0, 3).map((a) => a.ruleName || "告警").join("，") || "暂无明细")}</p>
+              <small>查看明细</small>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
 }
 
-// ---------------------------------------------------------------------------
-// 活跃告警
-// ---------------------------------------------------------------------------
+function renderGroupDetail(byGroup) {
+  return `
+    <section class="sub-panel" id="ac-group-detail-panel">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">告警明细</h2>
+          <p class="muted">点击上方业务组卡片，这里展示该组的当前告警明细。</p>
+        </div>
+      </div>
+      <div id="ac-group-detail">${renderGroupDetailRows(byGroup.values().next().value || [])}</div>
+    </section>
+  `;
+}
 
-function renderActiveList(list) {
-  if (!list.length) {
-    return `<p class="muted">当前没有活跃告警。</p>`;
+function renderGroupDetailRows(alerts) {
+  if (!alerts || !alerts.length) {
+    return `<p class="muted">该业务组当前没有告警明细。</p>`;
   }
   return `
     <table class="data-table">
       <thead>
-        <tr>
-          <th>来源</th><th>级别</th><th>规则</th><th>业务组</th>
-          <th>目标</th><th>触发值</th><th>触发时间</th><th>状态</th>
-        </tr>
+        <tr><th>级别</th><th>规则</th><th>目标</th><th>触发值</th><th>触发时间</th><th>状态</th></tr>
       </thead>
       <tbody>
-        ${list.map((alert) => `
+        ${alerts.slice(0, 50).map((alert) => `
           <tr>
-            <td><span class="badge">${alert.sourceLabel}</span></td>
-            <td><span class="badge ${severityClass(alert.severity)}">${alert.severityLabel}</span></td>
+            <td><span class="badge ${severityClass(alert.severity)}">${escapeHtml(alert.severityLabel || "-")}</span></td>
             <td title="${escapeHtml(alert.sql || alert.promQl || "")}">${escapeHtml(alert.ruleName || "-")}</td>
-            <td>${escapeHtml(alert.groupName || "-")}</td>
             <td>${escapeHtml(alert.target || "-")}</td>
             <td>${escapeHtml(alert.triggerValue ?? "-")}</td>
             <td>${escapeHtml(formatTime(alert.triggerTime))}</td>
-            <td><span class="badge ${alert.isRecovered ? "ok" : "warn"}">${alert.recoveredLabel}</span></td>
+            <td><span class="badge ${alert.isRecovered ? "ok" : "warn"}">${escapeHtml(alert.recoveredLabel || "-")}</span></td>
           </tr>
         `).join("")}
       </tbody>
@@ -240,215 +258,41 @@ function renderActiveList(list) {
   `;
 }
 
-// ---------------------------------------------------------------------------
-// 历史告警
-// ---------------------------------------------------------------------------
-
-function renderHistoryForm() {
-  const now = new Date();
-  const from = new Date(now.getTime() - 24 * 3600 * 1000);
+function renderN8nFailures(n8n) {
+  const latest = n8n.latest || [];
   return `
-    <div class="filter-bar">
-      <label>起始 <input type="datetime-local" id="history-from" value="${toLocalInput(from)}"></label>
-      <label>结束 <input type="datetime-local" id="history-to" value="${toLocalInput(now)}"></label>
-      <label>规则名 <input type="text" id="history-rule" placeholder="可选"></label>
-      <button class="primary" id="history-load">查询</button>
+    <section class="sub-panel">
+      <div class="detail-header compact-header">
+        <div>
+          <h2 class="panel-title">n8n 最近失败执行</h2>
+          <p class="muted">展示 n8n 最近失败的工作流执行（${escapeHtml(n8n.failedCount || 0)} 条失败）。</p>
+        </div>
+      </div>
+      ${latest.length ? `
+        <table class="data-table">
+          <thead><tr><th>工作流</th><th>状态</th><th>开始时间</th><th>错误</th></tr></thead>
+          <tbody>
+            ${latest.slice(0, 20).map((exec) => `
+              <tr>
+                <td>${escapeHtml(exec.workflowName || `#${exec.id}` || "-")}</td>
+                <td><span class="badge warn">${escapeHtml(exec.status || "error")}</span></td>
+                <td>${escapeHtml(formatIso(exec.startedAt))}</td>
+                <td class="small">${escapeHtml(exec.errorMessage || exec.error || "").slice(0, 160)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      ` : `<p class="muted">${n8n.configured ? "当前没有 n8n 失败执行。" : "n8n 未配置凭据（N8N_BASE_URL/N8N_API_KEY）。"}</p>`}
+    </section>
+  `;
+}
+
+function summaryItem(label, value) {
+  return `
+    <div class="info-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value ?? "-")}</strong>
     </div>
-    <div id="history-result"></div>
-  `;
-}
-
-async function loadHistory(container) {
-  const result = container.querySelector("#history-result");
-  result.innerHTML = `<div class="notice">加载中…</div>`;
-  const from = container.querySelector("#history-from")?.value;
-  const to = container.querySelector("#history-to")?.value;
-  const ruleName = container.querySelector("#history-rule")?.value;
-  try {
-    const payload = await apiGet(buildHistoryUrl(from, to, ruleName));
-    const list = payload.list || [];
-    if (!list.length) {
-      result.innerHTML = `<p class="muted">该时段没有历史告警（共 ${payload.total || 0} 条匹配）。</p>`;
-      return;
-    }
-    result.innerHTML = `
-      <p class="muted">共 ${payload.total} 条，展示最近 ${list.length} 条</p>
-      <table class="data-table">
-        <thead><tr><th>级别</th><th>规则</th><th>业务组</th><th>触发值</th><th>触发时间</th><th>状态</th></tr></thead>
-        <tbody>
-          ${list.map((alert) => `
-            <tr>
-              <td><span class="badge ${severityClass(alert.severity)}">${alert.severityLabel}</span></td>
-              <td title="${escapeHtml(alert.sql || "")}">${escapeHtml(alert.ruleName || "-")}</td>
-              <td>${escapeHtml(alert.groupName || "-")}</td>
-              <td>${escapeHtml(alert.triggerValue ?? "-")}</td>
-              <td>${escapeHtml(formatTime(alert.triggerTime))}</td>
-              <td><span class="badge ${alert.isRecovered ? "ok" : "warn"}">${alert.recoveredLabel}</span></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    `;
-  } catch (error) {
-    result.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
-  }
-}
-
-function buildHistoryUrl(fromValue, toValue, ruleName) {
-  const params = new URLSearchParams();
-  if (fromValue) params.set("stime", String(Math.floor(new Date(fromValue).getTime() / 1000)));
-  if (toValue) params.set("etime", String(Math.floor(new Date(toValue).getTime() / 1000)));
-  params.set("limit", "100");
-  if (ruleName) params.set("ruleName", ruleName);
-  return `/api/alerts/history?${params.toString()}`;
-}
-
-// ---------------------------------------------------------------------------
-// 告警规则
-// ---------------------------------------------------------------------------
-
-function renderRulesForm() {
-  return `
-    <div class="filter-bar">
-      <label>业务组 <input type="number" id="rules-bg" placeholder="留空=全部拉取(慢)"></label>
-      <button class="primary" id="rules-load">查询规则</button>
-    </div>
-    <div id="rules-result"></div>
-  `;
-}
-
-async function loadRules(container) {
-  const result = container.querySelector("#rules-result");
-  result.innerHTML = `<div class="notice">加载中…</div>`;
-  const bg = container.querySelector("#rules-bg")?.value;
-  try {
-    // 若无业务组则从夜莺拉全部业务组，逐个查询（仅取启用规则概要）
-    let rules = [];
-    if (bg) {
-      rules = await apiGet(`/api/alerts/rules?busiGroup=${bg}`);
-    } else {
-      const groups = await apiGet("/api/alerts/busi-groups");
-      for (const group of groups.slice(0, 18)) {
-        const groupRules = await apiGet(`/api/alerts/rules?busiGroup=${group.id}`);
-        rules = rules.concat(groupRules);
-      }
-    }
-    const activeRules = rules.filter((rule) => !rule.disabled);
-    result.innerHTML = `
-      <p class="muted">共 ${rules.length} 条（启用 ${activeRules.length}）</p>
-      <table class="data-table">
-        <thead><tr><th>规则名</th><th>业务组</th><th>类型</th><th>生效</th><th>通知规则</th><th>状态</th></tr></thead>
-        <tbody>
-          ${rules.map((rule) => `
-            <tr>
-              <td title="${escapeHtml(extractSqlFromRule(rule))}">${escapeHtml(rule.name || rule.rule_name || "-")}</td>
-              <td>${escapeHtml(rule.group_name || rule.busi_group_name || "-")}</td>
-              <td>${escapeHtml(rule.cate || rule.prod || "-")}</td>
-              <td>${escapeHtml(rule.enable_stime || rule.rule_config?.enable_stime || "-")}~${escapeHtml(rule.enable_etime || rule.rule_config?.enable_etime || "-")}</td>
-              <td>${escapeHtml(String(rule.notify_rule_ids || ""))}</td>
-              <td><span class="badge ${rule.disabled ? "warn" : "ok"}">${rule.disabled ? "禁用" : "启用"}</span></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    `;
-  } catch (error) {
-    result.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
-  }
-}
-
-function extractSqlFromRule(rule) {
-  const queries = rule.rule_config?.queries || [];
-  for (const q of queries) {
-    if (q?.sql) return q.sql;
-    if (q?.prom_ql) return q.prom_ql;
-  }
-  return "";
-}
-
-// ---------------------------------------------------------------------------
-// 通知规则
-// ---------------------------------------------------------------------------
-
-function renderNotifyRules(data) {
-  const rules = data.rules || [];
-  const channels = data.channels || [];
-  const channelMap = {};
-  for (const channel of channels) {
-    channelMap[String(channel.id)] = channel.ident || channel.name || `渠道#${channel.id}`;
-  }
-  if (!rules.length) {
-    return `<p class="muted">无通知规则。</p>`;
-  }
-  return `
-    <p class="muted">通知规则 ${rules.length} 条 · 通知渠道 ${channels.length} 个（含 ivr 电话）</p>
-    <table class="data-table">
-      <thead><tr><th>通知规则</th><th>渠道</th><th>接收人</th><th>启用</th></tr></thead>
-      <tbody>
-        ${rules.map((rule) => {
-          const configs = rule.notify_configs || [];
-          const channelLabels = configs.map((config) => channelMap[String(config.channel_id)] || `#${config.channel_id}`).join("、");
-          const userIds = [...new Set(configs.flatMap((config) => config.params?.user_ids || []))];
-          return `
-            <tr>
-              <td>${escapeHtml(rule.name || "-")}</td>
-              <td>${escapeHtml(channelLabels || "-")}</td>
-              <td>${escapeHtml(userIds.join("、") || "-")}</td>
-              <td><span class="badge ${rule.enable ? "ok" : "warn"}">${rule.enable ? "启用" : "禁用"}</span></td>
-            </tr>
-          `;
-        }).join("")}
-      </tbody>
-    </table>
-  `;
-}
-
-// ---------------------------------------------------------------------------
-// n8n
-// ---------------------------------------------------------------------------
-
-function renderN8nWorkflows(list) {
-  if (!list.length) {
-    return `<p class="muted">无工作流。</p>`;
-  }
-  return `
-    <p class="muted">共 ${list.length} 个工作流</p>
-    <table class="data-table">
-      <thead><tr><th>名称</th><th>ID</th><th>激活</th><th>webhook</th></tr></thead>
-      <tbody>
-        ${list.map((workflow) => `
-          <tr>
-            <td>${escapeHtml(workflow.name || "-")}</td>
-            <td>${escapeHtml(String(workflow.id || ""))}</td>
-            <td><span class="badge ${workflow.active ? "ok" : "warn"}">${workflow.active ? "激活" : "未激活"}</span></td>
-            <td>${escapeHtml(workflow.webhook?.path || workflow.webhooks?.map((w) => w.path).join("、") || "-")}</td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-  `;
-}
-
-function renderN8nExecutions(list) {
-  if (!list.length) {
-    return `<p class="muted">无执行记录（当前为失败执行视图）。</p>`;
-  }
-  return `
-    <p class="muted">最近失败执行 ${list.length} 条</p>
-    <table class="data-table">
-      <thead><tr><th>ID</th><th>工作流</th><th>状态</th><th>开始时间</th><th>错误</th></tr></thead>
-      <tbody>
-        ${list.map((exec) => `
-          <tr>
-            <td>${escapeHtml(String(exec.id || ""))}</td>
-            <td>${escapeHtml(exec.workflowData?.name || exec.workflowName || `#${exec.workflowId}` || "-")}</td>
-            <td><span class="badge warn">${escapeHtml(exec.status || "-")}</span></td>
-            <td>${escapeHtml(formatIso(exec.startedAt))}</td>
-            <td class="small">${escapeHtml(exec.error || "")}</td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
   `;
 }
 
@@ -473,7 +317,19 @@ function formatIso(iso) {
   return isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN", { hour12: false });
 }
 
-function toLocalInput(date) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function formatTimeShort(iso) {
+  if (!iso) return "-";
+  const date = new Date(iso);
+  return isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
 }
