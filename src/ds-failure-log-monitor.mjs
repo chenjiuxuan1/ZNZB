@@ -69,6 +69,14 @@ const RETRYABLE_FAILURE_PATTERNS = [
   /\bno associated load channel\b/i,
 ];
 
+const DATA_SOURCE_CONFIG_ERROR_PATTERNS = [
+  /数据源\s*\d*\s*创建连接失败/i,
+  /JDBC 地址无效/i,
+  /JDBC 驱动匹配发生冲突/i,
+  /Create adhoc connection error/i,
+  /url is not valid/i,
+];
+
 // Keep the n8n restart-watch decision aligned with
 // Global-Intelligent-Alarm-Repair-Assistant/tools/ds_failed_auto_retry.py.
 const N8N_SQL_ERROR_PATTERNS = [
@@ -123,6 +131,9 @@ export function classifyDsFailureType(failure = {}) {
   }
   if (PERMISSION_ERROR_PATTERNS.some((pattern) => pattern.test(evidence))) {
     return { failureType: "permission_error", retryable: false, retryDecision: "权限不足，需人工处理" };
+  }
+  if (DATA_SOURCE_CONFIG_ERROR_PATTERNS.some((pattern) => pattern.test(evidence))) {
+    return { failureType: "datasource_configuration_error", retryable: false, retryDecision: "数据源/JDBC 配置错误，需检查连接地址和 Worker 驱动" };
   }
   if (!String(failure.taskName || "").trim() && !String(failure.taskCode || "").trim()) {
     return { failureType: "suspected_empty_run", retryable: true, retryDecision: "疑似空跑；原失败实例运行超过 1 小时则判定为空跑，不执行重跑" };
@@ -335,7 +346,26 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
 }
 
 export function extractDsFailureReason(log, fallback = "") {
-  const lines = String(log || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const rawLog = String(log || "");
+  const lines = rawLog.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const datasourceId = rawLog.match(/\bdatasource['\"]?\s*(?:=|:)\s*['\"]?(\d+)/i)?.[1] || "";
+  const taskType = rawLog.match(/\b(?:type|sql type)['\"]?\s*(?:=|:)\s*['\"]?([A-Z][A-Z0-9_-]+)/i)?.[1] || "";
+  if (/Create adhoc connection error/i.test(rawLog) && /url is not valid/i.test(rawLog)) {
+    const driverConflict = /com\.dolphindb\.jdbc\.Driver/i.test(rawLog)
+      || /Connect strings must start with jdbc:snowflake:\/\//i.test(rawLog);
+    const target = datasourceId ? `数据源 ${datasourceId}` : "任务数据源";
+    const configuredType = taskType ? `任务配置为 ${taskType}；` : "";
+    return `${target} 创建连接失败：JDBC 地址无效${driverConflict ? "，或 JDBC 驱动匹配发生冲突" : ""}。${configuredType}${driverConflict ? "连接过程进入了与任务数据源类型不一致的 JDBC 驱动，请检查数据源 JDBC URL 和 Worker 驱动包" : "请检查数据源 JDBC URL"}`;
+  }
+  if (/statusCode:\s*401|httpCode:\s*401|HTTP\s*401/i.test(rawLog)) {
+    return "接口请求返回 401：认证 Token 无效、已过期或当前账号无接口权限";
+  }
+  if (/Lost connection to MySQL server during query/i.test(rawLog)) {
+    return "查询执行期间与 MySQL/StarRocks 服务端连接中断；需检查查询耗时、服务端超时设置、网络稳定性及数据库节点状态";
+  }
+  if (/Connection refused/i.test(rawLog)) {
+    return "目标服务拒绝连接：服务可能未启动、地址或端口配置错误，或网络策略未放行";
+  }
   const stackFrame = (line) => /(?:^|\s)(?:at\s+)?[\w$<>.]+\([^)]*\.(?:java|scala|kt|py):\d+\)\s*$/i.test(line)
     || /^\s*\.\.\.\s+\d+\s+more\s*$/i.test(line);
   const candidates = lines.map((line, index) => {

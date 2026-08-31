@@ -59,7 +59,7 @@ let model = {
   scheduledKeyword: "",
   scheduledLookbackDays: 7,
   scheduledCountryPages: {},
-  scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {} },
+  scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {}, groupChatIds: {} },
   scheduledConfigLoaded: false,
   scheduledMessage: "",
 };
@@ -109,10 +109,12 @@ async function loadScheduledFailures(root) {
 
 async function saveScheduledOwners(root) {
   const owners = {};
+  const groupChatIds = {};
   for (const option of COUNTRY_OPTIONS) owners[option.code] = root.querySelector(`[data-scheduled-owner="${option.code}"]`)?.value || "";
+  for (const option of COUNTRY_OPTIONS) groupChatIds[option.code] = root.querySelector(`[data-scheduled-group="${option.code}"]`)?.value || "";
   try {
-    model.scheduledConfig = await apiPut("/api/ds-scheduled-failure-watch/config", { ...model.scheduledConfig, owners });
-    model.scheduledMessage = "负责人邮箱已保存，将同时用于 n8n 失败重启监控和定时失败任务重跑通知。";
+    model.scheduledConfig = await apiPut("/api/ds-scheduled-failure-watch/config", { ...model.scheduledConfig, owners, groupChatIds });
+    model.scheduledMessage = "负责人和国家群聊已保存；n8n 失败告警会同时私聊负责人并发送到对应群聊。";
   } catch (error) {
     model.scheduledMessage = `负责人配置保存失败：${error.message}`;
   }
@@ -552,6 +554,7 @@ function paint(root) {
 function renderScheduledFailureWatch() {
   const result = model.scheduledResult || {};
   const owners = model.scheduledConfig.owners || {};
+  const groupChatIds = model.scheduledConfig.groupChatIds || {};
   return `<section class="ds-scheduled-failure-watch" ${model.activeTab === "scheduled" ? "" : 'style="display:none"'}>
     <section class="panel ds-failure-toolbar">
       <div class="detail-header compact-header">
@@ -566,8 +569,8 @@ function renderScheduledFailureWatch() {
       ${model.scheduledMessage ? `<div class="sandbox-status ${/失败|错误/.test(model.scheduledMessage) ? "error" : "warn"}"><span>${escapeHtml(model.scheduledMessage)}</span></div>` : ""}
     </section>
     <section class="panel ds-scheduled-owner-panel">
-      <div class="detail-header compact-header"><div><h3 class="panel-title">两个重跑模块共用负责人配置</h3><p class="muted">负责人同时接收 n8n 失败重启监控和定时失败任务重跑的对应国家通知；多个邮箱请用逗号分隔。</p></div><button class="primary" id="ds-scheduled-owner-save">保存负责人</button></div>
-      <div class="ds-scheduled-owner-grid">${COUNTRY_OPTIONS.map((option) => `<label><span>${option.flag} ${option.name}</span><input data-scheduled-owner="${option.code}" value="${escapeHtml(owners[option.code] || "")}" placeholder="负责人邮箱，多个用逗号分隔"></label>`).join("")}</div>
+      <div class="detail-header compact-header"><div><h3 class="panel-title">两个重跑模块共用通知配置</h3><p class="muted">负责人邮箱用于私聊和群内提醒；国家群聊 chat_id 用于群发。多个邮箱或群聊 ID 均可用逗号分隔。</p></div><button class="primary" id="ds-scheduled-owner-save">保存通知配置</button></div>
+      <div class="ds-scheduled-owner-grid">${COUNTRY_OPTIONS.map((option) => `<div class="ds-scheduled-notify-card"><strong>${option.flag} ${option.name}</strong><label><span>负责人邮箱</span><input data-scheduled-owner="${option.code}" value="${escapeHtml(owners[option.code] || "")}" placeholder="多个邮箱用逗号分隔"></label><label><span>国家群聊 chat_id</span><input data-scheduled-group="${option.code}" value="${escapeHtml(groupChatIds[option.code] || "")}" placeholder="例如 -1001234567890"></label></div>`).join("")}</div>
     </section>
     <section class="ds-failure-country-list">${model.scheduledResult ? renderScheduledCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">后台会持续监控并通知；也可选择国家后手动查询当前结果。</p></section>`}</section>
   </section>`;
@@ -873,6 +876,9 @@ function retryLogEvent(event) {
     retry_submitted: "提交重跑",
     retry_failed: "提交失败",
     retry_not_recovered: "重跑后未修复",
+    retry_failure_notification_sent: "失败告警已发送",
+    retry_failure_notification_failed: "失败告警发送失败",
+    retry_failure_notification_skipped: "失败告警未配置",
     retry_already_running: "任务已在运行",
     retry_stopped: "停止处理",
     recovered: "恢复成功",

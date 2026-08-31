@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyDsFailureReason, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays } from "../src/ds-failure-log-monitor.mjs";
+import { classifyDsFailureReason, classifyDsFailureType, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays } from "../src/ds-failure-log-monitor.mjs";
 
 test("lookback days accepts manual ranges and applies safe limits", () => {
   assert.equal(normalizeLookbackDays("7", 1), 7);
@@ -104,6 +104,27 @@ test("DS failure reason extracts an explicit stop explanation from task logs", (
     extractDsFailureReason("INFO process started\nWARN workflow was manually stopped by operator millie"),
     "WARN workflow was manually stopped by operator millie",
   );
+});
+
+test("DS failure reason explains an invalid StarRocks datasource and JDBC driver conflict", () => {
+  const log = `
+Initialize sql task parameter { "type" : "STARROCKS", "datasource" : 29 }
+WARN - Connect strings must start with jdbc:snowflake://
+ERROR - execute sql error: Create adhoc connection error
+Caused by: java.sql.SQLException: url is not valid
+at com.dolphindb.jdbc.Driver.parseProp(Driver.java:71)
+at org.apache.dolphinscheduler.plugin.datasource.starrocks.param.StarRocksDataSourceProcessor.getConnection(StarRocksDataSourceProcessor.java:144)`;
+  const reason = extractDsFailureReason(log);
+  assert.match(reason, /数据源 29 创建连接失败/);
+  assert.match(reason, /JDBC 地址无效/);
+  assert.match(reason, /JDBC 驱动匹配发生冲突/);
+  assert.match(reason, /任务配置为 STARROCKS/);
+  assert.equal(classifyDsFailureReason(reason), "unknown");
+  assert.deepEqual(classifyDsFailureType({ failureMessage: reason, taskName: "skip" }), {
+    failureType: "datasource_configuration_error",
+    retryable: false,
+    retryDecision: "数据源/JDBC 配置错误，需检查连接地址和 Worker 驱动",
+  });
 });
 
 test("DS failure records distinguish scheduled and non-scheduled triggers", () => {

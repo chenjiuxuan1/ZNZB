@@ -176,7 +176,7 @@ test("tests country-owner notifications and persists the result in retry logs", 
 test("uses the shared n8n and scheduled-retry country owner configuration", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-shared-owner-test-"));
   await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
-  await fs.writeFile(path.join(rootDir, "config", "ds-scheduled-failure-watch.json"), JSON.stringify({ owners: { ph: "ph-owner@kn.group" } }));
+  await fs.writeFile(path.join(rootDir, "config", "ds-scheduled-failure-watch.json"), JSON.stringify({ owners: { ph: "ph-owner@kn.group" }, groupChatIds: { ph: "-100-ph-group" } }));
   const sent = [];
   const manager = createDsAutoRetryManager({
     rootDir,
@@ -190,6 +190,7 @@ test("uses the shared n8n and scheduled-retry country owner configuration", asyn
   const result = await manager.testOwnerNotification({ country: "ph" });
   assert.equal(result.sent, true);
   assert.equal(sent[0].alerts.recipientEmails, "ph-owner@kn.group");
+  assert.equal(sent[0].alerts.chatId, "-100-ph-group");
   await fs.rm(rootDir, { recursive: true, force: true });
 });
 
@@ -383,6 +384,51 @@ test("manual run submits at most one retry while automatic retry is disabled", a
   assert.equal(manager.control().enabled, false);
   assert.equal(manager.control().manualRunning, false);
   assert.ok(manager.getLogs().some((item) => item.event === "manual_run_completed"));
+});
+
+test("privately notifies the country owner when a submitted retry is not recovered", async () => {
+  const sent = [];
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({ failureMessage: "Connection reset by peer", retryable: true, projectName: "国内数仓", workflowName: "hourly_etl", taskName: "load_orders" }),
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    ownerConfigLoader: async () => ({ sharedOwners: { cn: "cn-owner@kn.group" }, sharedGroupChatIds: { cn: "-100-cn-group" } }),
+    notifyFn: async (config, message) => { sent.push({ config, message }); return { sent: true }; },
+    actionFn: async ({ action }) => action === "get_workflow" ? { releaseState: "ONLINE" } : action === "retry_instance" ? { success: true } : { state: "FAILURE" },
+    now: () => fixedNow,
+    sleep: async () => {},
+  });
+  manager.runNow({ countries: ["cn"] });
+  await new Promise((resolve) => setImmediate(resolve));
+  await Promise.all([...manager.active.values()]);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].config.alerts.recipientEmails, "cn-owner@kn.group");
+  assert.equal(sent[0].config.alerts.chatId, undefined);
+  assert.equal(sent[0].config.alerts.mentions, undefined);
+  assert.match(sent[0].message, /load_orders/);
+  assert.match(sent[0].message, /仍为 FAILURE/);
+  assert.ok(manager.getLogs().some((item) => item.event === "retry_failure_notification_sent"));
+});
+
+test("notifies the country owner when retry submission fails", async () => {
+  const sent = [];
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({ failureMessage: "Lost connection", retryable: true, taskName: "sync_customer" }),
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    ownerConfigLoader: async () => ({ sharedOwners: { cn: "cn-owner@kn.group" } }),
+    notifyFn: async (config, message) => { sent.push({ config, message }); return { sent: true }; },
+    actionFn: async ({ action }) => {
+      if (action === "get_instance") return { state: "FAILURE" };
+      if (action === "get_workflow") return { releaseState: "ONLINE" };
+      throw new Error("DS gateway returned 500");
+    },
+    now: () => fixedNow,
+  });
+  await enableAndWait(manager);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /重跑请求提交失败：DS gateway returned 500/);
+  assert.ok(manager.getLogs().some((item) => item.event === "retry_failure_notification_sent"));
 });
 
 test("control counts persisted retry tasks while automatic retry is enabled", () => {

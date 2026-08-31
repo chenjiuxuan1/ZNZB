@@ -41,7 +41,9 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /days=\$\{lookbackDays\}/);
   assert.match(source, /按自定义天数查看 n8n 失败重启任务/);
   assert.match(source, /定时失败任务重跑/);
-  assert.match(source, /两个重跑模块共用负责人配置/);
+  assert.match(source, /两个重跑模块共用通知配置/);
+  assert.match(source, /国家群聊 chat_id/);
+  assert.match(source, /groupChatIds/);
   assert.match(source, /data-ds-failure-tab="scheduled"/);
   assert.match(source, /\/api\/ds-scheduled-failure-watch/);
   assert.match(source, /DS调度监控/);
