@@ -387,6 +387,46 @@ Metabase 数据缺失、动态更新周期、各国时区、执行时间截止�
 
 TV 使用 `Content-Type: application/json`，请求体固定为 `{ "botId": "...", "message": "..." }`；通过 `alerts.botId` 或环境变量 `TV_ALERT_BOT_ID` 指定机器人。巡检消息会先发一条总览，再按国家各发一条聚合明细；国家明细采用运营卡片格式，包含巡检时间、异常概览、数据缺失、数据波动和看板链接。同一报表卡片的多条异常会合并为一组，只展示最大波动、核心数值变化和可点击的报表链接。当前 TV 文本消息不会渲染 HTML 折叠块，因此不会发送 `<details>/<summary>` 标签。
 
+## 告警中心（n8n + 夜莺集成）
+
+值班平台（`npm run platform`，默认 8787）提供 **告警中心** 页面（`/#/alerts`），综合查看：
+
+- **综合看板**：夜莺活跃告警（按业务组/级别）、n8n 失败执行、Grafana 巡检状态三边总览
+- **Tabs**：活跃告警 / 历史告警 / 告警规则 / 通知规则 / n8n工作流 / n8n执行
+- **手动刷新**：页面"刷新数据"按钮拉取最新（不做定时轮询）
+
+### 凭据配置（服务器部署）
+
+凭据走环境变量或项目根 `.env`（已被 `.gitignore` 覆盖，不会提交）：
+
+```bash
+# 夜莺 v8 API Token（X-User-Token 认证）
+export N9E_BASE_URL='https://bigdata-alert.kuainiu.io'
+export N9E_TOKEN='<夜莺 API Token>'
+
+# n8n API Key（X-N8N-API-KEY 认证）
+export N8N_BASE_URL='https://sql-cn.kuainiujinke.com'
+export N8N_API_KEY='<n8n API Key>'
+```
+
+`config/alerts.config.json` 提供 `${ENV}` 占位模板（可提交）；实际 token 只存在于服务器环境变量或本地 `.env`，前端经 `/api/alerts/*` 后端代理访问，token 不出现在浏览器。
+
+### 告警中心 API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/alerts/overview` | 综合看板（三边计数+最新） |
+| GET | `/api/alerts/active` | 夜莺活跃告警 |
+| GET | `/api/alerts/history` | 夜莺历史告警（`stime/etime` Unix秒） |
+| GET | `/api/alerts/rules?busiGroup=` | 告警规则 |
+| GET | `/api/alerts/busi-groups` | 业务组 |
+| GET | `/api/alerts/datasources` | 数据源 |
+| GET | `/api/alerts/notify-rules` | 通知规则+渠道（电话打给谁） |
+| GET | `/api/alerts/n8n/workflows` | n8n 工作流（精简字段） |
+| GET | `/api/alerts/n8n/executions` | n8n 执行（精简字段） |
+| GET | `/api/alerts/config` | 配置脱敏信息 |
+| GET | `/api/alerts/health` | 上游连通性 |
+
 ## 建议落地方式
 
 推荐你们在 Grafana 里先创建一个只读的 Service Account，并授予这个 Dashboard 所需的最小权限。Grafana 官方文档说明：

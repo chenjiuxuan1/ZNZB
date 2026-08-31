@@ -5,6 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
+import { createAlertCenter } from "./alert-center.mjs";
 import { createDsAutoRetryManager } from "./ds-auto-retry-manager.mjs";
 import { cleanupLegacyDashboardUrls } from "./history-dashboard-url-cleanup.mjs";
 import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
@@ -26,6 +27,7 @@ try {
 }
 const dsAutoRetryManager = createDsAutoRetryManager({ rootDir });
 const api = createPlatformApi({ rootDir, dsAutoRetryManager });
+const alertCenter = createAlertCenter({ rootDir });
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";
 
@@ -347,6 +349,61 @@ async function handleApi(request, response, url) {
   }
   if (method === "POST" && url.pathname === "/api/ds-scheduler/access/publish") {
     return sendJson(response, 200, await api.publishDsAccessPolicy());
+  }
+  // ---- 告警中心 / 综合监控 (n8n + 夜莺) ----
+  if (method === "GET" && url.pathname === "/api/alerts/overview") {
+    return sendJson(response, 200, await alertCenter.getMonitorOverview());
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/active") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getActiveAlerts({
+      busiGroup: params.busiGroup || undefined,
+      severity: params.severity !== undefined ? params.severity : undefined,
+      limit: params.limit || 200,
+    }));
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/history") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getHistoryAlerts({
+      stime: params.stime ? Number(params.stime) : undefined,
+      etime: params.etime ? Number(params.etime) : undefined,
+      limit: params.limit || 200,
+      page: params.page || 1,
+      ruleName: params.ruleName || undefined,
+    }));
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/busi-groups") {
+    return sendJson(response, 200, await alertCenter.getBusiGroups());
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/rules") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getAlertRules(params.busiGroup));
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/datasources") {
+    return sendJson(response, 200, await alertCenter.getDatasources());
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/notify-rules") {
+    return sendJson(response, 200, await alertCenter.getNotifyRules());
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/n8n/workflows") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getN8nWorkflows({
+      active: params.active !== undefined ? params.active === "true" : undefined,
+      limit: params.limit || 100,
+    }));
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/n8n/executions") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getN8nExecutions({
+      status: params.status || undefined,
+      limit: params.limit || 50,
+    }));
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/config") {
+    return sendJson(response, 200, await alertCenter.getConfig());
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/health") {
+    return sendJson(response, 200, await alertCenter.getHealth());
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
