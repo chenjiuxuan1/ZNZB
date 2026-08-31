@@ -69,6 +69,53 @@ const RETRYABLE_FAILURE_PATTERNS = [
   /\bno associated load channel\b/i,
 ];
 
+// Keep the n8n restart-watch decision aligned with
+// Global-Intelligent-Alarm-Repair-Assistant/tools/ds_failed_auto_retry.py.
+const N8N_SQL_ERROR_PATTERNS = [
+  /syntax\s+error/i, /sqlsyntaxerrorexception/i, /parse\s+exception/i,
+  /semantic\s+exception/i, /analysis\s+exception/i, /unknown\s+column/i,
+  /column\s+.+(?:not\s+found|does\s+not\s+exist)/i,
+  /table\s+.+(?:not\s+found|does\s+not\s+exist|doesn't\s+exist)/i,
+  /no\s+such\s+(?:table|column|function)/i, /function\s+.+not\s+found/i,
+  /no\s+matching\s+function/i, /type\s+mismatch/i, /cannot\s+cast/i,
+  /incompatible\s+type/i, /unsupported\s+operand/i,
+];
+const N8N_RECOVERABLE_ERROR_PATTERNS = [
+  /cpu.+(?:limit|exceed)/i, /out\s+of\s+memory/i, /oom/i,
+  /memory.+(?:limit|exceed|insufficient)/i, /exit\s*(?:code)?\s*137/i,
+  /killed\s+by\s+(?:signal|oom)/i, /resource\s+(?:queue|pool).+(?:full|insufficient|unavailable)/i,
+  /no\s+available\s+worker/i, /worker.+(?:unavailable|offline|down|lost)/i,
+  /connection\s+(?:reset|refused|timed?\s*out|closed)/i, /network\s+(?:error|unreachable)/i,
+  /temporary\s+(?:failure|unavailable)/i, /transient/i, /socket\s+hang\s+up/i,
+  /broken\s+pipe/i, /remote\s+host/i, /no\s+associated\s+load\s+channel/i,
+];
+const N8N_MAX_RETRIES = 3;
+const N8N_MONITOR_TIMEOUT_MS = 30 * 60 * 1000;
+
+export function classifyN8nFailureReason(reason = "") {
+  const normalized = String(reason || "").replace(/\s+/g, " ").trim();
+  if (!normalized || normalized === "未从 DS 实例详情中解析到明确失败原因，请查看 DS 实例日志") return "unknown";
+  if (N8N_SQL_ERROR_PATTERNS.some((pattern) => pattern.test(normalized))) return "sql_error";
+  if (N8N_RECOVERABLE_ERROR_PATTERNS.some((pattern) => pattern.test(normalized))) return "recoverable";
+  return "unknown";
+}
+
+function withN8nProjectDecision(failure = {}) {
+  if (!failure.originalScheduledFailure) return failure;
+  const n8nFailureType = classifyN8nFailureReason(failure.failureMessage || failure.failureReason || "");
+  const n8nDecision = n8nFailureType === "recoverable"
+    ? `命中可恢复故障规则；由 n8n 最多重跑 ${N8N_MAX_RETRIES} 次，并在 ${N8N_MONITOR_TIMEOUT_MS / 60_000} 分钟内观察结果`
+    : n8nFailureType === "sql_error"
+      ? "命中 SQL/代码错误规则；n8n 不自动重跑，转人工修复"
+      : "未命中可恢复故障规则；n8n 不自动重跑，转人工确认";
+  return {
+    ...failure,
+    n8nFailureType,
+    n8nRetryEligible: n8nFailureType === "recoverable",
+    n8nDecision,
+  };
+}
+
 export function classifyDsFailureType(failure = {}) {
   const evidence = [failure.failureMessage, failure.logError, failure.taskScript].filter(Boolean).join("\n");
   if (SQL_CODE_ERROR_PATTERNS.some((pattern) => pattern.test(evidence))) {
@@ -313,12 +360,26 @@ export function extractDsFailureReason(log, fallback = "") {
     .trim().slice(0, 1000) || candidate.slice(0, 1000);
 }
 
-export function classifyOriginalScheduledFailures(instances = [], { projectName = "", projectCode = "" } = {}) {
+export function classifyOriginalScheduledFailures(instances = [], { projectName = "", projectCode = "", now = new Date() } = {}) {
+  const nowMs = timestamp(now) || Date.now();
   const ordered = [...instances].sort((a, b) => timestamp(instanceTime(a)) - timestamp(instanceTime(b)));
-  const originalFailures = ordered.filter((item) => commandTypeOf(item) === "SCHEDULER" && FAILED_STATES.has(stateOf(item)));
+  const scheduledFailureIdentities = new Set(ordered
+    .filter((item) => commandTypeOf(item) === "SCHEDULER" && FAILED_STATES.has(stateOf(item)))
+    .map((item) => workflowCode(item) || workflowName(item))
+    .filter(Boolean));
+  const originalFailures = ordered.filter((item) => (
+    commandTypeOf(item) === "SCHEDULER" && FAILED_STATES.has(stateOf(item))
+  ) || (
+    // retry_instance reruns the original DS instance in place. After n8n has
+    // acted, DS may expose only START_FAILURE_TASK_PROCESS + runTimes > 1.
+    commandTypeOf(item) === "START_FAILURE_TASK_PROCESS"
+    && runTimesOf(item) > 1
+    && !scheduledFailureIdentities.has(workflowCode(item) || workflowName(item))
+  ));
   return originalFailures
     .map((item) => {
       const failedAt = timestamp(instanceTime(item));
+      const inPlaceRetry = commandTypeOf(item) === "START_FAILURE_TASK_PROCESS" && runTimesOf(item) > 1;
       const identity = workflowCode(item) || workflowName(item);
       const nextScheduledAt = ordered
         .filter((candidate) => (
@@ -334,12 +395,14 @@ export function classifyOriginalScheduledFailures(instances = [], { projectName 
         && timestamp(instanceTime(candidate)) < nextScheduledAt
         && isFailureRetry(candidate)
       ));
-      const latestRetry = later.at(-1) || null;
+      const latestRetry = later.at(-1) || (inPlaceRetry ? item : null);
       const latestRetryState = stateOf(latestRetry || {});
       const restarted = latestRetry && SUCCESS_STATES.has(latestRetryState) ? latestRetry : null;
       const restarting = latestRetry && RUNNING_STATES.has(latestRetryState) ? latestRetry : null;
       const retryFailed = latestRetry && !restarted && !restarting;
-      const retryCount = later.reduce((count, candidate) => Math.max(count, runTimesOf(candidate) - 1), later.length);
+      const retryCount = Math.min(N8N_MAX_RETRIES, later.reduce((count, candidate) => Math.max(count, runTimesOf(candidate) - 1), inPlaceRetry ? runTimesOf(item) - 1 : later.length));
+      const elapsedMs = Math.max(0, (timestamp(endTime(latestRetry || {})) || nowMs) - failedAt);
+      const monitorTimedOut = Boolean(latestRetry) && elapsedMs >= N8N_MONITOR_TIMEOUT_MS && !restarted;
       return {
       projectName,
       projectCode,
@@ -355,7 +418,10 @@ export function classifyOriginalScheduledFailures(instances = [], { projectName 
       recoveryTime: endTime(latestRetry || {}) || instanceTime(latestRetry || {}),
       retryCount,
       retryTriggered: Boolean(latestRetry),
-      retryResult: restarted ? "recovered" : restarting ? "running" : retryFailed ? "failed" : "not_triggered",
+      retryResult: restarted ? "recovered" : monitorTimedOut ? "timeout_needs_owner" : restarting ? "running" : retryFailed ? "failed" : "not_triggered",
+      n8nMonitorTimedOut: monitorTimedOut,
+      n8nMaxRetries: N8N_MAX_RETRIES,
+      n8nLogicSource: "Global-Intelligent-Alarm-Repair-Assistant/tools/ds_failed_auto_retry.py",
       retryAttempts: later.map((candidate) => ({
         instanceId: instanceId(candidate),
         state: stateOf(candidate),
@@ -625,7 +691,7 @@ async function loadTaskRuntime(failure, task, { webhookUrl, country, token }) {
 async function enrichFailure(failure, { webhookUrl, country, token }) {
   if (!failure.instanceId) {
     const enriched = { ...failure, failureMessage: extractDsFailureReason("", failure.failureMessage) };
-    return { ...enriched, ...classifyDsFailureType(enriched) };
+    return withN8nProjectDecision({ ...enriched, ...classifyDsFailureType(enriched) });
   }
   try {
     if (failure.taskInstanceId) {
@@ -646,7 +712,7 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
           extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
         ),
       };
-      return { ...enriched, ...classifyDsFailureType(enriched) };
+      return withN8nProjectDecision({ ...enriched, ...classifyDsFailureType(enriched) });
     }
     const resolved = await resolveFailureTask(failure, { webhookUrl, country, token });
     if (!resolved) {
@@ -654,7 +720,7 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
         ...failure,
         failureMessage: stoppedFailureReason(failure, extractDsFailureReason("", failure.failureMessage)),
       };
-      return { ...enriched, ...classifyDsFailureType(enriched) };
+      return withN8nProjectDecision({ ...enriched, ...classifyDsFailureType(enriched) });
     }
     const { taskInstanceId, taskName, taskCode, taskType, taskState, logData, workflowCode: resolvedWorkflowCode, workflowInstanceId, taskQueryPages, taskQueryReadCount, taskQueryTotal } = resolved;
     const runtimeFailure = { ...failure, workflowCode: resolvedWorkflowCode || failure.workflowCode };
@@ -677,14 +743,14 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
         extractDsFailureReason(logData.log || logData.task_log || logData.content || "", failure.failureMessage),
       ),
     };
-    return { ...enriched, ...classifyDsFailureType(enriched) };
+    return withN8nProjectDecision({ ...enriched, ...classifyDsFailureType(enriched) });
   } catch (error) {
     const enriched = {
       ...failure,
       failureMessage: stoppedFailureReason(failure, extractDsFailureReason("", failure.failureMessage)),
       logError: error.message,
     };
-    return { ...enriched, ...classifyDsFailureType(enriched) };
+    return withN8nProjectDecision({ ...enriched, ...classifyDsFailureType(enriched) });
   }
 }
 
@@ -868,7 +934,7 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
   });
 }
 
-async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl, originalScheduledOnly = false, lookbackDays = 1 }) {
+async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl, originalScheduledOnly = false, lookbackDays = 1, now = new Date() }) {
   try {
     const instances = await listProjectInstances({
       webhookUrl,
@@ -879,7 +945,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
       timeZone,
       lookbackDays,
     });
-    const failures = (originalScheduledOnly ? classifyOriginalScheduledFailures : classifyWorkflowFailures)(instances, { projectName: project.name, projectCode: project.code })
+    const failures = (originalScheduledOnly ? classifyOriginalScheduledFailures : classifyWorkflowFailures)(instances, { projectName: project.name, projectCode: project.code, now })
       .map((failure) => ({
         ...failure,
         dsInstanceUrl: buildDsInstanceUrl(country, project.code, failure.instanceId, dsUiBaseUrl),
@@ -926,6 +992,7 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
     dsUiBaseUrl,
     originalScheduledOnly,
     lookbackDays,
+    now,
   }));
   const failures = projectResults.flatMap((item) => item.failures || []);
   return {
