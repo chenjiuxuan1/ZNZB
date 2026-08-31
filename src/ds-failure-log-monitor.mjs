@@ -6,8 +6,9 @@ const INSTANCE_PAGE_SIZE = 100;
 const MAX_INSTANCE_PAGES = 50;
 const TASK_PAGE_SIZE = 100;
 const MAX_TASK_PAGES = 50;
-const PROJECT_QUERY_CONCURRENCY = 3;
-const FAILURE_ENRICH_CONCURRENCY = 2;
+const PROJECT_QUERY_CONCURRENCY = 4;
+const FAILURE_ENRICH_CONCURRENCY = 3;
+const ORIGINAL_FAILURE_CACHE_TTL_MS = 90_000;
 const MAX_SUB_WORKFLOW_DEPTH = 8;
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
@@ -27,6 +28,9 @@ const COUNTRY_DS_UI_BASE_URLS = {
   pk: "https://dolphin.wealthleaptech.com/dolphinscheduler/ui",
   mx: "https://ds.mxgbus.com/dolphinscheduler/ui",
 };
+
+const originalFailureResultCache = new Map();
+const originalFailureInFlight = new Map();
 
 const FAILED_STATES = new Set(["FAILURE", "KILL", "STOP", "STOPPED", "6", "9", "5"]);
 const STOPPED_STATES = new Set(["KILL", "STOP", "STOPPED", "9", "5"]);
@@ -1065,26 +1069,50 @@ export async function inspectDsFailureLogs(rootDir, { now = new Date(), countrie
   };
 }
 
-export async function inspectOriginalScheduledFailures(rootDir, { now = new Date(), countries: requestedCountries, lookbackDays: requestedLookbackDays = 7 } = {}) {
-  const config = await loadDsSchedulerConfig(rootDir);
+export async function inspectOriginalScheduledFailures(rootDir, { now = new Date(), countries: requestedCountries, lookbackDays: requestedLookbackDays = 7, bypassCache = false } = {}) {
   const selectedCountries = normalizeCountrySelection(requestedCountries);
   const lookbackDays = normalizeLookbackDays(requestedLookbackDays, 7);
-  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true, lookbackDays)));
-  const failures = countries.flatMap((item) => item.failures || []);
-  return {
-    checkedAt: new Date().toISOString(),
-    dateMode: "country-local-lookback",
-    lookbackDays,
-    mode: "n8n-failure-restart-watch",
-    totalCountries: selectedCountries.length,
-    configuredCountries: countries.filter((item) => item.configured).length,
-    checkedProjects: countries.reduce((sum, item) => sum + item.checkedProjects, 0),
-    checkedInstances: countries.reduce((sum, item) => sum + item.checkedInstances, 0),
-    totalFailures: failures.length,
-    recoveredCount: failures.filter((item) => item.repairStatus === "recovered").length,
-    repairingCount: failures.filter((item) => item.repairStatus === "repairing").length,
-    unresolvedCount: failures.filter((item) => item.repairStatus === "unresolved").length,
-    failedCountries: countries.filter((item) => item.configured && !item.success).length,
-    countries,
-  };
+  const targetDates = selectedCountries.map((country) => `${country}:${todayInTimeZone(COUNTRY_TIMEZONES[country], now)}`).join(",");
+  const cacheKey = `${String(rootDir || "")}|${targetDates}|${lookbackDays}`;
+  const cached = originalFailureResultCache.get(cacheKey);
+  if (!bypassCache && cached && Date.now() - cached.savedAt < ORIGINAL_FAILURE_CACHE_TTL_MS) {
+    return { ...cached.result, cacheHit: true, cacheAgeMs: Date.now() - cached.savedAt };
+  }
+  if (!bypassCache && originalFailureInFlight.has(cacheKey)) return originalFailureInFlight.get(cacheKey);
+
+  const inspection = (async () => {
+    const config = await loadDsSchedulerConfig(rootDir);
+    const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true, lookbackDays)));
+    const failures = countries.flatMap((item) => item.failures || []);
+    const result = {
+      checkedAt: new Date().toISOString(),
+      dateMode: "country-local-lookback",
+      lookbackDays,
+      mode: "n8n-failure-restart-watch",
+      cacheHit: false,
+      cacheAgeMs: 0,
+      totalCountries: selectedCountries.length,
+      configuredCountries: countries.filter((item) => item.configured).length,
+      checkedProjects: countries.reduce((sum, item) => sum + item.checkedProjects, 0),
+      checkedInstances: countries.reduce((sum, item) => sum + item.checkedInstances, 0),
+      totalFailures: failures.length,
+      recoveredCount: failures.filter((item) => item.repairStatus === "recovered").length,
+      repairingCount: failures.filter((item) => item.repairStatus === "repairing").length,
+      unresolvedCount: failures.filter((item) => item.repairStatus === "unresolved").length,
+      failedCountries: countries.filter((item) => item.configured && !item.success).length,
+      countries,
+    };
+    originalFailureResultCache.set(cacheKey, { savedAt: Date.now(), result });
+    if (originalFailureResultCache.size > 24) {
+      const oldestKey = originalFailureResultCache.keys().next().value;
+      originalFailureResultCache.delete(oldestKey);
+    }
+    return result;
+  })();
+  originalFailureInFlight.set(cacheKey, inspection);
+  try {
+    return await inspection;
+  } finally {
+    originalFailureInFlight.delete(cacheKey);
+  }
 }
