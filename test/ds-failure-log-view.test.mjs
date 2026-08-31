@@ -128,6 +128,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(monitor, /const targetDate = todayInTimeZone\(timeZone, now\)/);
   assert.match(monitor, /dateMode: lookbackDays === 1 \? "country-local-today" : "country-local-lookback"/);
   assert.match(monitor, /dateMode: "country-local-lookback"/);
+  assert.match(monitor, /PROJECT_QUERY_CONCURRENCY = 4/);
+  assert.match(monitor, /FAILURE_ENRICH_CONCURRENCY = 3/);
+  assert.match(monitor, /ORIGINAL_FAILURE_CACHE_TTL_MS = 90_000/);
+  assert.match(monitor, /originalFailureInFlight\.has\(cacheKey\)/);
   assert.match(monitor, /normalizeLookbackDays\(requestedLookbackDays, 7\)/);
   assert.match(monitor, /mapWithConcurrency\(projects, PROJECT_QUERY_CONCURRENCY/);
   assert.match(monitor, /"list_instances"/);
@@ -137,7 +141,6 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(monitor, /"list_task_instances"/);
   assert.match(monitor, /"get_task_log"/);
   assert.match(monitor, /"extract_task_runtime_config"/);
-  assert.match(monitor, /PROJECT_QUERY_CONCURRENCY = 3/);
   assert.match(monitor, /自动重试 1 次/);
   assert.doesNotMatch(monitor, /人工停止或终止，不自动重跑/);
   assert.doesNotMatch(monitor, /failure_policy: "scheduled_today_final_failure"/);
