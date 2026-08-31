@@ -8,44 +8,38 @@ import { escapeHtml } from "../view-utils.js";
  *   - hero 统计卡片：当前告警 / 涉及业务组 / 严重告警 / n8n失败 / 更新时间
  *   - 按业务组卡片展示当前活跃告警，点击卡片查看该组明细
  *   - n8n 最近失败执行
- * 手动刷新，不做定时轮询。
+ *
+ * 渲染策略：页面首次仅输出骨架，数据加载完成后一次性写入完整内容，
+ * 避免多次 innerHTML 导致页面连续闪烁。手动刷新，不做定时轮询。
  */
-export function renderAlertCenter(root, { reload }) {
+export function renderAlertCenter(root) {
   root.innerHTML = `
-    <div class="page-header batch-hero">
+    <div class="page-header">
       <div>
         <h1 class="page-title">告警中心</h1>
         <p class="page-note">实时查看夜莺当前活跃告警，按业务组聚合展示；n8n 失败执行一目了然。点"刷新真实数据"拉取最新。</p>
       </div>
-      ${renderHeroStats(null)}
-    </div>
-
-    <section class="panel wattrel-panel">
-      <div class="detail-header compact-header">
-        <div>
-          <h2 class="panel-title">当前告警看板</h2>
-          <p class="muted">实时查询夜莺活跃告警，按业务组聚合；点击业务组卡片查看该组当前告警明细。</p>
-        </div>
-        <div class="wattrel-button-row">
-          <button id="ac-refresh" class="primary">刷新真实数据</button>
-        </div>
+      <div class="header-actions">
+        <span id="ac-refresh-time" class="muted"></span>
+        <button class="primary" id="ac-refresh">刷新真实数据</button>
       </div>
-      <div id="ac-status"></div>
-      <div id="ac-content"><div class="notice">正在加载告警数据…</div></div>
+    </div>
+    <section class="panel wattrel-panel">
+      <div id="ac-body" class="notice">正在加载告警数据…</div>
     </section>
   `;
 
   root.querySelector("#ac-refresh").addEventListener("click", () => {
-    loadData(root, reload);
+    loadData(root);
   });
 
-  loadData(root, reload);
+  loadData(root);
 }
 
-async function loadData(root, reload) {
-  const statusEl = root.querySelector("#ac-status");
-  const content = root.querySelector("#ac-content");
-  setStatus(statusEl, "loading", "正在查询当前告警", "正在实时拉取夜莺活跃告警与 n8n 失败执行。");
+async function loadData(root) {
+  const body = root.querySelector("#ac-body");
+  const refreshTime = root.querySelector("#ac-refresh-time");
+  body.innerHTML = `<div class="notice">正在加载告警数据…</div>`;
 
   const [overview, active, config] = await Promise.all([
     apiGet("/api/alerts/overview").catch((error) => ({ error: error.message })),
@@ -53,116 +47,75 @@ async function loadData(root, reload) {
     apiGet("/api/alerts/config").catch(() => ({})),
   ]);
 
+  if (refreshTime) {
+    refreshTime.textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN")}`;
+  }
+
   if (overview?.error || active?.error) {
     const message = overview?.error || active?.error;
-    setStatus(statusEl, "error", "告警实时查询失败", "请检查夜莺/n8n 凭据与网络（配置见 .env）。");
-    content.innerHTML = `<div class="error">${escapeHtml(message)}</div>`;
+    body.innerHTML = `
+      <div class="sandbox-status error">
+        <strong>告警实时查询失败</strong>
+        <span>请检查夜莺/n8n 凭据与网络（配置见 .env）。</span>
+      </div>
+      <div class="error">${escapeHtml(message)}</div>
+    `;
     return;
   }
 
-  const timeLabel = formatDateTime(new Date().toISOString());
+  // 一次性渲染全部内容（hero + 状态 + 看板），避免多次重绘闪烁
+  body.innerHTML = renderBody(overview, active, config);
+  bindGroupClicks(root);
+}
+
+function renderBody(overview, active, config) {
   const stats = buildStats(overview, active, config);
-  renderHeroStats(stats, true);
-  setStatus(statusEl, "success",
-    (stats.activeCount || 0) > 0 ? "当前告警已更新" : "当前无活跃告警",
-    `${stats.activeCount || 0} 条活跃告警，涉及 ${stats.groupCount || 0} 个业务组，n8n 失败执行 ${stats.failedCount || 0} 条。${timeLabel}`);
-
-  renderContent(root, content, overview, active, stats);
-}
-
-function buildStats(overview, active, config) {
-  const n9e = overview.nightingale || {};
-  const n8n = overview.n8n || {};
   const activeList = Array.isArray(active) ? active : [];
-  const byGroup = n9e.byGroup || {};
-  const sev = n9e.severityCount || {};
-  const severity0 = activeList.filter((a) => Number(a.severity) === 0).length || sev[0] || 0;
-  return {
-    activeCount: n9e.activeCount || activeList.length || 0,
-    groupCount: Object.keys(byGroup).length || 0,
-    severity0,
-    severity1: sev[1] || 0,
-    severity2: sev[2] || 0,
-    failedCount: n8n.failedCount || 0,
-    checkedAt: overview.checkedAt || new Date().toISOString(),
-    n9eConfigured: Boolean(config.nightingale?.hasToken) || n9e.configured,
-    n8nConfigured: Boolean(config.n8n?.hasKey) || n8n.configured,
-  };
-}
+  const byGroup = buildGroupMap(activeList, overview);
+  const groups = [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length);
 
-function renderHeroStats(stats, show = false) {
-  const el = document.querySelector?.("#ac-hero-stats");
-  const host = document.querySelector?.(".page-header.batch-hero") || null;
-  if (!show || !stats) {
-    return "";
-  }
-  const markup = `
-    <div id="ac-hero-stats" class="hero-stats" aria-label="告警中心概览">
+  return `
+    <div class="hero-stats" aria-label="告警中心概览">
       <article><span>当前告警</span><strong>${escapeHtml(stats.activeCount)}</strong></article>
       <article><span>涉及业务组</span><strong>${escapeHtml(stats.groupCount)}</strong></article>
       <article><span>严重告警</span><strong>${escapeHtml(stats.severity0)}</strong></article>
       <article><span>n8n失败执行</span><strong>${escapeHtml(stats.failedCount)}</strong></article>
       <article><span>更新时间</span><strong>${escapeHtml(formatTimeShort(stats.checkedAt))}</strong></article>
     </div>
-  `;
-  if (el) {
-    el.outerHTML = markup;
-  } else if (host) {
-    host.insertAdjacentHTML("beforeend", markup);
-  }
-  return markup;
-}
 
-function setStatus(el, type, title, detail) {
-  if (!el) return;
-  el.innerHTML = `
-    <div class="sandbox-status ${escapeHtml(type)}">
-      <strong>${escapeHtml(title)}</strong>
-      <span>${escapeHtml(detail || "")}</span>
+    <div class="sandbox-status ${stats.activeCount ? "success" : "info"}">
+      <strong>${stats.activeCount ? "当前告警已更新" : "当前无活跃告警"}</strong>
+      <span>${stats.activeCount || 0} 条活跃告警，涉及 ${stats.groupCount || 0} 个业务组，n8n 失败执行 ${stats.failedCount || 0} 条。</span>
     </div>
-  `;
-}
 
-function renderContent(root, content, overview, active, stats) {
-  const activeList = Array.isArray(active) ? active : [];
-  const byGroup = buildGroupMap(activeList, overview);
-
-  if (!byGroup.size) {
-    content.innerHTML = `
-      <div class="auto-summary">
-        ${summaryItem("当前告警", 0)}
-        ${summaryItem("业务组", 0)}
-        ${summaryItem("n8n失败", stats.failedCount || 0)}
-      </div>
-      <p class="${stats.n9eConfigured ? "success" : "muted"}">${stats.n9eConfigured ? "已连接的业务组当前没有活跃告警。" : "夜莺未配置凭据（N9E_BASE_URL/N9E_TOKEN），无法查询活跃告警。"}</p>
-      ${renderN8nFailures(overview.n8n || {})}
-    `;
-    return;
-  }
-
-  content.innerHTML = `
     <div class="auto-summary">
       ${summaryItem("当前告警", stats.activeCount)}
-      ${summaryItem("业务组", byGroup.size)}
+      ${summaryItem("业务组", groups.length)}
       ${summaryItem("严重告警", stats.severity0)}
       ${summaryItem("n8n失败", stats.failedCount)}
     </div>
-    ${renderGroupGrid(byGroup)}
-    ${renderGroupDetail(byGroup)}
+
+    ${renderGroupGrid(groups)}
+    ${renderGroupDetail(groups)}
     ${renderN8nFailures(overview.n8n || {})}
   `;
+}
 
-  root.querySelectorAll("[data-ac-group]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const group = button.getAttribute("data-ac-group") || "";
-      root.querySelectorAll("[data-ac-group]").forEach((b) => b.classList.remove("is-selected"));
-      button.classList.add("is-selected");
-      const detail = root.querySelector("#ac-group-detail");
-      if (detail) {
-        detail.innerHTML = renderGroupDetailRows(byGroup.get(group) || []);
-      }
-    });
-  });
+function buildStats(overview, active, config) {
+  const n9e = overview.nightingale || {};
+  const n8n = overview.n8n || {};
+  const activeList = Array.isArray(active) ? active : [];
+  const sev = n9e.severityCount || {};
+  const severity0 = activeList.filter((a) => Number(a.severity) === 0).length || sev[0] || 0;
+  return {
+    activeCount: n9e.activeCount || activeList.length || 0,
+    groupCount: Object.keys(n9e.byGroup || {}).length,
+    severity0,
+    severity1: sev[1] || 0,
+    severity2: sev[2] || 0,
+    failedCount: n8n.failedCount || 0,
+    checkedAt: overview.checkedAt || new Date().toISOString(),
+  };
 }
 
 function buildGroupMap(activeList, overview) {
@@ -172,7 +125,6 @@ function buildGroupMap(activeList, overview) {
     if (!map.has(group)) map.set(group, []);
     map.get(group).push(alert);
   }
-  // 合并 overview.byGroup 里未出现在 activeList 的组
   const byGroup = overview.nightingale?.byGroup || {};
   for (const [name, count] of Object.entries(byGroup)) {
     if (!map.has(name)) {
@@ -190,8 +142,10 @@ function buildGroupMap(activeList, overview) {
   return map;
 }
 
-function renderGroupGrid(byGroup) {
-  const entries = [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length);
+function renderGroupGrid(groups) {
+  if (!groups.length) {
+    return "";
+  }
   return `
     <section class="sub-panel">
       <div class="detail-header compact-header">
@@ -201,10 +155,11 @@ function renderGroupGrid(byGroup) {
         </div>
       </div>
       <div class="wattrel-country-grid">
-        ${entries.map(([name, alerts]) => {
+        ${groups.map(([name, alerts]) => {
           const sev0 = alerts.filter((a) => Number(a.severity) === 0).length;
+          const alertsJson = escapeHtml(JSON.stringify(alerts).replace(/"/g, "&quot;"));
           return `
-            <button type="button" class="wattrel-country-card" data-ac-group="${escapeHtml(name)}">
+            <button type="button" class="wattrel-country-card" data-ac-group="${escapeHtml(name)}" data-ac-alerts="${alertsJson}">
               <div>
                 <strong>${escapeHtml(name)}</strong>
                 <span>${sev0 ? `严重 ${sev0} 条 · ` : ""}共 ${alerts.length} 条告警</span>
@@ -219,7 +174,10 @@ function renderGroupGrid(byGroup) {
   `;
 }
 
-function renderGroupDetail(byGroup) {
+function renderGroupDetail(groups) {
+  if (!groups.length) {
+    return "";
+  }
   return `
     <section class="sub-panel" id="ac-group-detail-panel">
       <div class="detail-header compact-header">
@@ -228,7 +186,7 @@ function renderGroupDetail(byGroup) {
           <p class="muted">点击上方业务组卡片，这里展示该组的当前告警明细。</p>
         </div>
       </div>
-      <div id="ac-group-detail">${renderGroupDetailRows(byGroup.values().next().value || [])}</div>
+      <div id="ac-group-detail">${renderGroupDetailRows(groups[0]?.[1] || [])}</div>
     </section>
   `;
 }
@@ -282,9 +240,37 @@ function renderN8nFailures(n8n) {
             `).join("")}
           </tbody>
         </table>
-      ` : `<p class="muted">${n8n.configured ? "当前没有 n8n 失败执行。" : "n8n 未配置凭据（N8N_BASE_URL/N8N_API_KEY）。"}</p>`}
+      ` : `<p class="muted">当前没有 n8n 失败执行。</p>`}
     </section>
   `;
+}
+
+function bindGroupClicks(root) {
+  const detail = root.querySelector("#ac-group-detail");
+  if (!detail) return;
+  const map = new Map();
+  root.querySelectorAll("[data-ac-group]").forEach((button) => {
+    const group = button.getAttribute("data-ac-group") || "";
+    button.addEventListener("click", () => {
+      root.querySelectorAll("[data-ac-group]").forEach((b) => b.classList.remove("is-selected"));
+      button.classList.add("is-selected");
+      const alerts = getGroupAlerts(root, group);
+      detail.innerHTML = renderGroupDetailRows(alerts);
+    });
+  });
+}
+
+function getGroupAlerts(root, group) {
+  // 从按钮的 data 属性缓存读取该组告警
+  const button = root.querySelector(`[data-ac-group="${CSS.escape(group)}"]`);
+  const payload = button?.dataset;
+  if (!payload) return [];
+  try {
+    const list = JSON.parse(payload.acAlerts || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
 }
 
 function summaryItem(label, value) {
@@ -321,15 +307,4 @@ function formatTimeShort(iso) {
   if (!iso) return "-";
   const date = new Date(iso);
   return isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function formatDateTime(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  });
 }
