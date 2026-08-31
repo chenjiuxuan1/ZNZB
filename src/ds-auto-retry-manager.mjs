@@ -21,16 +21,39 @@ function failureKey(country, failure) {
 }
 
 async function loadCountryOwnerConfig(rootDir) {
-  const shared = await readJsonFile(path.join(rootDir, "config", "ds-scheduled-failure-watch.json"), { owners: {} });
+  const shared = await readJsonFile(path.join(rootDir, "config", "ds-scheduled-failure-watch.json"), { owners: {}, groupChatIds: {} });
   const legacy = await readJsonFile(path.join(rootDir, "config", "batch-check-schedule.json"), { countryConfigs: [] });
-  return { ...legacy, sharedOwners: shared.owners || {} };
+  return { ...legacy, sharedOwners: shared.owners || {}, sharedGroupChatIds: shared.groupChatIds || {} };
 }
 
 function findCountryOwnerConfig(schedule, country) {
   const normalizedCountry = String(country || "").trim().toLowerCase();
   const sharedOwner = String(schedule?.sharedOwners?.[normalizedCountry] || "").trim();
+  const sharedGroupChatId = String(schedule?.sharedGroupChatIds?.[normalizedCountry] || "").trim();
   const legacy = (schedule?.countryConfigs || []).find((item) => String(item?.countryCode || "").trim().toLowerCase() === normalizedCountry) || {};
-  return sharedOwner ? { ...legacy, ownerEmails: sharedOwner } : legacy;
+  return { ...legacy, ...(sharedOwner ? { ownerEmails: sharedOwner } : {}), ...(sharedGroupChatId ? { chatId: sharedGroupChatId } : {}) };
+}
+
+function ownerMentions(ownerEmails) {
+  return String(ownerEmails || "").split(/[，,；;\n]/).map((item) => item.trim()).filter(Boolean).map((email) => `@${email}`);
+}
+
+function buildRetryFailureMessage(country, failure, attempts, outcome = {}) {
+  const result = outcome.type === "submit_failed"
+    ? `重跑请求提交失败：${outcome.errorMessage || "接口未返回明确原因"}`
+    : `本轮已提交 1 次重跑，但实例状态仍为 ${outcome.state || "FAILURE"}，任务尚未修复`;
+  return [
+    "定时失败任务重跑失败",
+    `国家：${String(country || "").toUpperCase()}`,
+    `项目：${failure.projectName || failure.projectCode || "-"}`,
+    `工作流：${failure.workflowName || failure.workflowCode || "-"}`,
+    `失败任务：${failure.taskName || failure.failedTaskName || "未返回任务节点名称"}`,
+    `实例 ID：${failure.instanceId || "-"}`,
+    `原失败原因：${failure.failureMessage || failure.retryDecision || "未解析到明确失败原因，请查看 DS 实例日志"}`,
+    `本轮重跑次数：${attempts}`,
+    `处理结果：${result}`,
+    failure.instanceUrl ? `工作流实例：${failure.instanceUrl}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 function buildEmptyRunTimeoutMessage(country, failure, attempts, reference = new Date()) {
@@ -146,6 +169,36 @@ export function createDsAutoRetryManager({
     persistState();
   };
 
+  async function notifyRetryFailure(country, failure, key, runId, outcome) {
+    const attempts = Number(statuses.get(key)?.attempts || 0);
+    const notificationKey = `${runId || "unknown-run"}:${key}:${outcome.type}`;
+    if (statuses.get(key)?.lastFailureNotificationKey === notificationKey) return;
+    const taskDetail = failureTaskDetail(failure);
+    try {
+      const schedule = await ownerConfigLoader(rootDir);
+      const ownerConfig = findCountryOwnerConfig(schedule, country);
+      const ownerEmails = String(ownerConfig.ownerEmails || ownerConfig.recipientEmails || "").trim();
+      if (!ownerEmails) {
+        appendLog("warn", "retry_failure_notification_skipped", { runId, key, country, attempts, ...taskDetail, message: "未配置该国家负责人邮箱，未发送重跑失败私聊告警" });
+        return;
+      }
+      const notification = await notifyFn({ alerts: {
+        channel: "knBot",
+        botToken: ownerConfig.botToken || "${KN_BOT_TOKEN}",
+        recipientEmails: ownerEmails,
+      } }, buildRetryFailureMessage(country, failure, attempts, outcome), {
+        title: "定时失败任务重跑失败",
+        severity: "warning",
+        timestamp: now().toISOString(),
+      });
+      if (!notification?.sent) throw new Error(notification?.reason || "重跑失败告警未发送");
+      setStatus(key, { lastFailureNotificationKey: notificationKey, lastFailureNotificationAt: now().toISOString() });
+      appendLog("success", "retry_failure_notification_sent", { runId, key, country, attempts, ...taskDetail, message: `重跑失败私聊告警已发送给负责人：${ownerEmails}` });
+    } catch (error) {
+      appendLog("error", "retry_failure_notification_failed", { runId, key, country, attempts, ...taskDetail, message: `重跑失败告警发送失败：${error.message}` });
+    }
+  }
+
   async function runLoop(country, failure, { manual = false, runId = currentRunId } = {}) {
     const key = failureKey(country, failure);
     const startedDate = countryDateKey(country, new Date(failure.startTime || now()));
@@ -252,6 +305,7 @@ export function createDsAutoRetryManager({
         if (submittedThisRun) {
           setStatus(key, { autoRetryStatus: "unresolved", stopReason: "本轮已重跑 1 次但仍未修复", attempts, recoveryState: state });
           runLog("warn", "retry_not_recovered", { key, country, attempts, state, ...taskDetail, message: "本轮已重跑 1 次，任务仍未修复" });
+          await notifyRetryFailure(country, failure, key, runId, { type: "not_recovered", state });
           return;
         }
         if (manual && !manualRunning) return;
@@ -281,6 +335,7 @@ export function createDsAutoRetryManager({
         } catch (error) {
           setStatus(key, { autoRetryStatus: "retry_wait", attempts, lastError: error.message });
           runLog("error", "retry_failed", { key, country, attempts, ...taskDetail, message: error.message });
+          await notifyRetryFailure(country, failure, key, runId, { type: "submit_failed", errorMessage: error.message });
           return;
         }
         await sleep(retryDelayMs);
@@ -537,6 +592,7 @@ export function createDsAutoRetryManager({
     const schedule = await ownerConfigLoader(rootDir);
     const countryCodes = new Set([
       ...Object.keys(schedule?.sharedOwners || {}),
+      ...Object.keys(schedule?.sharedGroupChatIds || {}),
       ...(schedule?.countryConfigs || []).map((item) => String(item?.countryCode || "").trim().toLowerCase()),
     ]);
     const targets = [...countryCodes]
@@ -545,12 +601,13 @@ export function createDsAutoRetryManager({
         return {
           country,
           emails: String(owner.ownerEmails || owner.recipientEmails || "").trim(),
+          chatId: String(owner.chatId || "").trim(),
           botToken: owner.botToken || "${KN_BOT_TOKEN}",
         };
       })
-      .filter((item) => item.country && item.emails && (!requestedCountry || item.country === requestedCountry));
+      .filter((item) => item.country && (item.emails || item.chatId) && (!requestedCountry || item.country === requestedCountry));
     if (!targets.length) {
-      throw new Error(requestedCountry ? `国家 ${requestedCountry.toUpperCase()} 未配置负责人邮箱` : "未配置可测试的国家负责人邮箱");
+      throw new Error(requestedCountry ? `国家 ${requestedCountry.toUpperCase()} 未配置负责人邮箱或群聊 ID` : "未配置可测试的国家负责人邮箱或群聊 ID");
     }
 
     const runId = `ds-owner-notification-test-${now().getTime()}`;
@@ -562,6 +619,8 @@ export function createDsAutoRetryManager({
             channel: "knBot",
             botToken: target.botToken,
             recipientEmails: target.emails,
+            chatId: target.chatId,
+            mentions: ownerMentions(target.emails),
           },
         }, [
           "DS 失败任务负责人通知测试",

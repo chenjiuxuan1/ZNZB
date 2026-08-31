@@ -2253,6 +2253,23 @@ test("DS notification preview and send test use the effective DS target", async 
   assert.equal(sent[0].meta.title, "DS 调度监控通知测试");
 });
 
+test("n8n failure watch persists per-country private and group notification targets", async () => {
+  const rootDir = await makeFixture();
+  const api = createPlatformApi({ rootDir });
+
+  const saved = await api.saveDsScheduledFailureWatchConfig({
+    enabled: true,
+    intervalMinutes: 5,
+    owners: { ph: "simontang@kn.group" },
+    groupChatIds: { ph: "-1001234567890" },
+  });
+
+  assert.equal(saved.owners.ph, "simontang@kn.group");
+  assert.equal(saved.groupChatIds.ph, "-1001234567890");
+  assert.equal(saved.owners.mx, "");
+  assert.equal(saved.groupChatIds.mx, "");
+});
+
 test("requested hourly dashboards are stored in all six country sources", async () => {
   const expected = new Map([
     ["config/discovered-panels.json", "/dashboard/1052"],
