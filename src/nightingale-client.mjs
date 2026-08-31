@@ -8,6 +8,8 @@
  *   const client = new NightingaleClient({ baseUrl, token });
  *   const alerts = await client.getActiveAlerts({ busiGroup: 18 });
  */
+import { fetchCompatible } from "./fetch-compatible.mjs";
+
 export class NightingaleClient {
   constructor({ baseUrl, token, timeoutMs = 20000 } = {}) {
     this.baseUrl = (baseUrl || "").replace(/\/+$/, "");
@@ -40,7 +42,7 @@ export class NightingaleClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const response = await fetch(url, {
+      const response = await fetchCompatible(url, {
         ...options,
         headers: {
           Accept: "application/json",
