@@ -2627,13 +2627,16 @@ export function createPlatformApi({
     async getDsScheduledFailureWatchConfig() {
       const stored = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
       const owners = {};
+      const groupChatIds = {};
       for (const country of ["cn", "ine", "ph", "th", "pk", "mx"]) {
         owners[country] = String(stored.owners?.[country] || "").trim();
+        groupChatIds[country] = String(stored.groupChatIds?.[country] || "").trim();
       }
       return {
         enabled: stored.enabled !== false,
         intervalMinutes: Math.max(1, Number(stored.intervalMinutes || 5)),
         owners,
+        groupChatIds,
         lastCheckedAt: stored.lastCheckedAt || null,
         lastNotificationAt: stored.lastNotificationAt || null,
         lastError: stored.lastError || null,
@@ -2643,14 +2646,17 @@ export function createPlatformApi({
     async saveDsScheduledFailureWatchConfig(input = {}) {
       const current = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
       const owners = {};
+      const groupChatIds = {};
       for (const country of ["cn", "ine", "ph", "th", "pk", "mx"]) {
         owners[country] = String(input.owners?.[country] ?? current.owners?.[country] ?? "").trim();
+        groupChatIds[country] = String(input.groupChatIds?.[country] ?? current.groupChatIds?.[country] ?? "").trim();
       }
       const saved = {
         ...current,
         enabled: input.enabled !== false,
         intervalMinutes: Math.max(1, Number(input.intervalMinutes || current.intervalMinutes || 5)),
         owners,
+        groupChatIds,
       };
       await writeJsonAtomic(resolve("dsScheduledFailureWatch"), saved);
       return this.getDsScheduledFailureWatchConfig();
@@ -2671,27 +2677,48 @@ export function createPlatformApi({
       const notificationErrors = [];
       for (const countryResult of result.countries || []) {
         const ownerEmails = String(state.owners?.[countryResult.country] || "").trim();
-        if (!ownerEmails) continue;
+        const groupChatId = String(state.groupChatIds?.[countryResult.country] || notificationConfig.chatId || "").trim();
+        if (!ownerEmails && !groupChatId) continue;
         for (const failure of countryResult.failures || []) {
           const key = `${countryResult.country}:${failure.instanceId}`;
-          const failedAtMs = Date.parse(failure.startTime || "");
+          const failedAtMs = Date.parse(failure.endTime || failure.startTime || "");
           if (!failure.instanceId || notified.has(key) || !Number.isFinite(failedAtMs) || failedAtMs < notificationCutoffMs) continue;
+          const retryCount = Math.max(0, Number(failure.retryCount || 0));
+          const retrySummary = failure.retryResult === "recovered"
+            ? `自动重跑已恢复成功，重跑次数：${retryCount}`
+            : failure.retryResult === "running"
+              ? `目前自动失败重试中，执行次数：${retryCount}`
+              : failure.retryResult === "failed" || failure.retryResult === "timeout_needs_owner"
+                ? `自动重跑仍未恢复，重跑次数：${retryCount}，需要负责人查看`
+                : "已发现定时任务失败，等待自动失败重试";
           const message = [
             `n8n 失败重启监控｜${countryResult.countryName || countryResult.country}`,
+            `失败任务：${failure.taskName || failure.workflowName || "未返回任务节点名称"}`,
             `项目：${failure.projectName || failure.projectCode || "-"}`,
             `工作流：${failure.workflowName || "-"}`,
-            `失败任务：${failure.taskName || "未返回任务节点名称"}`,
             `实例：${failure.instanceId}`,
-            `失败原因：${failure.failureReason || failure.failureMessage || "未从 DS 实例详情中解析到明确失败原因，请查看 DS 实例日志"}`,
+            `定时任务执行失败，失败原因：${failure.failureReason || failure.failureMessage || "未从 DS 实例详情中解析到明确失败原因，请查看 DS 实例日志"}`,
+            retrySummary,
             failure.dsInstanceUrl ? `工作流实例：${failure.dsInstanceUrl}` : "",
           ].filter(Boolean).join("\n");
           try {
-            const alerts = { ...notificationConfig, recipientEmails: ownerEmails };
-            await notifyTextFn({ alerts }, message, {
+            const ownerMentions = ownerEmails
+              .split(/[，,；;\n]+/)
+              .map((email) => email.trim())
+              .filter(Boolean)
+              .map((email) => email.startsWith("@") ? email : `@${email}`);
+            const alerts = {
+              ...notificationConfig,
+              recipientEmails: ownerEmails,
+              chatId: groupChatId,
+              mentions: ownerMentions,
+            };
+            const notification = await notifyTextFn({ alerts }, message, {
               title: "n8n 失败重启监控",
               severity: "warning",
               timestamp: result.checkedAt,
             });
+            if (!notification?.sent) throw new Error(notification?.reason || "通知未发送到任何私聊或群聊目标");
             notified.add(key);
             notificationCount += 1;
           } catch (error) {
