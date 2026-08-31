@@ -146,6 +146,12 @@ function isFailureRetry(item = {}) {
   ]).has(commandTypeOf(item)) || runTimesOf(item) > 1;
 }
 
+export function normalizeLookbackDays(value, fallback = 1) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(90, Math.trunc(parsed)));
+}
+
 function scheduleCategoryOf(item = {}) {
   return commandTypeOf(item) === "SCHEDULER" ? "scheduled_online" : "non_scheduled_online";
 }
@@ -900,6 +906,7 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
       countryName,
       timeZone,
       targetDate,
+      lookbackDays,
       configured: false,
       success: false,
       error: !token ? "DS Token 未配置" : "DS 项目尚未匹配",
@@ -926,6 +933,7 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
     countryName,
     timeZone,
     targetDate,
+    lookbackDays,
     configured: true,
     success: projectResults.some((item) => item.success),
     partialFailure: projectResults.some((item) => !item.success),
@@ -937,14 +945,16 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
   };
 }
 
-export async function inspectDsFailureLogs(rootDir, { now = new Date(), countries: requestedCountries } = {}) {
+export async function inspectDsFailureLogs(rootDir, { now = new Date(), countries: requestedCountries, lookbackDays: requestedLookbackDays = 1 } = {}) {
   const config = await loadDsSchedulerConfig(rootDir);
   const selectedCountries = normalizeCountrySelection(requestedCountries);
-  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now)));
+  const lookbackDays = normalizeLookbackDays(requestedLookbackDays, 1);
+  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, false, lookbackDays)));
   const failures = countries.flatMap((item) => item.failures || []);
   return {
     checkedAt: new Date().toISOString(),
-    dateMode: "country-local-today",
+    dateMode: lookbackDays === 1 ? "country-local-today" : "country-local-lookback",
+    lookbackDays,
     totalCountries: selectedCountries.length,
     configuredCountries: countries.filter((item) => item.configured).length,
     checkedProjects: countries.reduce((sum, item) => sum + item.checkedProjects, 0),
@@ -958,15 +968,16 @@ export async function inspectDsFailureLogs(rootDir, { now = new Date(), countrie
   };
 }
 
-export async function inspectOriginalScheduledFailures(rootDir, { now = new Date(), countries: requestedCountries } = {}) {
+export async function inspectOriginalScheduledFailures(rootDir, { now = new Date(), countries: requestedCountries, lookbackDays: requestedLookbackDays = 7 } = {}) {
   const config = await loadDsSchedulerConfig(rootDir);
   const selectedCountries = normalizeCountrySelection(requestedCountries);
-  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true, 7)));
+  const lookbackDays = normalizeLookbackDays(requestedLookbackDays, 7);
+  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true, lookbackDays)));
   const failures = countries.flatMap((item) => item.failures || []);
   return {
     checkedAt: new Date().toISOString(),
-    dateMode: "country-local-last-7-days",
-    lookbackDays: 7,
+    dateMode: "country-local-lookback",
+    lookbackDays,
     mode: "n8n-failure-restart-watch",
     totalCountries: selectedCountries.length,
     configuredCountries: countries.filter((item) => item.configured).length,

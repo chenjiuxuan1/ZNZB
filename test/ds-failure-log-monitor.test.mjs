@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyDsFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures } from "../src/ds-failure-log-monitor.mjs";
+import { classifyDsFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays } from "../src/ds-failure-log-monitor.mjs";
+
+test("lookback days accepts manual ranges and applies safe limits", () => {
+  assert.equal(normalizeLookbackDays("7", 1), 7);
+  assert.equal(normalizeLookbackDays("0", 1), 1);
+  assert.equal(normalizeLookbackDays("999", 7), 90);
+  assert.equal(normalizeLookbackDays("invalid", 7), 7);
+});
 
 test("original scheduled failure view excludes manual and retry instances", () => {
   const failures = classifyOriginalScheduledFailures([
