@@ -6787,3 +6787,240 @@ body {
   background: #d1fae5;
   color: #065f46;
 }
+
+/* ============================================================
+ * 告警中心（taste-skill / redesign 优化）
+ * Reading this as: 内部运维监控看板，克制数据可视化语言。
+ * DESIGN_VARIANCE 5 / MOTION_INTENSITY 4 / VISUAL_DENSITY 7
+ * ============================================================ */
+
+.ac-panel {
+  padding: 18px;
+}
+
+/* ---- Hero：主卡 + 次级卡，打破均质白卡 ---- */
+.ac-hero {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.6fr repeat(4, 1fr);
+  margin-bottom: 16px;
+}
+
+.ac-hero-primary,
+.ac-hero-cell {
+  background: var(--panel);
+  border: 1px solid #e4e9f2;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.ac-hero-primary {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, #f1f6ff, #eaf1ff);
+  box-shadow: inset 0 0 0 1px #d6e4ff;
+  position: relative;
+  overflow: hidden;
+}
+
+.ac-hero-primary.is-critical {
+  background: linear-gradient(180deg, #fef2f2, #fdecec);
+  box-shadow: inset 0 0 0 1px #fecaca;
+}
+
+.ac-hero-primary::after {
+  content: "";
+  position: absolute;
+  right: -22px;
+  top: -22px;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(37 99 235 / 0.14), transparent 70%);
+  pointer-events: none;
+}
+
+.ac-hero-primary.is-critical::after {
+  background: radial-gradient(circle, rgb(220 38 38 / 0.14), transparent 70%);
+}
+
+.ac-hero-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ac-hero-value {
+  color: #172033;
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.ac-hero-primary .ac-hero-value {
+  font-size: 40px;
+}
+
+.ac-hero-time {
+  font-size: 17px;
+  letter-spacing: 0;
+  padding-top: 6px;
+}
+
+.ac-hero-sub {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.text-danger { color: #dc2626; }
+.text-warn { color: #d97706; }
+
+/* ---- 业务组卡片：去三件套，底色 + 层级 ---- */
+.ac-group-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+button.ac-group-card {
+  appearance: none;
+  background: #fff;
+  border: 1px solid #e6ebf3;
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  font: inherit;
+  min-width: 0;
+  padding: 14px 15px;
+  text-align: left;
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+  width: 100%;
+}
+
+button.ac-group-card:hover {
+  border-color: #b9c9e8;
+  box-shadow: 0 8px 22px rgb(15 23 42 / 0.08);
+  transform: translateY(-1px);
+}
+
+button.ac-group-card:active {
+  transform: translateY(0) scale(0.99);
+}
+
+button.ac-group-card:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+button.ac-group-card.has-critical {
+  border-left: 3px solid #dc2626;
+}
+
+button.ac-group-card.is-selected {
+  background: #f6f9ff;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgb(96 165 250 / 0.18), 0 8px 20px rgb(37 99 235 / 0.08);
+}
+
+.ac-group-card-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.ac-group-card-head strong {
+  color: #1b2538;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-group-count {
+  background: #eef2f8;
+  border-radius: 999px;
+  color: #475467;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  min-width: 26px;
+  padding: 3px 9px;
+  text-align: center;
+}
+
+.has-critical .ac-group-count {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.ac-group-preview {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+  min-height: 40px;
+}
+
+.ac-group-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.ac-group-detail-link {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---- 语义 pill ---- */
+.pill.danger {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 10px;
+}
+
+/* ---- 表格：行 hover + 数字等宽 ---- */
+.data-table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.data-table tbody tr:hover {
+  background: #f8fafd;
+}
+
+.data-table .num,
+.ac-hero-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 按钮 press 反馈 ---- */
+button.primary:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+@media (max-width: 1200px) {
+  .ac-hero { grid-template-columns: repeat(2, 1fr); }
+  .ac-group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .ac-hero { grid-template-columns: 1fr; }
+  .ac-group-grid { grid-template-columns: 1fr; }
+}
