@@ -1,31 +1,6 @@
 {
   "alerts": [
     {
-      "id": "pl_global_consistency",
-      "name": "PL 全球损益对账（财务库 + biz库）",
-      "country": "CN",
-      "sourceType": "n8n",
-      "n8nWorkflowId": "O2Ppfn5GgtAJVKsD",
-      "trigger": "webhook",
-      "webhookPath": "CWSJJY",
-      "command": "cd /root/starrocks-pl-monitor-tv-alert && python3 alert/run_alert.py --alert fin_ods_quality --sr-password 'v\\$8yzt8J4QPF#cjb' --sr-backup-password 'kGgk8RDF@5425Cxm' --dry-run",
-      "runVia": "ssh",
-      "sshHost": "root@10.20.47.14",
-      "sshPort": 36000,
-      "mentions": "adamyu@kn.group,gretchenhe@kn.group",
-      "enabled": true,
-      "note": "StarRocks 数仓与财务库/biz库数据一致性校验，按 table_name 拆分为两条告警；dry-run 不发送。",
-      "templateName": "fin_ods_quality",
-      "sqlBlocks": {
-        "BIZ_CTE_CLAUSE": "with nonoperate_ods_base as (\n    select stat_month, 'PK' as country,\n           sum(coalesce(expense_local, 0)) as expense_local,\n           sum(coalesce(expense_usd, 0)) as expense_usd\n    from fin_global.ods_pk_pl_nonoperate_expense_monthly\n    group by stat_month\n    union all\n    select stat_month, 'MX', sum(coalesce(expense_local, 0)), sum(coalesce(expense_usd, 0))\n    from fin_global.ods_mx_pl_nonoperate_expense_monthly\n    group by stat_month\n    union all\n    select stat_month, 'PH', sum(coalesce(expense_local, 0)), sum(coalesce(expense_usd, 0))\n    from fin_global.ods_ph_pl_nonoperate_expense_monthly\n    group by stat_month\n    union all\n    select stat_month, 'TH', sum(coalesce(expense_local, 0)), sum(coalesce(expense_usd, 0))\n    from fin_global.ods_th_pl_nonoperate_expense_monthly\n    group by stat_month\n    union all\n    select stat_month, 'INE', sum(coalesce(expense_local, 0)), sum(coalesce(expense_usd, 0))\n    from fin_global.ods_ine_pl_nonoperate_expense_monthly\n    group by stat_month\n),\nnonoperate_global_base as (\n    select stat_month, country,\n           sum(coalesce(expense_local, 0)) as expense_local,\n           sum(coalesce(expense_usd, 0)) as expense_usd\n    from fin_global.pl_nonoperate_expense_monthly_global\n    group by stat_month, country\n)",
-        "FIN_UNION_SELECT": "    select\n        current_date() as dt\n        ,'ods_security.ods_capital_bi_collection_report' as table_name\n        ,a.bi_collection_report_id as mysql_primary_key\n        ,a.bi_collection_report_total_amount as src_value\n        ,coalesce(b.bi_collection_report_total_amount, 0) as dest_value\n        ,a.bi_collection_report_total_amount - coalesce(b.bi_collection_report_total_amount, 0) as diff\n    from cw_catalog.capital.bi_collection_report a\n    left join ods_security.ods_capital_bi_collection_report b\n      on b.bi_collection_report_id = a.bi_collection_report_id\n\n    union all\n    select\n        current_date() as dt\n        ,'ods_security.ods_capital_bi_report_apportion_before' as table_name\n        ,a.bi_report_apportion_before_id as mysql_primary_key\n        ,a.bi_report_apportion_before_amount as src_value\n        ,coalesce(b.bi_report_apportion_before_amount, 0) as dest_value\n        ,a.bi_report_apportion_before_amount - coalesce(b.bi_report_apportion_before_amount, 0) as diff\n    from cw_catalog.capital.bi_report_apportion_before a\n    left join ods_security.ods_capital_bi_report_apportion_before b\n      on b.bi_report_apportion_before_id = a.bi_report_apportion_before_id\n\n    union all\n    select\n        current_date() as dt\n        ,'ods_security.ods_capital_bi_report_apportion_after' as table_name\n        ,a.bi_report_apportion_after_id as mysql_primary_key\n        ,a.bi_report_apportion_after_amount as src_value\n        ,coalesce(b.bi_report_apportion_after_amount, 0) as dest_value\n        ,a.bi_report_apportion_after_amount - coalesce(b.bi_report_apportion_after_amount, 0) as diff\n    from cw_catalog.capital.bi_report_apportion_after a\n    left join ods_security.ods_capital_bi_report_apportion_after b\n      on b.bi_report_apportion_after_id = a.bi_report_apportion_after_id",
-        "BIZ_UNION_SELECT": "    select\n        current_date() as dt\n        ,concat('fin_global.ods_', lower(coalesce(a.country, b.country)), '_pl_nonoperate_expense_monthly.expense_local') as table_name\n        ,cast(replace(coalesce(a.stat_month, b.stat_month), '-', '') as bigint) as mysql_primary_key\n        ,case when coalesce(a.stat_month, b.stat_month) < date_format(current_date(), '%Y-%m')\n              then coalesce(a.expense_local, 0) else 0 end as src_value\n        ,coalesce(b.expense_local, 0) as dest_value\n        ,case when coalesce(a.stat_month, b.stat_month) < date_format(current_date(), '%Y-%m')\n              then coalesce(a.expense_local, 0) else 0 end - coalesce(b.expense_local, 0) as diff\n    from nonoperate_ods_base a\n    full outer join nonoperate_global_base b\n      on b.country = a.country\n     and b.stat_month = a.stat_month\n\n    union all\n    select\n        current_date() as dt\n        ,concat('fin_global.ods_', lower(coalesce(a.country, b.country)), '_pl_nonoperate_expense_monthly.expense_usd') as table_name\n        ,cast(replace(coalesce(a.stat_month, b.stat_month), '-', '') as bigint) as mysql_primary_key\n        ,case when coalesce(a.stat_month, b.stat_month) < date_format(current_date(), '%Y-%m')\n              then coalesce(a.expense_usd, 0) else 0 end as src_value\n        ,coalesce(b.expense_usd, 0) as dest_value\n        ,case when coalesce(a.stat_month, b.stat_month) < date_format(current_date(), '%Y-%m')\n              then coalesce(a.expense_usd, 0) else 0 end - coalesce(b.expense_usd, 0) as diff\n    from nonoperate_ods_base a\n    full outer join nonoperate_global_base b\n      on b.country = a.country\n     and b.stat_month = a.stat_month"
-      },
-      "scriptPath": "alert/fin_manage_ods_data_quality_monitor_alert.py",
-      "remoteScriptPath": "/root/starrocks-pl-monitor-tv-alert/alert/fin_manage_ods_data_quality_monitor_alert.py",
-      "repoDir": "${ALERT_REPO_DIR}"
-    },
-    {
       "id": "mx_capital_ltv_chuanjin",
       "name": "墨西哥资方 LTV 告警（串金）",
       "country": "MX",
@@ -96,6 +71,52 @@
       },
       "scriptPath": "alert/id_marketing_dwd_table_cnt_alert.py",
       "remoteScriptPath": "/root/starrocks-pl-monitor-tv-alert/alert/id_marketing_dwd_table_cnt_alert.py",
+      "repoDir": "${ALERT_REPO_DIR}"
+    },
+    {
+      "id": "pl_fin_consistency",
+      "name": "PL 财务库对账（capital 三表）",
+      "country": "CN",
+      "sourceType": "n8n",
+      "n8nWorkflowId": "O2Ppfn5GgtAJVKsD",
+      "trigger": "webhook",
+      "webhookPath": "CWSJJY",
+      "command": "cd /root/starrocks-pl-monitor-tv-alert && python3 alert/fin_finance_consistency_alert.py --sr-password 'v\\$8yzt8J4QPF#cjb' --sr-backup-password 'kGgk8RDF@5425Cxm' --dry-run",
+      "runVia": "ssh",
+      "sshHost": "root@10.20.47.14",
+      "sshPort": 36000,
+      "mentions": "adamyu@kn.group,gretchenhe@kn.group",
+      "enabled": true,
+      "note": "StarRocks 数仓与财务库数据一致性校验（cw_catalog.capital.bi_* 三表 vs ods_security）；dry-run 不发送。",
+      "templateName": "fin_ods_fin",
+      "sqlBlocks": {
+        "FIN_UNION_SELECT": "    select\n        current_date() as dt\n        ,'ods_security.ods_capital_bi_collection_report' as table_name\n        ,a.bi_collection_report_id as mysql_primary_key\n        ,a.bi_collection_report_total_amount as src_value\n        ,coalesce(b.bi_collection_report_total_amount, 0) as dest_value\n        ,a.bi_collection_report_total_amount - coalesce(b.bi_collection_report_total_amount, 0) as diff\n    from cw_catalog.capital.bi_collection_report a\n    left join ods_security.ods_capital_bi_collection_report b\n      on b.bi_collection_report_id = a.bi_collection_report_id\n\n    union all\n    select\n        current_date() as dt\n        ,'ods_security.ods_capital_bi_report_apportion_before' as table_name\n        ,a.bi_report_apportion_before_id as mysql_primary_key\n        ,a.bi_report_apportion_before_amount as src_value\n        ,coalesce(b.bi_report_apportion_before_amount, 0) as dest_value\n        ,a.bi_report_apportion_before_amount - coalesce(b.bi_report_apportion_before_amount, 0) as diff\n    from cw_catalog.capital.bi_report_apportion_before a\n    left join ods_security.ods_capital_bi_report_apportion_before b\n      on b.bi_report_apportion_before_id = a.bi_report_apportion_before_id\n\n    union all\n    select\n        current_date() as dt\n        ,'ods_security.ods_capital_bi_report_apportion_after' as table_name\n        ,a.bi_report_apportion_after_id as mysql_primary_key\n        ,a.bi_report_apportion_after_amount as src_value\n        ,coalesce(b.bi_report_apportion_after_amount, 0) as dest_value\n        ,a.bi_report_apportion_after_amount - coalesce(b.bi_report_apportion_after_amount, 0) as diff\n    from cw_catalog.capital.bi_report_apportion_after a\n    left join ods_security.ods_capital_bi_report_apportion_after b\n      on b.bi_report_apportion_after_id = a.bi_report_apportion_after_id"
+      },
+      "scriptPath": "alert/fin_finance_consistency_alert.py",
+      "remoteScriptPath": "/root/starrocks-pl-monitor-tv-alert/alert/fin_finance_consistency_alert.py",
+      "repoDir": "${ALERT_REPO_DIR}"
+    },
+    {
+      "id": "pl_biz_consistency",
+      "name": "PL biz库对账（五国非经营）",
+      "country": "CN",
+      "sourceType": "n8n",
+      "n8nWorkflowId": "O2Ppfn5GgtAJVKsD",
+      "trigger": "webhook",
+      "webhookPath": "CWSJJY",
+      "command": "cd /root/starrocks-pl-monitor-tv-alert && python3 alert/fin_biz_consistency_alert.py --sr-password 'v\\$8yzt8J4QPF#cjb' --sr-backup-password 'kGgk8RDF@5425Cxm' --dry-run",
+      "runVia": "ssh",
+      "sshHost": "root@10.20.47.14",
+      "sshPort": 36000,
+      "mentions": "adamyu@kn.group,gretchenhe@kn.group",
+      "enabled": true,
+      "note": "StarRocks 数仓与biz库数据一致性校验（五国 ODS 非经营费用 vs fin_global.pl_nonoperate_expense_monthly_global）；dry-run 不发送。",
+      "templateName": "fin_ods_biz",
+      "sqlBlocks": {
+        "BIZ_QUERY_SQL": "with nonoperate_ods_base as (\n    select stat_month, 'PK' as country,\n           sum(coalesce(expense_local, 0)) as expense_local,\n           sum(coalesce(expense_usd, 0)) as expense_usd\n    from fin_global.ods_pk_pl_nonoperate_expense_monthly\n    group by stat_month\n    union all\n    select stat_month, 'MX', sum(coalesce(expense_local, 0)), sum(coalesce(expense_usd, 0))\n    from fin_global.ods_mx_pl_nonoperate_expense_monthly\n    group by stat_month\n    union all\n    select stat_month, 'PH', sum(coalesce(expense_local, 0)), sum(coalesce(expense_usd, 0))\n    from fin_global.ods_ph_pl_nonoperate_expense_monthly\n    group by stat_month\n    union all\n    select stat_month, 'TH', sum(coalesce(expense_local, 0)), sum(coalesce(expense_usd, 0))\n    from fin_global.ods_th_pl_nonoperate_expense_monthly\n    group by stat_month\n    union all\n    select stat_month, 'INE', sum(coalesce(expense_local, 0)), sum(coalesce(expense_usd, 0))\n    from fin_global.ods_ine_pl_nonoperate_expense_monthly\n    group by stat_month\n),\nnonoperate_global_base as (\n    select stat_month, country,\n           sum(coalesce(expense_local, 0)) as expense_local,\n           sum(coalesce(expense_usd, 0)) as expense_usd\n    from fin_global.pl_nonoperate_expense_monthly_global\n    group by stat_month, country\n)\n    select\n        current_date() as dt\n        ,concat('fin_global.ods_', lower(coalesce(a.country, b.country)), '_pl_nonoperate_expense_monthly.expense_local') as table_name\n        ,cast(replace(coalesce(a.stat_month, b.stat_month), '-', '') as bigint) as mysql_primary_key\n        ,case when coalesce(a.stat_month, b.stat_month) < date_format(current_date(), '%Y-%m')\n              then coalesce(a.expense_local, 0) else 0 end as src_value\n        ,coalesce(b.expense_local, 0) as dest_value\n        ,case when coalesce(a.stat_month, b.stat_month) < date_format(current_date(), '%Y-%m')\n              then coalesce(a.expense_local, 0) else 0 end - coalesce(b.expense_local, 0) as diff\n    from nonoperate_ods_base a\n    full outer join nonoperate_global_base b\n      on b.country = a.country\n     and b.stat_month = a.stat_month\n\n    union all\n    select\n        current_date() as dt\n        ,concat('fin_global.ods_', lower(coalesce(a.country, b.country)), '_pl_nonoperate_expense_monthly.expense_usd') as table_name\n        ,cast(replace(coalesce(a.stat_month, b.stat_month), '-', '') as bigint) as mysql_primary_key\n        ,case when coalesce(a.stat_month, b.stat_month) < date_format(current_date(), '%Y-%m')\n              then coalesce(a.expense_usd, 0) else 0 end as src_value\n        ,coalesce(b.expense_usd, 0) as dest_value\n        ,case when coalesce(a.stat_month, b.stat_month) < date_format(current_date(), '%Y-%m')\n              then coalesce(a.expense_usd, 0) else 0 end - coalesce(b.expense_usd, 0) as diff\n    from nonoperate_ods_base a\n    full outer join nonoperate_global_base b\n      on b.country = a.country\n     and b.stat_month = a.stat_month"
+      },
+      "scriptPath": "alert/fin_biz_consistency_alert.py",
+      "remoteScriptPath": "/root/starrocks-pl-monitor-tv-alert/alert/fin_biz_consistency_alert.py",
       "repoDir": "${ALERT_REPO_DIR}"
     }
   ]

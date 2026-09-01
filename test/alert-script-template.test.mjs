@@ -12,7 +12,12 @@ async function tmpSetup(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "alert-tmpl-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   await fs.mkdir(path.join(dir, "config", "alert-templates"), { recursive: true });
-  await fs.copyFile(realTemplateFile, path.join(dir, "config", "alert-templates", "fin_ods_quality.py.tmpl"));
+  for (const name of ["fin_ods_quality.py.tmpl", "fin_ods_fin.py.tmpl", "fin_ods_biz.py.tmpl"]) {
+    await fs.copyFile(
+      new URL(`../config/alert-templates/${name}`, import.meta.url),
+      path.join(dir, "config", "alert-templates", name),
+    );
+  }
   const template = createAlertScriptTemplate({ rootDir: dir });
   const registry = createAlertRegistry({ rootDir: dir });
   return { dir, template, registry };
@@ -64,6 +69,34 @@ test("renderScript resolves single-brace {KEY} references inside SQL blocks", as
   assert.equal(missing.length, 0);
   assert.ok(rendered.includes("from dm_dd_new.ads_capital_ltv a"));
   assert.ok(!rendered.includes("{MONITOR_TABLE}"));
+});
+
+test("renderScript renders single-block fin template without leftover placeholders", async (t) => {
+  const { dir } = await tmpSetup(t);
+  const content = await fs.readFile(path.join(dir, "config", "alert-templates", "fin_ods_fin.py.tmpl"), "utf8");
+  const template = createAlertScriptTemplate({ rootDir: dir });
+  const { content: rendered, missing } = template.renderScript(content, {
+    FIN_UNION_SELECT: "select current_date() as dt, 'ods_security.ods_capital_bi_collection_report' as table_name, 1 as src_value, 0 as diff",
+  });
+  assert.equal(missing.length, 0);
+  assert.ok(rendered.includes("FIN_UNION_SELECT"));
+  assert.ok(!rendered.includes("{{FIN_UNION_SELECT}}"));
+  assert.ok(!rendered.includes("BIZ_QUERY_SQL"));
+  assert.ok(!rendered.includes("BIZ_UNION_SELECT"));
+});
+
+test("renderScript renders single-block biz template with WITH CTE query", async (t) => {
+  const { dir } = await tmpSetup(t);
+  const content = await fs.readFile(path.join(dir, "config", "alert-templates", "fin_ods_biz.py.tmpl"), "utf8");
+  const template = createAlertScriptTemplate({ rootDir: dir });
+  const bizQuery = "with nonoperate_ods_base as (select 1 as x)\nselect current_date() as dt, 'fin_global.ods_pk_pl_nonoperate_expense_monthly.expense_local' as table_name, 0 as diff";
+  const { content: rendered, missing } = template.renderScript(content, { BIZ_QUERY_SQL: bizQuery });
+  assert.equal(missing.length, 0);
+  assert.ok(rendered.includes("with nonoperate_ods_base as (select 1 as x)"));
+  assert.ok(rendered.includes("BIZ_QUERY_SQL"));
+  assert.ok(!rendered.includes("{{BIZ_QUERY_SQL}}"));
+  assert.ok(!rendered.includes("FIN_UNION_SELECT"));
+  assert.ok(!rendered.includes("FIN_MONITOR_TABLE"));
 });
 
 test("previewUpdate returns rendered content and diff without writing files", async (t) => {
