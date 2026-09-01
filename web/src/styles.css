@@ -7894,3 +7894,135 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
   font-size: 12px;
   padding: 5px 8px;
 }
+
+/* ============================================================
+ * 告警注册表（alert-registry）优化样式
+ * ============================================================ */
+.ar-table-wrap {
+  overflow: hidden;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+}
+.ar-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ar-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 650;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  white-space: nowrap;
+}
+.ar-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eef2f7;
+  vertical-align: middle;
+}
+.ar-table tbody tr:last-child td { border-bottom: none; }
+.ar-table tbody tr:hover { background: #f8fafc; }
+
+.ar-name-cell { min-width: 180px; max-width: 280px; }
+.ar-name {
+  font-weight: 650;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ar-id {
+  color: #94a3b8;
+  font-size: 12px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.ar-country {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #475569;
+  font-weight: 600;
+}
+.ar-trigger {
+  color: #334155;
+  white-space: nowrap;
+}
+.ar-cmd-cell { max-width: 340px; min-width: 200px; }
+.ar-cmd {
+  display: block;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+.ar-cmd:hover { background: #f8fafc; color: #0f172a; }
+
+.ar-badge-blue { background: #dbeafe; color: #1d4ed8; }
+.ar-badge-purple { background: #ede9fe; color: #7c3aed; }
+.ar-badge-gray { background: #f1f5f9; color: #475569; }
+
+.ar-status { min-width: 44px; justify-content: center; }
+.ar-status:not(.ok) { background: #e2e8f0; color: #64748b; }
+
+.ar-ops-col { width: 1%; white-space: nowrap; }
+.ar-ops { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+.ar-btn {
+  border: 1px solid var(--border, #d8e0eb);
+  background: #fff;
+  color: #334155;
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+}
+.ar-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
+.ar-btn-test {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
+}
+.ar-btn-test:hover { background: #1e293b; }
+.ar-btn-danger { color: #dc2626; }
+.ar-btn-danger:hover { background: #fef2f2; border-color: #fca5a5; }
+
+/* 编辑弹窗网格字段 */
+.ar-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: #334155;
+  font-weight: 500;
+}
+.ar-field {
+  width: 100%;
+  border: 1px solid var(--border, #d8e0eb);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.ar-field:focus {
+  border-color: var(--accent, #2563eb);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.ar-sql-block { min-height: 0; }
