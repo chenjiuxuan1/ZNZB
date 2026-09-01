@@ -889,8 +889,8 @@ function renderConfigTab(groups, config) {
         <div class="ac-filter-bar">
           <label>状态
             <select id="ac-wf-filter" class="ac-search-input">
+              <option value="true" selected>已激活</option>
               <option value="">全部</option>
-              <option value="true">已激活</option>
               <option value="false">未激活</option>
             </select>
           </label>
