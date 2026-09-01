@@ -87,6 +87,7 @@ export function renderAlertCenter(root) {
     </div>
     <div class="ac-tabs">
       <button class="ac-tab active" data-ac-tab="dashboard">实时看板</button>
+      <button class="ac-tab" data-ac-tab="history">告警日志</button>
       <button class="ac-tab" data-ac-tab="config">配置管理</button>
     </div>
     <section class="panel ac-panel">
@@ -171,6 +172,8 @@ async function loadTab(root, tab) {
   try {
     if (tab === "dashboard") {
       await loadDashboard(root, body, refreshTime);
+    } else if (tab === "history") {
+      await loadHistoryTab(root, body, refreshTime);
     } else if (tab === "config") {
       await loadConfigTab(root, body, refreshTime);
     }
@@ -798,6 +801,156 @@ async function openExecutionDetail(id, root) {
   } catch (error) {
     bodyEl.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 告警日志 Tab（夜莺历史告警，近 7 天，默认当天）
+// ---------------------------------------------------------------------------
+
+const AC_HISTORY_PAGE_SIZE = 20;
+
+async function loadHistoryTab(root, body, refreshTime) {
+  if (refreshTime) refreshTime.textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN")}`;
+  const groups = await apiGet("/api/alerts/busi-groups").catch(() => []);
+  body.innerHTML = renderHistoryTab(groups);
+  bindHistoryEvents(root, body);
+}
+
+function renderHistoryTab(groups) {
+  const groupOptions =
+    `<option value="">全部业务组</option>` +
+    (groups || []).map((g) => `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`).join("");
+  return `
+    <div class="ac-config-grid">
+      <section class="sub-panel">
+        <div class="detail-header compact-header">
+          <div>
+            <h2 class="panel-title">夜莺告警日志</h2>
+            <p class="muted">最近 7 天的告警记录（含已恢复 / 未恢复）。默认显示当天；可按时间范围、业务组、级别、状态、规则名筛选。</p>
+          </div>
+        </div>
+        <div class="ac-filter-bar">
+          <label>时间范围
+            <select id="ac-history-range" class="ac-search-input">
+              <option value="today" selected>今天</option>
+              <option value="7d">近 7 天</option>
+            </select>
+          </label>
+          <label>业务组
+            <select id="ac-history-bg" class="ac-search-input">${groupOptions}</select>
+          </label>
+          <label>级别
+            <select id="ac-history-sev" class="ac-search-input">
+              <option value="">全部</option>
+              <option value="0">严重</option>
+              <option value="1">警告</option>
+              <option value="2">提示</option>
+            </select>
+          </label>
+          <label>状态
+            <select id="ac-history-rec" class="ac-search-input">
+              <option value="">全部</option>
+              <option value="0">未恢复</option>
+              <option value="1">已恢复</option>
+            </select>
+          </label>
+          <input type="text" id="ac-history-search" class="ac-search-input" placeholder="搜索规则名…">
+          <button class="primary small" id="ac-history-load">查询</button>
+        </div>
+        <div id="ac-history-table"></div>
+        <div id="ac-history-pager"></div>
+      </section>
+    </div>
+  `;
+}
+
+async function bindHistoryEvents(root, body) {
+  const loadBtn = body.querySelector("#ac-history-load");
+  const tableEl = body.querySelector("#ac-history-table");
+  const pagerEl = body.querySelector("#ac-history-pager");
+  const rangeSel = body.querySelector("#ac-history-range");
+  const bgSel = body.querySelector("#ac-history-bg");
+  const sevSel = body.querySelector("#ac-history-sev");
+  const recSel = body.querySelector("#ac-history-rec");
+  const searchInput = body.querySelector("#ac-history-search");
+
+  let currentPage = 1;
+  let drawSeq = 0;   // 防止快速切换筛选时旧响应覆盖新响应
+  const draw = async (page) => {
+    const seq = ++drawSeq;
+    const now = Date.now();
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const ranges = {
+      today: [Math.floor(dayStart.getTime() / 1000), Math.floor(now / 1000)],
+      "7d": [Math.floor((now - 7 * 24 * 3600 * 1000) / 1000), Math.floor(now / 1000)],
+    };
+    const [stime, etime] = ranges[rangeSel.value] || ranges.today;
+    tableEl.innerHTML = `<div class="notice">加载告警日志…</div>`;
+    try {
+      const query = new URLSearchParams({
+        stime: String(stime),
+        etime: String(etime),
+        limit: String(AC_HISTORY_PAGE_SIZE),
+        page: String(page),
+      });
+      if (bgSel.value) query.set("bgid", bgSel.value);
+      if (sevSel.value !== "") query.set("severity", sevSel.value);
+      if (recSel.value !== "") query.set("isRecovered", recSel.value);
+      const q = (searchInput.value || "").trim();
+      if (q) query.set("ruleName", q);
+      const data = await apiGet(`/api/alerts/history?${query.toString()}`);
+      if (seq !== drawSeq) return;   // 已有更新的请求，丢弃本次结果
+      const list = data.list || [];
+      const total = data.total || 0;
+      const totalPages = Math.ceil(total / AC_HISTORY_PAGE_SIZE) || 1;
+      currentPage = Math.min(Math.max(page, 1), totalPages);
+      tableEl.innerHTML = list.length
+        ? renderHistoryTable(list)
+        : `<p class="muted">无符合条件的告警记录。</p>`;
+      if (pagerEl) {
+        pagerEl.innerHTML = renderAcPager("history", currentPage, totalPages, total, false);
+        bindAcPagerEvents(pagerEl, (p) => draw(p));
+      }
+    } catch (error) {
+      if (seq === drawSeq) tableEl.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+    }
+  };
+
+  loadBtn.addEventListener("click", () => draw(1));
+  searchInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") draw(1); });
+  [rangeSel, bgSel, sevSel, recSel].forEach((sel) => sel?.addEventListener("change", () => draw(1)));
+  draw(1);
+}
+
+function renderHistoryTable(list) {
+  return `
+    <table class="data-table ac-history-table">
+      <thead>
+        <tr>
+          <th>触发时间</th><th>恢复时间</th><th>级别</th><th>业务组</th>
+          <th>规则名 / 含义</th><th>状态</th><th>触发值</th><th>国家</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${list.map((a) => `
+          <tr class="${a.isRecovered ? "" : "ac-row-unrecovered"}">
+            <td class="small mono">${escapeHtml(formatTime(a.triggerTime))}</td>
+            <td class="small mono">${a.recoverTime ? escapeHtml(formatTime(a.recoverTime)) : `<span class="muted">-</span>`}</td>
+            <td><span class="badge ${severityClass(a.severity)}">${escapeHtml(a.severityLabel || "-")}</span></td>
+            <td class="small">${escapeHtml(a.groupName || "-")}</td>
+            <td class="small">
+              <strong>${escapeHtml(a.ruleName || "-")}</strong>
+              ${a.meaning ? `<div class="muted ac-his-meaning" title="${escapeHtml(a.meaning)}">${escapeHtml(a.meaning)}</div>` : ""}
+            </td>
+            <td><span class="badge ${a.isRecovered ? "ok" : "danger"}">${escapeHtml(a.recoveredLabel || "-")}</span></td>
+            <td class="num">${escapeHtml(String(a.triggerValue ?? "-"))}</td>
+            <td>${a.country ? escapeHtml(a.country) : `<span class="muted">-</span>`}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 // ---------------------------------------------------------------------------
