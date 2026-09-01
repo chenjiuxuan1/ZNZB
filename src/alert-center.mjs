@@ -554,18 +554,35 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     const list = payload?.data || [];
     const baseUrl = String(n8n.baseUrl || "").replace(/\/+$/, "");
     return list.map((workflow) => {
-      const paths = [
-        workflow?.webhook?.path || "",
-        ...(workflow?.webhooks || []).map((w) => w.path).filter(Boolean),
-      ].filter(Boolean);
+      const nodes = workflow?.nodes || [];
+      // 从节点里识别触发方式（列表接口无顶层 webhook 字段，webhook 路径在节点的 parameters.path 中）
+      const triggerLabels = [];
+      const webhookUrls = [];
+      for (const node of nodes) {
+        const type = node?.type || "";
+        const params = node?.parameters || {};
+        if (type === "n8n-nodes-base.webhook" || type === "@n8n/n8n-nodes-base.webhook") {
+          const path = params.path || "";
+          const method = String(params.httpMethod || "POST").toUpperCase();
+          if (baseUrl && path) webhookUrls.push(`${baseUrl}/webhook/${path}`);
+          triggerLabels.push(`Webhook(${method})${path ? ` /${path}` : ""}`);
+        } else if (type === "n8n-nodes-base.scheduleTrigger") {
+          triggerLabels.push("定时触发");
+        } else if (type === "n8n-nodes-base.manualTrigger") {
+          triggerLabels.push("手动触发");
+        } else if (type === "n8n-nodes-base.executeWorkflowTrigger") {
+          triggerLabels.push("子工作流触发");
+        }
+      }
       return {
         id: workflow?.id,
         name: workflow?.name,
         active: workflow?.active,
         isArchived: workflow?.isArchived,
-        webhook: workflow?.webhook?.path || "",
-        webhookUrl: baseUrl && paths.length ? `${baseUrl}/webhook/${paths[0]}` : "",
-        webhooks: paths,
+        nodeCount: nodes.length,
+        triggerType: triggerLabels.length ? triggerLabels.join("、") : (nodes.length ? "无标准触发" : "无节点"),
+        webhookUrl: webhookUrls[0] || "",
+        webhookUrls,
         updatedAt: workflow?.updatedAt || "",
       };
     });
