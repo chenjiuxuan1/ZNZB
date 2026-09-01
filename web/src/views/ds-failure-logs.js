@@ -59,9 +59,13 @@ let model = {
   scheduledKeyword: "",
   scheduledLookbackDays: 7,
   scheduledCountryPages: {},
-  scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {}, groupChatIds: {} },
+  scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {}, groupChatIds: {}, botIds: {} },
   scheduledConfigLoaded: false,
   scheduledMessage: "",
+  notificationProcessOpen: false,
+  notificationProcessLoading: false,
+  notificationProcessLogs: [],
+  notificationProcessError: "",
 };
 
 let autoRefreshTimer = null;
@@ -110,15 +114,33 @@ async function loadScheduledFailures(root) {
 async function saveScheduledOwners(root) {
   const owners = {};
   const groupChatIds = {};
+  const botIds = {};
   for (const option of COUNTRY_OPTIONS) owners[option.code] = root.querySelector(`[data-scheduled-owner="${option.code}"]`)?.value || "";
   for (const option of COUNTRY_OPTIONS) groupChatIds[option.code] = root.querySelector(`[data-scheduled-group="${option.code}"]`)?.value || "";
+  for (const option of COUNTRY_OPTIONS) botIds[option.code] = root.querySelector(`[data-scheduled-bot="${option.code}"]`)?.value || "";
   try {
-    model.scheduledConfig = await apiPut("/api/ds-scheduled-failure-watch/config", { ...model.scheduledConfig, owners, groupChatIds });
+    model.scheduledConfig = await apiPut("/api/ds-scheduled-failure-watch/config", { ...model.scheduledConfig, owners, groupChatIds, botIds });
     model.scheduledMessage = "负责人和国家群聊已保存；n8n 失败告警会同时私聊负责人并发送到对应群聊。";
   } catch (error) {
     model.scheduledMessage = `负责人配置保存失败：${error.message}`;
   }
   paint(root);
+}
+
+async function openNotificationProcess(root) {
+  model.notificationProcessOpen = true;
+  model.notificationProcessLoading = true;
+  model.notificationProcessError = "";
+  paint(root);
+  try {
+    const result = await apiGet("/api/ds-failure-retry/notifications?limit=300");
+    model.notificationProcessLogs = result.logs || [];
+  } catch (error) {
+    model.notificationProcessError = readableQueryError(error);
+  } finally {
+    model.notificationProcessLoading = false;
+    if (isCurrentView()) paint(root);
+  }
 }
 
 async function refreshRetryPanel(root) {
@@ -492,6 +514,7 @@ function paint(root) {
       </div>
     </section>
     ${renderRetryExclusionModal()}
+    ${renderNotificationProcessModal()}
     <section class="ds-failure-country-list" ${model.activeTab === "today" ? "" : 'style="display:none"'}>
       ${hasResult ? renderCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">选择需要观察的国家，然后点击“查询”。</p></section>`}
     </section>
@@ -542,6 +565,9 @@ function paint(root) {
   root.querySelector("#ds-scheduled-query")?.addEventListener("click", () => loadScheduledFailures(root));
   root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; model.scheduledCountryPages = {}; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); });
   root.querySelector("#ds-scheduled-owner-save")?.addEventListener("click", () => saveScheduledOwners(root));
+  root.querySelector("#ds-notification-process-open")?.addEventListener("click", () => openNotificationProcess(root));
+  root.querySelector("#ds-notification-process-refresh")?.addEventListener("click", () => openNotificationProcess(root));
+  root.querySelector("#ds-notification-process-close")?.addEventListener("click", () => { model.notificationProcessOpen = false; paint(root); });
   root.querySelectorAll("[data-scheduled-country-page]").forEach((button) => button.addEventListener("click", () => {
     const country = String(button.dataset.scheduledCountry || "");
     const page = Number(button.dataset.scheduledCountryPage) || 1;
@@ -555,6 +581,7 @@ function renderScheduledFailureWatch() {
   const result = model.scheduledResult || {};
   const owners = model.scheduledConfig.owners || {};
   const groupChatIds = model.scheduledConfig.groupChatIds || {};
+  const botIds = model.scheduledConfig.botIds || {};
   return `<section class="ds-scheduled-failure-watch" ${model.activeTab === "scheduled" ? "" : 'style="display:none"'}>
     <section class="panel ds-failure-toolbar">
       <div class="detail-header compact-header">
@@ -569,8 +596,8 @@ function renderScheduledFailureWatch() {
       ${model.scheduledMessage ? `<div class="sandbox-status ${/失败|错误/.test(model.scheduledMessage) ? "error" : "warn"}"><span>${escapeHtml(model.scheduledMessage)}</span></div>` : ""}
     </section>
     <section class="panel ds-scheduled-owner-panel">
-      <div class="detail-header compact-header"><div><h3 class="panel-title">两个重跑模块共用通知配置</h3><p class="muted">负责人邮箱用于私聊和群内提醒；国家群聊 chat_id 用于群发。多个邮箱或群聊 ID 均可用逗号分隔。</p></div><button class="primary" id="ds-scheduled-owner-save">保存通知配置</button></div>
-      <div class="ds-scheduled-owner-grid">${COUNTRY_OPTIONS.map((option) => `<div class="ds-scheduled-notify-card"><strong>${option.flag} ${option.name}</strong><label><span>负责人邮箱</span><input data-scheduled-owner="${option.code}" value="${escapeHtml(owners[option.code] || "")}" placeholder="多个邮箱用逗号分隔"></label><label><span>国家群聊 chat_id</span><input data-scheduled-group="${option.code}" value="${escapeHtml(groupChatIds[option.code] || "")}" placeholder="例如 -1001234567890"></label></div>`).join("")}</div>
+      <div class="detail-header compact-header"><div><h3 class="panel-title">两个重跑模块共用负责人配置</h3><p class="muted">负责人邮箱用于两个模块的私聊；n8n 失败重启监控还会通过对应国家的 TV bot_id 群发并艾特负责人。定时失败任务重跑仍只私聊。</p></div><div class="ds-retry-header-actions"><button class="secondary" id="ds-notification-process-open">通知进程</button><button class="primary" id="ds-scheduled-owner-save">保存通知配置</button></div></div>
+      <div class="ds-scheduled-owner-grid">${COUNTRY_OPTIONS.map((option) => `<div class="ds-scheduled-notify-card"><strong>${option.flag} ${option.name}</strong><label><span>负责人邮箱</span><input data-scheduled-owner="${option.code}" value="${escapeHtml(owners[option.code] || "")}" placeholder="多个邮箱用逗号分隔"></label><label><span>国家群聊 TV bot_id</span><input data-scheduled-bot="${option.code}" value="${escapeHtml(botIds[option.code] || "")}" placeholder="填写该国家群机器人 bot_id"></label><input type="hidden" data-scheduled-group="${option.code}" value="${escapeHtml(groupChatIds[option.code] || "")}"></div>`).join("")}</div>
     </section>
     <section class="ds-failure-country-list">${model.scheduledResult ? renderScheduledCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">后台会持续监控并通知；也可选择国家后手动查询当前结果。</p></section>`}</section>
   </section>`;
@@ -582,6 +609,37 @@ function renderRetryIntervalSelect(value, disabled) {
   if (!options.includes(selected)) options.push(selected);
   options.sort((a, b) => a - b);
   return `<label>自动重跑间隔<select id="ds-retry-interval" ${disabled ? "disabled" : ""}>${options.map((minutes) => `<option value="${minutes}" ${minutes === selected ? "selected" : ""}>每隔 ${minutes / 60} 小时</option>`).join("")}</select></label>`;
+}
+
+function renderNotificationProcessModal() {
+  if (!model.notificationProcessOpen) return "";
+  const logs = model.notificationProcessLogs || [];
+  const sentCount = logs.filter((item) => item.status === "sent").length;
+  const failedCount = logs.filter((item) => item.status !== "sent").length;
+  return `<div class="modal-backdrop ds-notification-process-backdrop">
+    <section class="panel ds-notification-process-modal" role="dialog" aria-modal="true" aria-labelledby="ds-notification-process-title">
+      <div class="detail-header compact-header">
+        <div><h2 class="panel-title" id="ds-notification-process-title">通知进程</h2><p class="muted">展示最近 7 天两个重跑模块的负责人私聊和国家群发记录；每个渠道独立记录发送结果。</p></div>
+        <div class="ds-retry-header-actions"><button class="secondary" id="ds-notification-process-refresh" ${model.notificationProcessLoading ? "disabled" : ""}>刷新</button><button class="secondary" id="ds-notification-process-close">关闭</button></div>
+      </div>
+      <div class="ds-notification-process-summary"><span>共 ${logs.length} 条</span><span class="badge ok">成功 ${sentCount}</span><span class="badge danger">失败 ${failedCount}</span></div>
+      ${model.notificationProcessError ? `<div class="sandbox-status error"><span>${escapeHtml(model.notificationProcessError)}</span></div>` : ""}
+      ${model.notificationProcessLoading ? `<div class="ds-failure-empty">正在读取通知记录…</div>` : logs.length ? `<div class="ds-notification-process-list">${logs.map(renderNotificationProcessItem).join("")}</div>` : `<div class="ds-failure-empty">最近 7 天暂无通知记录。新版本开始发送的通知会在这里保留完整消息。</div>`}
+    </section>
+  </div>`;
+}
+
+function renderNotificationProcessItem(item) {
+  const meta = COUNTRY_META[String(item.country || "").toLowerCase()] || {};
+  const source = item.source === "n8n_restart_watch" ? "n8n失败重启监控" : "定时失败任务重跑";
+  const channel = item.channel === "country_group" ? "国家群发" : "负责人私聊";
+  const sent = item.status === "sent";
+  return `<article class="ds-notification-process-item ${sent ? "sent" : "failed"}">
+    <div class="ds-notification-process-head"><div><strong>${meta.flag || ""} ${escapeHtml(meta.name || String(item.country || "-").toUpperCase())}</strong><span class="badge ${sent ? "ok" : "danger"}">${sent ? "发送成功" : "发送失败"}</span><span class="badge idle">${channel}</span></div><time>${formatTime(item.time)}</time></div>
+    <div class="ds-notification-process-meta"><span>来源：${source}</span><span>接收目标：${escapeHtml(item.target || "未记录")}</span>${item.instanceId ? `<span>实例：${escapeHtml(item.instanceId)}</span>` : ""}</div>
+    ${item.error ? `<div class="sandbox-status error"><strong>发送错误</strong><span>${escapeHtml(item.error)}</span></div>` : ""}
+    <details><summary>查看发送消息</summary><pre>${escapeHtml(item.message || "未保存消息正文")}</pre></details>
+  </article>`;
 }
 
 function renderRetryExclusionModal() {

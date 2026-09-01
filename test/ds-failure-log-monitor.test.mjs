@@ -295,6 +295,28 @@ test("DS failure log queries today's instances before reading failed task logs",
   }
 });
 
+test("DS failure scan preserves START_PROCESS and task identity returned by the instance list", async () => {
+  const instances = [{
+    workflowDefinitionCode: "wf-start",
+    workflowInstanceName: "manual-start",
+    workflowInstanceId: "instance-start",
+    commandType: "START_PROCESS",
+    workflowExecutionStatus: "STOP",
+    workflowStartTime: "2026-08-14 08:00:00",
+    failedTaskInstanceId: "task-instance-1",
+    failedTaskName: "load_orders",
+    failedTaskCode: "task-code-1",
+    failedTaskState: "STOP",
+  }];
+  const [failure] = classifyWorkflowFailures(instances, { projectName: "DW_DWD", projectCode: "1001" });
+  assert.equal(failure.commandType, "START_PROCESS");
+  assert.equal(failure.taskInstanceId, "task-instance-1");
+  assert.equal(failure.taskName, "load_orders");
+  assert.equal(failure.taskCode, "task-code-1");
+  assert.equal(failure.taskState, "STOP");
+  assert.equal(classifyDsFailureType(failure).failureType, "start_workflow_scan_only");
+});
+
 test("DS failure log follows SUB_WORKFLOW tasks to the leaf SQL failure", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-failure-sub-workflow-"));
   await fs.mkdir(path.join(rootDir, "config"), { recursive: true });

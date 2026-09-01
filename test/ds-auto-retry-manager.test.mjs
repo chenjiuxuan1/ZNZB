@@ -410,6 +410,30 @@ test("privately notifies the country owner when a submitted retry is not recover
   assert.ok(manager.getLogs().some((item) => item.event === "retry_failure_notification_sent"));
 });
 
+test("only scans START_PROCESS failures and never submits a retry", async () => {
+  let actions = 0;
+  const classified = classifyDsFailureType({
+    commandType: "START_PROCESS",
+    taskName: "dwd_orders",
+    failureMessage: "Connection reset by peer",
+  });
+  assert.deepEqual(classified, {
+    failureType: "start_workflow_scan_only",
+    retryable: false,
+    retryDecision: "运行类型为启动工作流，仅记录失败扫描结果，不执行自动重跑",
+  });
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({ commandType: "START_PROCESS", taskName: "dwd_orders", ...classified }),
+    actionFn: async () => { actions += 1; return {}; },
+    now: () => fixedNow,
+  });
+  await enableAndWait(manager);
+  assert.equal(actions, 0);
+  assert.equal([...manager.statuses.values()][0].autoRetryStatus, "start_workflow_scan_only");
+  assert.ok(manager.getLogs().some((item) => item.event === "skipped" && /仅记录失败扫描结果/.test(item.message)));
+});
+
 test("notifies the country owner when retry submission fails", async () => {
   const sent = [];
   const manager = createDsAutoRetryManager({
