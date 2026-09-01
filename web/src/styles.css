@@ -7081,10 +7081,14 @@ button.primary:active {
 /* ---- 筛选栏 ---- */
 .ac-filter-bar {
   align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
 }
 
 .ac-search-input {
@@ -7096,6 +7100,7 @@ button.primary:active {
   font-size: 13px;
   min-height: 34px;
   padding: 6px 10px;
+  width: auto;   /* 覆盖全局 input/select { width:100% }，避免撑满整个区块 */
 }
 
 .ac-search-input:focus {
@@ -7105,7 +7110,19 @@ button.primary:active {
 }
 
 input.ac-search-input {
-  min-width: 240px;
+  flex: 1 1 220px;
+  max-width: 420px;
+  min-width: 220px;
+  width: auto;
+}
+
+select.ac-search-input {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2364748b' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  padding-right: 26px;
+  width: auto;
 }
 
 .ac-filter-bar label {
@@ -7115,6 +7132,11 @@ input.ac-search-input {
   color: var(--muted);
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.ac-filter-bar button.small {
+  white-space: nowrap;
 }
 
 /* ---- 分页 ---- */
