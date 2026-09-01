@@ -891,8 +891,7 @@ async function bindHistoryEvents(root, body) {
       const query = new URLSearchParams({
         stime: String(stime),
         etime: String(etime),
-        limit: String(AC_HISTORY_PAGE_SIZE),
-        page: String(page),
+        group: "true",
       });
       if (bgSel.value) query.set("bgid", bgSel.value);
       if (sevSel.value !== "") query.set("severity", sevSel.value);
@@ -901,13 +900,16 @@ async function bindHistoryEvents(root, body) {
       if (q) query.set("ruleName", q);
       const data = await apiGet(`/api/alerts/history?${query.toString()}`);
       if (seq !== drawSeq) return;   // 已有更新的请求，丢弃本次结果
-      const list = data.list || [];
-      const total = data.total || 0;
+      const all = data.list || [];
+      const total = all.length;
       const totalPages = Math.ceil(total / AC_HISTORY_PAGE_SIZE) || 1;
       currentPage = Math.min(Math.max(page, 1), totalPages);
-      tableEl.innerHTML = list.length
-        ? renderHistoryTable(list)
+      const start = (currentPage - 1) * AC_HISTORY_PAGE_SIZE;
+      const pageRows = all.slice(start, start + AC_HISTORY_PAGE_SIZE);
+      tableEl.innerHTML = pageRows.length
+        ? renderHistoryTable(pageRows)
         : `<p class="muted">无符合条件的告警记录。</p>`;
+      bindHistoryExpand(tableEl);
       if (pagerEl) {
         pagerEl.innerHTML = renderAcPager("history", currentPage, totalPages, total, false);
         bindAcPagerEvents(pagerEl, (p) => draw(p));
@@ -928,15 +930,15 @@ function renderHistoryTable(list) {
     <table class="data-table ac-history-table">
       <thead>
         <tr>
-          <th>触发时间</th><th>恢复时间</th><th>级别</th><th>业务组</th>
-          <th>规则名 / 含义</th><th>状态</th><th>触发值</th><th>国家</th>
+          <th>触发时间</th><th>触发次数</th><th>级别</th><th>业务组</th>
+          <th>规则名 / 含义</th><th>状态</th><th>触发值</th><th>国家</th><th></th>
         </tr>
       </thead>
       <tbody>
-        ${list.map((a) => `
+        ${list.map((a, idx) => `
           <tr class="${a.isRecovered ? "" : "ac-row-unrecovered"}">
             <td class="small mono">${escapeHtml(formatTime(a.triggerTime))}</td>
-            <td class="small mono">${a.recoverTime ? escapeHtml(formatTime(a.recoverTime)) : `<span class="muted">-</span>`}</td>
+            <td><span class="badge ac-count-badge">${escapeHtml(String(a.triggerCount ?? 1))} 次</span></td>
             <td><span class="badge ${severityClass(a.severity)}">${escapeHtml(a.severityLabel || "-")}</span></td>
             <td class="small">${escapeHtml(a.groupName || "-")}</td>
             <td class="small">
@@ -946,11 +948,51 @@ function renderHistoryTable(list) {
             <td><span class="badge ${a.isRecovered ? "ok" : "danger"}">${escapeHtml(a.recoveredLabel || "-")}</span></td>
             <td class="num">${escapeHtml(String(a.triggerValue ?? "-"))}</td>
             <td>${a.country ? escapeHtml(a.country) : `<span class="muted">-</span>`}</td>
+            <td><button class="small ghost" data-his-expand="${idx}" data-his-label="${a.events?.length > 1 ? `展开 ${a.events.length} 次` : "详情"}">${a.events?.length > 1 ? `展开 ${a.events.length} 次` : "详情"}</button></td>
           </tr>
+          ${renderHistoryExpandRow(a, idx)}
         `).join("")}
       </tbody>
     </table>
   `;
+}
+
+/** 展开行：列出该告警每次触发的时间 / 状态 / 触发值 / 恢复时间。 */
+function renderHistoryExpandRow(a, idx) {
+  const events = a.events || [];
+  if (!events.length) return "";
+  const rows = events.map((e) => `
+    <tr>
+      <td class="small mono">${escapeHtml(formatTime(e.triggerTime))}</td>
+      <td><span class="badge ${e.isRecovered ? "ok" : "danger"}">${escapeHtml(e.recoveredLabel || "-")}</span></td>
+      <td class="num">${escapeHtml(String(e.triggerValue ?? "-"))}</td>
+      <td class="small mono">${e.recoverTime ? escapeHtml(formatTime(e.recoverTime)) : `<span class="muted">-</span>`}</td>
+    </tr>
+  `).join("");
+  return `
+    <tr class="ac-his-detail" id="ac-his-detail-${idx}" hidden>
+      <td colspan="9">
+        <div class="ac-his-detail-inner">
+          <strong>该告警每次触发记录（共 ${events.length} 次）</strong>
+          <table class="ac-his-events">
+            <thead><tr><th>触发时间</th><th>状态</th><th>触发值</th><th>恢复时间</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function bindHistoryExpand(tableEl) {
+  tableEl.querySelectorAll("[data-his-expand]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const detail = tableEl.querySelector(`#ac-his-detail-${btn.dataset.hisExpand}`);
+      if (!detail) return;
+      detail.hidden = !detail.hidden;
+      btn.textContent = detail.hidden ? (btn.dataset.hisLabel || "展开") : "收起";
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
