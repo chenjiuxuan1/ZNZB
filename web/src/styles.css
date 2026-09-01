@@ -8093,6 +8093,8 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
 .ar-modal-body {
   padding: 20px 24px 8px;
   overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -8114,7 +8116,8 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
   border: 1px solid var(--border, #e5e9f0);
   border-radius: 10px;
   background: #fff;
-  overflow: hidden;
+  overflow: visible;
+  flex-shrink: 0;
 }
 .ar-section-head {
   display: flex;

@@ -212,7 +212,7 @@ function renderSqlEditorSection(data) {
         <span class="muted">（${escapeHtml(key)}）</span>
         <span class="ar-sql-lines">${lines ? lines + " 行" : "空"}</span>
       </div>
-      <textarea class="ar-field ar-sql-block" data-sql-block="${escapeHtml(key)}" rows="6">${escapeHtml(value)}</textarea>
+      <textarea class="ar-field ar-sql-block" data-sql-block="${escapeHtml(key)}" data-auto-resize rows="4" placeholder="（在此填写 ${escapeHtml(sqlBlockLabel(key))} 的 SQL）">${escapeHtml(value)}</textarea>
     </div>
   `;
   }).join("");
@@ -341,7 +341,7 @@ function openEditor(root, item) {
                 <input class="ar-field" id="ar-f-mentions" value="${escapeHtml(fields[11][2])}">
               </label>
               <label class="ar-label ar-field-full">执行命令 <span class="ar-req">*</span>
-                <textarea class="ar-field ar-cmd-area" id="ar-f-command" rows="4">${escapeHtml(fields[7][2])}</textarea>
+                <textarea class="ar-field ar-cmd-area" id="ar-f-command" data-auto-resize rows="4">${escapeHtml(fields[7][2])}</textarea>
               </label>
               <label class="ar-label ar-field-full">备注
                 <input class="ar-field" id="ar-f-note" value="${escapeHtml(fields[13][2])}">
@@ -364,6 +364,21 @@ function openEditor(root, item) {
     </div>
   `;
   document.body.appendChild(overlay);
+
+  // SQL 块 / 命令文本域自动适配高度（内容多则增高，最多 14 行后内部滚动）
+  const autoResize = (el) => {
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 19;
+    const minRows = 3;
+    const maxRows = 14;
+    el.style.height = "auto";
+    const contentLines = Math.ceil(el.scrollHeight / lineHeight);
+    const rows = Math.max(minRows, Math.min(maxRows, contentLines));
+    el.style.height = `${Math.ceil(rows * lineHeight)}px`;
+  };
+  overlay.querySelectorAll("[data-auto-resize]").forEach((el) => {
+    autoResize(el);
+    el.addEventListener("input", () => autoResize(el));
+  });
 
   const close = () => overlay.remove();
   overlay.querySelector("#ar-modal-close").addEventListener("click", close);
