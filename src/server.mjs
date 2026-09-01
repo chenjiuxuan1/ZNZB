@@ -375,6 +375,9 @@ async function handleApi(request, response, url) {
       limit: params.limit || 200,
       page: params.page || 1,
       ruleName: params.ruleName || undefined,
+      bgid: params.bgid ? Number(params.bgid) : undefined,
+      severity: params.severity !== undefined && params.severity !== "" ? Number(params.severity) : undefined,
+      isRecovered: params.isRecovered !== undefined && params.isRecovered !== "" ? Number(params.isRecovered) : undefined,
     }));
   }
   if (method === "GET" && url.pathname === "/api/alerts/busi-groups") {

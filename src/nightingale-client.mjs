@@ -89,14 +89,13 @@ export class NightingaleClient {
     return list;
   }
 
-  /** 历史告警。stime/etime 为 Unix 秒。 */
-  async getHistoryAlerts({ stime, etime, limit = 200, page = 1 } = {}) {
-    const dat = await this.get("/api/n9e/alert-his-events/list", {
-      limit,
-      cur_page: page,
-      stime,
-      etime,
-    });
+  /** 历史告警。stime/etime 为 Unix 秒；bgid/severity/isRecovered 服务端筛选。 */
+  async getHistoryAlerts({ stime, etime, limit = 200, page = 1, bgid, severity, isRecovered } = {}) {
+    const params = { limit, cur_page: page, stime, etime };
+    if (bgid) params.bgid = bgid;
+    if (severity !== undefined && severity !== null && severity !== "") params.severity = severity;
+    if (isRecovered !== undefined && isRecovered !== null && isRecovered !== "") params.is_recovered = isRecovered;
+    const dat = await this.get("/api/n9e/alert-his-events/list", params);
     return dat || {};
   }
 
