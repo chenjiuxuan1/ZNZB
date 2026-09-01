@@ -829,6 +829,17 @@ function renderConfigTab(groups, config) {
           <label>业务组
             <select id="ac-rules-bg" class="ac-search-input">${groupOptions}</select>
           </label>
+          <label>状态
+            <select id="ac-rules-status" class="ac-search-input">
+              <option value="enabled" selected>已启用</option>
+              <option value="all">全部</option>
+              <option value="disabled">已停用</option>
+            </select>
+          </label>
+          <label class="ac-checkbox-line" title="只显示配置了查询语句（PromQL / SQL）的规则">
+            <input type="checkbox" id="ac-rules-hide-empty" checked>
+            <span>隐藏无查询语句</span>
+          </label>
           <input type="text" id="ac-rules-search" class="ac-search-input" placeholder="搜索规则名…">
           <button class="primary small" id="ac-rules-load">加载规则</button>
         </div>
@@ -899,17 +910,27 @@ async function bindConfigEvents(root, body, groups) {
   const rulesTable = body.querySelector("#ac-rules-table");
   const rulesPager = body.querySelector("#ac-rules-pager");
   const rulesSearch = body.querySelector("#ac-rules-search");
+  const rulesStatus = body.querySelector("#ac-rules-status");
+  const rulesHideEmpty = body.querySelector("#ac-rules-hide-empty");
   const bgSelect = body.querySelector("#ac-rules-bg");
   if (rulesLoad && bgSelect) {
     const drawRules = () => {
       const q = (rulesSearch?.value || "").trim();
-      const filtered = acRulesCache.filter((r) => !q || String(r.name || "").includes(q));
+      const status = rulesStatus?.value || "enabled";
+      const hideEmpty = rulesHideEmpty?.checked ?? true;
+      const filtered = acRulesCache.filter((r) => {
+        if (status === "enabled" && r.disabled) return false;
+        if (status === "disabled" && !r.disabled) return false;
+        if (hideEmpty && !extractRuleQuery(r)) return false;
+        if (q && !String(r.name || "").includes(q)) return false;
+        return true;
+      });
       const totalPages = Math.ceil(filtered.length / AC_PAGE_SIZE) || 1;
       acPages.rules = Math.min(Math.max(acPages.rules, 1), totalPages);
       rulesTable.innerHTML = renderRulesTable(filtered, acPages.rules);
       bindRulesActions(rulesTable, () => { acPages.rules = 1; drawRules(); });
       if (rulesPager) {
-        rulesPager.innerHTML = renderAcPager("rules", acPages.rules, totalPages, filtered.length, !!q);
+        rulesPager.innerHTML = renderAcPager("rules", acPages.rules, totalPages, filtered.length, !!(q || status !== "all" || hideEmpty));
         bindAcPagerEvents(rulesPager, (page) => { acPages.rules = page; drawRules(); });
       }
     };
@@ -928,6 +949,8 @@ async function bindConfigEvents(root, body, groups) {
     };
     rulesLoad.addEventListener("click", loadRules);
     rulesSearch?.addEventListener("input", () => { acPages.rules = 1; drawRules(); });
+    rulesStatus?.addEventListener("change", () => { acPages.rules = 1; drawRules(); });
+    rulesHideEmpty?.addEventListener("change", () => { acPages.rules = 1; drawRules(); });
     loadRules();
   }
 
