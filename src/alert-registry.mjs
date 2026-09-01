@@ -29,6 +29,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { deepMapStrings, loadEnvFile, readJsonFile, writeJsonFileAtomic } from "./utils.mjs";
+import { fetchCompatible } from "./fetch-compatible.mjs";
 import { createAlertScriptTemplate } from "./alert-script-template.mjs";
 
 const DEFAULT_CONFIG_FILE = "config/alert-registry.json";
@@ -107,7 +108,7 @@ async function runViaN8n(command, { sshHost, sshPort, timeoutMs } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs || DEFAULT_TEST_TIMEOUT_MS);
   try {
-    const resp = await fetch(`${base}/webhook/${webhookPath}`, {
+    const resp = await fetchCompatible(`${base}/webhook/${webhookPath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
