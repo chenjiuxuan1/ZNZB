@@ -7281,3 +7281,147 @@ button.small[disabled] {
   overflow-y: auto;
   padding: 16px 18px;
 }
+
+/* ============================================================
+ * 告警中心 v3：通知方式/地址 + 告警详情弹窗
+ * ============================================================ */
+
+/* ---- 告警明细：通知列 ---- */
+.ac-alert-notify {
+  max-width: 240px;
+}
+
+.ac-notify-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.4;
+}
+
+.ac-notify-method {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ac-notify-item.is-dingtalk .ac-notify-method { color: #2563eb; }
+.ac-notify-item.is-ali-voice .ac-notify-method,
+.ac-notify-item.is-ivr .ac-notify-method { color: #dc2626; }
+.ac-notify-item.is-email .ac-notify-method { color: #7c3aed; }
+
+/* ---- 告警详情弹窗 ---- */
+.ac-alert-modal {
+  max-width: 760px;
+}
+
+.ac-alert-detail-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ac-alert-detail-block {
+  border-top: 1px solid #eef2f7;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.ac-alert-detail-block h4 {
+  color: #334155;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.ac-alert-detail-block p {
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 6px;
+}
+
+.ac-kv {
+  display: grid;
+  font-size: 13px;
+  gap: 6px 12px;
+  grid-template-columns: 72px 1fr;
+  margin-bottom: 6px;
+}
+
+.ac-kv-label {
+  color: #98a2b3;
+  font-weight: 600;
+}
+
+.ac-kv code {
+  background: #f1f5f9;
+  border-radius: 4px;
+  color: #475569;
+  display: block;
+  font-size: 12px;
+  overflow-x: auto;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ---- 通知规则卡片 ---- */
+.ac-notify-rule {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+}
+
+.ac-notify-rule-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ac-notify-rule-head strong {
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.ac-notify-rule-head .small {
+  margin-left: auto;
+}
+
+.ac-notify-channel {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto auto 1fr auto;
+  margin-top: 8px;
+}
+
+.ac-notify-address {
+  color: #667085;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 编辑表单 ---- */
+.ac-notify-edit-form {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.ac-notify-edit-form label {
+  color: #475467;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 4px;
+}
+
+.ac-notify-edit-actions {
+  display: flex;
+  gap: 8px;
+}

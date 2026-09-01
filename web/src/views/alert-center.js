@@ -3,6 +3,8 @@ import { escapeHtml } from "../view-utils.js";
 
 // 业务组 -> 告警列表 缓存（点击卡片查看明细时读取；不用 data 属性存 JSON，避免转义损坏）
 let acGroupData = new Map();
+// 当前告警明细列表（点击行打开详情弹窗时读取）
+let acDetailAlerts = [];
 
 /**
  * 告警中心：实时看板 + 配置管理。
@@ -125,11 +127,175 @@ function bindDashboardEvents(root, body) {
       body.querySelectorAll("[data-ac-group]").forEach((b) => b.classList.remove("is-selected"));
       button.classList.add("is-selected");
       const detail = body.querySelector("#ac-group-detail");
-      if (detail) detail.innerHTML = renderGroupDetailRows(getGroupAlerts(button.dataset.acGroup));
+      if (detail) {
+        detail.innerHTML = renderGroupDetailRows(getGroupAlerts(button.dataset.acGroup));
+        bindAlertRows(detail);
+      }
     });
   });
+  // 初始告警明细行（默认第一个业务组）
+  const initialDetail = body.querySelector("#ac-group-detail");
+  if (initialDetail) bindAlertRows(initialDetail);
   // n8n 失败执行：加载列表
   bindN8nList(root, body);
+}
+
+// 告警明细行点击 -> 详情弹窗
+function bindAlertRows(container) {
+  container.querySelectorAll(".ac-alert-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      const idx = Number(row.dataset.alertIdx);
+      const alert = acDetailAlerts[idx];
+      if (alert) openAlertDetail(alert);
+    });
+  });
+}
+
+/** 打开告警详情弹窗：规则配置 + 通知配置（支持启停/编辑接收人）。 */
+async function openAlertDetail(alert) {
+  const existing = document.getElementById("ac-alert-modal");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "ac-alert-modal";
+  overlay.className = "ac-modal-overlay";
+  overlay.innerHTML = `
+    <div class="ac-modal ac-alert-modal" role="dialog" aria-modal="true" aria-label="告警详情">
+      <div class="ac-modal-head">
+        <strong>${escapeHtml(alert.ruleName || "告警详情")}</strong>
+        <button class="ac-modal-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="ac-modal-body">
+        <div class="ac-alert-detail-head">
+          <span class="badge ${severityClass(alert.severity)}">${escapeHtml(alert.severityLabel || "-")}</span>
+          ${alert.country && alert.country !== "未知" ? `<span class="badge country">${escapeHtml(alert.country)}</span>` : ""}
+          <span class="muted">${escapeHtml(alert.target || "-")} · ${escapeHtml(formatTime(alert.triggerTime))}</span>
+        </div>
+        <div class="ac-alert-detail-block">
+          <h4>告警说明</h4>
+          <p>${escapeHtml(alert.meaning || "-")}</p>
+          <p class="ac-alert-action">建议：${escapeHtml(alert.suggestion || "-")}</p>
+        </div>
+        <div class="ac-alert-detail-block">
+          <h4>规则配置</h4>
+          <div class="ac-kv">
+            <span class="ac-kv-label">类型</span><span>${escapeHtml(alert.category || "-")}</span>
+            <span class="ac-kv-label">触发值</span><span class="num">${escapeHtml(alert.triggerValue ?? "-")}</span>
+            <span class="ac-kv-label">触发时间</span><span>${escapeHtml(formatTime(alert.triggerTime))}</span>
+            <span class="ac-kv-label">状态</span><span>${escapeHtml(alert.recoveredLabel || "-")}</span>
+          </div>
+          ${alert.promQl ? `<div class="ac-kv"><span class="ac-kv-label">PromQL</span><code>${escapeHtml(alert.promQl)}</code></div>` : ""}
+          ${alert.sql ? `<div class="ac-kv"><span class="ac-kv-label">SQL</span><code>${escapeHtml(alert.sql.slice(0, 500))}${alert.sql.length > 500 ? "…" : ""}</code></div>` : ""}
+        </div>
+        <div class="ac-alert-detail-block">
+          <h4>通知方式与地址</h4>
+          <div id="ac-alert-notify-list">
+            ${renderNotifyDetail(alert.notify)}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.classList.add("show");
+  const close = () => { overlay.classList.remove("show"); setTimeout(() => overlay.remove(), 180); };
+  overlay.querySelector(".ac-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  document.addEventListener("keydown", function onEsc(event) {
+    if (event.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+  });
+  bindNotifyActions(overlay, alert);
+}
+
+/** 渲染通知规则详情列表。 */
+function renderNotifyDetail(notify) {
+  if (!notify || !notify.length) return `<p class="muted">该规则未配置通知。</p>`;
+  return notify.map((nr) => `
+    <div class="ac-notify-rule">
+      <div class="ac-notify-rule-head">
+        <strong>${escapeHtml(nr.ruleName || "通知规则")}</strong>
+        <span class="badge ${nr.enable ? "ok" : "warn"}">${nr.enable ? "启用" : "停用"}</span>
+        <button class="small ac-notify-toggle" data-nr-id="${escapeHtml(String(nr.ruleId))}" data-nr-enable="${nr.enable ? "1" : "0"}">${nr.enable ? "停用" : "启用"}</button>
+      </div>
+      ${(nr.channels || []).map((ch) => `
+        <div class="ac-notify-channel">
+          <span class="ac-notify-method">${escapeHtml(channelLabel(ch.ident))}</span>
+          <span class="muted small">${escapeHtml(ch.channelName || "")}</span>
+          <span class="ac-notify-address" title="${escapeHtml(ch.address)}">${escapeHtml(ch.address)}</span>
+          <button class="small ac-notify-edit" data-nr-id="${escapeHtml(String(nr.ruleId))}" data-nr-name="${escapeHtml(nr.ruleName || "")}" data-receivers="${escapeHtml((ch.receivers || []).join(","))}" data-phone="${escapeHtml(ch.phone || "")}" data-email="${escapeHtml(ch.email || "")}">编辑</button>
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+}
+
+/** 绑定通知启停 / 编辑操作。 */
+function bindNotifyActions(overlay, alert) {
+  // 启停
+  overlay.querySelectorAll("[data-nr-enable]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await apiPost(`/api/alerts/notify-rules/${btn.dataset.nrId}`, { enable: btn.dataset.nrEnable === "1" });
+        // 刷新弹窗中的通知区
+        const refreshed = await refreshAlertNotify(alert);
+        if (refreshed) {
+          const list = overlay.querySelector("#ac-alert-notify-list");
+          if (list) { list.innerHTML = renderNotifyDetail(refreshed); bindNotifyActions(overlay, { ...alert, notify: refreshed }); }
+        }
+      } catch (error) {
+        btn.disabled = false;
+        alert(`操作失败：${error.message}`);
+      }
+    });
+  });
+  // 编辑接收人/地址
+  overlay.querySelectorAll(".ac-notify-edit").forEach((btn) => {
+    btn.addEventListener("click", () => openNotifyEdit(btn, overlay, alert));
+  });
+}
+
+/** 编辑通知地址（接收人/电话/邮箱）。 */
+function openNotifyEdit(btn, overlay, alert) {
+  const channel = btn.closest(".ac-notify-channel");
+  const old = channel.innerHTML;
+  channel.innerHTML = `
+    <div class="ac-notify-edit-form">
+      <label>接收人（用户名，逗号分隔）
+        <input type="text" class="ac-search-input" value="${escapeHtml(btn.dataset.receivers || "")}">
+      </label>
+      <div class="ac-notify-edit-actions">
+        <button class="small primary ac-notify-save">保存</button>
+        <button class="small ac-notify-cancel">取消</button>
+      </div>
+    </div>
+  `;
+  const input = channel.querySelector("input");
+  channel.querySelector(".ac-notify-cancel").addEventListener("click", () => { channel.innerHTML = old; });
+  channel.querySelector(".ac-notify-save").addEventListener("click", async () => {
+    const receivers = input.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    try {
+      await apiPost(`/api/alerts/notify-rules/${btn.dataset.nrId}`, { receivers });
+      const refreshed = await refreshAlertNotify(alert);
+      if (refreshed) {
+        const list = overlay.querySelector("#ac-alert-notify-list");
+        if (list) { list.innerHTML = renderNotifyDetail(refreshed); bindNotifyActions(overlay, { ...alert, notify: refreshed }); }
+      }
+    } catch (error) {
+      alert(`保存失败：${error.message}`);
+    }
+  });
+}
+
+/** 重新拉取某告警的通知配置（用于编辑后刷新）。 */
+async function refreshAlertNotify(alert) {
+  try {
+    const active = await apiGet("/api/alerts/active?limit=200");
+    const found = (Array.isArray(active) ? active : []).find((a) => String(a.ruleId) === String(alert.ruleId));
+    return found?.notify || alert.notify;
+  } catch {
+    return alert.notify;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -246,14 +412,15 @@ function renderGroupDetail(groups) {
 
 function renderGroupDetailRows(alerts) {
   if (!alerts || !alerts.length) return `<p class="muted">该业务组当前没有告警明细。</p>`;
+  acDetailAlerts = alerts.slice(0, 50);
   return `
     <table class="data-table ac-alert-table">
       <thead>
-        <tr><th>级别</th><th>规则 / 含义</th><th>国家</th><th>目标</th><th>触发值</th><th>触发时间</th><th>状态</th></tr>
+        <tr><th>级别</th><th>规则 / 含义</th><th>国家</th><th>目标</th><th>触发值</th><th>通知</th><th>状态</th></tr>
       </thead>
       <tbody>
-        ${alerts.slice(0, 50).map((alert) => `
-          <tr>
+        ${acDetailAlerts.map((alert, idx) => `
+          <tr class="ac-alert-row" data-alert-idx="${idx}" title="点击查看详情 / 通知配置">
             <td><span class="badge ${severityClass(alert.severity)}">${escapeHtml(alert.severityLabel || "-")}</span></td>
             <td>
               <strong>${escapeHtml(alert.ruleName || "-")}</strong>
@@ -265,13 +432,42 @@ function renderGroupDetailRows(alerts) {
             </td>
             <td class="small">${escapeHtml(alert.target || "-")}</td>
             <td class="num">${escapeHtml(alert.triggerValue ?? "-")}</td>
-            <td class="num">${escapeHtml(formatTime(alert.triggerTime))}</td>
+            <td class="ac-alert-notify">
+              ${renderNotifySummary(alert.notify)}
+            </td>
             <td><span class="badge ${alert.isRecovered ? "ok" : "warn"}">${escapeHtml(alert.recoveredLabel || "-")}</span></td>
           </tr>
         `).join("")}
       </tbody>
     </table>
   `;
+}
+
+function renderNotifySummary(notify) {
+  if (!notify || !notify.length) return `<span class="muted small">未配置</span>`;
+  const flat = notify.flatMap((nr) => (nr.channels || []).map((ch) => ({ ruleName: nr.ruleName, enable: nr.enable, ...ch })));
+  if (!flat.length) return `<span class="muted small">未配置渠道</span>`;
+  return flat.slice(0, 2).map((ch) => `
+    <div class="ac-notify-item ${ch.ident ? `is-${ch.ident}` : ""}">
+      <span class="ac-notify-method">${escapeHtml(channelLabel(ch.ident))}</span>
+      <span class="muted small" title="${escapeHtml(ch.address)}">${escapeHtml(ch.address || "默认")}</span>
+      ${ch.enable ? "" : `<span class="badge warn">停用</span>`}
+    </div>
+  `).join("");
+}
+
+function channelLabel(ident) {
+  const map = {
+    dingtalk: "钉钉",
+    "ali-voice": "电话",
+    ivr: "电话",
+    email: "邮件",
+    sms: "短信",
+    webhook: "Webhook",
+    feishu: "飞书",
+    wecom: "企业微信",
+  };
+  return map[ident] || ident || "通知";
 }
 
 function getGroupAlerts(groupName) {

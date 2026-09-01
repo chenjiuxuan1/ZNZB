@@ -90,8 +90,125 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return workflowNameCache.get(id) || "";
   }
 
+  // ---------------------------------------------------------------------------
+  // 通知规则解析（告警 -> 通知方式/地址）
+  // ---------------------------------------------------------------------------
+
+  // 夜莺 通知规则/渠道/用户/组 映射缓存
+  let notifyCache = { rules: [], channels: [], users: [], groups: [] };
+  let notifyCacheAt = 0;
+  const NOTIFY_CACHE_TTL_MS = 120_000;
+
+  async function ensureNotifyMap() {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) return;
+    if (Date.now() - notifyCacheAt < NOTIFY_CACHE_TTL_MS && notifyCache.rules.length) return;
+    const [rules, channels, users, groups] = await Promise.all([
+      nightingale.getNotifyRules().catch(() => []),
+      nightingale.getNotifyChannelConfigs().catch(() => []),
+      nightingale.getUsers().catch(() => []),
+      nightingale.getBusiGroups().catch(() => []),
+    ]);
+    notifyCache = {
+      rules: Array.isArray(rules) ? rules : [],
+      channels: Array.isArray(channels) ? channels : [],
+      users: Array.isArray(users) ? users : [],
+      groups: Array.isArray(groups) ? groups : [],
+    };
+    notifyCacheAt = Date.now();
+  }
+
+  /** 从通知规则解析出"通知方式 + 地址"摘要。 */
+  function parseNotifyInfo(alert) {
+    const ids = alert?.notify_rule_ids || [];
+    if (!ids.length) return [];
+    const chById = new Map(notifyCache.channels.map((c) => [c.id, c]));
+    const userById = new Map(notifyCache.users.map((u) => [u.id, u]));
+    const groupById = new Map(notifyCache.groups.map((g) => [g.id, g]));
+    const result = [];
+    for (const nrId of ids) {
+      const nr = notifyCache.rules.find((r) => Number(r.id) === Number(nrId));
+      if (!nr) continue;
+      const channels = (nr.notify_configs || []).map((nc) => {
+        const ch = chById.get(nc.channel_id);
+        const p = nc.params || {};
+        const address = buildNotifyAddress(p, userById, groupById);
+        return {
+          channelId: nc.channel_id,
+          channelName: ch?.name || `渠道${nc.channel_id}`,
+          ident: ch?.ident || "",
+          severities: nc.severities || [],
+          address,
+          receivers: (p.user_ids || []).map((id) => userById.get(Number(id))?.username || `用户${id}`).filter(Boolean),
+          phone: p.Mobile || p.mobile || "",
+          email: p.email || "",
+        };
+      });
+      result.push({
+        ruleId: nr.id,
+        ruleName: nr.name || "",
+        enable: Boolean(nr.enable),
+        channels,
+      });
+    }
+    return result;
+  }
+
+  function buildNotifyAddress(params, userById, groupById) {
+    const parts = [];
+    if (params.access_token) parts.push(`机器人 token ${String(params.access_token).slice(0, 8)}…`);
+    if (params.botId) parts.push(`机器人 botId ${String(params.botId).slice(0, 8)}…`);
+    if (params.bot_name) parts.push(`机器人 ${params.bot_name}`);
+    if (params.Mobile || params.mobile) parts.push(`电话 ${params.Mobile || params.mobile}`);
+    if (params.email) parts.push(`邮箱 ${params.email}`);
+    if (params.webhook) parts.push(`webhook ${params.webhook}`);
+    if (params.Secret || params.secret) parts.push("ivr 模板");
+    const userNames = (params.user_ids || []).map((id) => userById.get(Number(id))?.username || `用户${id}`).filter(Boolean);
+    if (userNames.length) parts.push(`接收人 ${userNames.join("、")}`);
+    const groupNames = (params.user_group_ids || []).map((id) => groupById.get(Number(id))?.name || `组${id}`).filter(Boolean);
+    if (groupNames.length) parts.push(`用户组 ${groupNames.join("、")}`);
+    return parts.join("；") || "（默认）";
+  }
+
+  /** 更新通知规则（含通知地址/启停）。body 支持 {enable} / {params} / {receivers} / {notify_configs}。 */
+  async function updateNotifyRule(notifyRuleId, body) {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) throw new Error("夜莺未配置");
+    // 更新：先取现有规则，合并改动字段后整条回写
+    const existing = (await nightingale.getNotifyRules()).find((r) => Number(r.id) === Number(notifyRuleId));
+    if (!existing) throw new Error(`通知规则 ${notifyRuleId} 不存在`);
+    const merged = { ...existing, ...body };
+    // 若传 {receivers}（用户名列表）：解析为 user_ids 后写入第一个 notify_config
+    if (Array.isArray(body?.receivers)) {
+      await ensureNotifyMap();
+      const byName = new Map(notifyCache.users.map((u) => [u.username, u.id]));
+      const ids = body.receivers.map((name) => byName.get(String(name).trim())).filter((id) => id != null);
+      if (body.receivers.length && !ids.length) {
+        throw new Error(`未找到接收人：${body.receivers.join("、")}`);
+      }
+      merged.notify_configs = (merged.notify_configs || []).map((nc, i) =>
+        i === 0 ? { ...nc, params: { ...(nc.params || {}), user_ids: ids } } : nc
+      );
+      delete merged.receivers;
+    }
+    // 若传 {params} 且未传 notify_configs：合并进第一个 notify_config 的 params
+    if (body?.params && !body?.notify_configs && Array.isArray(merged.notify_configs)) {
+      merged.notify_configs = merged.notify_configs.map((nc, i) =>
+        i === 0 ? { ...nc, params: { ...(nc.params || {}), ...body.params } } : nc
+      );
+    }
+    await nightingale.post(`/api/n9e/notify-rules/${notifyRuleId}`, merged);
+    notifyCacheAt = 0; // 失效缓存
+    return { ok: true, notifyRuleId, name: merged.name || "" };
+  }
+
+  /** 启用/停用通知规则。 */
+  async function setNotifyRuleEnable(notifyRuleId, enable) {
+    return updateNotifyRule(notifyRuleId, { enable: Boolean(enable) });
+  }
+
   /** 归一化一条夜莺告警。 */
-  function normalizeN9eAlert(alert) {
+  async function normalizeN9eAlert(alert) {
     const tags = {};
     for (const tag of alert?.tags || []) {
       const idx = tag.indexOf("=");
@@ -100,6 +217,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       }
     }
     const countryInfo = detectCountry(alert, tags);
+    const notify = await parseNotifyInfo(alert);
     return {
       source: "nightingale",
       sourceLabel: "夜莺",
@@ -122,6 +240,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       triggerTime: alert?.trigger_time ? alert.trigger_time * 1000 : null,
       isRecovered: Boolean(alert?.is_recovered),
       recoveredLabel: alert?.is_recovered ? "已恢复" : "未恢复",
+      notify,
       tags,
       promQl: alert?.prom_ql || "",
       sql: extractSql(alert),
@@ -242,8 +361,9 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     if (!nightingale) {
       throw new Error("夜莺未配置：请设置 N9E_BASE_URL / N9E_TOKEN 或 config/alerts.config.json");
     }
+    await ensureNotifyMap();
     const list = await nightingale.getActiveAlerts({ busiGroup, severity, limit });
-    return list.map(normalizeN9eAlert);
+    return Promise.all(list.map(normalizeN9eAlert));
   }
 
   /** 历史告警（夜莺），归一化 + 分页。 */
@@ -252,6 +372,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     if (!nightingale) {
       throw new Error("夜莺未配置");
     }
+    await ensureNotifyMap();
     const dat = await nightingale.getHistoryAlerts({ stime, etime, limit, page });
     let list = dat?.list || [];
     if (ruleName) {
@@ -259,7 +380,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     }
     return {
       total: dat?.total || list.length,
-      list: list.map(normalizeN9eAlert),
+      list: await Promise.all(list.map(normalizeN9eAlert)),
     };
   }
 
@@ -468,6 +589,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     if (n8n) {
       await ensureWorkflowNameMap();
     }
+    await ensureNotifyMap();
 
     const severityCount = { 0: 0, 1: 0, 2: 0 };
     for (const alert of nightingaleActive) {
@@ -483,7 +605,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
         activeCount: nightingaleActive.length,
         severityCount,
         byGroup: countByGroup(nightingaleActive),
-        latest: nightingaleActive.slice(0, 10).map(normalizeN9eAlert),
+        latest: await Promise.all(nightingaleActive.slice(0, 10).map(normalizeN9eAlert)),
       },
       n8n: {
         configured: Boolean(n8n),
@@ -554,6 +676,8 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     createAlertRule,
     updateAlertRule,
     setAlertRuleDisabled,
+    updateNotifyRule,
+    setNotifyRuleEnable,
     getMonitorOverview,
     getConfig,
     getHealth,
