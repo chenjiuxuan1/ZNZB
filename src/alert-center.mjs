@@ -454,24 +454,42 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
   async function getDatasources() {
     const { nightingale } = await loadConfig();
     if (!nightingale) return [];
-    return nightingale.getDatasources();
+    const list = await nightingale.getDatasources();
+    return (Array.isArray(list) ? list : []).map((d) => ({
+      id: d?.id,
+      name: d?.name || "",
+      plugin_type: d?.plugin_type || "",
+      plugin_type_name: d?.plugin_type_name || "",
+      cluster_name: d?.cluster_name || "",
+      description: d?.description || "",
+      status: d?.status || "",
+      url: (d?.http?.url || "").slice(0, 200) || "",
+      created_by: d?.created_by || "",
+      updated_at: d?.updated_at || "",
+      is_default: Boolean(d?.is_default),
+    }));
   }
 
-  /** 监控目标（按业务组）。精简字段。 */
-  async function getTargets({ busiGroup, limit = 200 } = {}) {
+  /** 监控目标（按业务组）。完整字段，前端分页展示。 */
+  async function getTargets({ busiGroup, limit = 300 } = {}) {
     const { nightingale } = await loadConfig();
     if (!nightingale) return [];
     const list = await nightingale.getTargets({ busiGroup, limit });
-    return list.map((t) => ({
+    return (Array.isArray(list) ? list : []).map((t) => ({
       ident: t?.ident || "",
-      name: t?.name || "",
+      host_ip: t?.host_ip || "",
       note: t?.note || "",
       tags: t?.tags || [],
-      hostname: t?.hostname || "",
+      country: t?.tags_maps?.cn || t?.tags_maps?.country || "",
       os: t?.os || "",
+      arch: t?.arch || "",
       cpuNum: t?.cpu_num ?? "",
-      memCap: t?.mem_cap ?? "",
-      state: t?.state ?? "",
+      cpuUtil: typeof t?.cpu_util === "number" ? Number(t.cpu_util.toFixed(1)) : "",
+      memUtil: typeof t?.mem_util === "number" ? Number(t.mem_util.toFixed(1)) : "",
+      targetUp: t?.target_up ?? "",
+      agentVersion: t?.agent_version || "",
+      groupNames: t?.group_names || (t?.group_objs || []).map((g) => g.name).filter(Boolean),
+      updateAt: t?.update_at || "",
     }));
   }
 
@@ -534,15 +552,23 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     }
     const payload = await n8n.listWorkflows({ active, limit });
     const list = payload?.data || [];
-    return list.map((workflow) => ({
-      id: workflow?.id,
-      name: workflow?.name,
-      active: workflow?.active,
-      isArchived: workflow?.isArchived,
-      webhook: workflow?.webhook?.path || "",
-      webhooks: (workflow?.webhooks || []).map((w) => w.path).filter(Boolean),
-      updatedAt: workflow?.updatedAt || "",
-    }));
+    const baseUrl = String(n8n.baseUrl || "").replace(/\/+$/, "");
+    return list.map((workflow) => {
+      const paths = [
+        workflow?.webhook?.path || "",
+        ...(workflow?.webhooks || []).map((w) => w.path).filter(Boolean),
+      ].filter(Boolean);
+      return {
+        id: workflow?.id,
+        name: workflow?.name,
+        active: workflow?.active,
+        isArchived: workflow?.isArchived,
+        webhook: workflow?.webhook?.path || "",
+        webhookUrl: baseUrl && paths.length ? `${baseUrl}/webhook/${paths[0]}` : "",
+        webhooks: paths,
+        updatedAt: workflow?.updatedAt || "",
+      };
+    });
   }
 
   /** n8n 工作流详情（节点 + webhook）。 */

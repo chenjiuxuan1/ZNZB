@@ -8,6 +8,57 @@ let acDetailAlerts = [];
 // 配置管理：规则 / 目标 缓存（编辑表单回填用）
 let acRulesCache = [];
 let acTargetsCache = [];
+let acDatasourcesCache = [];
+let acWorkflowsCache = [];
+// 配置管理分页状态：{ key: currentPage }
+const acPages = { rules: 1, targets: 1, datasources: 1, workflows: 1 };
+// 配置管理搜索词
+const acSearch = { targets: "", workflows: "" };
+// 配置管理每页条数
+const AC_PAGE_SIZE = 20;
+
+/** 通用分页条 HTML。 */
+function renderAcPager(id, page, pageCount, total, searched) {
+  if (!total) return "";
+  const max = Math.max(pageCount, 1);
+  const safePage = Math.min(Math.max(page, 1), max);
+  return `
+    <div class="ac-pager" data-pager="${id}" data-page="${safePage}" data-max="${max}">
+      <span class="muted">共 ${total} 条${searched ? "（当前筛选后）" : ""} · 第 ${safePage}/${max} 页</span>
+      <div>
+        <button class="small" data-pg="prev" ${safePage <= 1 ? "disabled" : ""}>上一页</button>
+        <button class="small" data-pg="next" ${safePage >= max ? "disabled" : ""}>下一页</button>
+      </div>
+    </div>
+  `;
+}
+
+/** 通用分页事件：事件委托，data-pager 指定区块，翻页后回调重新渲染。 */
+/** 通用分页事件：事件委托到 document，DOM 重建后依然有效。
+ *  pager 元素的 data-pager 作为 key，回调注册到 acPagerHandlers。 */
+const acPagerHandlers = {};
+function bindAcPagerEvents(pager, onPageChange) {
+  if (!pager) return;
+  // pager 是外层容器（#ac-xxx-pager），data-pager 在内部 .ac-pager 上
+  const key = pager.querySelector("[data-pager]")?.dataset.pager || pager.id || pager.dataset.pager;
+  acPagerHandlers[key] = onPageChange;
+  if (!document.__acPagerBound) {
+    document.__acPagerBound = true;
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest?.("[data-pg]");
+      if (!btn) return;
+      const pagerEl = btn.closest?.("[data-pager]");
+      if (!pagerEl) return;
+      const handler = acPagerHandlers[pagerEl.dataset.pager];
+      if (!handler) return;
+      const page = Number(pagerEl.dataset.page);
+      const max = Number(pagerEl.dataset.max);
+      const dir = btn.dataset.pg;
+      if (dir === "prev" && page > 1) handler(page - 1);
+      else if (dir === "next" && page < max) handler(page + 1);
+    });
+  }
+}
 
 /**
  * 告警中心：实时看板 + 配置管理。
@@ -771,52 +822,57 @@ function renderConfigTab(groups, config) {
         <div class="detail-header compact-header">
           <div>
             <h2 class="panel-title">夜莺告警规则</h2>
-            <p class="muted">选择业务组查看规则；支持启用/停用、编辑规则内容（PromQL / SQL / 级别 / 名称）。</p>
+            <p class="muted">按业务组查看规则，支持编辑规则内容（PromQL / SQL / 级别 / 名称）与启用/停用。</p>
           </div>
         </div>
         <div class="ac-filter-bar">
           <label>业务组
             <select id="ac-rules-bg" class="ac-search-input">${groupOptions}</select>
           </label>
+          <input type="text" id="ac-rules-search" class="ac-search-input" placeholder="搜索规则名…">
           <button class="primary small" id="ac-rules-load">加载规则</button>
         </div>
         <div id="ac-rules-table"></div>
+        <div id="ac-rules-pager"></div>
       </section>
 
       <section class="sub-panel">
         <div class="detail-header compact-header">
           <div>
             <h2 class="panel-title">夜莺监控目标</h2>
-            <p class="muted">按业务组查看被监控的主机 / 目标。</p>
+            <p class="muted">按业务组查看被监控主机：CPU / 内存利用率、在线状态、IP 与标签。支持分页与搜索。</p>
           </div>
         </div>
         <div class="ac-filter-bar">
           <label>业务组
             <select id="ac-targets-bg" class="ac-search-input">${groupOptions}</select>
           </label>
+          <input type="text" id="ac-targets-search" class="ac-search-input" placeholder="搜索标识 / IP / 国家…">
           <button class="primary small" id="ac-targets-load">加载目标</button>
         </div>
         <div id="ac-targets-table"></div>
+        <div id="ac-targets-pager"></div>
       </section>
 
       <section class="sub-panel">
         <div class="detail-header compact-header">
           <div>
             <h2 class="panel-title">夜莺数据源</h2>
-            <p class="muted">查看已接入的监控数据源（Prometheus / MySQL 等）。</p>
+            <p class="muted">已接入的监控数据源：类型、集群、地址与创建人。</p>
           </div>
         </div>
         <div class="ac-filter-bar">
           <button class="primary small" id="ac-ds-load">加载数据源</button>
         </div>
         <div id="ac-ds-table"></div>
+        <div id="ac-ds-pager"></div>
       </section>
 
       <section class="sub-panel">
         <div class="detail-header compact-header">
           <div>
             <h2 class="panel-title">n8n 工作流</h2>
-            <p class="muted">查看工作流状态，可启用/停用激活，点击"详情"查看节点与 webhook。</p>
+            <p class="muted">工作流状态与触发地址；可启用/停用激活，点击"详情"查看节点流程。</p>
           </div>
         </div>
         <div class="ac-filter-bar">
@@ -827,9 +883,11 @@ function renderConfigTab(groups, config) {
               <option value="false">未激活</option>
             </select>
           </label>
+          <input type="text" id="ac-wf-search" class="ac-search-input" placeholder="搜索工作流名…">
           <button class="primary small" id="ac-wf-load">加载工作流</button>
         </div>
         <div id="ac-wf-table"></div>
+        <div id="ac-wf-pager"></div>
       </section>
     </div>
   `;
@@ -839,8 +897,22 @@ async function bindConfigEvents(root, body, groups) {
   // ---- 夜莺告警规则 ----
   const rulesLoad = body.querySelector("#ac-rules-load");
   const rulesTable = body.querySelector("#ac-rules-table");
+  const rulesPager = body.querySelector("#ac-rules-pager");
+  const rulesSearch = body.querySelector("#ac-rules-search");
   const bgSelect = body.querySelector("#ac-rules-bg");
   if (rulesLoad && bgSelect) {
+    const drawRules = () => {
+      const q = (rulesSearch?.value || "").trim();
+      const filtered = acRulesCache.filter((r) => !q || String(r.name || "").includes(q));
+      const totalPages = Math.ceil(filtered.length / AC_PAGE_SIZE) || 1;
+      acPages.rules = Math.min(Math.max(acPages.rules, 1), totalPages);
+      rulesTable.innerHTML = renderRulesTable(filtered, acPages.rules);
+      bindRulesActions(rulesTable, () => { acPages.rules = 1; drawRules(); });
+      if (rulesPager) {
+        rulesPager.innerHTML = renderAcPager("rules", acPages.rules, totalPages, filtered.length, !!q);
+        bindAcPagerEvents(rulesPager, (page) => { acPages.rules = page; drawRules(); });
+      }
+    };
     const loadRules = async () => {
       const bg = bgSelect.value;
       if (!bg) { rulesTable.innerHTML = `<p class="muted">请选择业务组。</p>`; return; }
@@ -848,46 +920,77 @@ async function bindConfigEvents(root, body, groups) {
       try {
         const rules = await apiGet(`/api/alerts/rules?busiGroup=${bg}`);
         acRulesCache = rules;
-        rulesTable.innerHTML = renderRulesTable(rules);
-        bindRulesActions(rulesTable, loadRules);
+        acPages.rules = 1;
+        drawRules();
       } catch (error) {
         rulesTable.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
       }
     };
     rulesLoad.addEventListener("click", loadRules);
+    rulesSearch?.addEventListener("input", () => { acPages.rules = 1; drawRules(); });
     loadRules();
   }
 
   // ---- 夜莺监控目标 ----
   const targetsLoad = body.querySelector("#ac-targets-load");
   const targetsTable = body.querySelector("#ac-targets-table");
+  const targetsPager = body.querySelector("#ac-targets-pager");
+  const targetsSearch = body.querySelector("#ac-targets-search");
   const targetsBg = body.querySelector("#ac-targets-bg");
   if (targetsLoad && targetsBg) {
+    const drawTargets = () => {
+      const q = (targetsSearch?.value || "").trim().toLowerCase();
+      const filtered = acTargetsCache.filter((t) => {
+        if (!q) return true;
+        return [t.ident, t.host_ip, t.country, (t.tags || []).join(" ")].join(" ").toLowerCase().includes(q);
+      });
+      const totalPages = Math.ceil(filtered.length / AC_PAGE_SIZE) || 1;
+      acPages.targets = Math.min(Math.max(acPages.targets, 1), totalPages);
+      targetsTable.innerHTML = renderTargetsTable(filtered, acPages.targets);
+      if (targetsPager) {
+        targetsPager.innerHTML = renderAcPager("targets", acPages.targets, totalPages, filtered.length, !!q);
+        bindAcPagerEvents(targetsPager, (page) => { acPages.targets = page; drawTargets(); });
+      }
+    };
     const loadTargets = async () => {
       const bg = targetsBg.value;
       if (!bg) { targetsTable.innerHTML = `<p class="muted">请选择业务组。</p>`; return; }
       targetsTable.innerHTML = `<div class="notice">加载目标…</div>`;
       try {
-        const list = await apiGet(`/api/alerts/targets?busiGroup=${bg}&limit=300`);
+        const list = await apiGet(`/api/alerts/targets?busiGroup=${bg}&limit=500`);
         acTargetsCache = list;
-        targetsTable.innerHTML = renderTargetsTable(list);
+        acPages.targets = 1;
+        drawTargets();
       } catch (error) {
         targetsTable.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
       }
     };
     targetsLoad.addEventListener("click", loadTargets);
+    targetsSearch?.addEventListener("input", () => { acPages.targets = 1; drawTargets(); });
     loadTargets();
   }
 
   // ---- 夜莺数据源 ----
   const dsLoad = body.querySelector("#ac-ds-load");
   const dsTable = body.querySelector("#ac-ds-table");
+  const dsPager = body.querySelector("#ac-ds-pager");
   if (dsLoad) {
+    const drawDatasources = () => {
+      const totalPages = Math.ceil(acDatasourcesCache.length / AC_PAGE_SIZE) || 1;
+      acPages.datasources = Math.min(Math.max(acPages.datasources, 1), totalPages);
+      dsTable.innerHTML = renderDatasourcesTable(acDatasourcesCache, acPages.datasources);
+      if (dsPager) {
+        dsPager.innerHTML = renderAcPager("datasources", acPages.datasources, totalPages, acDatasourcesCache.length, false);
+        bindAcPagerEvents(dsPager, (page) => { acPages.datasources = page; drawDatasources(); });
+      }
+    };
     const loadDatasources = async () => {
       dsTable.innerHTML = `<div class="notice">加载数据源…</div>`;
       try {
         const list = await apiGet("/api/alerts/datasources");
-        dsTable.innerHTML = renderDatasourcesTable(list);
+        acDatasourcesCache = list;
+        acPages.datasources = 1;
+        drawDatasources();
       } catch (error) {
         dsTable.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
       }
@@ -899,22 +1002,41 @@ async function bindConfigEvents(root, body, groups) {
   // ---- n8n 工作流 ----
   const wfLoad = body.querySelector("#ac-wf-load");
   const wfTable = body.querySelector("#ac-wf-table");
+  const wfPager = body.querySelector("#ac-wf-pager");
+  const wfSearch = body.querySelector("#ac-wf-search");
   const wfFilter = body.querySelector("#ac-wf-filter");
   if (wfLoad) {
+    const drawWorkflows = () => {
+      const q = (wfSearch?.value || "").trim();
+      const filtered = acWorkflowsCache.filter((wf) => {
+        if (q && !String(wf.name || "").includes(q)) return false;
+        return true;
+      });
+      const totalPages = Math.ceil(filtered.length / AC_PAGE_SIZE) || 1;
+      acPages.workflows = Math.min(Math.max(acPages.workflows, 1), totalPages);
+      wfTable.innerHTML = renderWorkflowsTable(filtered, acPages.workflows);
+      bindWorkflowActions(wfTable, () => { acPages.workflows = 1; drawWorkflows(); });
+      if (wfPager) {
+        wfPager.innerHTML = renderAcPager("workflows", acPages.workflows, totalPages, filtered.length, !!q);
+        bindAcPagerEvents(wfPager, (page) => { acPages.workflows = page; drawWorkflows(); });
+      }
+    };
     const loadWorkflows = async () => {
       wfTable.innerHTML = `<div class="notice">加载工作流…</div>`;
       try {
         const active = wfFilter.value === "" ? undefined : wfFilter.value === "true";
         const query = active === undefined ? "?limit=250" : `?active=${active}&limit=250`;
         const list = await apiGet(`/api/alerts/n8n/workflows${query}`);
-        wfTable.innerHTML = renderWorkflowsTable(list);
-        bindWorkflowActions(wfTable, loadWorkflows);
+        acWorkflowsCache = list;
+        acPages.workflows = 1;
+        drawWorkflows();
       } catch (error) {
         wfTable.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
       }
     };
     wfLoad.addEventListener("click", loadWorkflows);
     wfFilter.addEventListener("change", loadWorkflows);
+    wfSearch?.addEventListener("input", () => { acPages.workflows = 1; drawWorkflows(); });
     loadWorkflows();
   }
 }
@@ -963,16 +1085,18 @@ function bindWorkflowActions(table, reload) {
   });
 }
 
-function renderRulesTable(rules) {
+function renderRulesTable(rules, page = 1) {
   if (!rules.length) return `<p class="muted">该业务组暂无告警规则。</p>`;
+  const start = (page - 1) * AC_PAGE_SIZE;
+  const rows = rules.slice(start, start + AC_PAGE_SIZE);
   return `
     <table class="data-table">
-      <thead><tr><th>规则名</th><th>类型</th><th>级别</th><th>状态</th><th>操作</th></tr></thead>
+      <thead><tr><th>规则名</th><th>查询语句</th><th>级别</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>
-        ${rules.map((rule) => `
+        ${rows.map((rule) => `
           <tr>
-            <td title="${escapeHtml(extractRuleQuery(rule))}">${escapeHtml(rule.name || "-")}</td>
-            <td>${escapeHtml(rule.cate || rule.prod || "-")}</td>
+            <td>${escapeHtml(rule.name || "-")}</td>
+            <td class="small"><code class="ac-rule-ql">${escapeHtml(extractRuleQuery(rule) || "-")}</code></td>
             <td><span class="badge ${severityClass(rule.severity)}">${escapeHtml(severityLabel(rule.severity))}</span></td>
             <td><span class="badge ${rule.disabled ? "warn" : "ok"}">${rule.disabled ? "已停用" : "启用"}</span></td>
             <td>
@@ -988,38 +1112,47 @@ function renderRulesTable(rules) {
   `;
 }
 
-function renderTargetsTable(list) {
+function renderTargetsTable(list, page = 1) {
   if (!list.length) return `<p class="muted">该业务组暂无监控目标。</p>`;
+  const start = (page - 1) * AC_PAGE_SIZE;
+  const rows = list.slice(start, start + AC_PAGE_SIZE);
   return `
-    <table class="data-table">
-      <thead><tr><th>标识</th><th>名称</th><th>标签</th><th>状态</th></tr></thead>
+    <table class="data-table ac-targets-table">
+      <thead><tr><th>标识</th><th>IP</th><th>国家</th><th>CPU 利用率</th><th>内存利用率</th><th>状态</th><th>OS</th><th>备注</th></tr></thead>
       <tbody>
-        ${list.slice(0, 100).map((t) => `
+        ${rows.map((t) => `
           <tr>
             <td class="small">${escapeHtml(t.ident || "-")}</td>
-            <td class="small">${escapeHtml(t.name || t.hostname || "-")}</td>
-            <td class="small muted">${escapeHtml((t.tags || []).join("，") || "-")}</td>
-            <td><span class="badge ${t.state === 0 ? "ok" : "warn"}">${t.state === 0 ? "正常" : `状态${t.state ?? "-"}`}</span></td>
+            <td class="small mono">${escapeHtml(t.host_ip || "-")}</td>
+            <td>${t.country ? `<span class="badge country">${escapeHtml(countryName(t.country))}</span>` : `<span class="muted">-</span>`}</td>
+            <td class="num ${t.cpuUtil > 80 ? "text-danger" : ""}">${t.cpuUtil !== "" ? `${escapeHtml(t.cpuUtil)}%` : "-"}</td>
+            <td class="num ${t.memUtil > 80 ? "text-danger" : ""}">${t.memUtil !== "" ? `${escapeHtml(t.memUtil)}%` : "-"}</td>
+            <td><span class="badge ${Number(t.targetUp) === 1 ? "ok" : Number(t.targetUp) === 0 ? "danger" : "warn"}">${Number(t.targetUp) === 1 ? "在线" : Number(t.targetUp) === 0 ? "离线" : "未知"}</span></td>
+            <td class="small muted">${escapeHtml([t.os, t.arch].filter(Boolean).join(" / ") || "-")}</td>
+            <td class="small muted" title="${escapeHtml(t.note || "")}">${escapeHtml((t.note || "").slice(0, 20) || "-")}</td>
           </tr>
         `).join("")}
       </tbody>
     </table>
-    ${list.length > 100 ? `<p class="muted">共 ${list.length} 个目标，仅展示前 100 个。</p>` : ""}
   `;
 }
 
-function renderDatasourcesTable(list) {
+function renderDatasourcesTable(list, page = 1) {
   if (!list.length) return `<p class="muted">暂无数据源。</p>`;
+  const start = (page - 1) * AC_PAGE_SIZE;
+  const rows = list.slice(start, start + AC_PAGE_SIZE);
   return `
     <table class="data-table">
-      <thead><tr><th>名称</th><th>类型</th><th>集群</th><th>状态</th></tr></thead>
+      <thead><tr><th>名称</th><th>类型</th><th>集群</th><th>地址</th><th>创建人</th><th>状态</th></tr></thead>
       <tbody>
-        ${list.map((ds) => `
+        ${rows.map((ds) => `
           <tr>
             <td>${escapeHtml(ds.name || "-")}</td>
             <td><span class="badge">${escapeHtml(ds.plugin_type || ds.plugin_type_name || "-")}</span></td>
             <td class="small muted">${escapeHtml(ds.cluster_name || "-")}</td>
-            <td><span class="badge ${Number(ds.status) === 0 ? "ok" : "warn"}">${Number(ds.status) === 0 ? "正常" : `状态${ds.status ?? "-"}`}</span></td>
+            <td class="small mono" title="${escapeHtml(ds.url)}">${escapeHtml(ds.url ? ds.url.slice(0, 45) + "…" : "-")}</td>
+            <td class="small muted">${escapeHtml(ds.created_by || "-")}</td>
+            <td><span class="badge ${String(ds.status) === "enabled" ? "ok" : "warn"}">${ds.status === "enabled" ? "启用" : escapeHtml(String(ds.status || "-"))}</span></td>
           </tr>
         `).join("")}
       </tbody>
@@ -1027,17 +1160,19 @@ function renderDatasourcesTable(list) {
   `;
 }
 
-function renderWorkflowsTable(list) {
+function renderWorkflowsTable(list, page = 1) {
   if (!list.length) return `<p class="muted">暂无工作流。</p>`;
+  const start = (page - 1) * AC_PAGE_SIZE;
+  const rows = list.slice(start, start + AC_PAGE_SIZE);
   return `
     <table class="data-table">
-      <thead><tr><th>工作流名称</th><th>激活</th><th>webhook</th><th>操作</th></tr></thead>
+      <thead><tr><th>工作流名称</th><th>激活</th><th>触发地址 (webhook)</th><th>操作</th></tr></thead>
       <tbody>
-        ${list.map((wf) => `
+        ${rows.map((wf) => `
           <tr>
             <td>${escapeHtml(wf.name || `#${wf.id}`)}</td>
             <td><span class="badge ${wf.active ? "ok" : "warn"}">${wf.active ? "已激活" : "未激活"}</span></td>
-            <td class="small muted">${escapeHtml(wf.webhook?.path || wf.webhooks?.map((w) => w.path).join("、") || "-")}</td>
+            <td class="small mono" title="${escapeHtml(wf.webhookUrl || "")}">${escapeHtml(wf.webhookUrl || (wf.webhooks || []).join("、") || "无 webhook（定时/内部触发）")}</td>
             <td>
               <button class="small" data-wf-detail="${escapeHtml(String(wf.id))}">详情</button>
               <button class="small ${wf.active ? "" : "primary"}" data-wf-toggle="${escapeHtml(String(wf.id))}" data-active="${wf.active ? "true" : "false"}">
@@ -1049,6 +1184,12 @@ function renderWorkflowsTable(list) {
       </tbody>
     </table>
   `;
+}
+
+/** 国家代码 -> 中文（展示用）。 */
+function countryName(code) {
+  const map = { cn: "中国", ina: "印尼", mx: "墨西哥", mex: "墨西哥", phl: "菲律宾", ph: "菲律宾", pak: "巴基斯坦", pk: "巴基斯坦", tha: "泰国", th: "泰国", hongkong: "香港", hk: "香港", china: "中国" };
+  return map[String(code).toLowerCase()] || code;
 }
 
 function extractRuleQuery(rule) {
