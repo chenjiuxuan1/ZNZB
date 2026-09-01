@@ -965,6 +965,7 @@ function renderHistoryExpandRow(a, idx) {
   const rows = events.map((e) => `
     <tr>
       <td class="small mono">${escapeHtml(formatTime(e.triggerTime))}</td>
+      <td><span class="badge ac-channel-badge">${escapeHtml(ruleChannelLabel(e.ruleName))}</span></td>
       <td class="small mono" title="${escapeHtml(e.target || "")}">${escapeHtml(e.target || "-")}</td>
       <td><span class="badge ${e.isRecovered ? "ok" : "danger"}">${escapeHtml(e.recoveredLabel || "-")}</span></td>
       <td class="num">${escapeHtml(String(e.triggerValue ?? "-"))}</td>
@@ -977,7 +978,7 @@ function renderHistoryExpandRow(a, idx) {
         <div class="ac-his-detail-inner">
           <strong>该告警每次触发记录（共 ${events.length} 次）</strong>
           <table class="ac-his-events">
-            <thead><tr><th>触发时间</th><th>目标</th><th>状态</th><th>触发值</th><th>恢复时间</th></tr></thead>
+            <thead><tr><th>触发时间</th><th>渠道</th><th>目标</th><th>状态</th><th>触发值</th><th>恢复时间</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1609,6 +1610,14 @@ function formatTime(ms) {
   if (!ms) return "-";
   const date = new Date(ms);
   return isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+/** 从规则名尾缀识别通知渠道（tv=电话 / ivr=语音 / 其他）。 */
+function ruleChannelLabel(ruleName) {
+  const n = String(ruleName || "");
+  if (/_(tv)$/i.test(n)) return "TV 电话";
+  if (/_(ivr)$/i.test(n)) return "IVR 语音";
+  return "-";
 }
 
 function formatIso(iso) {

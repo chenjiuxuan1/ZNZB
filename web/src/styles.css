@@ -8026,3 +8026,11 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 .ar-sql-block { min-height: 0; }
+
+/* 告警日志展开：渠道 badge */
+.ac-channel-badge {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  font-size: 11px;
+}
