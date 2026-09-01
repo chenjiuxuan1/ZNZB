@@ -179,6 +179,30 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return nightingale.getAlertRules(busiGroup);
   }
 
+  /** 新建夜莺告警规则。body 为规则字段。 */
+  async function createAlertRule(busiGroup, body) {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) throw new Error("夜莺未配置");
+    await nightingale.createAlertRule(busiGroup, body);
+    return { ok: true };
+  }
+
+  /** 更新夜莺告警规则。 */
+  async function updateAlertRule(ruleId, body) {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) throw new Error("夜莺未配置");
+    await nightingale.updateAlertRule(ruleId, body);
+    return { ok: true };
+  }
+
+  /** 启用/停用夜莺告警规则。 */
+  async function setAlertRuleDisabled(ruleId, disabled) {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) throw new Error("夜莺未配置");
+    await nightingale.setAlertRuleDisabled(ruleId, disabled);
+    return { ok: true, ruleId, disabled };
+  }
+
   /** 数据源列表。 */
   async function getDatasources() {
     const { nightingale } = await loadConfig();
@@ -218,16 +242,24 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     }));
   }
 
-  /** n8n 执行记录（精简字段）。 */
-  async function getN8nExecutions({ status, limit = 50 } = {}) {
+  /** n8n 执行记录（精简字段）。支持 status / workflowId 过滤。 */
+  async function getN8nExecutions({ status, workflowId, limit = 250 } = {}) {
     const { n8n } = await loadConfig();
     if (!n8n) {
       throw new Error("n8n 未配置");
     }
     await ensureWorkflowNameMap();
-    const payload = await n8n.listExecutions({ status, limit });
-    const list = payload?.data || [];
-    return list.map((exec) => ({
+    // 分页拉全量（n8n limit 上限 250），前端负责名称搜索与翻页
+    const all = [];
+    let cursor;
+    do {
+      const payload = await n8n.listExecutions({ status, workflowId, limit: Math.min(limit, 250), cursor });
+      const list = payload?.data || [];
+      all.push(...list);
+      cursor = payload?.nextCursor || "";
+      if (all.length >= 250) break;
+    } while (cursor);
+    return all.map((exec) => ({
       id: exec?.id,
       workflowId: exec?.workflowId,
       workflowName: resolveWorkflowName(exec),
@@ -236,6 +268,50 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       startedAt: exec?.startedAt || "",
       stoppedAt: exec?.stoppedAt || "",
     }));
+  }
+
+  /** n8n 执行详情：失败节点 + 错误信息 + 节点执行摘要。 */
+  async function getN8nExecutionDetail(id) {
+    const { n8n } = await loadConfig();
+    if (!n8n) return null;
+    const exec = await n8n.getExecution(id, { includeData: true });
+    const rd = exec?.data?.resultData || {};
+    const runData = rd?.runData || {};
+    const nodes = Object.keys(runData).map((nodeName) => {
+      const runs = runData[nodeName] || [];
+      const first = runs[0] || {};
+      return {
+        name: nodeName,
+        executionStatus: first?.executionStatus || "unknown",
+        error: first?.error?.message || first?.error?.description || "",
+        data: first?.data?.main?.[0]?.json || null,
+      };
+    });
+    return {
+      id: exec?.id,
+      workflowId: exec?.workflowId,
+      workflowName: exec?.workflowData?.name || resolveWorkflowName(exec) || "",
+      status: exec?.status,
+      startedAt: exec?.startedAt || "",
+      stoppedAt: exec?.stoppedAt || "",
+      lastNode: rd?.lastNodeExecuted || "",
+      errorMessage: rd?.error?.message || rd?.error?.description || "",
+      nodes,
+    };
+  }
+
+  /** n8n 工作流启停。 */
+  async function setN8nWorkflowActive(id, active) {
+    const { n8n } = await loadConfig();
+    if (!n8n) throw new Error("n8n 未配置");
+    const updated = await n8n.updateWorkflowActive(id, active);
+    // 使名称缓存失效，下次重新拉取
+    workflowNameCacheAt = 0;
+    return {
+      id: updated?.id || id,
+      name: updated?.name || "",
+      active: Boolean(updated?.active),
+    };
   }
 
   /** n8n 失败执行（含错误摘要）。 */
@@ -375,6 +451,11 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     getN8nWorkflows,
     getN8nExecutions,
     getN8nFailedExecutions,
+    getN8nExecutionDetail,
+    setN8nWorkflowActive,
+    createAlertRule,
+    updateAlertRule,
+    setAlertRuleDisabled,
     getMonitorOverview,
     getConfig,
     getHealth,
