@@ -106,6 +106,14 @@ const FILES = {
   hiveHistory: "config/hive-scheduler-history.json",
 };
 const DEFAULT_TV_WEBHOOK_URL = "https://tv-service-alert.kuainiu.chat/alert/v2/array";
+const DEFAULT_N8N_GROUP_BOT_IDS = {
+  cn: "f82292a5-45c5-42ea-84da-272b4c81ebcc",
+  ine: "fccd2880-baea-42aa-9631-a74ac5d951eb",
+  ph: "14470d0e-73e2-4411-9306-4cea9a371264",
+  th: "",
+  pk: "dc751f2d-d626-4ab9-8a96-c042808c6dce",
+  mx: "163ad872-4b4d-4493-8ec7-838f8eb9848d",
+};
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
 const DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/wattrel-query";
 const DEFAULT_WATTREL_CONFIG = {
@@ -2628,15 +2636,19 @@ export function createPlatformApi({
       const stored = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
       const owners = {};
       const groupChatIds = {};
+      const botIds = {};
       for (const country of ["cn", "ine", "ph", "th", "pk", "mx"]) {
         owners[country] = String(stored.owners?.[country] || "").trim();
         groupChatIds[country] = String(stored.groupChatIds?.[country] || "").trim();
+        const hasStoredBotId = Object.prototype.hasOwnProperty.call(stored.botIds || {}, country);
+        botIds[country] = String(hasStoredBotId ? stored.botIds[country] : DEFAULT_N8N_GROUP_BOT_IDS[country] || "").trim();
       }
       return {
         enabled: stored.enabled !== false,
         intervalMinutes: Math.max(1, Number(stored.intervalMinutes || 5)),
         owners,
         groupChatIds,
+        botIds,
         lastCheckedAt: stored.lastCheckedAt || null,
         lastNotificationAt: stored.lastNotificationAt || null,
         lastError: stored.lastError || null,
@@ -2647,9 +2659,11 @@ export function createPlatformApi({
       const current = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
       const owners = {};
       const groupChatIds = {};
+      const botIds = {};
       for (const country of ["cn", "ine", "ph", "th", "pk", "mx"]) {
         owners[country] = String(input.owners?.[country] ?? current.owners?.[country] ?? "").trim();
         groupChatIds[country] = String(input.groupChatIds?.[country] ?? current.groupChatIds?.[country] ?? "").trim();
+        botIds[country] = String(input.botIds?.[country] ?? current.botIds?.[country] ?? DEFAULT_N8N_GROUP_BOT_IDS[country] ?? "").trim();
       }
       const saved = {
         ...current,
@@ -2657,6 +2671,7 @@ export function createPlatformApi({
         intervalMinutes: Math.max(1, Number(input.intervalMinutes || current.intervalMinutes || 5)),
         owners,
         groupChatIds,
+        botIds,
       };
       await writeJsonAtomic(resolve("dsScheduledFailureWatch"), saved);
       return this.getDsScheduledFailureWatchConfig();
@@ -2675,10 +2690,20 @@ export function createPlatformApi({
         : checkedAtMs - Math.max(10, Number(state.intervalMinutes || 5) * 2) * 60_000;
       let notificationCount = 0;
       const notificationErrors = [];
+      const notificationLogs = (Array.isArray(state.notificationLogs) ? state.notificationLogs : [])
+        .filter((item) => Date.now() - (Date.parse(item?.time || "") || 0) <= 7 * 24 * 60 * 60 * 1000);
+      const recordNotification = (detail) => {
+        notificationLogs.push({ id: randomUUID(), time: new Date().toISOString(), source: "n8n_restart_watch", ...detail });
+        if (notificationLogs.length > 500) notificationLogs.splice(0, notificationLogs.length - 500);
+      };
       for (const countryResult of result.countries || []) {
         const ownerEmails = String(state.owners?.[countryResult.country] || "").trim();
-        const groupChatId = String(state.groupChatIds?.[countryResult.country] || notificationConfig.chatId || "").trim();
-        if (!ownerEmails && !groupChatId) continue;
+        const hasConfiguredGroupBot = Object.prototype.hasOwnProperty.call(state.botIds || {}, countryResult.country);
+        const groupBotId = String(hasConfiguredGroupBot
+          ? state.botIds[countryResult.country]
+          : DEFAULT_N8N_GROUP_BOT_IDS[countryResult.country] || "").trim();
+        const legacyGroupChatId = String(state.groupChatIds?.[countryResult.country] || "").trim();
+        if (!ownerEmails && !groupBotId && !legacyGroupChatId) continue;
         for (const failure of countryResult.failures || []) {
           const key = `${countryResult.country}:${failure.instanceId}`;
           const failedAtMs = Date.parse(failure.endTime || failure.startTime || "");
@@ -2707,18 +2732,38 @@ export function createPlatformApi({
               .map((email) => email.trim())
               .filter(Boolean)
               .map((email) => email.startsWith("@") ? email : `@${email}`);
-            const alerts = {
-              ...notificationConfig,
-              recipientEmails: ownerEmails,
-              chatId: groupChatId,
-              mentions: ownerMentions,
-            };
-            const notification = await notifyTextFn({ alerts }, message, {
-              title: "n8n 失败重启监控",
-              severity: "warning",
-              timestamp: result.checkedAt,
-            });
-            if (!notification?.sent) throw new Error(notification?.reason || "通知未发送到任何私聊或群聊目标");
+            const notifications = [];
+            if (ownerEmails) {
+              try {
+                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", recipientEmails: ownerEmails, chatId: "", mentions: [] } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
+                notifications.push(sent);
+                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "owner_direct", target: ownerEmails, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "私聊通知未发送" });
+              } catch (error) {
+                notifications.push({ sent: false, reason: error.message });
+                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "owner_direct", target: ownerEmails, status: "failed", message, error: error.message });
+              }
+            }
+            if (groupBotId) {
+              try {
+                const sent = await notifyTextFn({ alerts: { channel: "tv", webhookUrl: DEFAULT_TV_WEBHOOK_URL, botId: groupBotId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
+                notifications.push(sent);
+                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: groupBotId, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "群发通知未发送" });
+              } catch (error) {
+                notifications.push({ sent: false, reason: error.message });
+                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: groupBotId, status: "failed", message, error: error.message });
+              }
+            } else if (legacyGroupChatId) {
+              try {
+                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", recipientEmails: "", chatId: legacyGroupChatId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
+                notifications.push(sent);
+                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: legacyGroupChatId, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "群发通知未发送" });
+              } catch (error) {
+                notifications.push({ sent: false, reason: error.message });
+                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: legacyGroupChatId, status: "failed", message, error: error.message });
+              }
+            }
+            const failedNotification = notifications.find((item) => !item?.sent);
+            if (failedNotification) throw new Error(failedNotification.reason || "通知未发送到对应私聊或群聊目标");
             notified.add(key);
             notificationCount += 1;
           } catch (error) {
@@ -2730,6 +2775,7 @@ export function createPlatformApi({
       await writeJsonAtomic(resolve("dsScheduledFailureWatch"), {
         ...state,
         notifiedInstanceIds: retained,
+        notificationLogs,
         lastCheckedAt: result.checkedAt,
         lastNotificationAt: notificationCount ? new Date().toISOString() : state.lastNotificationAt || null,
         lastError: notificationErrors.join("；") || null,
@@ -2767,6 +2813,34 @@ export function createPlatformApi({
 
     getDsFailureRetryLogs(filters = {}) {
       return { logs: dsAutoRetryManager?.getLogs?.(filters.limit) || [] };
+    },
+
+    async getDsFailureNotificationLogs(filters = {}) {
+      const limit = Math.max(1, Math.min(500, Number(filters.limit) || 200));
+      const country = String(filters.country || "").trim().toLowerCase();
+      const state = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
+      const scheduled = (Array.isArray(state.notificationLogs) ? state.notificationLogs : []).map((item) => ({ ...item }));
+      const retry = (dsAutoRetryManager?.getLogs?.(500) || [])
+        .filter((item) => item.notificationChannel)
+        .map((item) => ({
+          id: item.id,
+          time: item.time,
+          source: "scheduled_retry",
+          country: item.country,
+          channel: item.notificationChannel,
+          target: item.notificationTarget || "",
+          status: item.notificationStatus || (item.level === "success" ? "sent" : "failed"),
+          message: item.notificationMessage || item.message || "",
+          error: item.notificationError || (item.level === "error" ? item.message : ""),
+          instanceId: item.instanceId || "",
+        }));
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const logs = [...scheduled, ...retry]
+        .filter((item) => (Date.parse(item.time || "") || 0) >= cutoff)
+        .filter((item) => !country || String(item.country || "").toLowerCase() === country)
+        .sort((a, b) => (Date.parse(b.time || "") || 0) - (Date.parse(a.time || "") || 0))
+        .slice(0, limit);
+      return { logs, retentionDays: 7 };
     },
 
     deleteDsFailureRetryRun(input = {}) {

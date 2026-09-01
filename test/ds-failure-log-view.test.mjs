@@ -41,8 +41,14 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /days=\$\{lookbackDays\}/);
   assert.match(source, /按自定义天数查看 n8n 失败重启任务/);
   assert.match(source, /定时失败任务重跑/);
-  assert.match(source, /两个重跑模块共用通知配置/);
-  assert.match(source, /国家群聊 chat_id/);
+  assert.match(source, /两个重跑模块共用负责人配置/);
+  assert.match(source, /id="ds-notification-process-open"/);
+  assert.match(source, /function renderNotificationProcessModal/);
+  assert.match(source, /负责人私聊/);
+  assert.match(source, /国家群发/);
+  assert.match(source, /\/api\/ds-failure-retry\/notifications\?limit=300/);
+  assert.match(source, /国家群聊 TV bot_id/);
+  assert.match(source, /botIds/);
   assert.match(source, /groupChatIds/);
   assert.match(source, /data-ds-failure-tab="scheduled"/);
   assert.match(source, /\/api\/ds-scheduled-failure-watch/);
@@ -162,5 +168,6 @@ test("sidebar and server expose the independent DS failure log module", async ()
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/run-now"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/run-now\/stop"/);
   assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/logs"/);
+  assert.match(server, /url\.pathname === "\/api\/ds-failure-retry\/notifications"/);
   assert.match(server, /method === "DELETE" && url\.pathname === "\/api\/ds-failure-retry\/logs"/);
 });

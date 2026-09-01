@@ -2253,7 +2253,7 @@ test("DS notification preview and send test use the effective DS target", async 
   assert.equal(sent[0].meta.title, "DS 调度监控通知测试");
 });
 
-test("n8n failure watch persists per-country private and group notification targets", async () => {
+test("n8n failure watch persists per-country private and TV group notification targets", async () => {
   const rootDir = await makeFixture();
   const api = createPlatformApi({ rootDir });
 
@@ -2262,10 +2262,13 @@ test("n8n failure watch persists per-country private and group notification targ
     intervalMinutes: 5,
     owners: { ph: "simontang@kn.group" },
     groupChatIds: { ph: "-1001234567890" },
+    botIds: { ph: "ph-tv-bot-id", cn: "" },
   });
 
   assert.equal(saved.owners.ph, "simontang@kn.group");
   assert.equal(saved.groupChatIds.ph, "-1001234567890");
+  assert.equal(saved.botIds.ph, "ph-tv-bot-id");
+  assert.equal(saved.botIds.cn, "");
   assert.equal(saved.owners.mx, "");
   assert.equal(saved.groupChatIds.mx, "");
 });
