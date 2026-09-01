@@ -964,6 +964,7 @@ function renderHistoryExpandRow(a, idx) {
   const rows = events.map((e) => `
     <tr>
       <td class="small mono">${escapeHtml(formatTime(e.triggerTime))}</td>
+      <td class="small mono" title="${escapeHtml(e.target || "")}">${escapeHtml(e.target || "-")}</td>
       <td><span class="badge ${e.isRecovered ? "ok" : "danger"}">${escapeHtml(e.recoveredLabel || "-")}</span></td>
       <td class="num">${escapeHtml(String(e.triggerValue ?? "-"))}</td>
       <td class="small mono">${e.recoverTime ? escapeHtml(formatTime(e.recoverTime)) : `<span class="muted">-</span>`}</td>
@@ -975,7 +976,7 @@ function renderHistoryExpandRow(a, idx) {
         <div class="ac-his-detail-inner">
           <strong>该告警每次触发记录（共 ${events.length} 次）</strong>
           <table class="ac-his-events">
-            <thead><tr><th>触发时间</th><th>状态</th><th>触发值</th><th>恢复时间</th></tr></thead>
+            <thead><tr><th>触发时间</th><th>目标</th><th>状态</th><th>触发值</th><th>恢复时间</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1595,12 +1596,12 @@ function buildStats(overview, active, config) {
 }
 
 function severityClass(severity) {
-  const map = { 0: "critical", 1: "warn", 2: "ok" };
+  const map = { 0: "critical", 1: "warn", 2: "ok", 3: "critical" };
   return map[severity] || "";
 }
 
 function severityLabel(severity) {
-  return { 0: "严重", 1: "警告", 2: "提示" }[severity] ?? String(severity ?? "-");
+  return { 0: "严重", 1: "警告", 2: "提示", 3: "紧急" }[severity] ?? String(severity ?? "-");
 }
 
 function formatTime(ms) {
