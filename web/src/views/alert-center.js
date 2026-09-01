@@ -225,7 +225,7 @@ function renderNotifyDetail(notify) {
           <span class="ac-notify-method">${escapeHtml(channelLabel(ch.ident))}</span>
           <span class="muted small">${escapeHtml(ch.channelName || "")}</span>
           <span class="ac-notify-address" title="${escapeHtml(ch.address)}">${escapeHtml(ch.address)}</span>
-          <button class="small ac-notify-edit" data-nr-id="${escapeHtml(String(nr.ruleId))}" data-nr-name="${escapeHtml(nr.ruleName || "")}" data-receivers="${escapeHtml((ch.receivers || []).join(","))}" data-phone="${escapeHtml(ch.phone || "")}" data-email="${escapeHtml(ch.email || "")}">编辑</button>
+          <button class="small ac-notify-edit" data-nr-id="${escapeHtml(String(nr.ruleId))}" data-nr-name="${escapeHtml(nr.ruleName || "")}" data-ident="${escapeHtml(ch.ident || "")}" data-receivers="${escapeHtml((ch.receivers || []).join(","))}" data-phone="${escapeHtml(ch.phone || "")}" data-email="${escapeHtml(ch.email || "")}">编辑</button>
         </div>
       `).join("")}
     </div>
@@ -234,12 +234,14 @@ function renderNotifyDetail(notify) {
 
 /** 绑定通知启停 / 编辑操作。 */
 function bindNotifyActions(overlay, alert) {
-  // 启停
+  // 启停（按钮文案是目标动作：当前启用显示"停用"，点击应改为停用）
   overlay.querySelectorAll("[data-nr-enable]").forEach((btn) => {
     btn.addEventListener("click", async () => {
+      const currentEnabled = btn.dataset.nrEnable === "1";
+      const targetEnabled = !currentEnabled;
       btn.disabled = true;
       try {
-        await apiPost(`/api/alerts/notify-rules/${btn.dataset.nrId}`, { enable: btn.dataset.nrEnable === "1" });
+        await apiPost(`/api/alerts/notify-rules/${btn.dataset.nrId}`, { enable: targetEnabled });
         // 刷新弹窗中的通知区
         const refreshed = await refreshAlertNotify(alert);
         if (refreshed) {
@@ -258,27 +260,51 @@ function bindNotifyActions(overlay, alert) {
   });
 }
 
-/** 编辑通知地址（接收人/电话/邮箱）。 */
+/** 编辑通知地址（接收人 / 电话 / 邮箱）。 */
 function openNotifyEdit(btn, overlay, alert) {
   const channel = btn.closest(".ac-notify-channel");
   const old = channel.innerHTML;
+  const ident = btn.dataset.ident || "";
+  const isVoice = ident === "ali-voice" || ident === "ivr";
+  const isEmail = ident === "email";
   channel.innerHTML = `
     <div class="ac-notify-edit-form">
       <label>接收人（用户名，逗号分隔）
-        <input type="text" class="ac-search-input" value="${escapeHtml(btn.dataset.receivers || "")}">
+        <input type="text" class="ac-search-input" id="ac-n-rcv" value="${escapeHtml(btn.dataset.receivers || "")}">
       </label>
+      ${isVoice ? `
+        <label>联系电话
+          <input type="text" class="ac-search-input" id="ac-n-phone" value="${escapeHtml(btn.dataset.phone || "")}">
+        </label>
+      ` : ""}
+      ${isEmail ? `
+        <label>接收邮箱
+          <input type="text" class="ac-search-input" id="ac-n-email" value="${escapeHtml(btn.dataset.email || "")}">
+        </label>
+      ` : ""}
       <div class="ac-notify-edit-actions">
         <button class="small primary ac-notify-save">保存</button>
         <button class="small ac-notify-cancel">取消</button>
       </div>
     </div>
   `;
-  const input = channel.querySelector("input");
   channel.querySelector(".ac-notify-cancel").addEventListener("click", () => { channel.innerHTML = old; });
   channel.querySelector(".ac-notify-save").addEventListener("click", async () => {
-    const receivers = input.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    const receivers = (channel.querySelector("#ac-n-rcv")?.value || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    const params = {};
+    if (isVoice) {
+      const phone = (channel.querySelector("#ac-n-phone")?.value || "").trim();
+      if (phone) params.Mobile = phone;
+    }
+    if (isEmail) {
+      const email = (channel.querySelector("#ac-n-email")?.value || "").trim();
+      if (email) params.email = email;
+    }
     try {
-      await apiPost(`/api/alerts/notify-rules/${btn.dataset.nrId}`, { receivers });
+      // 更新走 PUT 路由（updateNotifyRule 支持 receivers + params），避免被 POST 路由当作 enable 误停用
+      const payload = { receivers };
+      if (Object.keys(params).length) payload.params = params;
+      await apiPut(`/api/alerts/notify-rules/${btn.dataset.nrId}`, payload);
       const refreshed = await refreshAlertNotify(alert);
       if (refreshed) {
         const list = overlay.querySelector("#ac-alert-notify-list");
@@ -921,7 +947,8 @@ function extractRuleQuery(rule) {
     if (q?.sql) return q.sql;
     if (q?.prom_ql) return q.prom_ql;
   }
-  return "";
+  // 夜莺 PromQL 也存顶层 prom_ql 字段（部分规则无 rule_config.queries）
+  return rule.prom_ql || "";
 }
 
 /** 打开告警规则编辑弹窗。 */
@@ -986,12 +1013,16 @@ function openRuleEditModal(rule, reload) {
     const disabled = overlay.querySelector("#ac-rule-disabled").checked ? 1 : 0;
     try {
       const body = { name, severity, disabled, groupId: rule.group_id };
-      if (queries.length) {
-        body.rule_config = {
-          ...(rule.rule_config || {}),
-          queries: queries.map((q, i) => i === 0 ? { ...q, ...(isSql ? { sql: newQuery } : { prom_ql: newQuery }) } : q),
-        };
-      }
+      // 查询字段：写 rule_config.queries[0]（保留现有 queries 结构），PromQL 规则同时写顶层 prom_ql
+      const firstQuery = queries.length ? { ...queries[0] } : (isSql ? { sql: newQuery, severity } : { prom_ql: newQuery, severity, unit: "none" });
+      if (isSql) firstQuery.sql = newQuery; else firstQuery.prom_ql = newQuery;
+      body.rule_config = {
+        ...(rule.rule_config || {}),
+        queries: queries.length
+          ? queries.map((q, i) => i === 0 ? { ...q, ...(isSql ? { sql: newQuery } : { prom_ql: newQuery }) } : q)
+          : [firstQuery],
+      };
+      if (!isSql) body.prom_ql = newQuery;
       await apiPut(`/api/alerts/rules/${rule.id}`, body);
       close();
       await reload();
