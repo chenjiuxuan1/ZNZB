@@ -53,22 +53,24 @@ async function loadList(root) {
     return;
   }
   listEl.innerHTML = `
-    <table class="table">
-      <thead>
-        <tr>
-          <th>名称</th>
-          <th>国家</th>
-          <th>来源</th>
-          <th>触发</th>
-          <th>状态</th>
-          <th>命令</th>
-          <th style="width:240px">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${items.map(renderRow).join("")}
-      </tbody>
-    </table>
+    <div class="ar-table-wrap">
+      <table class="ar-table">
+        <thead>
+          <tr>
+            <th>名称 / ID</th>
+            <th>国家</th>
+            <th>来源</th>
+            <th>触发</th>
+            <th>状态</th>
+            <th>执行命令</th>
+            <th class="ar-ops-col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(renderRow).join("")}
+        </tbody>
+      </table>
+    </div>
   `;
   listEl.querySelectorAll("[data-ar-edit]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -108,7 +110,6 @@ async function loadList(root) {
 
 function renderRow(item) {
   const cmd = item.command || "";
-  const short = cmd.length > 70 ? `${cmd.slice(0, 70)}…` : cmd;
   const srcLabel = {
     n8n: "n8n",
     nightingale: "夜莺",
@@ -119,22 +120,27 @@ function renderRow(item) {
     schedule: "定时",
     manual: "手动",
   }[item.trigger] || item.trigger || "手动";
+  const srcClass = item.sourceType === "nightingale" ? "ar-badge-purple" : item.sourceType === "custom" ? "ar-badge-gray" : "ar-badge-blue";
   return `
     <tr>
-      <td title="${escapeHtml(item.note || "")}">
-        <div class="strong">${escapeHtml(item.name)}</div>
-        <div class="muted small">${escapeHtml(item.id)}</div>
+      <td class="ar-name-cell">
+        <div class="ar-name" title="${escapeHtml(item.note || "")}">${escapeHtml(item.name)}</div>
+        <div class="ar-id" title="${escapeHtml(item.id)}">${escapeHtml(item.id)}</div>
       </td>
-      <td>${escapeHtml(item.country || "-")}</td>
-      <td><span class="badge">${escapeHtml(srcLabel)}</span></td>
-      <td>${escapeHtml(triggerLabel)}</td>
-      <td><span class="badge ${item.enabled ? "ok" : "muted"}">${item.enabled ? "启用" : "停用"}</span></td>
-      <td><code class="small" title="${escapeHtml(cmd)}">${escapeHtml(short || "-")}</code></td>
-      <td>
-        <button class="primary small" data-ar-test="${escapeHtml(item.id)}">▶ 测试</button>
-        <button class="small" data-ar-edit="${escapeHtml(item.id)}">编辑</button>
-        <button class="small" data-ar-toggle="${escapeHtml(item.id)}">${item.enabled ? "停用" : "启用"}</button>
-        <button class="danger small" data-ar-delete="${escapeHtml(item.id)}">删除</button>
+      <td><span class="ar-country">${escapeHtml(item.country || "-")}</span></td>
+      <td><span class="badge ${srcClass}">${escapeHtml(srcLabel)}</span></td>
+      <td><span class="ar-trigger">${escapeHtml(triggerLabel)}</span></td>
+      <td><span class="badge ${item.enabled ? "ok" : ""} ar-status">${item.enabled ? "启用" : "停用"}</span></td>
+      <td class="ar-cmd-cell">
+        <code class="ar-cmd" title="${escapeHtml(cmd)}">${escapeHtml(cmd || "-")}</code>
+      </td>
+      <td class="ar-ops-col">
+        <div class="ar-ops">
+          <button class="ar-btn ar-btn-test" data-ar-test="${escapeHtml(item.id)}">▶ 测试</button>
+          <button class="ar-btn" data-ar-edit="${escapeHtml(item.id)}">编辑</button>
+          <button class="ar-btn" data-ar-toggle="${escapeHtml(item.id)}">${item.enabled ? "停用" : "启用"}</button>
+          <button class="ar-btn ar-btn-danger" data-ar-delete="${escapeHtml(item.id)}">删除</button>
+        </div>
       </td>
     </tr>
   `;
