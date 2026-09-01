@@ -368,8 +368,13 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return Promise.all(list.map(normalizeN9eAlert));
   }
 
+  /** 去掉规则名的通知渠道尾缀（_tv 电话 / _ivr 语音）：同一监控的两条规则归一化为一个告警。 */
+  function stripChannelSuffix(name) {
+    return String(name || "").replace(/_(tv|ivr)$/i, "");
+  }
+
   /** 历史告警（夜莺），归一化 + 分页。支持服务端筛选：bgid / severity / isRecovered。
-   *  group=true 时按 hash 聚合：一个告警一天显示一次，附带每次触发时间与次数。 */
+   *  group=true 时按规则聚合：一个告警一天显示一次，附带每次触发时间与次数。 */
   async function getHistoryAlerts({ stime, etime, limit = 200, page = 1, ruleName, bgid, severity, isRecovered, group } = {}) {
     const { nightingale } = await loadConfig();
     if (!nightingale) {
@@ -387,11 +392,13 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     }
     const normed = await Promise.all(list.map(normalizeN9eAlert));
     if (group) {
-      // 按「规则 + 业务组 + 级别」聚合：同一规则一天一行（不同目标/主机合并），
-      // 每次触发的目标主机在 events 里保留，展开可见。
+      // 按「规则（去 _tv/_ivr 渠道尾缀）+ 业务组 + 级别」聚合：
+      // - 同一监控（如 xxx_tv / xxx_ivr 两套规则）合并为一行；
+      // - 不同目标/主机也合并，每次触发的目标主机在 events 里保留，展开可见。
       const byKey = new Map();
       for (const a of normed) {
-        const key = `${a.ruleName || a.ruleId || ""}|${a.groupId || ""}|${a.severity ?? ""}`;
+        const baseName = stripChannelSuffix(a.ruleName);
+        const key = `${baseName || a.ruleId || ""}|${a.groupId || ""}|${a.severity ?? ""}`;
         const hit = byKey.get(key);
         const evt = {
           triggerTime: a.triggerTime,
@@ -400,15 +407,19 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
           recoverTime: a.recoverTime,
           triggerValue: a.triggerValue,
           target: a.target || "",
+          ruleName: a.ruleName || "",
+          notify: a.notify || [],
         };
         if (!hit) {
           byKey.set(key, {
             ...a,
+            ruleName: baseName,
             triggerCount: 1,
             triggerTimes: a.triggerTime ? [a.triggerTime] : [],
             lastTriggerTime: a.triggerTime,
             targets: a.target ? [a.target] : [],
             events: [evt],
+            variantNames: a.ruleName ? [a.ruleName] : [],
           });
         } else {
           hit.triggerCount += 1;
@@ -417,6 +428,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
             hit.lastTriggerTime = a.triggerTime;
           }
           if (a.target && !hit.targets.includes(a.target)) hit.targets.push(a.target);
+          if (a.ruleName && !hit.variantNames.includes(a.ruleName)) hit.variantNames.push(a.ruleName);
           hit.events.push(evt);
           if (!a.isRecovered) {
             hit.isRecovered = false;
