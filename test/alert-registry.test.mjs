@@ -106,3 +106,47 @@ test("resolveEnv substitutes ${ENV} placeholders", async (t) => {
     delete process.env.AR_TEST_TOKEN;
   }
 });
+
+test("runTestByCommand with runVia=ssh degrades gracefully when N8N_BASE_URL missing", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  const previous = process.env.N8N_BASE_URL;
+  delete process.env.N8N_BASE_URL;
+  try {
+    const result = await registry.runTestByCommand({ runVia: "ssh", sshHost: "root@10.20.47.14", sshPort: 36000, command: "echo hi" });
+    assert.equal(result.ok, false);
+    assert.equal(result.exitCode, -1);
+    assert.match(result.stderr, /N8N_BASE_URL/);
+  } finally {
+    if (previous !== undefined) process.env.N8N_BASE_URL = previous;
+  }
+});
+
+test("runTestByCommand with runVia=ssh forwards command through n8n webhook", async (t) => {
+  // mock n8n webhook：接收 {host, port, command}，返回 {code, stdout, stderr}
+  const http = await import("node:http");
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const payload = JSON.parse(body || "{}");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ code: 0, signal: null, stdout: `mock-run:${payload.host}:${payload.port}:${payload.command}`, stderr: "" }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { registry } = await tmpRegistry(t);
+  const previous = process.env.N8N_BASE_URL;
+  process.env.N8N_BASE_URL = `http://127.0.0.1:${port}`;
+  try {
+    const result = await registry.runTestByCommand({ runVia: "ssh", sshHost: "root@10.20.47.14", sshPort: 36000, command: "echo hi" });
+    assert.equal(result.ok, true);
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /^mock-run:root@10\.20\.47\.14:36000:echo hi$/);
+  } finally {
+    if (previous !== undefined) process.env.N8N_BASE_URL = previous;
+    else delete process.env.N8N_BASE_URL;
+  }
+});
