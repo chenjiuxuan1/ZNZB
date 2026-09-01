@@ -406,18 +406,46 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return { ok: true };
   }
 
-  /** 更新夜莺告警规则。 */
+  /** 更新夜莺告警规则。先取现有规则合并改动字段后整条回写，避免丢失字段。 */
   async function updateAlertRule(ruleId, body) {
     const { nightingale } = await loadConfig();
     if (!nightingale) throw new Error("夜莺未配置");
-    await nightingale.updateAlertRule(ruleId, body);
-    return { ok: true };
+    const groupId = body?.groupId ?? body?.group_id;
+    let existing = null;
+    if (groupId) {
+      const rules = await nightingale.getAlertRules(groupId).catch(() => []);
+      existing = (Array.isArray(rules) ? rules : []).find((r) => Number(r.id) === Number(ruleId)) || null;
+    }
+    if (!existing) {
+      throw new Error(`规则 ${ruleId} 不存在或未提供业务组`);
+    }
+    const { groupId: _g, ...rest } = body || {};
+    const merged = { ...existing, ...rest };
+    await nightingale.updateAlertRule(ruleId, merged);
+    return { ok: true, ruleId, name: merged.name || "" };
   }
 
   /** 启用/停用夜莺告警规则。 */
   async function setAlertRuleDisabled(ruleId, disabled) {
     const { nightingale } = await loadConfig();
     if (!nightingale) throw new Error("夜莺未配置");
+    // 需要先拿 groupId：从活跃告警或规则列表推断
+    let groupId = null;
+    try {
+      const groups = await nightingale.getBusiGroups();
+      for (const g of groups) {
+        const rules = await nightingale.getAlertRules(g.id).catch(() => []);
+        if ((Array.isArray(rules) ? rules : []).some((r) => Number(r.id) === Number(ruleId))) {
+          groupId = g.id;
+          break;
+        }
+      }
+    } catch (error) {
+      // 忽略，走夜莺直接更新
+    }
+    if (groupId) {
+      return updateAlertRule(ruleId, { groupId, disabled: disabled ? 1 : 0 });
+    }
     await nightingale.setAlertRuleDisabled(ruleId, disabled);
     return { ok: true, ruleId, disabled };
   }
@@ -427,6 +455,62 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     const { nightingale } = await loadConfig();
     if (!nightingale) return [];
     return nightingale.getDatasources();
+  }
+
+  /** 监控目标（按业务组）。精简字段。 */
+  async function getTargets({ busiGroup, limit = 200 } = {}) {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) return [];
+    const list = await nightingale.getTargets({ busiGroup, limit });
+    return list.map((t) => ({
+      ident: t?.ident || "",
+      name: t?.name || "",
+      note: t?.note || "",
+      tags: t?.tags || [],
+      hostname: t?.hostname || "",
+      os: t?.os || "",
+      cpuNum: t?.cpu_num ?? t?.cpu_num != null ? t?.cpu_num : "",
+      memCap: t?.mem_cap ?? "",
+      state: t?.state ?? "",
+    }));
+  }
+
+  /** 单条告警规则完整配置（含关联通知规则）。 */
+  async function getAlertRuleDetail(ruleId) {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) return null;
+    await ensureNotifyMap();
+    const detail = await nightingale.get(`/api/n9e/alert-rules/${ruleId}`);
+    if (!detail) return null;
+    // 解析关联通知规则
+    const notifyIds = detail?.notify_rule_ids || [];
+    const notify = [];
+    for (const nrId of notifyIds) {
+      const nr = notifyCache.rules.find((r) => Number(r.id) === Number(nrId));
+      if (!nr) continue;
+      notify.push({
+        ruleId: nr.id,
+        ruleName: nr.name || "",
+        enable: Boolean(nr.enable),
+      });
+    }
+    return {
+      id: detail.id,
+      name: detail.name || "",
+      groupId: detail.group_id,
+      cate: detail.cate || "",
+      prod: detail.prod || "",
+      severity: detail.severity,
+      disabled: detail.disabled,
+      prom_ql: detail.prom_ql || "",
+      rule_config: detail.rule_config || {},
+      prom_eval_interval: detail.prom_eval_interval,
+      prom_for_duration: detail.prom_for_duration,
+      notify_rule_ids: notifyIds,
+      notify,
+      runbook_url: detail.runbook_url || "",
+      note: detail.note || "",
+    };
   }
 
   /** 通知规则 + 渠道（谁接收电话/群）。 */
@@ -459,6 +543,58 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       webhooks: (workflow?.webhooks || []).map((w) => w.path).filter(Boolean),
       updatedAt: workflow?.updatedAt || "",
     }));
+  }
+
+  /** n8n 工作流详情（节点 + webhook）。 */
+  async function getN8nWorkflowDetail(id) {
+    const { n8n } = await loadConfig();
+    if (!n8n) return null;
+    const wf = await n8n.getWorkflow(id);
+    if (!wf) return null;
+    return {
+      id: wf.id,
+      name: wf.name || "",
+      active: Boolean(wf.active),
+      isArchived: Boolean(wf.isArchived),
+      description: wf.description || "",
+      updatedAt: wf.updatedAt || "",
+      nodes: (wf.nodes || []).map((n) => ({
+        name: n.name || "",
+        type: n.type || "",
+        typeVersion: n.typeVersion,
+        position: n.position || [],
+        parameters: summarizeParameters(n.parameters || {}),
+      })),
+      connections: summarizeConnections(wf.connections || {}),
+    };
+  }
+
+  /** 节点参数摘要（避免前端收到超大对象）。 */
+  function summarizeParameters(params) {
+    const flat = {};
+    for (const [key, value] of Object.entries(params || {})) {
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        flat[key] = String(value).slice(0, 80);
+      } else if (value === null) {
+        flat[key] = "null";
+      }
+    }
+    return flat;
+  }
+
+  /** 连接摘要：nodeA -> [nodeB, ...]。 */
+  function summarizeConnections(connections) {
+    const result = [];
+    for (const [fromNode, outputs] of Object.entries(connections || {})) {
+      for (const [outputName, groups] of Object.entries(outputs || {})) {
+        for (const group of Array.isArray(groups) ? groups : []) {
+          for (const conn of group || []) {
+            if (conn?.node) result.push(`${fromNode} → ${conn.node}${outputName !== "main" ? `(${outputName})` : ""}`);
+          }
+        }
+      }
+    }
+    return result;
   }
 
   /** n8n 执行记录（精简字段）。支持 status / workflowId 过滤。 */
@@ -666,9 +802,12 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     getHistoryAlerts,
     getBusiGroups,
     getAlertRules,
+    getAlertRuleDetail,
     getDatasources,
+    getTargets,
     getNotifyRules,
     getN8nWorkflows,
+    getN8nWorkflowDetail,
     getN8nExecutions,
     getN8nFailedExecutions,
     getN8nExecutionDetail,
