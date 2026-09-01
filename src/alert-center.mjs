@@ -222,6 +222,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       source: "nightingale",
       sourceLabel: "夜莺",
       id: alert?.id,
+      hash: alert?.hash || "",
       ruleName: alert?.rule_name,
       ruleId: alert?.rule_id,
       groupId: alert?.group_id,
@@ -367,22 +368,70 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return Promise.all(list.map(normalizeN9eAlert));
   }
 
-  /** 历史告警（夜莺），归一化 + 分页。支持服务端筛选：bgid / severity / isRecovered。 */
-  async function getHistoryAlerts({ stime, etime, limit = 200, page = 1, ruleName, bgid, severity, isRecovered } = {}) {
+  /** 历史告警（夜莺），归一化 + 分页。支持服务端筛选：bgid / severity / isRecovered。
+   *  group=true 时按 hash 聚合：一个告警一天显示一次，附带每次触发时间与次数。 */
+  async function getHistoryAlerts({ stime, etime, limit = 200, page = 1, ruleName, bgid, severity, isRecovered, group } = {}) {
     const { nightingale } = await loadConfig();
     if (!nightingale) {
       throw new Error("夜莺未配置");
     }
     await ensureNotifyMap();
-    const dat = await nightingale.getHistoryAlerts({ stime, etime, limit, page, bgid, severity, isRecovered });
+    // group 模式需要跨分页合并同一告警的多次触发，故拉全量再聚合（近 7 天事件量级 ~2k）
+    const fetchLimit = group ? 5000 : limit;
+    const dat = await nightingale.getHistoryAlerts({
+      stime, etime, limit: fetchLimit, page: group ? 1 : page, bgid, severity, isRecovered,
+    });
     let list = dat?.list || [];
     if (ruleName) {
       list = list.filter((item) => String(item?.rule_name).includes(String(ruleName)));
     }
-    return {
-      total: dat?.total || list.length,
-      list: await Promise.all(list.map(normalizeN9eAlert)),
-    };
+    const normed = await Promise.all(list.map(normalizeN9eAlert));
+    if (group) {
+      const byHash = new Map();
+      for (const a of normed) {
+        const key = a.hash || `${a.ruleId || ""}|${a.groupId || ""}|${a.target || ""}`;
+        const hit = byHash.get(key);
+        const evt = {
+          triggerTime: a.triggerTime,
+          isRecovered: a.isRecovered,
+          recoveredLabel: a.recoveredLabel,
+          recoverTime: a.recoverTime,
+          triggerValue: a.triggerValue,
+        };
+        if (!hit) {
+          byHash.set(key, {
+            ...a,
+            triggerCount: 1,
+            triggerTimes: a.triggerTime ? [a.triggerTime] : [],
+            lastTriggerTime: a.triggerTime,
+            events: [evt],
+          });
+        } else {
+          hit.triggerCount += 1;
+          if (a.triggerTime) {
+            hit.triggerTimes.push(a.triggerTime);
+            hit.lastTriggerTime = a.triggerTime;
+          }
+          hit.events.push(evt);
+          if (!a.isRecovered) {
+            hit.isRecovered = false;
+            hit.recoveredLabel = "未恢复";
+          }
+          if (a.recoverTime) hit.recoverTime = a.recoverTime;
+        }
+      }
+      const aggList = [...byHash.values()];
+      for (const m of aggList) {
+        m.triggerTimes.sort((x, y) => x - y);
+        m.events.sort((x, y) => (x.triggerTime || 0) - (y.triggerTime || 0));
+        if (m.triggerTimes.length) m.triggerTime = m.triggerTimes[0];
+        // 触发值取最近一次
+        const lastEvt = m.events[m.events.length - 1];
+        if (lastEvt) m.triggerValue = lastEvt.triggerValue;
+      }
+      return { total: aggList.length, list: aggList, grouped: true };
+    }
+    return { total: dat?.total || normed.length, list: normed, grouped: false };
   }
 
   /** 业务组列表。 */
