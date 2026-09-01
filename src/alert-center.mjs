@@ -228,7 +228,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       groupId: alert?.group_id,
       groupName: alert?.group_name,
       severity: alert?.severity,
-      severityLabel: { 0: "严重", 1: "警告", 2: "提示" }[alert?.severity] ?? String(alert?.severity),
+      severityLabel: { 0: "严重", 1: "警告", 2: "提示", 3: "紧急" }[alert?.severity] ?? String(alert?.severity),
       category: alert?.cate,
       cluster: alert?.cluster,
       datasourceId: alert?.datasource_id,
@@ -387,23 +387,27 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     }
     const normed = await Promise.all(list.map(normalizeN9eAlert));
     if (group) {
-      const byHash = new Map();
+      // 按「规则 + 业务组 + 级别」聚合：同一规则一天一行（不同目标/主机合并），
+      // 每次触发的目标主机在 events 里保留，展开可见。
+      const byKey = new Map();
       for (const a of normed) {
-        const key = a.hash || `${a.ruleId || ""}|${a.groupId || ""}|${a.target || ""}`;
-        const hit = byHash.get(key);
+        const key = `${a.ruleName || a.ruleId || ""}|${a.groupId || ""}|${a.severity ?? ""}`;
+        const hit = byKey.get(key);
         const evt = {
           triggerTime: a.triggerTime,
           isRecovered: a.isRecovered,
           recoveredLabel: a.recoveredLabel,
           recoverTime: a.recoverTime,
           triggerValue: a.triggerValue,
+          target: a.target || "",
         };
         if (!hit) {
-          byHash.set(key, {
+          byKey.set(key, {
             ...a,
             triggerCount: 1,
             triggerTimes: a.triggerTime ? [a.triggerTime] : [],
             lastTriggerTime: a.triggerTime,
+            targets: a.target ? [a.target] : [],
             events: [evt],
           });
         } else {
@@ -412,6 +416,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
             hit.triggerTimes.push(a.triggerTime);
             hit.lastTriggerTime = a.triggerTime;
           }
+          if (a.target && !hit.targets.includes(a.target)) hit.targets.push(a.target);
           hit.events.push(evt);
           if (!a.isRecovered) {
             hit.isRecovered = false;
@@ -420,7 +425,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
           if (a.recoverTime) hit.recoverTime = a.recoverTime;
         }
       }
-      const aggList = [...byHash.values()];
+      const aggList = [...byKey.values()];
       for (const m of aggList) {
         m.triggerTimes.sort((x, y) => x - y);
         m.events.sort((x, y) => (x.triggerTime || 0) - (y.triggerTime || 0));
