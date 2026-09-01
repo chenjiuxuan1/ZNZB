@@ -932,7 +932,7 @@ function renderHistoryTable(list) {
       <thead>
         <tr>
           <th>触发时间</th><th>触发次数</th><th>级别</th><th>业务组</th>
-          <th>规则名 / 含义</th><th>状态</th><th>触发值</th><th>国家</th><th></th>
+          <th>规则名 / 含义</th><th>状态</th><th>通知渠道</th><th>触发值</th><th>国家</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -947,6 +947,7 @@ function renderHistoryTable(list) {
               ${a.meaning ? `<div class="muted ac-his-meaning" title="${escapeHtml(a.meaning)}">${escapeHtml(a.meaning)}</div>` : ""}
             </td>
             <td><span class="badge ${a.isRecovered ? "ok" : "danger"}">${escapeHtml(a.recoveredLabel || "-")}</span></td>
+            <td class="small">${renderNotifyChannels(a.notifyChannels)}</td>
             <td class="num">${escapeHtml(String(a.triggerValue ?? "-"))}</td>
             <td>${a.country ? escapeHtml(a.country) : `<span class="muted">-</span>`}</td>
             <td><button class="small ghost" data-his-expand="${idx}" data-his-label="${a.events?.length > 1 ? `展开 ${a.events.length} 次` : "详情"}">${a.events?.length > 1 ? `展开 ${a.events.length} 次` : "详情"}</button></td>
@@ -956,6 +957,12 @@ function renderHistoryTable(list) {
       </tbody>
     </table>
   `;
+}
+
+/** 通知渠道 badge 列表。 */
+function renderNotifyChannels(channels) {
+  if (!channels || !channels.length) return `<span class="muted">-</span>`;
+  return channels.map((c) => `<span class="badge ac-channel-badge">${escapeHtml(c)}</span>`).join(" ");
 }
 
 /** 展开行：列出该告警每次触发的时间 / 状态 / 触发值 / 恢复时间。 */
@@ -974,7 +981,7 @@ function renderHistoryExpandRow(a, idx) {
   `).join("");
   return `
     <tr class="ac-his-detail" id="ac-his-detail-${idx}" hidden>
-      <td colspan="9">
+      <td colspan="10">
         <div class="ac-his-detail-inner">
           <strong>该告警每次触发记录（共 ${events.length} 次）</strong>
           <table class="ac-his-events">
