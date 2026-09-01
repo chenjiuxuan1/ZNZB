@@ -78,6 +78,14 @@ export class N8nClient {
     return this.#request(`/api/v1/executions/${id}${query ? `?${query}` : ""}`);
   }
 
+  /** 更新工作流激活状态（n8n 专用 activate/deactivate 端点）。 */
+  async updateWorkflowActive(id, active) {
+    const action = active ? "activate" : "deactivate";
+    return this.#request(`/api/v1/workflows/${id}/${action}`, {
+      method: "POST",
+    });
+  }
+
   /** 激活的工作流 webhook 绑定（列表接口返回的 webhook 字段）。 */
   async listActiveWebhooks() {
     return this.listWorkflows({ active: true, limit: 200 });

@@ -1,0 +1,68 @@
+{
+  "alerts": [
+    {
+      "id": "pl_global_consistency",
+      "name": "PL 全球损益对账（财务库 + biz库）",
+      "country": "CN",
+      "sourceType": "n8n",
+      "n8nWorkflowId": "O2Ppfn5GgtAJVKsD",
+      "trigger": "webhook",
+      "webhookPath": "CWSJJY",
+      "command": "cd /root/starrocks-pl-monitor-tv-alert && python3 alert/run_alert.py --alert fin_ods_quality --sr-password 'v\\$8yzt8J4QPF#cjb' --sr-backup-password 'kGgk8RDF@5425Cxm' --dry-run",
+      "runVia": "ssh",
+      "sshHost": "root@10.20.47.14",
+      "sshPort": 36000,
+      "mentions": "adamyu@kn.group,gretchenhe@kn.group",
+      "enabled": true,
+      "note": "StarRocks 数仓与财务库/biz库数据一致性校验，按 table_name 拆分为两条告警；dry-run 不发送。"
+    },
+    {
+      "id": "mx_capital_ltv_chuanjin",
+      "name": "墨西哥资方 LTV 告警（串金）",
+      "country": "MX",
+      "sourceType": "n8n",
+      "n8nWorkflowId": "IycgIVjoKFWU7hWG",
+      "trigger": "webhook",
+      "webhookPath": "",
+      "command": "cd /root/starrocks-pl-monitor-tv-alert && SR_HOST='172.20.221.11' SR_PORT='9031' SR_DB='dm_dd_new' SR_USERNAME='e_load' SR_BACKUP_USERNAME='backup_user' python3 alert/run_alert.py --alert mx_capital_ltv --capital chuanjin --sr-password '\\$iF\\$lmek1pA8ctMg' --sr-backup-password 'IIzc5vsS047b' --bot-id '5d0be3c3-0e06-4134-bbbe-690d7ff28d1e' --mentions 'liorawu@kn.group' --dry-run",
+      "runVia": "ssh",
+      "sshHost": "root@172.20.220.165",
+      "sshPort": 36000,
+      "mentions": "liorawu@kn.group",
+      "enabled": true,
+      "note": "墨西哥串金资方 LTV 对账告警；dry-run 不发送。"
+    },
+    {
+      "id": "mx_capital_ltv_new_share",
+      "name": "墨西哥资方 LTV 告警（新分享）",
+      "country": "MX",
+      "sourceType": "n8n",
+      "n8nWorkflowId": "IycgIVjoKFWU7hWG",
+      "trigger": "webhook",
+      "webhookPath": "",
+      "command": "cd /root/starrocks-pl-monitor-tv-alert && SR_HOST='172.20.221.11' SR_PORT='9031' SR_DB='dm_dd_new' SR_USERNAME='e_load' SR_BACKUP_USERNAME='backup_user' python3 alert/run_alert.py --alert mx_capital_ltv --capital new_share --sr-password '\\$iF\\$lmek1pA8ctMg' --sr-backup-password 'IIzc5vsS047b' --bot-id '5d0be3c3-0e06-4134-bbbe-690d7ff28d1e' --mentions 'liorawu@kn.group' --dry-run",
+      "runVia": "ssh",
+      "sshHost": "root@172.20.220.165",
+      "sshPort": 36000,
+      "mentions": "liorawu@kn.group",
+      "enabled": true,
+      "note": "墨西哥新分享资方 LTV 对账告警；dry-run 不发送。"
+    },
+    {
+      "id": "id_marketing_dwd_cnt",
+      "name": "投放 DWD 表数量告警（印尼）",
+      "country": "ID",
+      "sourceType": "n8n",
+      "n8nWorkflowId": "XiDTOGuTsiTGFCWS",
+      "trigger": "webhook",
+      "webhookPath": "",
+      "command": "cd /root/starrocks-pl-monitor-tv-alert && SR_HOST='192.168.35.29' SR_PORT='9030' SR_DB='testdb' SR_USERNAME='e_load' SR_BACKUP_USERNAME='backup_user' python3 alert/run_alert.py --alert id_marketing_dwd_cnt --sr-password '\\$iF\\$lmek1pA8ctMg' --sr-backup-password 'xOFuKGvhn8Xv' --bot-id '4d0bcc9b-71bf-41c5-ba9f-89b7278f9214' --mentions 'adamyu@kn.group,gretchenhe@kn.group' --dry-run",
+      "runVia": "ssh",
+      "sshHost": "root@192.168.21.236",
+      "sshPort": 36000,
+      "mentions": "adamyu@kn.group,gretchenhe@kn.group",
+      "enabled": true,
+      "note": "印尼投放 DWD 表数量一致性告警；dry-run 不发送。"
+    }
+  ]
+}
