@@ -920,6 +920,7 @@ async function bindHistoryEvents(root, body) {
   };
 
   loadBtn.addEventListener("click", () => draw(1));
+  searchInput?.addEventListener("input", () => draw(1));
   searchInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") draw(1); });
   [rangeSel, bgSel, sevSel, recSel].forEach((sel) => sel?.addEventListener("change", () => draw(1)));
   draw(1);
