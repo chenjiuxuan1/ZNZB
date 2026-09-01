@@ -144,4 +144,24 @@ export class NightingaleClient {
     const dat = await this.get("/api/n9e/users", { limit: 200, cur_page: 1 });
     return Array.isArray(dat) ? dat : dat?.list || [];
   }
+
+  // ---------------------------------------------------------------------------
+  // 告警规则写入（配置能力）
+  // ---------------------------------------------------------------------------
+
+  /** 新建告警规则。body 为夜莺 alert-rule 对象。 */
+  async createAlertRule(busiGroup, body) {
+    const payload = { group_id: busiGroup, ...body };
+    return this.post("/api/n9e/alert-rules", payload);
+  }
+
+  /** 更新告警规则（含启停：disabled 0/1）。 */
+  async updateAlertRule(ruleId, body) {
+    return this.post(`/api/n9e/alert-rules/${ruleId}`, body);
+  }
+
+  /** 启用/停用告警规则。 */
+  async setAlertRuleDisabled(ruleId, disabled) {
+    return this.updateAlertRule(ruleId, { disabled: disabled ? 1 : 0 });
+  }
 }
