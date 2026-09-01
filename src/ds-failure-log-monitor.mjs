@@ -129,6 +129,14 @@ function withN8nProjectDecision(failure = {}) {
 }
 
 export function classifyDsFailureType(failure = {}) {
+  const commandType = commandTypeOf(failure);
+  if (commandType === "START_PROCESS") {
+    return {
+      failureType: "start_workflow_scan_only",
+      retryable: false,
+      retryDecision: "运行类型为启动工作流，仅记录失败扫描结果，不执行自动重跑",
+    };
+  }
   const evidence = [failure.failureMessage, failure.logError, failure.taskScript].filter(Boolean).join("\n");
   if (SQL_CODE_ERROR_PATTERNS.some((pattern) => pattern.test(evidence))) {
     return { failureType: "sql_code_error", retryable: false, retryDecision: "SQL/代码错误，需人工修改" };
@@ -316,9 +324,14 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
         recoveryInstanceId: instanceId(recoveredInstance),
         recoveryState: recoveredState,
         recoveryTime: endTime(recoveredInstance) || instanceTime(recoveredInstance),
-        failureMessage: String(recoveredInstance.failure_message || recoveredInstance.failureMessage || recoveredInstance.error_message || recoveredInstance.errorMessage || "").trim(),
-        failureCount: Math.max(1, runTimesOf(recoveredInstance) - 1),
-        scheduleCategory: scheduleCategoryOf(recoveredInstance),
+      failureMessage: String(recoveredInstance.failure_message || recoveredInstance.failureMessage || recoveredInstance.error_message || recoveredInstance.errorMessage || "").trim(),
+      failureCount: Math.max(1, runTimesOf(recoveredInstance) - 1),
+      commandType: commandTypeOf(recoveredInstance),
+      taskInstanceId: String(recoveredInstance.task_instance_id || recoveredInstance.taskInstanceId || recoveredInstance.failed_task_instance_id || recoveredInstance.failedTaskInstanceId || "").trim(),
+      taskName: String(recoveredInstance.task_name || recoveredInstance.taskName || recoveredInstance.failed_task_name || recoveredInstance.failedTaskName || "").trim(),
+      taskCode: String(recoveredInstance.task_code || recoveredInstance.taskCode || recoveredInstance.failed_task_code || recoveredInstance.failedTaskCode || "").trim(),
+      taskState: String(recoveredInstance.task_state || recoveredInstance.taskState || recoveredInstance.failed_task_state || recoveredInstance.failedTaskState || "").trim(),
+      scheduleCategory: scheduleCategoryOf(recoveredInstance),
         inferredFromRetry: true,
       });
       continue;
@@ -343,6 +356,11 @@ export function classifyWorkflowFailures(instances = [], { projectName = "", pro
       recoveryTime: instanceTime(recovered || repairing || {}),
       failureMessage: String(latestFailure.failure_message || latestFailure.failureMessage || latestFailure.error_message || latestFailure.errorMessage || "").trim(),
       failureCount: failed.length,
+      commandType: commandTypeOf(latestFailure),
+      taskInstanceId: String(latestFailure.task_instance_id || latestFailure.taskInstanceId || latestFailure.failed_task_instance_id || latestFailure.failedTaskInstanceId || "").trim(),
+      taskName: String(latestFailure.task_name || latestFailure.taskName || latestFailure.failed_task_name || latestFailure.failedTaskName || "").trim(),
+      taskCode: String(latestFailure.task_code || latestFailure.taskCode || latestFailure.failed_task_code || latestFailure.failedTaskCode || "").trim(),
+      taskState: String(latestFailure.task_state || latestFailure.taskState || latestFailure.failed_task_state || latestFailure.failedTaskState || "").trim(),
       scheduleCategory: scheduleCategoryOf(latestFailure),
     });
   }
@@ -893,10 +911,11 @@ export function normalizeGatewayFailures(data = {}, { projectName = "", projectC
       recoveryTime: item.recovery_time || item.recoveryTime || item.later_instance_time || item.laterInstanceTime || null,
       failureMessage: String(item.failure_message || item.failureMessage || item.error_message || item.errorMessage || "").trim(),
       failureCount: Number(item.failure_count || item.failureCount || item.consecutive_failures || item.consecutiveFailures || 1),
-      taskInstanceId: String(item.task_instance_id || item.taskInstanceId || item.failed_task_instance_id || "").trim(),
-      taskName: String(item.task_name || item.taskName || item.failed_task_name || "").trim(),
-      taskCode: String(item.task_code || item.taskCode || item.failed_task_code || "").trim(),
-      taskState: String(item.task_state || item.taskState || item.failed_task_state || "").trim(),
+      commandType: commandTypeOf(item),
+      taskInstanceId: String(item.task_instance_id || item.taskInstanceId || item.failed_task_instance_id || item.failedTaskInstanceId || "").trim(),
+      taskName: String(item.task_name || item.taskName || item.failed_task_name || item.failedTaskName || "").trim(),
+      taskCode: String(item.task_code || item.taskCode || item.failed_task_code || item.failedTaskCode || "").trim(),
+      taskState: String(item.task_state || item.taskState || item.failed_task_state || item.failedTaskState || "").trim(),
       scheduleCategory: String(item.schedule_category || item.scheduleCategory || "").trim()
         || scheduleCategoryOf(item),
     };

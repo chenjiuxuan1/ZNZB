@@ -174,10 +174,13 @@ export function createDsAutoRetryManager({
     const notificationKey = `${runId || "unknown-run"}:${key}:${outcome.type}`;
     if (statuses.get(key)?.lastFailureNotificationKey === notificationKey) return;
     const taskDetail = failureTaskDetail(failure);
+    const notificationMessage = buildRetryFailureMessage(country, failure, attempts, outcome);
+    let notificationTarget = "";
     try {
       const schedule = await ownerConfigLoader(rootDir);
       const ownerConfig = findCountryOwnerConfig(schedule, country);
       const ownerEmails = String(ownerConfig.ownerEmails || ownerConfig.recipientEmails || "").trim();
+      notificationTarget = ownerEmails;
       if (!ownerEmails) {
         appendLog("warn", "retry_failure_notification_skipped", { runId, key, country, attempts, ...taskDetail, message: "未配置该国家负责人邮箱，未发送重跑失败私聊告警" });
         return;
@@ -186,16 +189,16 @@ export function createDsAutoRetryManager({
         channel: "knBot",
         botToken: ownerConfig.botToken || "${KN_BOT_TOKEN}",
         recipientEmails: ownerEmails,
-      } }, buildRetryFailureMessage(country, failure, attempts, outcome), {
+      } }, notificationMessage, {
         title: "定时失败任务重跑失败",
         severity: "warning",
         timestamp: now().toISOString(),
       });
       if (!notification?.sent) throw new Error(notification?.reason || "重跑失败告警未发送");
       setStatus(key, { lastFailureNotificationKey: notificationKey, lastFailureNotificationAt: now().toISOString() });
-      appendLog("success", "retry_failure_notification_sent", { runId, key, country, attempts, ...taskDetail, message: `重跑失败私聊告警已发送给负责人：${ownerEmails}` });
+      appendLog("success", "retry_failure_notification_sent", { runId, key, country, attempts, ...taskDetail, notificationChannel: "owner_direct", notificationTarget: ownerEmails, notificationStatus: "sent", notificationMessage, message: `重跑失败私聊告警已发送给负责人：${ownerEmails}` });
     } catch (error) {
-      appendLog("error", "retry_failure_notification_failed", { runId, key, country, attempts, ...taskDetail, message: `重跑失败告警发送失败：${error.message}` });
+      appendLog("error", "retry_failure_notification_failed", { runId, key, country, attempts, ...taskDetail, notificationChannel: "owner_direct", notificationTarget, notificationStatus: "failed", notificationMessage, notificationError: error.message, message: `重跑失败告警发送失败：${error.message}` });
     }
   }
 
@@ -379,13 +382,14 @@ export function createDsAutoRetryManager({
         appendLog("warn", "owner_notification_skipped", { runId, key, country, attempts, ...taskDetail, message: "未配置该国家负责人邮箱，未发送空跑告警" });
         return;
       }
-      const notification = await notifyFn({ alerts: { channel: "knBot", botToken: ownerConfig.botToken || "${KN_BOT_TOKEN}", recipientEmails: ownerEmails } }, buildEmptyRunTimeoutMessage(country, failure, attempts, now()), {
+      const notificationMessage = buildEmptyRunTimeoutMessage(country, failure, attempts, now());
+      const notification = await notifyFn({ alerts: { channel: "knBot", botToken: ownerConfig.botToken || "${KN_BOT_TOKEN}", recipientEmails: ownerEmails } }, notificationMessage, {
         title: "DS 空跑任务确认",
         severity: "warning",
         timestamp: now().toISOString(),
       });
       if (!notification?.sent) throw new Error(notification?.reason || "负责人告警未发送");
-      appendLog("success", "owner_notification_sent", { runId, key, country, attempts, ...taskDetail, message: `空跑告警已发送给负责人：${ownerEmails}` });
+      appendLog("success", "owner_notification_sent", { runId, key, country, attempts, ...taskDetail, notificationChannel: "owner_direct", notificationTarget: ownerEmails, notificationStatus: "sent", notificationMessage, message: `空跑告警已发送给负责人：${ownerEmails}` });
     } catch (error) {
       appendLog("error", "owner_notification_failed", { runId, key, country, attempts, ...taskDetail, message: `DS 实例状态确认或负责人告警发送失败：${error.message}` });
     }
