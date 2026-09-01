@@ -7780,3 +7780,17 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
   white-space: nowrap;
 }
 .ac-checkbox-line input { accent-color: #2563eb; }
+
+/* n8n 工作流 webhook 链接 */
+.ac-wf-webhook {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  color: #1d4ed8;
+  display: inline-block;
+  font-size: 11px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  text-decoration: none;
+}
+.ac-wf-webhook:hover { background: #dbeafe; }

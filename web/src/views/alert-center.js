@@ -1189,13 +1189,17 @@ function renderWorkflowsTable(list, page = 1) {
   const rows = list.slice(start, start + AC_PAGE_SIZE);
   return `
     <table class="data-table">
-      <thead><tr><th>工作流名称</th><th>激活</th><th>触发地址 (webhook)</th><th>操作</th></tr></thead>
+      <thead><tr><th>工作流名称</th><th>激活</th><th>触发方式</th><th>节点数</th><th>操作</th></tr></thead>
       <tbody>
         ${rows.map((wf) => `
           <tr>
             <td>${escapeHtml(wf.name || `#${wf.id}`)}</td>
             <td><span class="badge ${wf.active ? "ok" : "warn"}">${wf.active ? "已激活" : "未激活"}</span></td>
-            <td class="small mono" title="${escapeHtml(wf.webhookUrl || "")}">${escapeHtml(wf.webhookUrl || (wf.webhooks || []).join("、") || "无 webhook（定时/内部触发）")}</td>
+            <td class="small">
+              ${escapeHtml(wf.triggerType || "无触发")}
+              ${wf.webhookUrl ? `<a class="ac-wf-webhook" href="${escapeHtml(wf.webhookUrl)}" target="_blank" rel="noopener" title="${escapeHtml(wf.webhookUrl)}">打开地址 ↗</a>` : ""}
+            </td>
+            <td class="num">${escapeHtml(String(wf.nodeCount ?? "-"))}</td>
             <td>
               <button class="small" data-wf-detail="${escapeHtml(String(wf.id))}">详情</button>
               <button class="small ${wf.active ? "" : "primary"}" data-wf-toggle="${escapeHtml(String(wf.id))}" data-active="${wf.active ? "true" : "false"}">
