@@ -29,6 +29,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { deepMapStrings, loadEnvFile, readJsonFile, writeJsonFileAtomic } from "./utils.mjs";
+import { createAlertScriptTemplate } from "./alert-script-template.mjs";
 
 const DEFAULT_CONFIG_FILE = "config/alert-registry.json";
 const EXAMPLE_CONFIG_FILE = "config/alert-registry.example.json";
@@ -78,6 +79,14 @@ function normalizeEntry(entry, index = 0) {
     mentions: String(raw.mentions || ""),
     enabled: raw.enabled !== false,
     note: String(raw.note || ""),
+    // 校验语句 / 脚本模板相关
+    templateName: String(raw.templateName || ""),
+    sqlBlocks: raw.sqlBlocks && typeof raw.sqlBlocks === "object"
+      ? Object.fromEntries(Object.entries(raw.sqlBlocks).map(([k, v]) => [k, String(v).replace(/^\n+|\n+$/g, "")]))
+      : {},
+    scriptPath: String(raw.scriptPath || ""),
+    remoteScriptPath: String(raw.remoteScriptPath || ""),
+    repoDir: String(raw.repoDir || ""),
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -141,10 +150,13 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   async function load() {
     const file = await registryPath();
     const raw = await readJsonFile(file, { alerts: [] });
-    const alerts = ensureArray(raw.alerts || raw);
+    const alerts = ensureArray(raw.alerts || raw).map(normalizeEntry).map((entry) => ({
+      ...entry,
+      repoDir: resolveEnv(entry.repoDir),
+    }));
     return {
       file,
-      alerts: alerts.map(normalizeEntry),
+      alerts,
     };
   }
 
@@ -176,16 +188,44 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       exampleAlerts = [];
     }
     if (!exampleAlerts.length) return alerts;
-    const existing = new Set(alerts.map((item) => item.id));
+    const existingById = new Map(alerts.map((item) => [item.id, item]));
+    // 新增：example 中有但注册表中没有的条目
     const toAdd = exampleAlerts
       .map(normalizeEntry)
-      .filter((item) => !existing.has(item.id));
-    if (toAdd.length) {
-      const merged = [...alerts, ...toAdd];
-      await save(merged);
-      return merged;
+      .filter((item) => !existingById.has(item.id));
+    // 补字段：example 中已存在条目，用 example 的值补充缺失字段（用户已有值优先）
+    let changed = false;
+    const next = alerts.map((item) => {
+      const example = exampleAlerts.find((e) => (e.id || e.name) === item.id);
+      if (!example) return item;
+      const exampleNorm = normalizeEntry(example);
+      let dirty = false;
+      const merged = { ...item };
+      for (const key of ["templateName", "scriptPath", "remoteScriptPath", "repoDir"]) {
+        const exValue = exampleNorm[key] || "";
+        if (!merged[key] && exValue) {
+          merged[key] = exValue;
+          dirty = true;
+        }
+      }
+      // sqlBlocks：仅当条目尚未配置任何块时，用 example 的块填充
+      if (!Object.keys(merged.sqlBlocks || {}).length && Object.keys(exampleNorm.sqlBlocks || {}).length) {
+        merged.sqlBlocks = exampleNorm.sqlBlocks;
+        dirty = true;
+      }
+      if (dirty) {
+        merged.updatedAt = new Date().toISOString();
+        changed = true;
+        return merged;
+      }
+      return item;
+    });
+    if (toAdd.length) next.push(...toAdd);
+    if (toAdd.length || changed) {
+      await save(next);
+      return next;
     }
-    return alerts;
+    return next;
   }
 
   async function create(input) {
@@ -257,6 +297,27 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return { ...result, command: resolvedCommand };
   }
 
+  // 脚本模板引擎（校验语句合成 + 部署 + git）
+  const template = createAlertScriptTemplate({ rootDir });
+
+  /** 渲染脚本预览（不落盘）。返回渲染内容 + 与仓库当前脚本 diff。 */
+  async function previewScript(id) {
+    const entry = await get(id);
+    if (!entry) {
+      throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
+    }
+    return template.previewUpdate(entry);
+  }
+
+  /** 全链路更新代码：渲染 → 写仓库 → git commit+push → SSH 部署目标机。 */
+  async function applyScript(id, { commitMessage, skipGit, skipDeploy } = {}) {
+    const entry = await get(id);
+    if (!entry) {
+      throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
+    }
+    return template.applyUpdate(entry, { commitMessage, skipGit, skipDeploy });
+  }
+
   return {
     list,
     get,
@@ -266,6 +327,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     setEnabled,
     runTest,
     runTestByCommand,
+    previewScript,
+    applyScript,
     seedExamples,
     normalizeEntry,
     resolveEnv,

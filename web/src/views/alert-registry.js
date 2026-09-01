@@ -174,6 +174,38 @@ function renderOutputBlock(label, text) {
   `;
 }
 
+function renderSqlEditorSection(data) {
+  const blocks = (data.sqlBlocks && typeof data.sqlBlocks === "object") ? data.sqlBlocks : {};
+  const blockNames = Object.keys(blocks).length ? Object.keys(blocks) : ["BIZ_CTE_CLAUSE", "FIN_UNION_SELECT", "BIZ_UNION_SELECT"];
+  const blockHtml = blockNames.map((key) => `
+    <label class="ar-label" style="grid-column:1 / span 2">
+      ${escapeHtml(key)}
+      <textarea class="ar-field ar-sql-block" data-sql-block="${escapeHtml(key)}" rows="6" style="font-family:monospace;font-size:12px">${escapeHtml(blocks[key] || "")}</textarea>
+    </label>
+  `).join("");
+  return `
+    <div class="ar-sql-section" style="grid-column:1 / span 2;border-top:1px solid var(--border,#e5e7eb);padding-top:12px;margin-top:4px">
+      <div class="panel-title">校验语句（SQL 块）— 保存后可「更新代码」合成脚本并部署/提交</div>
+      <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label class="ar-label" style="grid-column:1">模板名 templateName
+          <input class="ar-field" id="ar-f-template" value="${escapeHtml(data.templateName || "")}" placeholder="fin_ods_quality">
+        </label>
+        <label class="ar-label" style="grid-column:2">仓库内脚本路径 scriptPath
+          <input class="ar-field" id="ar-f-scriptPath" value="${escapeHtml(data.scriptPath || "")}" placeholder="alert/xxx.py">
+        </label>
+        <label class="ar-label" style="grid-column:1">目标机脚本路径 remoteScriptPath
+          <input class="ar-field" id="ar-f-remotePath" value="${escapeHtml(data.remoteScriptPath || "")}" placeholder="/root/.../alert/xxx.py">
+        </label>
+        <label class="ar-label" style="grid-column:2">本地 Git 仓库目录 repoDir
+          <input class="ar-field" id="ar-f-repoDir" value="${escapeHtml(data.repoDir || "")}" placeholder="/path/to/starrocks-pl-monitor-tv-alert">
+        </label>
+        ${blockHtml}
+      </div>
+      <div class="muted small" style="margin-top:6px">提示：SQL 块会注入模板的 {{KEY}} 占位符；预览可对比差异，更新代码会写仓库 + git 提交推送 + SSH 部署到目标机。</div>
+    </div>
+  `;
+}
+
 function openEditor(root, item) {
   const isEdit = Boolean(item);
   const data = item || {};
@@ -258,12 +290,16 @@ function openEditor(root, item) {
         <label class="ar-label" style="grid-column:1 / span 2">执行命令 *（测试代码 / dry-run，支持 \${ENV} 占位）
           <textarea class="ar-field" id="ar-f-command" rows="4" style="font-family:monospace;font-size:12px">${escapeHtml(fields[7][2])}</textarea>
         </label>
+        ${renderSqlEditorSection(data)}
       </div>
-      <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end">
+      <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap">
         <button id="ar-test-command">先测试命令</button>
+        ${isEdit ? `<button id="ar-preview-script">预览脚本</button>
+        <button class="primary" id="ar-apply-script">更新代码（部署+提交）</button>` : ""}
         <button class="primary" id="ar-save">${isEdit ? "保存" : "新增"}</button>
       </div>
       <div id="ar-command-output" style="margin-top:12px"></div>
+      <div id="ar-script-output" style="margin-top:12px"></div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -295,6 +331,40 @@ function openEditor(root, item) {
     }
   });
 
+  const previewBtn = overlay.querySelector("#ar-preview-script");
+  if (previewBtn) {
+    previewBtn.addEventListener("click", async () => {
+      const output = overlay.querySelector("#ar-script-output");
+      const entry = { ...collectEditorEntry(overlay, item) };
+      output.innerHTML = `<div class="notice">正在渲染脚本…</div>`;
+      try {
+        // 预览需要先把当前编辑内容存到条目（PUT），再调 preview-script
+        await apiPut(`/api/alert-registry/${encodeURIComponent(item.id)}`, entry);
+        const result = await apiPost(`/api/alert-registry/${encodeURIComponent(item.id)}/preview-script`, {});
+        renderScriptPreview(output, result);
+      } catch (error) {
+        output.innerHTML = `<div class="sandbox-status error"><strong>预览失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
+      }
+    });
+  }
+
+  const applyBtn = overlay.querySelector("#ar-apply-script");
+  if (applyBtn) {
+    applyBtn.addEventListener("click", async () => {
+      const output = overlay.querySelector("#ar-script-output");
+      const entry = collectEditorEntry(overlay, item);
+      if (!confirm("确认更新代码？将：①渲染脚本 ②写入仓库文件 ③git commit+push ④SSH 部署到目标机。")) return;
+      output.innerHTML = `<div class="notice">正在更新代码（写仓库 + 提交 + 部署）…</div>`;
+      try {
+        await apiPut(`/api/alert-registry/${encodeURIComponent(item.id)}`, entry);
+        const result = await apiPost(`/api/alert-registry/${encodeURIComponent(item.id)}/apply-script`, {});
+        renderScriptApply(output, result);
+      } catch (error) {
+        output.innerHTML = `<div class="sandbox-status error"><strong>更新失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
+      }
+    });
+  }
+
   overlay.querySelector("#ar-save").addEventListener("click", async () => {
     const name = overlay.querySelector("#ar-f-name").value.trim();
     const command = overlay.querySelector("#ar-f-command").value.trim();
@@ -317,6 +387,11 @@ function openEditor(root, item) {
       mentions: overlay.querySelector("#ar-f-mentions").value.trim(),
       enabled: overlay.querySelector("#ar-f-enabled").checked,
       note: overlay.querySelector("#ar-f-note").value.trim(),
+      templateName: overlay.querySelector("#ar-f-template")?.value.trim() || "",
+      scriptPath: overlay.querySelector("#ar-f-scriptPath")?.value.trim() || "",
+      remoteScriptPath: overlay.querySelector("#ar-f-remotePath")?.value.trim() || "",
+      repoDir: overlay.querySelector("#ar-f-repoDir")?.value.trim() || "",
+      sqlBlocks: collectSqlBlocks(overlay),
     };
     try {
       if (isEdit) {
@@ -341,5 +416,77 @@ function renderCommandResult(result) {
     </div>
     ${result.stdout ? `<pre class="code">${escapeHtml(result.stdout)}</pre>` : ""}
     ${result.stderr ? `<pre class="code">${escapeHtml(result.stderr)}</pre>` : ""}
+  `;
+}
+
+function collectSqlBlocks(overlay) {
+  const blocks = {};
+  overlay.querySelectorAll(".ar-sql-block").forEach((textarea) => {
+    const key = textarea.dataset.sqlBlock;
+    const value = textarea.value;
+    if (key && value.trim()) blocks[key] = value;
+  });
+  return blocks;
+}
+
+function collectEditorEntry(overlay, item) {
+  return {
+    id: overlay.querySelector("#ar-f-id").value.trim() || undefined,
+    name: overlay.querySelector("#ar-f-name").value.trim(),
+    country: overlay.querySelector("#ar-f-country").value.trim(),
+    sourceType: overlay.querySelector("#ar-f-sourceType").value,
+    n8nWorkflowId: overlay.querySelector("#ar-f-workflow").value.trim(),
+    trigger: overlay.querySelector("#ar-f-trigger").value,
+    webhookPath: overlay.querySelector("#ar-f-webhook").value.trim(),
+    command: overlay.querySelector("#ar-f-command").value.trim(),
+    runVia: overlay.querySelector("#ar-f-runVia").value,
+    sshHost: overlay.querySelector("#ar-f-host").value.trim(),
+    sshPort: Number(overlay.querySelector("#ar-f-port").value || 36000),
+    mentions: overlay.querySelector("#ar-f-mentions").value.trim(),
+    enabled: overlay.querySelector("#ar-f-enabled").checked,
+    note: overlay.querySelector("#ar-f-note").value.trim(),
+    templateName: overlay.querySelector("#ar-f-template")?.value.trim() || "",
+    scriptPath: overlay.querySelector("#ar-f-scriptPath")?.value.trim() || "",
+    remoteScriptPath: overlay.querySelector("#ar-f-remotePath")?.value.trim() || "",
+    repoDir: overlay.querySelector("#ar-f-repoDir")?.value.trim() || "",
+    sqlBlocks: collectSqlBlocks(overlay),
+  };
+}
+
+function renderScriptPreview(output, result) {
+  if (!result.ok) {
+    output.innerHTML = `
+      <div class="sandbox-status error"><strong>脚本渲染不完整</strong><span>${escapeHtml(result.note || "")}${result.missing ? "：" + escapeHtml(result.missing.join(", ")) : ""}</span></div>
+    `;
+    return;
+  }
+  const diff = result.diff || {};
+  output.innerHTML = `
+    <div class="sandbox-status success">
+      <strong>脚本渲染成功</strong>
+      <span>${escapeHtml(result.note || "")} · 变更 ${diff.added ?? "-"} 增 / ${diff.removed ?? "-"} 删（${diff.newLines ?? result.length} 行）</span>
+    </div>
+    <details>
+      <summary>查看渲染后的完整脚本（${escapeHtml(String(result.length || 0))} 字符）</summary>
+      <pre class="code">${escapeHtml(result.rendered || "")}</pre>
+    </details>
+  `;
+}
+
+function renderScriptApply(output, result) {
+  const git = result.git || {};
+  const deploy = result.deploy || {};
+  const parts = [];
+  if (result.repoFile) parts.push(`仓库文件：<code>${escapeHtml(result.repoFile)}</code>`);
+  if (result.git) parts.push(`Git：<span class="${git.ok ? "" : "muted"}">${git.ok ? "提交并推送成功" : "推送失败"}</span> ${git.stderr ? `<pre class="code">${escapeHtml(git.stderr)}</pre>` : ""}`);
+  if (result.deploy) parts.push(`目标机部署：<span class="${deploy.ok ? "" : "muted"}">${deploy.ok ? "成功" : "失败"}</span> ${deploy.stderr ? `<pre class="code">${escapeHtml(deploy.stderr)}</pre>` : ""}`);
+  if (!result.repoFile && !result.git && !result.deploy) {
+    parts.push("未配置 repoDir/scriptPath 或 remoteScriptPath，仅完成渲染。");
+  }
+  output.innerHTML = `
+    <div class="sandbox-status ${result.ok ? "success" : "error"}">
+      <strong>${result.ok ? "更新代码完成" : "更新失败"}</strong><span>${escapeHtml(String(result.length || ""))} 字符</span>
+    </div>
+    <div class="muted">${parts.join("<br>")}</div>
   `;
 }
