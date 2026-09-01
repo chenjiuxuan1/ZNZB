@@ -38,22 +38,25 @@ function runCmd(cmd, args, { cwd, timeoutMs = 60_000 } = {}) {
 /** 渲染脚本：模板 + sqlBlocks 注入。返回完整脚本字符串。 */
 function renderScript(templateContent, sqlBlocks) {
   const blocks = sqlBlocks && typeof sqlBlocks === "object" ? sqlBlocks : {};
+  // 值内部的单花括号变量（如 {MONITOR_TABLE}）引用其他 sqlBlocks 键，先展开
+  const expandValue = (raw) => {
+    let v = String(raw ?? "");
+    for (const [k, val] of Object.entries(blocks)) {
+      if (v.includes(`{${k}}`)) {
+        v = v.split(`{${k}}`).join(String(val ?? ""));
+      }
+    }
+    return v;
+  };
   let rendered = templateContent;
   const missing = [];
   for (const key of Object.keys(blocks)) {
-    const value = String(blocks[key] ?? "").trimEnd();
     if (!rendered.includes(`{{${key}}}`)) {
       // 模板里没有该占位符：跳过（可能是模板不含此块）
       continue;
     }
+    const value = expandValue(blocks[key]).trimEnd();
     rendered = rendered.replace(`{{${key}}}`, value);
-  }
-  // 二次替换：SQL 块内部引用的单花括号变量（如 {MONITOR_TABLE}）指向其他 sqlBlocks 键
-  for (const key of Object.keys(blocks)) {
-    const value = String(blocks[key] ?? "");
-    if (rendered.includes(`{${key}}`)) {
-      rendered = rendered.split(`{${key}}`).join(value);
-    }
   }
   // 检查是否还有未填充的占位符
   const left = rendered.match(/\{\{([A-Z0-9_]+)\}\}/g) || [];

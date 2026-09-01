@@ -20,7 +20,8 @@ test("seedExamples imports preset PL/MX/ID alert entries", async (t) => {
   await fs.copyFile(exampleFile, path.join(dir, "config", "alert-registry.example.json"));
   const alerts = await registry.seedExamples();
   const ids = alerts.map((item) => item.id);
-  assert.ok(ids.includes("pl_global_consistency"));
+  assert.ok(ids.includes("pl_fin_consistency"));
+  assert.ok(ids.includes("pl_biz_consistency"));
   assert.ok(ids.includes("mx_capital_ltv_chuanjin"));
   assert.ok(ids.includes("id_marketing_dwd_cnt"));
 });
