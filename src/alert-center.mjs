@@ -469,7 +469,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       tags: t?.tags || [],
       hostname: t?.hostname || "",
       os: t?.os || "",
-      cpuNum: t?.cpu_num ?? t?.cpu_num != null ? t?.cpu_num : "",
+      cpuNum: t?.cpu_num ?? "",
       memCap: t?.mem_cap ?? "",
       state: t?.state ?? "",
     }));
