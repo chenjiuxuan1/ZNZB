@@ -7722,3 +7722,51 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
   .va-split { grid-template-columns: 1fr; }
   .vb-statbar { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ============================================================
+ * 配置管理 v8：完整字段 + 分页 + 搜索
+ * ============================================================ */
+
+/* 规则查询语句（PromQL/SQL）代码样式 */
+.ac-rule-ql {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  color: #334155;
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 44px;
+  max-width: 380px;
+  overflow: hidden;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.text-danger { color: #dc2626; font-weight: 600; }
+
+/* 分页条内部按钮排列 */
+.ac-pager {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.ac-pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* 目标表紧凑 */
+.ac-targets-table td { padding: 6px 8px; }
+.ac-targets-table th { white-space: nowrap; }

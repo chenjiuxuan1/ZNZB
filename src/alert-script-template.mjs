@@ -48,6 +48,13 @@ function renderScript(templateContent, sqlBlocks) {
     }
     rendered = rendered.replace(`{{${key}}}`, value);
   }
+  // 二次替换：SQL 块内部引用的单花括号变量（如 {MONITOR_TABLE}）指向其他 sqlBlocks 键
+  for (const key of Object.keys(blocks)) {
+    const value = String(blocks[key] ?? "");
+    if (rendered.includes(`{${key}}`)) {
+      rendered = rendered.split(`{${key}}`).join(value);
+    }
+  }
   // 检查是否还有未填充的占位符
   const left = rendered.match(/\{\{([A-Z0-9_]+)\}\}/g) || [];
   for (const ph of left) {

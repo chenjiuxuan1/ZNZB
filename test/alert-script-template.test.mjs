@@ -52,6 +52,20 @@ test("renderScript reports missing placeholders when a block is absent", async (
   assert.ok(rendered.includes("{{BIZ_CTE_CLAUSE}}"));
 });
 
+test("renderScript resolves single-brace {KEY} references inside SQL blocks", async (t) => {
+  const { dir } = await tmpSetup(t);
+  const template = createAlertScriptTemplate({ rootDir: dir });
+  const miniTmpl = 'MONITOR_TABLE = "{{MONITOR_TABLE}}"\nLTV_QUERY_SQL = "{{LTV_QUERY_SQL}}"\n';
+  const blocks = {
+    MONITOR_TABLE: "dm_dd_new.ads_capital_ltv",
+    LTV_QUERY_SQL: "select a.stat_date from {MONITOR_TABLE} a",
+  };
+  const { content: rendered, missing } = template.renderScript(miniTmpl, blocks);
+  assert.equal(missing.length, 0);
+  assert.ok(rendered.includes("from dm_dd_new.ads_capital_ltv a"));
+  assert.ok(!rendered.includes("{MONITOR_TABLE}"));
+});
+
 test("previewUpdate returns rendered content and diff without writing files", async (t) => {
   const { registry } = await tmpSetup(t);
   const entry = await registry.create({
