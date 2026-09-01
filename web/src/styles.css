@@ -7770,3 +7770,13 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
 /* 目标表紧凑 */
 .ac-targets-table td { padding: 6px 8px; }
 .ac-targets-table th { white-space: nowrap; }
+
+/* 筛选器：复选框行内 */
+.ac-checkbox-line {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ac-checkbox-line input { accent-color: #2563eb; }
