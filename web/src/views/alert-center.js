@@ -30,7 +30,7 @@ export function renderAlertCenter(root) {
       </div>
     </div>
     <section class="panel ac-panel">
-      <div id="ac-body" class="notice">正在加载告警数据…</div>
+      <div id="ac-body"></div>
     </section>
   `;
 
