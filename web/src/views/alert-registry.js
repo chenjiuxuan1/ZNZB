@@ -174,12 +174,31 @@ function renderOutputBlock(label, text) {
   `;
 }
 
+// SQL 块 → 中文标签（模板占位符键名保持英文，标签用中文）
+const SQL_BLOCK_LABELS = {
+  BIZ_CTE_CLAUSE: "非经营 CTE 公共表（biz库）",
+  FIN_UNION_SELECT: "财务对账查询（capital 三表）",
+  BIZ_UNION_SELECT: "biz 对账查询（五国非经营）",
+  MONITOR_TABLE: "监控表（被校验表）",
+  LTV_QUERY_SQL: "LTV 查询语句",
+  CHECK_TABLE: "校验记录表",
+  EXPECTED_TABLES: "期望表清单（印尼）",
+  MX_EXPECTED_TABLES: "期望表清单（墨西哥）",
+};
+
+function sqlBlockLabel(key) {
+  return SQL_BLOCK_LABELS[key] || key;
+}
+
 function renderSqlEditorSection(data) {
   const blocks = (data.sqlBlocks && typeof data.sqlBlocks === "object") ? data.sqlBlocks : {};
-  const blockNames = Object.keys(blocks).length ? Object.keys(blocks) : ["BIZ_CTE_CLAUSE", "FIN_UNION_SELECT", "BIZ_UNION_SELECT"];
+  const blockNames = Object.keys(blocks).length
+    ? Object.keys(blocks)
+    : ["FIN_UNION_SELECT", "BIZ_CTE_CLAUSE", "BIZ_UNION_SELECT"];
   const blockHtml = blockNames.map((key) => `
     <label class="ar-label" style="grid-column:1 / span 2">
-      ${escapeHtml(key)}
+      <span class="strong">${escapeHtml(sqlBlockLabel(key))}</span>
+      <span class="muted small">（${escapeHtml(key)}）</span>
       <textarea class="ar-field ar-sql-block" data-sql-block="${escapeHtml(key)}" rows="6" style="font-family:monospace;font-size:12px">${escapeHtml(blocks[key] || "")}</textarea>
     </label>
   `).join("");
@@ -187,21 +206,21 @@ function renderSqlEditorSection(data) {
     <div class="ar-sql-section" style="grid-column:1 / span 2;border-top:1px solid var(--border,#e5e7eb);padding-top:12px;margin-top:4px">
       <div class="panel-title">校验语句（SQL 块）— 保存后可「更新代码」合成脚本并部署/提交</div>
       <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label class="ar-label" style="grid-column:1">模板名 templateName
-          <input class="ar-field" id="ar-f-template" value="${escapeHtml(data.templateName || "")}" placeholder="fin_ods_quality">
+        <label class="ar-label" style="grid-column:1">模板名
+          <input class="ar-field" id="ar-f-template" value="${escapeHtml(data.templateName || "")}" placeholder="如 fin_ods_quality / mx_capital_ltv / id_marketing_dwd_cnt">
         </label>
-        <label class="ar-label" style="grid-column:2">仓库内脚本路径 scriptPath
-          <input class="ar-field" id="ar-f-scriptPath" value="${escapeHtml(data.scriptPath || "")}" placeholder="alert/xxx.py">
+        <label class="ar-label" style="grid-column:2">仓库内脚本路径
+          <input class="ar-field" id="ar-f-scriptPath" value="${escapeHtml(data.scriptPath || "")}" placeholder="如 alert/fin_manage_ods_data_quality_monitor_alert.py">
         </label>
-        <label class="ar-label" style="grid-column:1">目标机脚本路径 remoteScriptPath
-          <input class="ar-field" id="ar-f-remotePath" value="${escapeHtml(data.remoteScriptPath || "")}" placeholder="/root/.../alert/xxx.py">
+        <label class="ar-label" style="grid-column:1">目标机脚本路径
+          <input class="ar-field" id="ar-f-remotePath" value="${escapeHtml(data.remoteScriptPath || "")}" placeholder="如 /root/starrocks-pl-monitor-tv-alert/alert/xxx.py">
         </label>
-        <label class="ar-label" style="grid-column:2">本地 Git 仓库目录 repoDir
-          <input class="ar-field" id="ar-f-repoDir" value="${escapeHtml(data.repoDir || "")}" placeholder="/path/to/starrocks-pl-monitor-tv-alert">
+        <label class="ar-label" style="grid-column:2">本地 Git 仓库目录
+          <input class="ar-field" id="ar-f-repoDir" value="${escapeHtml(data.repoDir || "")}" placeholder="如 /path/to/starrocks-pl-monitor-tv-alert 或 \${ALERT_REPO_DIR}">
         </label>
         ${blockHtml}
       </div>
-      <div class="muted small" style="margin-top:6px">提示：SQL 块会注入模板的 {{KEY}} 占位符；预览可对比差异，更新代码会写仓库 + git 提交推送 + SSH 部署到目标机。</div>
+      <div class="muted small" style="margin-top:6px">提示：SQL 块内容会注入模板对应占位符；「预览脚本」可先看合成结果，确认无误后点「更新代码」写入仓库、git 提交推送并 SSH 部署到目标机。</div>
     </div>
   `;
 }
