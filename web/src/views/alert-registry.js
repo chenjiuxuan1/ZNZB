@@ -202,32 +202,45 @@ function renderSqlEditorSection(data) {
   const blockNames = Object.keys(blocks).length
     ? Object.keys(blocks)
     : ["FIN_UNION_SELECT", "BIZ_CTE_CLAUSE", "BIZ_UNION_SELECT"];
-  const blockHtml = blockNames.map((key) => `
-    <label class="ar-label" style="grid-column:1 / span 2">
-      <span class="strong">${escapeHtml(sqlBlockLabel(key))}</span>
-      <span class="muted small">（${escapeHtml(key)}）</span>
-      <textarea class="ar-field ar-sql-block" data-sql-block="${escapeHtml(key)}" rows="6" style="font-family:monospace;font-size:12px">${escapeHtml(blocks[key] || "")}</textarea>
-    </label>
-  `).join("");
-  return `
-    <div class="ar-sql-section" style="grid-column:1 / span 2;border-top:1px solid var(--border,#e5e7eb);padding-top:12px;margin-top:4px">
-      <div class="panel-title">校验语句（SQL 块）— 保存后可「更新代码」合成脚本并部署/提交</div>
-      <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label class="ar-label" style="grid-column:1">模板名
-          <input class="ar-field" id="ar-f-template" value="${escapeHtml(data.templateName || "")}" placeholder="如 fin_ods_quality / mx_capital_ltv / id_marketing_dwd_cnt">
-        </label>
-        <label class="ar-label" style="grid-column:2">仓库内脚本路径
-          <input class="ar-field" id="ar-f-scriptPath" value="${escapeHtml(data.scriptPath || "")}" placeholder="如 alert/fin_manage_ods_data_quality_monitor_alert.py">
-        </label>
-        <label class="ar-label" style="grid-column:1">目标机脚本路径
-          <input class="ar-field" id="ar-f-remotePath" value="${escapeHtml(data.remoteScriptPath || "")}" placeholder="如 /root/starrocks-pl-monitor-tv-alert/alert/xxx.py">
-        </label>
-        <label class="ar-label" style="grid-column:2">本地 Git 仓库目录
-          <input class="ar-field" id="ar-f-repoDir" value="${escapeHtml(data.repoDir || "")}" placeholder="如 /path/to/starrocks-pl-monitor-tv-alert 或 \${ALERT_REPO_DIR}">
-        </label>
-        ${blockHtml}
+  const blockHtml = blockNames.map((key) => {
+    const value = blocks[key] || "";
+    const lines = value ? value.split("\n").length : 0;
+    return `
+    <div class="ar-field-full">
+      <div class="ar-sql-title">
+        <span class="strong">${escapeHtml(sqlBlockLabel(key))}</span>
+        <span class="muted">（${escapeHtml(key)}）</span>
+        <span class="ar-sql-lines">${lines ? lines + " 行" : "空"}</span>
       </div>
-      <div class="muted small" style="margin-top:6px">提示：SQL 块内容会注入模板对应占位符；「预览脚本」可先看合成结果，确认无误后点「更新代码」写入仓库、git 提交推送并 SSH 部署到目标机。</div>
+      <textarea class="ar-field ar-sql-block" data-sql-block="${escapeHtml(key)}" rows="6">${escapeHtml(value)}</textarea>
+    </div>
+  `;
+  }).join("");
+  return `
+    <div class="ar-section">
+      <div class="ar-section-head">
+        <span class="ar-sec-icon">🧩</span>
+        <span>校验语句（SQL 块）</span>
+        <span class="ar-sec-tip">保存后可「更新代码」合成脚本并部署/提交</span>
+      </div>
+      <div class="ar-section-body">
+        <div class="ar-field-grid">
+          <label class="ar-label">模板名
+            <input class="ar-field" id="ar-f-template" value="${escapeHtml(data.templateName || "")}" placeholder="如 fin_ods_quality / mx_capital_ltv / id_marketing_dwd_cnt">
+          </label>
+          <label class="ar-label">仓库内脚本路径
+            <input class="ar-field" id="ar-f-scriptPath" value="${escapeHtml(data.scriptPath || "")}" placeholder="如 alert/fin_manage_ods_data_quality_monitor_alert.py">
+          </label>
+          <label class="ar-label">目标机脚本路径
+            <input class="ar-field" id="ar-f-remotePath" value="${escapeHtml(data.remoteScriptPath || "")}" placeholder="如 /root/starrocks-pl-monitor-tv-alert/alert/xxx.py">
+          </label>
+          <label class="ar-label">本地 Git 仓库目录
+            <input class="ar-field" id="ar-f-repoDir" value="${escapeHtml(data.repoDir || "")}" placeholder="如 /path/to/starrocks-pl-monitor-tv-alert 或 \${ALERT_REPO_DIR}">
+          </label>
+          ${blockHtml}
+        </div>
+        <div class="ar-note-line" style="margin-top:12px">SQL 块内容会注入模板对应占位符；「预览脚本」可先看合成结果，确认无误后点「更新代码」写入仓库、git 提交推送并 SSH 部署到目标机。</div>
+      </div>
     </div>
   `;
 }
@@ -262,70 +275,92 @@ function openEditor(root, item) {
   ).join("");
 
   const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;";
+  overlay.className = "ar-modal-overlay";
   overlay.innerHTML = `
-    <div class="modal" style="background:#fff;border-radius:12px;max-width:760px;width:100%;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.3);">
-      <div class="page-header" style="margin-bottom:16px">
+    <div class="ar-modal">
+      <div class="ar-modal-header">
         <div>
           <h2 class="page-title">${isEdit ? "编辑告警" : "新增告警"}</h2>
           <p class="page-note">配置条目信息；「测试命令」可先验证任意命令（新增前的测试代码），通过后再保存。</p>
         </div>
-        <button id="ar-modal-close" style="background:none;border:none;font-size:22px;cursor:pointer">×</button>
+        <button id="ar-modal-close" class="ar-modal-close" title="关闭">×</button>
       </div>
-      <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label class="ar-label" style="grid-column:1">ID
-          <input class="ar-field" id="ar-f-id" value="${escapeHtml(fields[0][2])}" ${isEdit ? "readonly" : ""}>
-        </label>
-        <label class="ar-label" style="grid-column:2">名称 *
-          <input class="ar-field" id="ar-f-name" value="${escapeHtml(fields[1][2])}">
-        </label>
-        <label class="ar-label" style="grid-column:1">国家
-          <input class="ar-field" id="ar-f-country" value="${escapeHtml(fields[2][2])}" placeholder="CN / MX / ID / PH…">
-        </label>
-        <label class="ar-label" style="grid-column:2">来源类型
-          <select class="ar-field" id="ar-f-sourceType">${sourceOptions}</select>
-        </label>
-        <label class="ar-label" style="grid-column:1">n8n 工作流 ID
-          <input class="ar-field" id="ar-f-workflow" value="${escapeHtml(fields[4][2])}">
-        </label>
-        <label class="ar-label" style="grid-column:2">触发方式
-          <select class="ar-field" id="ar-f-trigger">${triggerOptions}</select>
-        </label>
-        <label class="ar-label" style="grid-column:1">Webhook 路径
-          <input class="ar-field" id="ar-f-webhook" value="${escapeHtml(fields[6][2])}">
-        </label>
-        <label class="ar-label" style="grid-column:2">执行方式
-          <select class="ar-field" id="ar-f-runVia">${runViaOptions}</select>
-        </label>
-        <label class="ar-label" style="grid-column:1 / span 1">SSH 主机
-          <input class="ar-field" id="ar-f-host" value="${escapeHtml(fields[9][2])}">
-        </label>
-        <label class="ar-label" style="grid-column:2">SSH 端口
-          <input class="ar-field" id="ar-f-port" value="${escapeHtml(fields[10][2])}">
-        </label>
-        <label class="ar-label" style="grid-column:1">@ 成员
-          <input class="ar-field" id="ar-f-mentions" value="${escapeHtml(fields[11][2])}">
-        </label>
-        <label class="ar-label" style="grid-column:2" style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="ar-f-enabled" ${fields[12][2] ? "checked" : ""}> 启用
-        </label>
-        <label class="ar-label" style="grid-column:1 / span 2">备注
-          <input class="ar-field" id="ar-f-note" value="${escapeHtml(fields[13][2])}">
-        </label>
-        <label class="ar-label" style="grid-column:1 / span 2">执行命令 *（测试代码 / dry-run，支持 \${ENV} 占位）
-          <textarea class="ar-field" id="ar-f-command" rows="4" style="font-family:monospace;font-size:12px">${escapeHtml(fields[7][2])}</textarea>
-        </label>
+      <div class="ar-modal-body">
+
+        <div class="ar-section">
+          <div class="ar-section-head">
+            <span class="ar-sec-icon">📋</span>
+            <span>基本信息</span>
+          </div>
+          <div class="ar-section-body">
+            <div class="ar-field-grid">
+              <label class="ar-label">ID
+                <input class="ar-field" id="ar-f-id" value="${escapeHtml(fields[0][2])}" ${isEdit ? "readonly" : ""} placeholder="留空自动生成">
+              </label>
+              <label class="ar-label">名称 <span class="ar-req">*</span>
+                <input class="ar-field" id="ar-f-name" value="${escapeHtml(fields[1][2])}">
+              </label>
+              <label class="ar-label">国家
+                <input class="ar-field" id="ar-f-country" value="${escapeHtml(fields[2][2])}" placeholder="CN / MX / ID / PH…">
+              </label>
+              <label class="ar-label">来源类型
+                <select class="ar-field" id="ar-f-sourceType">${sourceOptions}</select>
+              </label>
+              <label class="ar-label">n8n 工作流 ID
+                <input class="ar-field" id="ar-f-workflow" value="${escapeHtml(fields[4][2])}">
+              </label>
+              <label class="ar-label">触发方式
+                <select class="ar-field" id="ar-f-trigger">${triggerOptions}</select>
+              </label>
+              <label class="ar-label">Webhook 路径
+                <input class="ar-field" id="ar-f-webhook" value="${escapeHtml(fields[6][2])}">
+              </label>
+              <label class="ar-label ar-field-wrap-check"><input type="checkbox" id="ar-f-enabled" ${fields[12][2] ? "checked" : ""}> 启用 <span class="ar-hint">是否参与触发</span></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="ar-section">
+          <div class="ar-section-head">
+            <span class="ar-sec-icon">🚀</span>
+            <span>执行与测试</span>
+            <span class="ar-sec-tip">测试代码 / dry-run，支持 \${ENV} 占位</span>
+          </div>
+          <div class="ar-section-body">
+            <div class="ar-field-grid">
+              <label class="ar-label">执行方式
+                <select class="ar-field" id="ar-f-runVia">${runViaOptions}</select>
+              </label>
+              <label class="ar-label">SSH 端口
+                <input class="ar-field" id="ar-f-port" value="${escapeHtml(fields[10][2])}">
+              </label>
+              <label class="ar-label ar-field-full">SSH 主机
+                <input class="ar-field" id="ar-f-host" value="${escapeHtml(fields[9][2])}" placeholder="如 root@10.20.47.14">
+              </label>
+              <label class="ar-label ar-field-full">@ 成员（逗号分隔）
+                <input class="ar-field" id="ar-f-mentions" value="${escapeHtml(fields[11][2])}">
+              </label>
+              <label class="ar-label ar-field-full">执行命令 <span class="ar-req">*</span>
+                <textarea class="ar-field ar-cmd-area" id="ar-f-command" rows="4">${escapeHtml(fields[7][2])}</textarea>
+              </label>
+              <label class="ar-label ar-field-full">备注
+                <input class="ar-field" id="ar-f-note" value="${escapeHtml(fields[13][2])}">
+              </label>
+            </div>
+          </div>
+        </div>
+
         ${renderSqlEditorSection(data)}
       </div>
-      <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap">
-        <button id="ar-test-command">先测试命令</button>
-        ${isEdit ? `<button id="ar-preview-script">预览脚本</button>
-        <button class="primary" id="ar-apply-script">更新代码（部署+提交）</button>` : ""}
-        <button class="primary" id="ar-save">${isEdit ? "保存" : "新增"}</button>
+      <div class="ar-modal-footer">
+        <span class="ar-modal-progress muted small"></span>
+        <button class="ar-btn ar-btn-test" id="ar-test-command">▶ 先测试命令</button>
+        ${isEdit ? `<button class="ar-btn ar-btn-code" id="ar-preview-script">👁 预览脚本</button>
+        <button class="ar-btn ar-btn-code" id="ar-apply-script">⚡ 更新代码（部署+提交）</button>` : ""}
+        <button class="ar-btn ar-btn-primary" id="ar-save">${isEdit ? "保存" : "新增"}</button>
       </div>
-      <div id="ar-command-output" style="margin-top:12px"></div>
-      <div id="ar-script-output" style="margin-top:12px"></div>
+      <div id="ar-command-output" style="padding:0 24px"></div>
+      <div id="ar-script-output" style="padding:0 24px 12px"></div>
     </div>
   `;
   document.body.appendChild(overlay);
