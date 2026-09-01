@@ -399,8 +399,31 @@ async function handleApi(request, response, url) {
     const params = Object.fromEntries(url.searchParams.entries());
     return sendJson(response, 200, await alertCenter.getN8nExecutions({
       status: params.status || undefined,
-      limit: params.limit || 50,
+      workflowId: params.workflowId || undefined,
+      limit: params.limit || 250,
     }));
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/n8n/executions/detail") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getN8nExecutionDetail(params.id));
+  }
+  if (method === "POST" && url.pathname === "/api/alerts/n8n/workflows/toggle") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.setN8nWorkflowActive(body.id, body.active));
+  }
+  if (method === "POST" && url.pathname === "/api/alerts/rules") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.createAlertRule(body.busiGroup, body.rule || body));
+  }
+  if (method === "PUT" && url.pathname.startsWith("/api/alerts/rules/")) {
+    const ruleId = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.updateAlertRule(ruleId, body.rule || body));
+  }
+  if (method === "POST" && url.pathname.startsWith("/api/alerts/rules/")) {
+    const ruleId = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.setAlertRuleDisabled(ruleId, Boolean(body.disabled)));
   }
   if (method === "GET" && url.pathname === "/api/alerts/config") {
     return sendJson(response, 200, await alertCenter.getConfig());

@@ -7036,3 +7036,155 @@ button.primary:active {
   .ac-hero { grid-template-columns: 1fr; }
   .ac-group-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+ * 告警中心扩展：Tabs / 筛选 / 分页 / 执行详情 / 配置
+ * ============================================================ */
+
+/* ---- Tabs ---- */
+.ac-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ac-tab {
+  appearance: none;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #475467;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0 18px;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+.ac-tab:hover {
+  border-color: #b9c9e8;
+  color: #1e293b;
+}
+
+.ac-tab.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.ac-tab:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* ---- 筛选栏 ---- */
+.ac-filter-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ac-search-input {
+  background: #fff;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.ac-search-input:focus {
+  border-color: #93c5fd;
+  outline: 2px solid rgb(147 197 253 / 0.35);
+  outline-offset: 0;
+}
+
+input.ac-search-input {
+  min-width: 240px;
+}
+
+.ac-filter-bar label {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---- 分页 ---- */
+.ac-pager {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* ---- 执行详情 ---- */
+.ac-exec-detail {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 14px;
+}
+
+.ac-exec-detail-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.ac-exec-nodes {
+  display: grid;
+  gap: 6px;
+}
+
+.ac-exec-node {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #16a34a;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  padding: 8px 10px;
+}
+
+.ac-exec-node.is-error {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+.ac-exec-node-name {
+  font-weight: 700;
+}
+
+/* ---- 配置网格 ---- */
+.ac-config-grid {
+  display: grid;
+  gap: 14px;
+}
+
+button.small {
+  border-radius: 6px;
+  font-size: 12px;
+  min-height: 28px;
+  padding: 4px 10px;
+}
+
+button.small[disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
