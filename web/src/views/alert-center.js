@@ -1141,7 +1141,7 @@ function renderTargetsTable(list, page = 1) {
   const rows = list.slice(start, start + AC_PAGE_SIZE);
   return `
     <table class="data-table ac-targets-table">
-      <thead><tr><th>标识</th><th>IP</th><th>国家</th><th>CPU 利用率</th><th>内存利用率</th><th>状态</th><th>OS</th><th>备注</th></tr></thead>
+      <thead><tr><th>标识</th><th>IP</th><th>国家</th><th>CPU 利用率</th><th>内存利用率</th><th>OS</th><th>备注</th></tr></thead>
       <tbody>
         ${rows.map((t) => `
           <tr>
@@ -1150,7 +1150,6 @@ function renderTargetsTable(list, page = 1) {
             <td>${t.country ? `<span class="badge country">${escapeHtml(countryName(t.country))}</span>` : `<span class="muted">-</span>`}</td>
             <td class="num ${t.cpuUtil > 80 ? "text-danger" : ""}">${t.cpuUtil !== "" ? `${escapeHtml(t.cpuUtil)}%` : "-"}</td>
             <td class="num ${t.memUtil > 80 ? "text-danger" : ""}">${t.memUtil !== "" ? `${escapeHtml(t.memUtil)}%` : "-"}</td>
-            <td><span class="badge ${Number(t.targetUp) === 1 ? "ok" : Number(t.targetUp) === 0 ? "danger" : "warn"}">${Number(t.targetUp) === 1 ? "在线" : Number(t.targetUp) === 0 ? "离线" : "未知"}</span></td>
             <td class="small muted">${escapeHtml([t.os, t.arch].filter(Boolean).join(" / ") || "-")}</td>
             <td class="small muted" title="${escapeHtml(t.note || "")}">${escapeHtml((t.note || "").slice(0, 20) || "-")}</td>
           </tr>
