@@ -1,6 +1,9 @@
 import { apiGet, apiPost } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
+// 业务组 -> 告警列表 缓存（点击卡片查看明细时读取；不用 data 属性存 JSON，避免转义损坏）
+let acGroupData = new Map();
+
 /**
  * 告警中心：实时看板 + 配置管理。
  *
@@ -98,6 +101,8 @@ function renderDashboard(overview, active, config) {
   const activeList = Array.isArray(active) ? active : [];
   const byGroup = buildGroupMap(activeList, overview);
   const groups = [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length);
+  // 填充点击缓存：group 名 -> 告警列表
+  acGroupData = new Map(groups);
 
   return `
     ${renderHero(stats)}
@@ -120,7 +125,7 @@ function bindDashboardEvents(root, body) {
       body.querySelectorAll("[data-ac-group]").forEach((b) => b.classList.remove("is-selected"));
       button.classList.add("is-selected");
       const detail = body.querySelector("#ac-group-detail");
-      if (detail) detail.innerHTML = renderGroupDetailRows(getGroupAlerts(button));
+      if (detail) detail.innerHTML = renderGroupDetailRows(getGroupAlerts(button.dataset.acGroup));
     });
   });
   // n8n 失败执行：加载列表
@@ -205,9 +210,8 @@ function renderGroupGrid(groups) {
       <div class="ac-group-grid">
         ${groups.map(([name, alerts]) => {
           const sev0 = alerts.filter((a) => Number(a.severity) === 0).length;
-          const alertsJson = escapeHtml(JSON.stringify(alerts).replace(/"/g, "&quot;"));
           return `
-            <button type="button" class="ac-group-card ${sev0 ? "has-critical" : ""}" data-ac-group="${escapeHtml(name)}" data-ac-alerts="${alertsJson}">
+            <button type="button" class="ac-group-card ${sev0 ? "has-critical" : ""}" data-ac-group="${escapeHtml(name)}">
               <div class="ac-group-card-head">
                 <strong>${escapeHtml(name)}</strong>
                 <span class="ac-group-count">${alerts.length}</span>
@@ -270,15 +274,9 @@ function renderGroupDetailRows(alerts) {
   `;
 }
 
-function getGroupAlerts(button) {
-  const payload = button?.dataset;
-  if (!payload) return [];
-  try {
-    const list = JSON.parse(payload.acAlerts || "[]");
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
+function getGroupAlerts(groupName) {
+  if (!groupName) return [];
+  return acGroupData.get(groupName) || [];
 }
 
 // ---------------------------------------------------------------------------
