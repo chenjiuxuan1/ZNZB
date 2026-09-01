@@ -21,6 +21,8 @@ let acTargetsCache = [];
  * DESIGN_VARIANCE 5 / MOTION_INTENSITY 4 / VISUAL_DENSITY 7。
  */
 export function renderAlertCenter(root) {
+  // UI 原型：?variant=A|B|C 切换不同布局（prototype skill 子形状A，浮动底部切换条）
+  const variant = readVariantParam();
   root.innerHTML = `
     <div class="page-header">
       <div>
@@ -39,6 +41,7 @@ export function renderAlertCenter(root) {
     <section class="panel ac-panel">
       <div id="ac-body"></div>
     </section>
+    ${variant ? renderVariantSwitcher(variant) : ""}
   `;
 
   root.querySelector("#ac-refresh").addEventListener("click", () => {
@@ -54,7 +57,56 @@ export function renderAlertCenter(root) {
     });
   });
 
+  if (variant) bindVariantSwitcher(root);
+
   loadTab(root, "dashboard");
+}
+
+/** 从 hash 解析 ?variant= 参数（#/alerts?variant=A）。 */
+function readVariantParam() {
+  const hash = window.location.hash || "";
+  const qIndex = hash.indexOf("?");
+  if (qIndex === -1) return "";
+  const params = new URLSearchParams(hash.slice(qIndex + 1));
+  const v = params.get("variant");
+  return v && ["A", "B", "C"].includes(v) ? v : "";
+}
+
+/** 浮动切换条（prototype 用，非最终 UI）。 */
+function renderVariantSwitcher(current) {
+  const names = { A: "A · 分栏工作台", B: "B · 卡片仪表盘", C: "C · 极简聚焦" };
+  return `
+    <div class="ac-variant-bar" role="navigation" aria-label="布局变体切换">
+      <button class="ac-variant-prev" aria-label="上一个变体">←</button>
+      <span class="ac-variant-label">${escapeHtml(names[current])}</span>
+      <button class="ac-variant-next" aria-label="下一个变体">→</button>
+      <button class="ac-variant-close" aria-label="退出原型模式">✕ 退出原型</button>
+    </div>
+  `;
+}
+
+/** 绑定切换条：左右箭头循环切换，关闭则移除 variant 参数。 */
+function bindVariantSwitcher(root) {
+  const order = ["A", "B", "C"];
+  const next = (current, delta) => order[(order.indexOf(current) + delta + order.length) % order.length];
+  const switchTo = (v) => {
+    const hash = window.location.hash || "#/alerts";
+    const qIndex = hash.indexOf("?");
+    const base = qIndex === -1 ? hash : hash.slice(0, qIndex);
+    window.location.hash = `${base}?variant=${v}`;
+    // hash 变化触发路由重渲染
+  };
+  root.querySelector(".ac-variant-prev")?.addEventListener("click", () => {
+    switchTo(next(readVariantParam(), -1));
+  });
+  root.querySelector(".ac-variant-next")?.addEventListener("click", () => {
+    switchTo(next(readVariantParam(), 1));
+  });
+  root.querySelector(".ac-variant-close")?.addEventListener("click", () => {
+    const hash = window.location.hash || "#/alerts";
+    const qIndex = hash.indexOf("?");
+    window.location.hash = qIndex === -1 ? hash : hash.slice(0, qIndex);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -97,17 +149,21 @@ async function loadDashboard(root, body, refreshTime) {
     return;
   }
 
-  body.innerHTML = renderDashboard(overview, active, config);
+  body.innerHTML = renderDashboard(overview, active, config, readVariantParam());
   bindDashboardEvents(root, body);
 }
 
-function renderDashboard(overview, active, config) {
+function renderDashboard(overview, active, config, variant) {
   const stats = buildStats(overview, active, config);
   const activeList = Array.isArray(active) ? active : [];
   const byGroup = buildGroupMap(activeList, overview);
   const groups = [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length);
   // 填充点击缓存：group 名 -> 告警列表
   acGroupData = new Map(groups);
+
+  if (variant === "A") return renderVariantA(stats, groups, overview, activeList);
+  if (variant === "B") return renderVariantB(stats, groups, overview, activeList);
+  if (variant === "C") return renderVariantC(stats, groups, overview, activeList, config);
 
   return `
     ${renderHero(stats)}
@@ -139,6 +195,11 @@ function bindDashboardEvents(root, body) {
   // 初始告警明细行（默认第一个业务组）
   const initialDetail = body.querySelector("#ac-group-detail");
   if (initialDetail) bindAlertRows(initialDetail);
+  // 变体 C：表格行不在 #ac-group-detail 内，单独绑定
+  body.querySelectorAll("table.ac-alert-table .ac-alert-row").forEach((row) => {
+    if (row.closest("#ac-group-detail")) return;
+    row.addEventListener("click", () => openAlertDetail(acDetailAlerts[Number(row.dataset.alertIdx)]));
+  });
   // n8n 失败执行：加载列表
   bindN8nList(root, body);
 }
@@ -1196,4 +1257,142 @@ function formatTimeShort(iso) {
   if (!iso) return "-";
   const date = new Date(iso);
   return isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+// ===========================================================================
+// UI 原型变体（prototype skill 子形状A：同一路由 ?variant= 切换）
+// 三种结构性不同的布局，供用户在浏览器挑选。选定后折叠赢家进正式版，删除其余。
+// ===========================================================================
+
+/** 变体 A：分栏工作台 —— 紧凑 hero + 左组列表右明细，消灭纵向堆叠。 */
+function renderVariantA(stats, groups, overview, activeList) {
+  const firstGroup = groups[0]?.[1] || [];
+  return `
+    <div class="va-hero">
+      <div class="va-hero-item ${stats.activeCount ? "is-hot" : ""}">
+        <span>活跃告警</span><strong>${escapeHtml(stats.activeCount)}</strong>
+      </div>
+      <div class="va-hero-item ${stats.severity0 ? "is-critical" : ""}">
+        <span>严重</span><strong>${escapeHtml(stats.severity0)}</strong>
+      </div>
+      <div class="va-hero-item ${stats.failedCount ? "is-warn" : ""}">
+        <span>n8n 失败</span><strong>${escapeHtml(stats.failedCount)}</strong>
+      </div>
+      <div class="va-hero-meta">
+        <span>${escapeHtml(stats.groupCount)} 组 · 更新 ${escapeHtml(formatTimeShort(stats.checkedAt))}</span>
+      </div>
+    </div>
+    <div class="va-split">
+      <aside class="va-side">
+        <div class="va-side-head">业务组</div>
+        <div class="va-group-list">
+          ${groups.map(([name, alerts]) => {
+            const sev0 = alerts.filter((a) => Number(a.severity) === 0).length;
+            return `
+              <button type="button" class="va-group-item ${sev0 ? "has-critical" : ""}" data-ac-group="${escapeHtml(name)}">
+                <span class="va-group-dot ${sev0 ? "is-critical" : ""}"></span>
+                <span class="va-group-name">${escapeHtml(name)}</span>
+                <span class="va-group-n">${alerts.length}</span>
+              </button>
+            `;
+          }).join("") || `<div class="muted">暂无告警组</div>`}
+        </div>
+      </aside>
+      <main class="va-main">
+        <div class="va-main-head">
+          <h2 class="panel-title">告警明细</h2>
+          <span class="muted">点击左侧业务组切换</span>
+        </div>
+        <div id="ac-group-detail">${renderGroupDetailRows(firstGroup)}</div>
+      </main>
+    </div>
+    ${renderN8nFailuresPanel(overview.n8n || {}, stats.failedCount || 0)}
+  `;
+}
+
+/** 变体 B：卡片仪表盘 —— 无 hero 表格，全部卡片网格，点击下钻。 */
+function renderVariantB(stats, groups, overview, activeList) {
+  const sevSum = (alerts, sev) => alerts.filter((a) => Number(a.severity) === sev).length;
+  return `
+    <div class="vb-statbar">
+      <div class="vb-stat ${stats.severity0 ? "is-critical" : ""}">
+        <strong>${escapeHtml(stats.severity0)}</strong><span>严重</span>
+      </div>
+      <div class="vb-stat">
+        <strong>${escapeHtml(stats.severity1)}</strong><span>警告</span>
+      </div>
+      <div class="vb-stat">
+        <strong>${escapeHtml(stats.severity2)}</strong><span>提示</span>
+      </div>
+      <div class="vb-stat ${stats.failedCount ? "is-warn" : ""}">
+        <strong>${escapeHtml(stats.failedCount)}</strong><span>n8n 失败</span>
+      </div>
+      <div class="vb-stat">
+        <strong>${escapeHtml(stats.activeCount)}</strong><span>活跃总数</span>
+      </div>
+    </div>
+    <div class="vb-cards">
+      ${groups.map(([name, alerts]) => {
+        const sev0 = sevSum(alerts, 0), sev1 = sevSum(alerts, 1), sev2 = sevSum(alerts, 2);
+        return `
+          <button type="button" class="vb-card ${sev0 ? "has-critical" : ""}" data-ac-group="${escapeHtml(name)}">
+            <div class="vb-card-head">
+              <strong>${escapeHtml(name)}</strong>
+              <span class="vb-card-total">${alerts.length}</span>
+            </div>
+            <div class="vb-card-sev">
+              ${sev0 ? `<span class="vb-sev critical">${sev0} 严重</span>` : ""}
+              ${sev1 ? `<span class="vb-sev warn">${sev1} 警告</span>` : ""}
+              ${sev2 ? `<span class="vb-sev ok">${sev2} 提示</span>` : ""}
+              ${!sev0 && !sev1 && !sev2 ? `<span class="vb-sev none">暂无级别</span>` : ""}
+            </div>
+            <div class="vb-card-preview">${escapeHtml(alerts.slice(0, 2).map((a) => a.ruleName || "告警").join("，") || "暂无明细")}</div>
+          </button>
+        `;
+      }).join("") || `<div class="muted">暂无告警组</div>`}
+    </div>
+    <div id="ac-group-detail">${renderGroupDetailRows(groups[0]?.[1] || [])}</div>
+  `;
+}
+
+/** 变体 C：极简聚焦 —— 一行 hero + 合并所有告警的紧凑表。 */
+function renderVariantC(stats, groups, overview, activeList, config) {
+  const all = (activeList || []).slice().sort((a, b) => {
+    const sa = Number(a.severity), sb = Number(b.severity);
+    if (sa !== sb) return (sa || 9) - (sb || 9);
+    return String(a.ruleName || "").localeCompare(String(b.ruleName || ""));
+  }).slice(0, 100);
+  acDetailAlerts = all;
+  const sevRow = (s, label) => `<span class="vc-sev ${severityClass(s)}">${label} ${escapeHtml(all.filter((a) => Number(a.severity) === s).length)}</span>`;
+  return `
+    <div class="vc-top">
+      <div class="vc-title">
+        <h2 class="panel-title">当前活跃告警</h2>
+        <span class="muted">共 ${escapeHtml(all.length)} 条 · 更新 ${escapeHtml(formatTimeShort(stats.checkedAt))}</span>
+      </div>
+      <div class="vc-sevs">
+        ${sevRow(0, "严重")}${sevRow(1, "警告")}${sevRow(2, "提示")}
+        <span class="vc-sev warn">n8n失败 ${escapeHtml(stats.failedCount)}</span>
+      </div>
+    </div>
+    <table class="data-table ac-alert-table vc-table">
+      <thead>
+        <tr><th>级别</th><th>规则</th><th>国家</th><th>目标</th><th>触发值</th></tr>
+      </thead>
+      <tbody>
+        ${all.map((alert, idx) => `
+          <tr class="ac-alert-row" data-alert-idx="${idx}" title="点击查看详情">
+            <td><span class="badge ${severityClass(alert.severity)}">${escapeHtml(alert.severityLabel || "-")}</span></td>
+            <td>
+              <strong>${escapeHtml(alert.ruleName || "-")}</strong>
+              ${alert.meaning ? `<div class="ac-alert-meaning">${escapeHtml(alert.meaning)}</div>` : ""}
+            </td>
+            <td>${alert.country && alert.country !== "未知" ? `<span class="badge country">${escapeHtml(alert.country)}</span>` : `<span class="muted">-</span>`}</td>
+            <td class="small">${escapeHtml(alert.target || "-")}</td>
+            <td class="num">${escapeHtml(alert.triggerValue ?? "-")}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="5"><p class="muted">当前无活跃告警。</p></td></tr>`}
+      </tbody>
+    </table>
+  `;
 }
