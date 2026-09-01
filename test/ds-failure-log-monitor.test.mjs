@@ -3,13 +3,20 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyDsFailureReason, classifyDsFailureType, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays } from "../src/ds-failure-log-monitor.mjs";
+import { classifyDsFailureReason, classifyDsFailureType, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, inspectOriginalScheduledFailures, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays, normalizeN8nProjectScope } from "../src/ds-failure-log-monitor.mjs";
 
 test("lookback days accepts manual ranges and applies safe limits", () => {
   assert.equal(normalizeLookbackDays("7", 1), 7);
   assert.equal(normalizeLookbackDays("0", 1), 1);
   assert.equal(normalizeLookbackDays("999", 7), 90);
   assert.equal(normalizeLookbackDays("invalid", 7), 7);
+});
+
+test("n8n project scope normalizes names and codes per country", () => {
+  assert.deepEqual(normalizeN8nProjectScope({ PH: [" 1584 ", { name: "quality", code: "ignored" }, "1584"] }), {
+    ph: ["1584", "ignored"],
+  });
+  assert.deepEqual(normalizeN8nProjectScope({ cn: "DW_DWB, DW_DM" }), { cn: ["dw_dwb", "dw_dm"] });
 });
 
 test("original scheduled failure view excludes manual and retry instances", () => {
@@ -23,6 +30,44 @@ test("original scheduled failure view excludes manual and retry instances", () =
   assert.equal(failures[0].instanceId, "1");
   assert.equal(failures[0].originalScheduledFailure, true);
   assert.equal(failures[0].scheduleCategory, "scheduled_online");
+});
+
+test("n8n restart watch queries only projects included in the explicit scope", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-n8n-project-scope-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { cn: { name: "中国", token: "test-token" } },
+    projects: { cn: [{ name: "n8n-project", code: "1001" }, { name: "quality-check", code: "1002" }] },
+  }));
+  const originalFetch = globalThis.fetch;
+  const requestedProjects = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    requestedProjects.push({ action: request.action, projectCode: request.payload?.project_code });
+    let data = {};
+    if (request.action === "list_instances") {
+      data = { totalList: [{ workflowDefinitionCode: `wf-${request.payload.project_code}`, workflowInstanceId: `i-${request.payload.project_code}`, workflowInstanceName: "scheduled", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-14 08:00:00", workflowEndTime: "2026-08-14 08:10:00" }], total: 1 };
+    } else if (request.action === "list_task_instances") {
+      data = { totalList: [] };
+    }
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data }); } };
+  };
+  try {
+    const result = await inspectOriginalScheduledFailures(rootDir, {
+      now: new Date("2026-08-14T09:00:00+08:00"),
+      countries: ["cn"],
+      projectScope: { cn: ["1001"] },
+      bypassCache: true,
+    });
+    assert.equal(result.n8nProjectScopeConfigured, true);
+    assert.equal(result.totalFailures, 1);
+    assert.equal(result.countries[0].checkedProjects, 1);
+    assert.deepEqual([...new Set(requestedProjects.map((item) => item.projectCode).filter(Boolean))], ["1001"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
 });
 
 test("n8n restart watch keeps every original failure and reflects a later successful restart", () => {

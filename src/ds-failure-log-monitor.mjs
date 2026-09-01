@@ -261,6 +261,39 @@ function projectTargets(config, countryCode) {
   return code ? [{ name: String(config.projectNames?.[countryCode] || "").trim(), code }] : [];
 }
 
+/**
+ * Normalize the explicit project scope used by the n8n failure-restart watch.
+ * A scope entry can be a project code, project name, or an object containing
+ * either value. Matching is case-insensitive and ignores surrounding spaces.
+ */
+export function normalizeN8nProjectScope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  for (const [country, entries] of Object.entries(value)) {
+    const code = String(country || "").trim().toLowerCase();
+    if (!code) continue;
+    const values = Array.isArray(entries) ? entries : String(entries || "").split(/[\n,，;；]+/);
+    result[code] = [...new Set(values
+      .map((entry) => {
+        if (entry && typeof entry === "object") return entry.code || entry.projectCode || entry.name || entry.projectName || "";
+        return entry;
+      })
+      .map((entry) => String(entry || "").trim().toLowerCase())
+      .filter(Boolean))];
+  }
+  return result;
+}
+
+function projectMatchesN8nScope(project, country, projectScope) {
+  if (projectScope == null) return true;
+  const configured = projectScope[String(country || "").trim().toLowerCase()] || [];
+  if (!configured.length) return false;
+  const identities = [project.name, project.code]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return configured.some((value) => identities.includes(value));
+}
+
 async function postActionOnce(webhookUrl, country, token, action, payload = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -1011,15 +1044,19 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
   }
 }
 
-async function inspectCountry(config, country, now, originalScheduledOnly = false, lookbackDays = 1) {
+async function inspectCountry(config, country, now, originalScheduledOnly = false, lookbackDays = 1, projectScope = null) {
   const countryConfig = config.countries?.[country] || {};
   const countryName = countryConfig.name || COUNTRY_LABELS[country];
   const token = String(countryConfig.token || "").trim();
-  const projects = projectTargets(config, country);
+  const allProjects = projectTargets(config, country);
+  const scopeApplied = originalScheduledOnly && projectScope != null;
+  const projects = scopeApplied
+    ? allProjects.filter((project) => projectMatchesN8nScope(project, country, projectScope))
+    : allProjects;
   const timeZone = COUNTRY_TIMEZONES[country];
   const targetDate = todayInTimeZone(timeZone, now);
   const dsUiBaseUrl = String(countryConfig.dsUiUrl || countryConfig.ds_ui_url || "").trim();
-  if (!token || !projects.length) {
+  if (!token || !allProjects.length) {
     return {
       country,
       countryName,
@@ -1033,6 +1070,25 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
       checkedInstances: 0,
       failures: [],
       projects: [],
+    };
+  }
+  if (scopeApplied && !projects.length) {
+    return {
+      country,
+      countryName,
+      timeZone,
+      targetDate,
+      lookbackDays,
+      configured: true,
+      success: true,
+      partialFailure: false,
+      error: null,
+      checkedProjects: 0,
+      checkedInstances: 0,
+      failures: [],
+      projects: [],
+      n8nProjectScopeConfigured: true,
+      n8nProjectScopeMatched: false,
     };
   }
   const projectResults = await mapWithConcurrency(projects, PROJECT_QUERY_CONCURRENCY, (project) => inspectProject({
@@ -1062,6 +1118,7 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
     checkedInstances: projectResults.reduce((sum, item) => sum + Number(item.checkedInstances || 0), 0),
     failures,
     projects: projectResults,
+    ...(scopeApplied ? { n8nProjectScopeConfigured: true, n8nProjectScopeMatched: true } : {}),
   };
 }
 
@@ -1088,11 +1145,13 @@ export async function inspectDsFailureLogs(rootDir, { now = new Date(), countrie
   };
 }
 
-export async function inspectOriginalScheduledFailures(rootDir, { now = new Date(), countries: requestedCountries, lookbackDays: requestedLookbackDays = 7, bypassCache = false } = {}) {
+export async function inspectOriginalScheduledFailures(rootDir, { now = new Date(), countries: requestedCountries, lookbackDays: requestedLookbackDays = 7, projectScope = null, bypassCache = false } = {}) {
   const selectedCountries = normalizeCountrySelection(requestedCountries);
   const lookbackDays = normalizeLookbackDays(requestedLookbackDays, 7);
+  const normalizedProjectScope = projectScope == null ? null : normalizeN8nProjectScope(projectScope);
   const targetDates = selectedCountries.map((country) => `${country}:${todayInTimeZone(COUNTRY_TIMEZONES[country], now)}`).join(",");
-  const cacheKey = `${String(rootDir || "")}|${targetDates}|${lookbackDays}`;
+  const scopeKey = normalizedProjectScope == null ? "legacy-all" : JSON.stringify(normalizedProjectScope);
+  const cacheKey = `${String(rootDir || "")}|${targetDates}|${lookbackDays}|${scopeKey}`;
   const cached = originalFailureResultCache.get(cacheKey);
   if (!bypassCache && cached && Date.now() - cached.savedAt < ORIGINAL_FAILURE_CACHE_TTL_MS) {
     return { ...cached.result, cacheHit: true, cacheAgeMs: Date.now() - cached.savedAt };
@@ -1101,13 +1160,14 @@ export async function inspectOriginalScheduledFailures(rootDir, { now = new Date
 
   const inspection = (async () => {
     const config = await loadDsSchedulerConfig(rootDir);
-    const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true, lookbackDays)));
+    const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, true, lookbackDays, normalizedProjectScope)));
     const failures = countries.flatMap((item) => item.failures || []);
     const result = {
       checkedAt: new Date().toISOString(),
       dateMode: "country-local-lookback",
       lookbackDays,
       mode: "n8n-failure-restart-watch",
+      n8nProjectScopeConfigured: normalizedProjectScope != null,
       cacheHit: false,
       cacheAgeMs: 0,
       totalCountries: selectedCountries.length,

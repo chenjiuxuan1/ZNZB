@@ -60,12 +60,14 @@ export class N8nClient {
   }
 
   /** 执行记录。 */
-  async listExecutions({ workflowId, status, limit = 50, cursor } = {}) {
+  async listExecutions({ workflowId, status, limit = 50, cursor, startedAfter, startedBefore } = {}) {
     const params = new URLSearchParams();
     if (workflowId) params.set("workflowId", String(workflowId));
     if (status) params.set("status", String(status));
     params.set("limit", String(limit));
     if (cursor) params.set("cursor", cursor);
+    if (startedAfter) params.set("startedAfter", String(startedAfter));
+    if (startedBefore) params.set("startedBefore", String(startedBefore));
     const payload = await this.#request(`/api/v1/executions?${params.toString()}`);
     return Array.isArray(payload) ? { data: payload } : payload;
   }
