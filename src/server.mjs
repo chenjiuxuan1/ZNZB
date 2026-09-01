@@ -57,7 +57,8 @@ startBatchScheduler();
 startDsScheduler();
 startHiveScheduler();
 dsAutoRetryManager.start();
-startDsScheduledFailureWatch();
+// n8n 失败重启监控读取 DS 告警实际触发的 n8n 执行记录。
+// 不再启动旧的 DS 轮询通知任务，避免把页面扫描误报成 n8n 自动触发日志。
 
 async function handleApi(request, response, url) {
   const method = request.method || "GET";
@@ -271,6 +272,9 @@ async function handleApi(request, response, url) {
   }
   if (method === "GET" && url.pathname === "/api/ds-scheduled-failure-watch") {
     return sendJson(response, 200, await api.checkDsScheduledFailures(Object.fromEntries(url.searchParams.entries())));
+  }
+  if (method === "GET" && url.pathname === "/api/ds-n8n-failure-watch") {
+    return sendJson(response, 200, await api.getN8nFailureRestartWatch(Object.fromEntries(url.searchParams.entries())));
   }
   if (method === "GET" && url.pathname === "/api/ds-failure-retry/control") {
     return sendJson(response, 200, api.getDsFailureRetryControl());

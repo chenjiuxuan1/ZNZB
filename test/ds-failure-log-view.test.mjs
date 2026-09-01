@@ -50,6 +50,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /国家群聊 TV bot_id/);
   assert.match(source, /botIds/);
   assert.match(source, /groupChatIds/);
+  assert.match(source, /n8n 失败重启项目范围/);
+  assert.match(source, /data-scheduled-project/);
+  assert.match(source, /ds-n8n-scope-save/);
+  assert.match(source, /只有勾选项目会出现在 n8n 失败重启监控并触发通知/);
   assert.match(source, /data-ds-failure-tab="scheduled"/);
   assert.match(source, /\/api\/ds-scheduled-failure-watch/);
   assert.match(source, /DS调度监控/);
