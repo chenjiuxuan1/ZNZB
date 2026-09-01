@@ -238,6 +238,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       suggestion: suggestAction(alert, tags),
       triggerValue: alert?.trigger_value,
       triggerTime: alert?.trigger_time ? alert.trigger_time * 1000 : null,
+      recoverTime: alert?.recover_time ? alert.recover_time * 1000 : null,
       isRecovered: Boolean(alert?.is_recovered),
       recoveredLabel: alert?.is_recovered ? "已恢复" : "未恢复",
       notify,
@@ -366,14 +367,14 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return Promise.all(list.map(normalizeN9eAlert));
   }
 
-  /** 历史告警（夜莺），归一化 + 分页。 */
-  async function getHistoryAlerts({ stime, etime, limit = 200, page = 1, ruleName } = {}) {
+  /** 历史告警（夜莺），归一化 + 分页。支持服务端筛选：bgid / severity / isRecovered。 */
+  async function getHistoryAlerts({ stime, etime, limit = 200, page = 1, ruleName, bgid, severity, isRecovered } = {}) {
     const { nightingale } = await loadConfig();
     if (!nightingale) {
       throw new Error("夜莺未配置");
     }
     await ensureNotifyMap();
-    const dat = await nightingale.getHistoryAlerts({ stime, etime, limit, page });
+    const dat = await nightingale.getHistoryAlerts({ stime, etime, limit, page, bgid, severity, isRecovered });
     let list = dat?.list || [];
     if (ruleName) {
       list = list.filter((item) => String(item?.rule_name).includes(String(ruleName)));

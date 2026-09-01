@@ -7816,3 +7816,25 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
   text-decoration: none;
 }
 .ac-wf-webhook:hover { background: #dbeafe; }
+
+/* ============================================================
+ * 告警日志 Tab（夜莺历史告警）
+ * ============================================================ */
+
+.ac-history-table { table-layout: auto; width: 100%; }
+.ac-history-table th { white-space: nowrap; }
+.ac-history-table td { padding: 7px 9px; vertical-align: top; }
+
+/* 未恢复行：浅红底提示 */
+.ac-row-unrecovered { background: #fef2f2; }
+.ac-row-unrecovered:hover { background: #fee2e2 !important; }
+
+.ac-his-meaning {
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 2px;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
