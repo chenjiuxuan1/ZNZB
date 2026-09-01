@@ -1,10 +1,13 @@
-import { apiGet, apiPost } from "../api.js";
+import { apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
 // 业务组 -> 告警列表 缓存（点击卡片查看明细时读取；不用 data 属性存 JSON，避免转义损坏）
 let acGroupData = new Map();
 // 当前告警明细列表（点击行打开详情弹窗时读取）
 let acDetailAlerts = [];
+// 配置管理：规则 / 目标 缓存（编辑表单回填用）
+let acRulesCache = [];
+let acTargetsCache = [];
 
 /**
  * 告警中心：实时看板 + 配置管理。
@@ -681,7 +684,7 @@ function renderConfigTab(groups, config) {
         <div class="detail-header compact-header">
           <div>
             <h2 class="panel-title">夜莺告警规则</h2>
-            <p class="muted">选择业务组查看规则；可启用/停用规则（配置编辑在夜莺端操作）。</p>
+            <p class="muted">选择业务组查看规则；支持启用/停用、编辑规则内容（PromQL / SQL / 级别 / 名称）。</p>
           </div>
         </div>
         <div class="ac-filter-bar">
@@ -692,11 +695,28 @@ function renderConfigTab(groups, config) {
         </div>
         <div id="ac-rules-table"></div>
       </section>
+
+      <section class="sub-panel">
+        <div class="detail-header compact-header">
+          <div>
+            <h2 class="panel-title">夜莺监控目标</h2>
+            <p class="muted">按业务组查看被监控的主机 / 目标。</p>
+          </div>
+        </div>
+        <div class="ac-filter-bar">
+          <label>业务组
+            <select id="ac-targets-bg" class="ac-search-input">${groupOptions}</select>
+          </label>
+          <button class="primary small" id="ac-targets-load">加载目标</button>
+        </div>
+        <div id="ac-targets-table"></div>
+      </section>
+
       <section class="sub-panel">
         <div class="detail-header compact-header">
           <div>
             <h2 class="panel-title">n8n 工作流</h2>
-            <p class="muted">查看工作流状态，可启用/停用激活。</p>
+            <p class="muted">查看工作流状态，可启用/停用激活，点击"详情"查看节点与 webhook。</p>
           </div>
         </div>
         <div class="ac-filter-bar">
@@ -716,7 +736,7 @@ function renderConfigTab(groups, config) {
 }
 
 async function bindConfigEvents(root, body, groups) {
-  // 夜莺规则
+  // ---- 夜莺告警规则 ----
   const rulesLoad = body.querySelector("#ac-rules-load");
   const rulesTable = body.querySelector("#ac-rules-table");
   const bgSelect = body.querySelector("#ac-rules-bg");
@@ -727,19 +747,9 @@ async function bindConfigEvents(root, body, groups) {
       rulesTable.innerHTML = `<div class="notice">加载规则…</div>`;
       try {
         const rules = await apiGet(`/api/alerts/rules?busiGroup=${bg}`);
+        acRulesCache = rules;
         rulesTable.innerHTML = renderRulesTable(rules);
-        rulesTable.querySelectorAll("[data-rule-toggle]").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            const ruleId = btn.dataset.ruleToggle;
-            const disabled = btn.dataset.disabled === "1";
-            try {
-              await apiPost(`/api/alerts/rules/${ruleId}`, { disabled: !disabled ? 1 : 0 });
-              await loadRules();
-            } catch (error) {
-              rulesTable.innerHTML += `<div class="error">${escapeHtml(error.message)}</div>`;
-            }
-          });
-        });
+        bindRulesActions(rulesTable, loadRules);
       } catch (error) {
         rulesTable.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
       }
@@ -748,7 +758,28 @@ async function bindConfigEvents(root, body, groups) {
     loadRules();
   }
 
-  // n8n 工作流
+  // ---- 夜莺监控目标 ----
+  const targetsLoad = body.querySelector("#ac-targets-load");
+  const targetsTable = body.querySelector("#ac-targets-table");
+  const targetsBg = body.querySelector("#ac-targets-bg");
+  if (targetsLoad && targetsBg) {
+    const loadTargets = async () => {
+      const bg = targetsBg.value;
+      if (!bg) { targetsTable.innerHTML = `<p class="muted">请选择业务组。</p>`; return; }
+      targetsTable.innerHTML = `<div class="notice">加载目标…</div>`;
+      try {
+        const list = await apiGet(`/api/alerts/targets?busiGroup=${bg}&limit=300`);
+        acTargetsCache = list;
+        targetsTable.innerHTML = renderTargetsTable(list);
+      } catch (error) {
+        targetsTable.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+      }
+    };
+    targetsLoad.addEventListener("click", loadTargets);
+    loadTargets();
+  }
+
+  // ---- n8n 工作流 ----
   const wfLoad = body.querySelector("#ac-wf-load");
   const wfTable = body.querySelector("#ac-wf-table");
   const wfFilter = body.querySelector("#ac-wf-filter");
@@ -760,20 +791,7 @@ async function bindConfigEvents(root, body, groups) {
         const query = active === undefined ? "?limit=250" : `?active=${active}&limit=250`;
         const list = await apiGet(`/api/alerts/n8n/workflows${query}`);
         wfTable.innerHTML = renderWorkflowsTable(list);
-        wfTable.querySelectorAll("[data-wf-toggle]").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            const id = btn.dataset.wfToggle;
-            const activeNow = btn.dataset.active === "true";
-            btn.disabled = true;
-            try {
-              await apiPost("/api/alerts/n8n/workflows/toggle", { id, active: !activeNow });
-              await loadWorkflows();
-            } catch (error) {
-              btn.disabled = false;
-              wfTable.innerHTML += `<div class="error">${escapeHtml(error.message)}</div>`;
-            }
-          });
-        });
+        bindWorkflowActions(wfTable, loadWorkflows);
       } catch (error) {
         wfTable.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
       }
@@ -782,6 +800,50 @@ async function bindConfigEvents(root, body, groups) {
     wfFilter.addEventListener("change", loadWorkflows);
     loadWorkflows();
   }
+}
+
+/** 绑定规则表操作（启停 / 编辑）。 */
+function bindRulesActions(table, reload) {
+  table.querySelectorAll("[data-rule-toggle]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ruleId = btn.dataset.ruleToggle;
+      const disabled = btn.dataset.disabled === "1";
+      const rule = acRulesCache.find((r) => String(r.id) === String(ruleId));
+      try {
+        await apiPost(`/api/alerts/rules/${ruleId}`, { disabled: !disabled ? 1 : 0, groupId: rule?.group_id });
+        await reload();
+      } catch (error) {
+        table.innerHTML += `<div class="error">${escapeHtml(error.message)}</div>`;
+      }
+    });
+  });
+  table.querySelectorAll("[data-rule-edit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const rule = acRulesCache.find((r) => String(r.id) === String(btn.dataset.ruleEdit));
+      if (rule) openRuleEditModal(rule, reload);
+    });
+  });
+}
+
+/** 绑定工作流表操作（启停 / 详情）。 */
+function bindWorkflowActions(table, reload) {
+  table.querySelectorAll("[data-wf-toggle]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.wfToggle;
+      const activeNow = btn.dataset.active === "true";
+      btn.disabled = true;
+      try {
+        await apiPost("/api/alerts/n8n/workflows/toggle", { id, active: !activeNow });
+        await reload();
+      } catch (error) {
+        btn.disabled = false;
+        table.innerHTML += `<div class="error">${escapeHtml(error.message)}</div>`;
+      }
+    });
+  });
+  table.querySelectorAll("[data-wf-detail]").forEach((btn) => {
+    btn.addEventListener("click", () => openWorkflowDetailModal(btn.dataset.wfDetail));
+  });
 }
 
 function renderRulesTable(rules) {
@@ -797,6 +859,7 @@ function renderRulesTable(rules) {
             <td><span class="badge ${severityClass(rule.severity)}">${escapeHtml(severityLabel(rule.severity))}</span></td>
             <td><span class="badge ${rule.disabled ? "warn" : "ok"}">${rule.disabled ? "已停用" : "启用"}</span></td>
             <td>
+              <button class="small" data-rule-edit="${escapeHtml(String(rule.id))}">编辑</button>
               <button class="small ${rule.disabled ? "primary" : ""}" data-rule-toggle="${escapeHtml(String(rule.id))}" data-disabled="${escapeHtml(String(rule.disabled || 0))}">
                 ${rule.disabled ? "启用" : "停用"}
               </button>
@@ -805,6 +868,26 @@ function renderRulesTable(rules) {
         `).join("")}
       </tbody>
     </table>
+  `;
+}
+
+function renderTargetsTable(list) {
+  if (!list.length) return `<p class="muted">该业务组暂无监控目标。</p>`;
+  return `
+    <table class="data-table">
+      <thead><tr><th>标识</th><th>名称</th><th>标签</th><th>状态</th></tr></thead>
+      <tbody>
+        ${list.slice(0, 100).map((t) => `
+          <tr>
+            <td class="small">${escapeHtml(t.ident || "-")}</td>
+            <td class="small">${escapeHtml(t.name || t.hostname || "-")}</td>
+            <td class="small muted">${escapeHtml((t.tags || []).join("，") || "-")}</td>
+            <td><span class="badge ${t.state === 0 ? "ok" : "warn"}">${t.state === 0 ? "正常" : `状态${t.state ?? "-"}`}</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    ${list.length > 100 ? `<p class="muted">共 ${list.length} 个目标，仅展示前 100 个。</p>` : ""}
   `;
 }
 
@@ -820,6 +903,7 @@ function renderWorkflowsTable(list) {
             <td><span class="badge ${wf.active ? "ok" : "warn"}">${wf.active ? "已激活" : "未激活"}</span></td>
             <td class="small muted">${escapeHtml(wf.webhook?.path || wf.webhooks?.map((w) => w.path).join("、") || "-")}</td>
             <td>
+              <button class="small" data-wf-detail="${escapeHtml(String(wf.id))}">详情</button>
               <button class="small ${wf.active ? "" : "primary"}" data-wf-toggle="${escapeHtml(String(wf.id))}" data-active="${wf.active ? "true" : "false"}">
                 ${wf.active ? "停用" : "启用"}
               </button>
@@ -838,6 +922,152 @@ function extractRuleQuery(rule) {
     if (q?.prom_ql) return q.prom_ql;
   }
   return "";
+}
+
+/** 打开告警规则编辑弹窗。 */
+function openRuleEditModal(rule, reload) {
+  const query = extractRuleQuery(rule);
+  const isSql = Boolean(rule.cate === "mysql" || rule.rule_config?.queries?.[0]?.sql);
+  const queries = rule.rule_config?.queries || [];
+
+  const overlay = document.createElement("div");
+  overlay.id = "ac-rule-modal";
+  overlay.className = "ac-modal-overlay";
+  overlay.innerHTML = `
+    <div class="ac-modal ac-rule-modal" role="dialog" aria-modal="true" aria-label="编辑告警规则">
+      <div class="ac-modal-head">
+        <strong>编辑告警规则</strong>
+        <button class="ac-modal-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="ac-modal-body">
+        <div class="ac-rule-form">
+          <label>规则名称
+            <input type="text" class="ac-search-input" id="ac-rule-name" value="${escapeHtml(rule.name || "")}">
+          </label>
+          <label>级别
+            <select class="ac-search-input" id="ac-rule-severity">
+              <option value="0" ${Number(rule.severity) === 0 ? "selected" : ""}>严重 (0)</option>
+              <option value="1" ${Number(rule.severity) === 1 ? "selected" : ""}>警告 (1)</option>
+              <option value="2" ${Number(rule.severity) === 2 ? "selected" : ""}>提示 (2)</option>
+            </select>
+          </label>
+          <label>${isSql ? "SQL 查询" : "PromQL 查询"}
+            <textarea class="ac-search-input ac-rule-query" id="ac-rule-query" rows="6">${escapeHtml(query)}</textarea>
+          </label>
+          <label class="ac-rule-toggle-line">
+            <input type="checkbox" id="ac-rule-disabled" ${rule.disabled ? "checked" : ""}>
+            <span>停用此规则</span>
+          </label>
+          <div class="ac-rule-form-actions">
+            <button class="primary small" id="ac-rule-save">保存</button>
+            <button class="small ac-rule-cancel">取消</button>
+          </div>
+          <p class="muted small">保存后规则即时生效。评估周期 ${escapeHtml(String(rule.prom_eval_interval || "-"))} 秒。</p>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.classList.add("show");
+  const close = () => { overlay.classList.remove("show"); setTimeout(() => overlay.remove(), 180); };
+  overlay.querySelector(".ac-modal-close").addEventListener("click", close);
+  overlay.querySelector(".ac-rule-cancel").addEventListener("click", close);
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  document.addEventListener("keydown", function onEsc(event) {
+    if (event.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+  });
+
+  overlay.querySelector("#ac-rule-save").addEventListener("click", async () => {
+    const saveBtn = overlay.querySelector("#ac-rule-save");
+    saveBtn.disabled = true;
+    const name = overlay.querySelector("#ac-rule-name").value.trim();
+    const severity = Number(overlay.querySelector("#ac-rule-severity").value);
+    const newQuery = overlay.querySelector("#ac-rule-query").value.trim();
+    const disabled = overlay.querySelector("#ac-rule-disabled").checked ? 1 : 0;
+    try {
+      const body = { name, severity, disabled, groupId: rule.group_id };
+      if (queries.length) {
+        body.rule_config = {
+          ...(rule.rule_config || {}),
+          queries: queries.map((q, i) => i === 0 ? { ...q, ...(isSql ? { sql: newQuery } : { prom_ql: newQuery }) } : q),
+        };
+      }
+      await apiPut(`/api/alerts/rules/${rule.id}`, body);
+      close();
+      await reload();
+    } catch (error) {
+      saveBtn.disabled = false;
+      alert(`保存失败：${error.message}`);
+    }
+  });
+}
+
+/** 打开 n8n 工作流详情弹窗。 */
+async function openWorkflowDetailModal(id) {
+  const existing = document.getElementById("ac-wf-modal");
+  if (existing) existing.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "ac-wf-modal";
+  overlay.className = "ac-modal-overlay";
+  overlay.innerHTML = `
+    <div class="ac-modal ac-wf-modal" role="dialog" aria-modal="true" aria-label="工作流详情">
+      <div class="ac-modal-head">
+        <strong>工作流详情</strong>
+        <button class="ac-modal-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="ac-modal-body"><div class="notice">加载工作流…</div></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.classList.add("show");
+  const close = () => { overlay.classList.remove("show"); setTimeout(() => overlay.remove(), 180); };
+  overlay.querySelector(".ac-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  document.addEventListener("keydown", function onEsc(event) {
+    if (event.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+  });
+
+  const bodyEl = overlay.querySelector(".ac-modal-body");
+  try {
+    const wf = await apiGet(`/api/alerts/n8n/workflows/detail?id=${encodeURIComponent(id)}`);
+    bodyEl.innerHTML = `
+      <div class="ac-exec-detail-head">
+        <div>
+          <strong>${escapeHtml(wf.name || `#${wf.id}`)}</strong>
+          <span class="muted"> 更新于 ${escapeHtml(formatIso(wf.updatedAt))}</span>
+        </div>
+        <span class="badge ${wf.active ? "ok" : "warn"}">${wf.active ? "已激活" : "未激活"}</span>
+      </div>
+      ${wf.description ? `<p class="muted small">${escapeHtml(wf.description)}</p>` : ""}
+      <div class="ac-alert-detail-block">
+        <h4>节点 (${(wf.nodes || []).length})</h4>
+        <div class="ac-wf-nodes">
+          ${(wf.nodes || []).map((n) => `
+            <div class="ac-wf-node">
+              <strong>${escapeHtml(n.name)}</strong>
+              <span class="muted small">${escapeHtml(nodeTypeLabel(n.type))}</span>
+            </div>
+          `).join("") || `<p class="muted">无节点</p>`}
+        </div>
+      </div>
+      ${(wf.connections || []).length ? `
+        <div class="ac-alert-detail-block">
+          <h4>流程连接</h4>
+          <div class="ac-wf-connections">
+            ${wf.connections.map((c) => `<span class="ac-wf-conn">${escapeHtml(c)}</span>`).join("")}
+          </div>
+        </div>
+      ` : ""}
+    `;
+  } catch (error) {
+    bodyEl.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function nodeTypeLabel(type) {
+  if (!type) return "";
+  const parts = String(type).split(".");
+  return parts[parts.length - 1] || type;
 }
 
 // ---------------------------------------------------------------------------
