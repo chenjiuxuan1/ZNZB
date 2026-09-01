@@ -92,29 +92,70 @@ function normalizeEntry(entry, index = 0) {
   };
 }
 
+/** 通过 n8n 的 SSH 测试 webhook 在目标机执行命令，返回 { stdout, stderr, exitCode, ok }。 */
+async function runViaN8n(command, { sshHost, sshPort, timeoutMs } = {}) {
+  const base = process.env.N8N_BASE_URL || "";
+  const webhookPath = process.env.N8N_SSH_TEST_WEBHOOK || "alert-registry-ssh-test";
+  if (!base) {
+    return {
+      stdout: "",
+      stderr: "未配置 N8N_BASE_URL，无法通过 n8n 执行远程 SSH 测试",
+      exitCode: -1,
+      ok: false,
+    };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs || DEFAULT_TEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(`${base}/webhook/${webhookPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        host: sshHost || DEFAULT_SSH_HOST,
+        port: sshPort || DEFAULT_SSH_PORT,
+        command,
+      }),
+      signal: controller.signal,
+    });
+    const data = await resp.json().catch(() => ({}));
+    const exitCode = typeof data.code === "number" ? data.code : (resp.ok ? 0 : -1);
+    return {
+      stdout: String(data.stdout || ""),
+      stderr: String(data.stderr || ""),
+      exitCode,
+      ok: resp.ok && exitCode === 0,
+    };
+  } catch (error) {
+    const aborted = error && error.name === "AbortError";
+    return {
+      stdout: "",
+      stderr: aborted ? `SSH 测试超时（${timeoutMs || DEFAULT_TEST_TIMEOUT_MS}ms）` : String(error && error.message || error),
+      exitCode: -1,
+      ok: false,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** 在目标机执行命令（ssh | local），返回 { stdout, stderr, exitCode, ok }。 */
-function runCommandSync(runVia, command, { sshHost, sshPort, timeoutMs } = {}) {
+function runCommandSync(runVia, command, options = {}) {
+  // ssh 方式统一走 n8n SSH 测试 webhook（本机/生产机系统 ssh 常无法直连目标机）
+  if (runVia === "ssh") {
+    return runViaN8n(command, options);
+  }
+  const { timeoutMs } = options;
   return new Promise((resolve) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs || DEFAULT_TEST_TIMEOUT_MS);
     let child;
     try {
-      if (runVia === "ssh") {
-        const host = sshHost || DEFAULT_SSH_HOST;
-        const args = [];
-        if (sshPort) args.push("-p", String(sshPort));
-        args.push("-o", "StrictHostKeyChecking=no");
-        args.push(host);
-        args.push(command);
-        child = spawn("ssh", args, { env: process.env, stdio: ["pipe", "pipe", "pipe"], signal: controller.signal });
-      } else {
-        child = spawn(command, {
-          shell: true,
-          env: process.env,
-          stdio: ["pipe", "pipe", "pipe"],
-          signal: controller.signal,
-        });
-      }
+      child = spawn(command, {
+        shell: true,
+        env: process.env,
+        stdio: ["pipe", "pipe", "pipe"],
+        signal: controller.signal,
+      });
     } catch (error) {
       clearTimeout(timer);
       resolve({ stdout: "", stderr: String(error && error.message || error), exitCode: -1, ok: false });
