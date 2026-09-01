@@ -77,14 +77,14 @@ test("runTestByCommand runs local command and captures output", async (t) => {
 
 test("runTestByCommand reports non-zero exit for failing command", async (t) => {
   const { registry } = await tmpRegistry(t);
-  const result = await registry.runTestByCommand({ runVia: "local", command: "echo oops; exit 3" });
+  const result = await registry.runTestByCommand({ runVia: "local", command: `"${process.execPath}" -e "process.exit(3)"` });
   assert.equal(result.ok, false);
   assert.equal(result.exitCode, 3);
 });
 
 test("runTest runs a stored entry's command", async (t) => {
   const { registry } = await tmpRegistry(t);
-  const created = await registry.create({ id: "runme", name: "Run", command: "printf 'out=%s' 42", runVia: "local" });
+  const created = await registry.create({ id: "runme", name: "Run", command: `"${process.execPath}" -e "console.log('out=42')"`, runVia: "local" });
   const result = await registry.runTest(created.id);
   assert.equal(result.ok, true);
   assert.match(result.stdout, /out=42/);
