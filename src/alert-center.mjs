@@ -373,6 +373,42 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return String(name || "").replace(/_(tv|ivr)$/i, "");
   }
 
+  /** 渠道 ident → 中文类型名。 */
+  const CHANNEL_TYPE = {
+    dingtalk: "钉钉",
+    "ali-voice": "电话",
+    ivr: "电话",
+    email: "邮件",
+    sms: "短信",
+    webhook: "Webhook",
+    feishu: "飞书",
+    wecom: "企业微信",
+    "ali-im": "钉钉",
+    dingtalk_robot: "钉钉",
+    phone: "电话",
+    voice: "电话",
+  };
+
+  /** 收集某告警事件涉及的通知渠道类型（去重：电话 / IVR / 钉钉 / 邮件…）。 */
+  function collectNotifyChannelNames(notify) {
+    const names = [];
+    const push = (n) => {
+      if (n && !names.includes(n)) names.push(n);
+    };
+    for (const nr of Array.isArray(notify) ? notify : []) {
+      for (const ch of nr?.channels || []) {
+        const ident = ch?.ident || "";
+        if (CHANNEL_TYPE[ident]) {
+          push(CHANNEL_TYPE[ident]);
+          continue;
+        }
+        const cn = ch?.channelName || "";
+        if (cn && cn !== `渠道${ch?.channelId}`) push(cn);
+      }
+    }
+    return names;
+  }
+
   /** 历史告警（夜莺），归一化 + 分页。支持服务端筛选：bgid / severity / isRecovered。
    *  group=true 时按规则聚合：一个告警一天显示一次，附带每次触发时间与次数。 */
   async function getHistoryAlerts({ stime, etime, limit = 200, page = 1, ruleName, bgid, severity, isRecovered, group } = {}) {
@@ -400,6 +436,8 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
         const baseName = stripChannelSuffix(a.ruleName);
         const key = `${baseName || a.ruleId || ""}|${a.groupId || ""}|${a.severity ?? ""}`;
         const hit = byKey.get(key);
+        // 该事件涉及的通知渠道名（电话 / IVR / 钉钉 / 邮件…）
+        const chNames = collectNotifyChannelNames(a.notify);
         const evt = {
           triggerTime: a.triggerTime,
           isRecovered: a.isRecovered,
@@ -420,6 +458,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
             targets: a.target ? [a.target] : [],
             events: [evt],
             variantNames: a.ruleName ? [a.ruleName] : [],
+            notifyChannels: chNames,
           });
         } else {
           hit.triggerCount += 1;
@@ -429,6 +468,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
           }
           if (a.target && !hit.targets.includes(a.target)) hit.targets.push(a.target);
           if (a.ruleName && !hit.variantNames.includes(a.ruleName)) hit.variantNames.push(a.ruleName);
+          for (const cn of chNames) if (!hit.notifyChannels.includes(cn)) hit.notifyChannels.push(cn);
           hit.events.push(evt);
           if (!a.isRecovered) {
             hit.isRecovered = false;
