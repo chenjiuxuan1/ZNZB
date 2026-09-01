@@ -1,5 +1,8 @@
 import { apiGet } from "./api.js";
 import { parseHashRoute, setRoute, state } from "./state.js";
+
+// 记录当前已渲染的路由，避免 loadInitialData 多次 render 重建 DOM 造成整页闪烁。
+let renderedRoute = null;
 import { renderCountries } from "./views/countries.js?v=20260706-ui16";
 import { renderDashboard } from "./views/dashboard.js?v=20260706-ui16";
 import { renderInventory } from "./views/inventory.js?v=20260811-manual-discovery2";
@@ -128,6 +131,13 @@ function applyBatchSchedule(batchSchedule) {
 
 export function render() {
   const route = routes.find((item) => item.path === state.route) || routes[0];
+  // 路由未变且 shell 已挂载：不重建 DOM（避免 loadInitialData 多次 render 导致整页闪烁），
+  // 仅当视图自身需要刷新数据时由其内部处理。
+  const main = document.querySelector("#main");
+  if (renderedRoute === route.path && main) {
+    return;
+  }
+  renderedRoute = route.path;
   const app = document.querySelector("#app");
   app.innerHTML = `
     <div class="layout">
