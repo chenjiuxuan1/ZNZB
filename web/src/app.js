@@ -15,10 +15,12 @@ import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260828
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
 import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260831-n8n-project-logic-v27";
 import { renderAlertCenter } from "./views/alert-center.js?v=20260831-config4";
+import { renderAlertRegistry } from "./views/alert-registry.js?v=20260901-alert-registry";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
   { path: "/alerts", label: "告警中心", short: "警", render: renderAlertCenter },
+  { path: "/alert-registry", label: "告警注册", short: "登", render: renderAlertRegistry },
   { path: "/countries", label: "国家配置", short: "国", render: renderCountries },
   { path: "/inventory", label: "看板与卡片", short: "板", render: renderInventory },
   { path: "/rules", label: "规则配置", short: "规", render: renderRules },
