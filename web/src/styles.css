@@ -7838,3 +7838,34 @@ button.vb-card.is-selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(5
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 告警日志聚合：触发次数 badge + 展开行 */
+.ac-count-badge {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-variant-numeric: tabular-nums;
+}
+.ac-his-detail td { background: #f8fafc; padding: 4px 9px 12px; }
+.ac-his-detail-inner {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.ac-his-detail-inner > strong { display: block; margin-bottom: 8px; }
+.ac-his-events {
+  border-collapse: collapse;
+  width: 100%;
+}
+.ac-his-events th {
+  background: #f1f5f9;
+  font-size: 12px;
+  padding: 5px 8px;
+  text-align: left;
+}
+.ac-his-events td {
+  border-top: 1px solid #eef2f7;
+  font-size: 12px;
+  padding: 5px 8px;
+}
