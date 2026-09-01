@@ -48,6 +48,48 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return { nightingale, n8n, config };
   }
 
+  // n8n workflowId -> 名称 映射缓存（n8n 执行列表不返回名称，需从工作流列表补齐）
+  const workflowNameCache = new Map();
+  let workflowNameCacheAt = 0;
+  const WORKFLOW_CACHE_TTL_MS = 120_000;
+
+  async function ensureWorkflowNameMap() {
+    const { n8n } = await loadConfig();
+    if (!n8n) return;
+    if (Date.now() - workflowNameCacheAt < WORKFLOW_CACHE_TTL_MS && workflowNameCache.size) {
+      return;
+    }
+    try {
+      // 拉取工作流建立 id -> name 映射（n8n API limit 上限 250，超出时分页拉取）
+      workflowNameCache.clear();
+      let cursor;
+      do {
+        const payload = await n8n.listWorkflows({ limit: 250, cursor });
+        const list = payload?.data || [];
+        for (const workflow of list) {
+          if (workflow?.id) {
+            workflowNameCache.set(String(workflow.id), workflow?.name || "");
+          }
+        }
+        cursor = payload?.nextCursor || "";
+      } while (cursor);
+      workflowNameCacheAt = Date.now();
+    } catch (error) {
+      // 拉取失败时保留旧缓存；无缓存则记录时间避免反复重试
+      if (!workflowNameCache.size) {
+        workflowNameCacheAt = Date.now();
+      }
+    }
+  }
+
+  function resolveWorkflowName(execution) {
+    const direct = execution?.workflowData?.name || execution?.workflowName || "";
+    if (direct) return direct;
+    const id = execution?.workflowId != null ? String(execution.workflowId) : "";
+    if (!id) return "";
+    return workflowNameCache.get(id) || "";
+  }
+
   /** 归一化一条夜莺告警。 */
   function normalizeN9eAlert(alert) {
     const tags = {};
@@ -182,12 +224,13 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     if (!n8n) {
       throw new Error("n8n 未配置");
     }
+    await ensureWorkflowNameMap();
     const payload = await n8n.listExecutions({ status, limit });
     const list = payload?.data || [];
     return list.map((exec) => ({
       id: exec?.id,
       workflowId: exec?.workflowId,
-      workflowName: exec?.workflowData?.name || exec?.workflowName || "",
+      workflowName: resolveWorkflowName(exec),
       status: exec?.status,
       mode: exec?.mode || "",
       startedAt: exec?.startedAt || "",
@@ -199,6 +242,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
   async function getN8nFailedExecutions({ limit = 20 } = {}) {
     const { n8n } = await loadConfig();
     if (!n8n) return [];
+    await ensureWorkflowNameMap();
     const payload = await n8n.listExecutions({ status: "error", limit });
     const list = payload?.data || [];
     return list.map((exec) => ({
@@ -206,7 +250,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       sourceLabel: "n8n",
       id: exec?.id,
       workflowId: exec?.workflowId,
-      workflowName: exec?.workflowData?.name || exec?.workflowName || "",
+      workflowName: resolveWorkflowName(exec),
       status: exec?.status,
       startedAt: exec?.startedAt ? new Date(exec.startedAt).getTime() : null,
       stoppedAt: exec?.stoppedAt ? new Date(exec.stoppedAt).getTime() : null,
@@ -247,6 +291,9 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     const n8nFailed = n8n
       ? await n8n.listExecutions({ status: "error", limit: 50 }).catch(() => ({ data: [] }))
       : { data: [] };
+    if (n8n) {
+      await ensureWorkflowNameMap();
+    }
 
     const severityCount = { 0: 0, 1: 0, 2: 0 };
     for (const alert of nightingaleActive) {
@@ -271,7 +318,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
           source: "n8n",
           sourceLabel: "n8n",
           id: exec?.id,
-          workflowName: exec?.workflowData?.name || exec?.workflowName || "",
+          workflowName: resolveWorkflowName(exec),
           status: exec?.status,
           startedAt: exec?.startedAt ? new Date(exec.startedAt).getTime() : null,
           errorMessage: extractErrorMessage(exec),
