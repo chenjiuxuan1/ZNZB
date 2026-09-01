@@ -3887,3 +3887,92 @@ test("platform api manages ds gateway access policy, users, evaluate and publish
   assert.equal(after.users.find((u) => u.username === "zhang").configured, false);
   assert.equal(after.users.find((u) => u.username === "zhang").role, "operator");
 });
+
+test("n8n failure watch owner private chat falls back to KN_BOT_TOKEN when DS notification bot token is empty", async () => {
+  const rootDir = await makeFixture();
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const now = new Date();
+  const nowStr = fmt(now);
+  const startStr = fmt(new Date(now.getTime() - 5 * 60 * 1000));
+
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "https://gateway.example/ds",
+      countries: { cn: { name: "中国", token: "test-token" } },
+      projects: { cn: [{ name: "DW_DM", code: "1001" }] },
+    }),
+  );
+  // Reproduce the production setup: n8n watch has an owner, but the DS
+  // notification config carries no KN bot token.
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduled-failure-watch.json"),
+    JSON.stringify({
+      enabled: true,
+      intervalMinutes: 5,
+      owners: { cn: "rockyzong@kn.group" },
+      botIds: { cn: "cn-tv-bot" },
+      groupChatIds: {},
+    }),
+  );
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    let data = {};
+    if (request.action === "list_instances") {
+      data = {
+        totalList: [{
+          workflowDefinitionCode: "wf-1",
+          workflowInstanceName: "daily_orders",
+          workflowInstanceId: "1815635",
+          commandType: "SCHEDULER",
+          workflowExecutionStatus: "FAILURE",
+          workflowStartTime: startStr,
+          workflowEndTime: nowStr,
+        }],
+        total: 1,
+      };
+    } else if (request.action === "list_task_instances") {
+      data = {
+        processInstanceState: "FAILURE",
+        taskList: [{
+          taskInstanceId: "t-1",
+          workflowInstanceId: "1815635",
+          taskCode: "task-1",
+          name: "dwd_orders",
+          state: "FAILURE",
+          endTime: nowStr,
+        }],
+      };
+    } else if (request.action === "get_task_log") {
+      data = { task_name: "dwd_orders", task_instance_id: "t-1", state: "FAILURE", log: "ERROR connection refused" };
+    } else if (request.action === "extract_task_runtime_config") {
+      data = { task_type: "SQL", runtime_config: { sql: "select 1" } };
+    }
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data }); } };
+  };
+
+  const captured = [];
+  const api = createPlatformApi({
+    rootDir,
+    notifyTextFn: async (config, message, metadata) => {
+      captured.push({ config, message, metadata });
+      return { sent: true, status: 200 };
+    },
+  });
+
+  try {
+    const result = await api.checkDsScheduledFailures({ country: "cn", days: 1 });
+    const ownerCall = captured.find(
+      (c) => c.config.alerts.channel === "knBot" && c.config.alerts.recipientEmails === "rockyzong@kn.group",
+    );
+    assert.ok(ownerCall, "expected an owner private chat notify call");
+    assert.equal(ownerCall.config.alerts.botToken, "${KN_BOT_TOKEN}");
+    assert.equal(result.notificationCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
