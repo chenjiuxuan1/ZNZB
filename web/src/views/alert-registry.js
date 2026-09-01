@@ -179,6 +179,7 @@ const SQL_BLOCK_LABELS = {
   BIZ_CTE_CLAUSE: "非经营 CTE 公共表（biz库）",
   FIN_UNION_SELECT: "财务对账查询（capital 三表）",
   BIZ_UNION_SELECT: "biz 对账查询（五国非经营）",
+  BIZ_QUERY_SQL: "biz 对账查询（含 CTE，五国非经营）",
   MONITOR_TABLE: "监控表（被校验表）",
   LTV_QUERY_SQL: "LTV 查询语句",
   CHECK_TABLE: "校验记录表",
