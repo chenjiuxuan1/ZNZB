@@ -14,7 +14,7 @@ import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
 import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260828-workspace-v1";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
 import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260831-n8n-project-logic-v27";
-import { renderAlertCenter } from "./views/alert-center.js?v=20260831-config2";
+import { renderAlertCenter } from "./views/alert-center.js?v=20260831-config3";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
