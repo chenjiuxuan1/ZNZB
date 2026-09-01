@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
 import { createAlertCenter } from "./alert-center.mjs";
+import { createAlertRegistry } from "./alert-registry.mjs";
 import { createDsAutoRetryManager } from "./ds-auto-retry-manager.mjs";
 import { cleanupLegacyDashboardUrls } from "./history-dashboard-url-cleanup.mjs";
 import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
@@ -424,6 +425,16 @@ async function handleApi(request, response, url) {
     const ruleId = url.pathname.split("/").pop();
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertCenter.setAlertRuleDisabled(ruleId, Boolean(body.disabled)));
+  }
+  if (method === "PUT" && url.pathname.startsWith("/api/alerts/notify-rules/")) {
+    const notifyRuleId = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.updateNotifyRule(notifyRuleId, body.notifyRule || body));
+  }
+  if (method === "POST" && url.pathname.startsWith("/api/alerts/notify-rules/")) {
+    const notifyRuleId = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.setNotifyRuleEnable(notifyRuleId, Boolean(body.enable)));
   }
   if (method === "GET" && url.pathname === "/api/alerts/config") {
     return sendJson(response, 200, await alertCenter.getConfig());
