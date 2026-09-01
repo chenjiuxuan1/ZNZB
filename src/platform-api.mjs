@@ -2683,6 +2683,7 @@ export function createPlatformApi({
       const state = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
       const notified = new Set(Array.isArray(state.notifiedInstanceIds) ? state.notifiedInstanceIds.map(String) : []);
       const notificationConfig = await this.getDsNotificationConfig();
+      const knBotToken = String(notificationConfig.botToken || "${KN_BOT_TOKEN}").trim();
       const checkedAtMs = Date.parse(result.checkedAt) || Date.now();
       const previousCheckMs = Date.parse(state.lastCheckedAt || "");
       const notificationCutoffMs = Number.isFinite(previousCheckMs)
@@ -2735,7 +2736,7 @@ export function createPlatformApi({
             const notifications = [];
             if (ownerEmails) {
               try {
-                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", recipientEmails: ownerEmails, chatId: "", mentions: [] } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
+                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: ownerEmails, chatId: "", mentions: [] } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
                 notifications.push(sent);
                 recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "owner_direct", target: ownerEmails, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "私聊通知未发送" });
               } catch (error) {
@@ -2754,7 +2755,7 @@ export function createPlatformApi({
               }
             } else if (legacyGroupChatId) {
               try {
-                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", recipientEmails: "", chatId: legacyGroupChatId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
+                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: "", chatId: legacyGroupChatId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
                 notifications.push(sent);
                 recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: legacyGroupChatId, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "群发通知未发送" });
               } catch (error) {
