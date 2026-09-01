@@ -2263,6 +2263,7 @@ test("n8n failure watch persists per-country private and TV group notification t
     owners: { ph: "simontang@kn.group" },
     groupChatIds: { ph: "-1001234567890" },
     botIds: { ph: "ph-tv-bot-id", cn: "" },
+    n8nProjects: { ph: ["15843450427744", "菲律宾数仓-正式环境"] },
   });
 
   assert.equal(saved.owners.ph, "simontang@kn.group");
@@ -2271,6 +2272,8 @@ test("n8n failure watch persists per-country private and TV group notification t
   assert.equal(saved.botIds.cn, "");
   assert.equal(saved.owners.mx, "");
   assert.equal(saved.groupChatIds.mx, "");
+  assert.deepEqual(saved.n8nProjects.ph, ["15843450427744", "菲律宾数仓-正式环境"]);
+  assert.equal(saved.n8nProjectScopeConfigured, true);
 });
 
 test("requested hourly dashboards are stored in all six country sources", async () => {
@@ -3899,9 +3902,9 @@ test("n8n failure watch owner private chat falls back to KN_BOT_TOKEN when DS no
   await fs.writeFile(
     path.join(rootDir, "config/ds-scheduler.config.json"),
     JSON.stringify({
-      n8nWebhookUrl: "https://gateway.example/ds",
-      countries: { cn: { name: "中国", token: "test-token" } },
-      projects: { cn: [{ name: "DW_DM", code: "1001" }] },
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { cn: { name: "中国", token: "test-token" } },
+    projects: { cn: [{ name: "DW_DM", code: "1001" }, { name: "quality-check", code: "1002" }] },
     }),
   );
   // Reproduce the production setup: n8n watch has an owner, but the DS
@@ -3914,12 +3917,16 @@ test("n8n failure watch owner private chat falls back to KN_BOT_TOKEN when DS no
       owners: { cn: "rockyzong@kn.group" },
       botIds: { cn: "cn-tv-bot" },
       groupChatIds: {},
+      n8nProjects: { cn: ["1001"] },
+      n8nProjectScopeConfigured: true,
     }),
   );
 
   const originalFetch = globalThis.fetch;
+  const requestedProjects = [];
   globalThis.fetch = async (_url, options) => {
     const request = JSON.parse(options.body);
+    if (request.action === "list_instances") requestedProjects.push(String(request.payload?.project_code || ""));
     let data = {};
     if (request.action === "list_instances") {
       data = {
@@ -3970,7 +3977,15 @@ test("n8n failure watch owner private chat falls back to KN_BOT_TOKEN when DS no
     );
     assert.ok(ownerCall, "expected an owner private chat notify call");
     assert.equal(ownerCall.config.alerts.botToken, "${KN_BOT_TOKEN}");
+    assert.match(ownerCall.message, /^失败任务扫描触发｜中国/);
+    assert.deepEqual(ownerCall.config.alerts.mentions, ["@rockyzong@kn.group"]);
+    assert.equal(ownerCall.metadata.title, "失败任务扫描触发");
     assert.equal(result.notificationCount, 1);
+    assert.deepEqual([...new Set(requestedProjects.filter(Boolean))], ["1001"]);
+    const notificationProcess = await api.getDsFailureNotificationLogs({ country: "cn" });
+    assert.equal(notificationProcess.logs.length, 2);
+    assert.ok(notificationProcess.logs.every((item) => item.sourceLabel === "失败任务扫描触发"));
+    assert.deepEqual(notificationProcess.logs.map((item) => item.channel).sort(), ["country_group", "owner_direct"]);
   } finally {
     globalThis.fetch = originalFetch;
     await fs.rm(rootDir, { recursive: true, force: true });
