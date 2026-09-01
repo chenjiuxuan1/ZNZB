@@ -741,6 +741,19 @@ function renderConfigTab(groups, config) {
       <section class="sub-panel">
         <div class="detail-header compact-header">
           <div>
+            <h2 class="panel-title">夜莺数据源</h2>
+            <p class="muted">查看已接入的监控数据源（Prometheus / MySQL 等）。</p>
+          </div>
+        </div>
+        <div class="ac-filter-bar">
+          <button class="primary small" id="ac-ds-load">加载数据源</button>
+        </div>
+        <div id="ac-ds-table"></div>
+      </section>
+
+      <section class="sub-panel">
+        <div class="detail-header compact-header">
+          <div>
             <h2 class="panel-title">n8n 工作流</h2>
             <p class="muted">查看工作流状态，可启用/停用激活，点击"详情"查看节点与 webhook。</p>
           </div>
@@ -803,6 +816,23 @@ async function bindConfigEvents(root, body, groups) {
     };
     targetsLoad.addEventListener("click", loadTargets);
     loadTargets();
+  }
+
+  // ---- 夜莺数据源 ----
+  const dsLoad = body.querySelector("#ac-ds-load");
+  const dsTable = body.querySelector("#ac-ds-table");
+  if (dsLoad) {
+    const loadDatasources = async () => {
+      dsTable.innerHTML = `<div class="notice">加载数据源…</div>`;
+      try {
+        const list = await apiGet("/api/alerts/datasources");
+        dsTable.innerHTML = renderDatasourcesTable(list);
+      } catch (error) {
+        dsTable.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+      }
+    };
+    dsLoad.addEventListener("click", loadDatasources);
+    loadDatasources();
   }
 
   // ---- n8n 工作流 ----
@@ -914,6 +944,25 @@ function renderTargetsTable(list) {
       </tbody>
     </table>
     ${list.length > 100 ? `<p class="muted">共 ${list.length} 个目标，仅展示前 100 个。</p>` : ""}
+  `;
+}
+
+function renderDatasourcesTable(list) {
+  if (!list.length) return `<p class="muted">暂无数据源。</p>`;
+  return `
+    <table class="data-table">
+      <thead><tr><th>名称</th><th>类型</th><th>集群</th><th>状态</th></tr></thead>
+      <tbody>
+        ${list.map((ds) => `
+          <tr>
+            <td>${escapeHtml(ds.name || "-")}</td>
+            <td><span class="badge">${escapeHtml(ds.plugin_type || ds.plugin_type_name || "-")}</span></td>
+            <td class="small muted">${escapeHtml(ds.cluster_name || "-")}</td>
+            <td><span class="badge ${Number(ds.status) === 0 ? "ok" : "warn"}">${Number(ds.status) === 0 ? "正常" : `状态${ds.status ?? "-"}`}</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
   `;
 }
 
