@@ -99,6 +99,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
         tags[tag.slice(0, idx)] = tag.slice(idx + 1);
       }
     }
+    const countryInfo = detectCountry(alert, tags);
     return {
       source: "nightingale",
       sourceLabel: "夜莺",
@@ -113,6 +114,10 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       cluster: alert?.cluster,
       datasourceId: alert?.datasource_id,
       target: alert?.target_ident || tags.ident || "",
+      country: countryInfo.name,
+      countryCode: countryInfo.code,
+      meaning: describeAlert(alert, tags),
+      suggestion: suggestAction(alert, tags),
       triggerValue: alert?.trigger_value,
       triggerTime: alert?.trigger_time ? alert.trigger_time * 1000 : null,
       isRecovered: Boolean(alert?.is_recovered),
@@ -132,6 +137,99 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       }
     }
     return "";
+  }
+
+  // 国家代码 -> 中文名
+  const COUNTRY_ALIASES = {
+    cn: "中国", chn: "中国", "中国": "中国",
+    mx: "墨西哥", mex: "墨西哥", "墨西哥": "墨西哥",
+    ina: "印尼", id: "印尼", "印尼": "印尼", indonesia: "印尼",
+    ph: "菲律宾", "菲律宾": "菲律宾",
+    th: "泰国", "泰国": "泰国",
+    pk: "巴基斯坦", "巴铁": "巴基斯坦", "巴基斯坦": "巴基斯坦",
+    hk: "香港", "香港": "香港",
+    tw: "台湾", "台湾": "台湾",
+  };
+
+  /** 从告警 tags/cluster/目标主机/规则名 推断国家。 */
+  function detectCountry(alert, tags) {
+    const candidates = [
+      tags.cn,
+      tags.task_region,
+      tags.country,
+      // cluster 前缀如 ph_dophinscheduler / cn_dolphinscheduler
+      alert?.cluster,
+      // 目标主机如 ina-bigdata-sr-be-01、bi-edw-mx-srdb
+      alert?.target_ident,
+      // 规则名可能含国家关键词，如 贷后_菲律宾_P0
+      alert?.rule_name,
+    ].filter(Boolean);
+    for (const candidate of candidates) {
+      const lower = String(candidate).toLowerCase();
+      for (const [code, name] of Object.entries(COUNTRY_ALIASES)) {
+        if (lower === code || lower.startsWith(`${code}_`) || lower.includes(`_${code}_`) ||
+            lower.includes(code) || lower.includes(name)) {
+          return { code, name };
+        }
+      }
+    }
+    return { code: "", name: "未知" };
+  }
+
+  /** 生成一句话告警含义（面向值班人员）。 */
+  function describeAlert(alert, tags) {
+    const rule = String(alert?.rule_name || "");
+    const target = alert?.target_ident || tags.ident || "";
+    const value = alert?.trigger_value;
+
+    // 磁盘/存储类
+    if (rule.includes("磁盘") || rule.includes("存储") || rule.includes("disk")) {
+      const path = tags.path ? `（挂载 ${tags.path}）` : "";
+      return `主机 ${target || "-"}${path} 磁盘使用率 ${value ?? "-"}%，已超过阈值 80%`;
+    }
+    // CPU 类
+    if (rule.includes("cpu") || rule.includes("CPU")) {
+      return `主机 ${target || "-"} CPU 使用率 ${value ?? "-"}%，已超过阈值`;
+    }
+    // 内存类
+    if (rule.includes("内存") || rule.includes("mem")) {
+      return `主机 ${target || "-"} 内存使用率 ${value ?? "-"}%，已超过阈值`;
+    }
+    // 贷后 / 数仓任务类（DolphinScheduler）
+    if (rule.includes("贷后") || tags.task_status || tags.workflow) {
+      const project = tags.project_name || alert?.group_name || "";
+      const workflow = tags.workflow || "";
+      const status = tags.task_status || "";
+      const parts = [];
+      if (project) parts.push(project);
+      if (workflow) parts.push(`工作流「${workflow}」`);
+      if (status) parts.push(`状态为「${status}」`);
+      return parts.length ? `${parts.join(" 的 ")}，存在异常任务` : `告警规则 ${rule} 被触发`;
+    }
+    // 通用：拼接 tags
+    const summary = [
+      tags.workflow ? `工作流「${tags.workflow}」` : "",
+      tags.task_status ? `状态「${tags.task_status}」` : "",
+      tags.job ? `任务「${tags.job}」` : "",
+      tags.path ? `挂载点 ${tags.path}` : "",
+    ].filter(Boolean).join("，");
+    return summary || `规则「${rule}」触发告警${value != null ? `，当前值 ${value}` : ""}`;
+  }
+
+  /** 处理建议（按级别 + 类型）。 */
+  function suggestAction(alert, tags) {
+    const severity = Number(alert?.severity);
+    const rule = String(alert?.rule_name || "");
+    const base = severity === 0 ? "紧急处理" : severity === 1 ? "尽快核实" : "关注，可安排处理";
+    // 磁盘类：明确可执行动作
+    if (rule.includes("磁盘") || rule.includes("存储") || rule.includes("disk")) {
+      const target = alert?.target_ident || tags.ident || "";
+      return `清理 ${target || "目标主机"} 磁盘空间（删除日志/临时文件），或扩容磁盘`;
+    }
+    if (tags.task_status || tags.workflow) {
+      return `${base}：登录对应国家 DolphinScheduler 查看失败任务并重跑`;
+    }
+    return base;
   }
 
   // ---------------------------------------------------------------------------

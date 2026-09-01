@@ -243,16 +243,23 @@ function renderGroupDetail(groups) {
 function renderGroupDetailRows(alerts) {
   if (!alerts || !alerts.length) return `<p class="muted">该业务组当前没有告警明细。</p>`;
   return `
-    <table class="data-table">
+    <table class="data-table ac-alert-table">
       <thead>
-        <tr><th>级别</th><th>规则</th><th>目标</th><th>触发值</th><th>触发时间</th><th>状态</th></tr>
+        <tr><th>级别</th><th>规则 / 含义</th><th>国家</th><th>目标</th><th>触发值</th><th>触发时间</th><th>状态</th></tr>
       </thead>
       <tbody>
         ${alerts.slice(0, 50).map((alert) => `
           <tr>
             <td><span class="badge ${severityClass(alert.severity)}">${escapeHtml(alert.severityLabel || "-")}</span></td>
-            <td title="${escapeHtml(alert.sql || alert.promQl || "")}">${escapeHtml(alert.ruleName || "-")}</td>
-            <td>${escapeHtml(alert.target || "-")}</td>
+            <td>
+              <strong>${escapeHtml(alert.ruleName || "-")}</strong>
+              ${alert.meaning ? `<div class="ac-alert-meaning" title="${escapeHtml(alert.meaning)}">${escapeHtml(alert.meaning)}</div>` : ""}
+              ${alert.suggestion ? `<div class="ac-alert-action">建议：${escapeHtml(alert.suggestion)}</div>` : ""}
+            </td>
+            <td>
+              ${alert.country && alert.country !== "未知" ? `<span class="badge country">${escapeHtml(alert.country)}</span>` : `<span class="muted">-</span>`}
+            </td>
+            <td class="small">${escapeHtml(alert.target || "-")}</td>
             <td class="num">${escapeHtml(alert.triggerValue ?? "-")}</td>
             <td class="num">${escapeHtml(formatTime(alert.triggerTime))}</td>
             <td><span class="badge ${alert.isRecovered ? "ok" : "warn"}">${escapeHtml(alert.recoveredLabel || "-")}</span></td>
@@ -320,15 +327,24 @@ async function bindN8nList(root, body) {
   async function fetchList() {
     tableEl.innerHTML = `<div class="notice">加载 n8n 执行…</div>`;
     try {
-      all = await apiGet(`/api/alerts/n8n/executions?status=error&limit=250`);
-      // 填充工作流筛选下拉
-      const workflows = new Map();
+      const [execs, workflows] = await Promise.all([
+        apiGet(`/api/alerts/n8n/executions?status=error&limit=250`),
+        apiGet(`/api/alerts/n8n/workflows?limit=250`).catch(() => []),
+      ]);
+      all = execs;
+      // 筛选下拉：全部工作流（不只失败的），用户可筛出"某工作流当前无失败"
+      const workflowMap = new Map();
+      for (const wf of Array.isArray(workflows) ? workflows : []) {
+        if (wf.id && wf.name) workflowMap.set(String(wf.id), wf.name);
+      }
       for (const exec of all) {
-        if (exec.workflowId && exec.workflowName) workflows.set(exec.workflowId, exec.workflowName);
+        if (exec.workflowId && exec.workflowName && !workflowMap.has(String(exec.workflowId))) {
+          workflowMap.set(String(exec.workflowId), exec.workflowName);
+        }
       }
       const current = filterEl.value;
       filterEl.innerHTML = `<option value="">全部工作流</option>` +
-        [...workflows.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+        [...workflowMap.entries()].sort((a, b) => a[1].localeCompare(b[1]))
           .map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("");
       filterEl.value = current || "";
     } catch (error) {
@@ -383,9 +399,9 @@ async function bindN8nList(root, body) {
     pagerEl.querySelector("#ac-n8n-prev")?.addEventListener("click", () => { if (page > 1) { page--; renderPage(filtered); } });
     pagerEl.querySelector("#ac-n8n-next")?.addEventListener("click", () => { if (page < totalPages) { page++; renderPage(filtered); } });
 
-    // 行点击 -> 展开详情
+    // 行点击 -> 弹窗详情
     tableEl.querySelectorAll(".ac-exec-row").forEach((row) => {
-      row.addEventListener("click", () => openExecutionDetail(row, root, body));
+      row.addEventListener("click", () => openExecutionDetail(row.dataset.execId, root));
     });
   }
 
@@ -396,20 +412,36 @@ async function bindN8nList(root, body) {
   await fetchList();
 }
 
-async function openExecutionDetail(row, root, body) {
-  const id = row.dataset.execId;
-  const container = body.querySelector("#ac-exec-detail");
-  if (container) container.remove();
+async function openExecutionDetail(id, root) {
+  const existing = document.getElementById("ac-exec-modal");
+  if (existing) existing.remove();
 
-  const detail = document.createElement("div");
-  detail.id = "ac-exec-detail";
-  detail.className = "ac-exec-detail";
-  detail.innerHTML = `<div class="notice">加载执行 #${escapeHtml(id)} 详情…</div>`;
-  row.after(detail);
+  const overlay = document.createElement("div");
+  overlay.id = "ac-exec-modal";
+  overlay.className = "ac-modal-overlay";
+  overlay.innerHTML = `
+    <div class="ac-modal" role="dialog" aria-modal="true" aria-label="执行详情">
+      <div class="ac-modal-head">
+        <strong>执行详情</strong>
+        <button class="ac-modal-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="ac-modal-body"><div class="notice">加载执行 #${escapeHtml(String(id))} 详情…</div></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.classList.add("show");
 
+  const close = () => { overlay.classList.remove("show"); setTimeout(() => overlay.remove(), 180); };
+  overlay.querySelector(".ac-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  document.addEventListener("keydown", function onEsc(event) {
+    if (event.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+  });
+
+  const bodyEl = overlay.querySelector(".ac-modal-body");
   try {
     const data = await apiGet(`/api/alerts/n8n/executions/detail?id=${encodeURIComponent(id)}`);
-    detail.innerHTML = `
+    bodyEl.innerHTML = `
       <div class="ac-exec-detail-head">
         <div>
           <strong>${escapeHtml(data.workflowName || `#${data.id}`)}</strong>
@@ -429,9 +461,8 @@ async function openExecutionDetail(row, root, body) {
       </div>
     `;
   } catch (error) {
-    detail.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+    bodyEl.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
   }
-  detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 // ---------------------------------------------------------------------------
