@@ -482,6 +482,15 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.runTestByCommand(body || {}));
   }
+  if (method === "POST" && url.pathname.startsWith("/api/alert-registry/") && url.pathname.endsWith("/preview-script")) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    return sendJson(response, 200, await alertRegistry.previewScript(id));
+  }
+  if (method === "POST" && url.pathname.startsWith("/api/alert-registry/") && url.pathname.endsWith("/apply-script")) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.applyScript(id, body || {}));
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 
