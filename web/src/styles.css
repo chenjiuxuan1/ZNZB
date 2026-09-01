@@ -7036,3 +7036,480 @@ button.primary:active {
   .ac-hero { grid-template-columns: 1fr; }
   .ac-group-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+ * 告警中心扩展：Tabs / 筛选 / 分页 / 执行详情 / 配置
+ * ============================================================ */
+
+/* ---- Tabs ---- */
+.ac-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ac-tab {
+  appearance: none;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #475467;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0 18px;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+.ac-tab:hover {
+  border-color: #b9c9e8;
+  color: #1e293b;
+}
+
+.ac-tab.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.ac-tab:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* ---- 筛选栏 ---- */
+.ac-filter-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ac-search-input {
+  background: #fff;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.ac-search-input:focus {
+  border-color: #93c5fd;
+  outline: 2px solid rgb(147 197 253 / 0.35);
+  outline-offset: 0;
+}
+
+input.ac-search-input {
+  min-width: 240px;
+}
+
+.ac-filter-bar label {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---- 分页 ---- */
+.ac-pager {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* ---- 执行详情 ---- */
+.ac-exec-detail {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 14px;
+}
+
+.ac-exec-detail-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.ac-exec-nodes {
+  display: grid;
+  gap: 6px;
+}
+
+.ac-exec-node {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #16a34a;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  padding: 8px 10px;
+}
+
+.ac-exec-node.is-error {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+.ac-exec-node-name {
+  font-weight: 700;
+}
+
+/* ---- 配置网格 ---- */
+.ac-config-grid {
+  display: grid;
+  gap: 14px;
+}
+
+button.small {
+  border-radius: 6px;
+  font-size: 12px;
+  min-height: 28px;
+  padding: 4px 10px;
+}
+
+button.small[disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ============================================================
+ * 告警中心 v2：告警明细丰富列 + 执行详情弹窗
+ * ============================================================ */
+
+/* ---- 告警明细：含义 / 建议 / 国家 ---- */
+.ac-alert-table td {
+  vertical-align: top;
+}
+
+.ac-alert-meaning {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 2px;
+  max-width: 460px;
+}
+
+.ac-alert-action {
+  color: #b45309;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.badge.country {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4338ca;
+}
+
+/* ---- 执行详情弹窗 ---- */
+.ac-modal-overlay {
+  align-items: center;
+  background: rgb(15 23 42 / 0.45);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  opacity: 0;
+  padding: 24px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  transition: opacity 180ms ease;
+  z-index: 1000;
+}
+
+.ac-modal-overlay.show {
+  opacity: 1;
+}
+
+.ac-modal {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgb(15 23 42 / 0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 760px);
+  max-width: 720px;
+  width: 100%;
+}
+
+.ac-modal-head {
+  align-items: center;
+  border-bottom: 1px solid #eef2f7;
+  display: flex;
+  font-size: 15px;
+  justify-content: space-between;
+  padding: 14px 18px;
+}
+
+.ac-modal-close {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #667085;
+  cursor: pointer;
+  font-size: 15px;
+  height: 28px;
+  line-height: 1;
+  width: 28px;
+}
+
+.ac-modal-close:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.ac-modal-body {
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+/* ============================================================
+ * 告警中心 v3：通知方式/地址 + 告警详情弹窗
+ * ============================================================ */
+
+/* ---- 告警明细：通知列 ---- */
+.ac-alert-notify {
+  max-width: 240px;
+}
+
+.ac-notify-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.4;
+}
+
+.ac-notify-method {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ac-notify-item.is-dingtalk .ac-notify-method { color: #2563eb; }
+.ac-notify-item.is-ali-voice .ac-notify-method,
+.ac-notify-item.is-ivr .ac-notify-method { color: #dc2626; }
+.ac-notify-item.is-email .ac-notify-method { color: #7c3aed; }
+
+/* ---- 告警详情弹窗 ---- */
+.ac-alert-modal {
+  max-width: 760px;
+}
+
+.ac-alert-detail-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ac-alert-detail-block {
+  border-top: 1px solid #eef2f7;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.ac-alert-detail-block h4 {
+  color: #334155;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.ac-alert-detail-block p {
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 6px;
+}
+
+.ac-kv {
+  display: grid;
+  font-size: 13px;
+  gap: 6px 12px;
+  grid-template-columns: 72px 1fr;
+  margin-bottom: 6px;
+}
+
+.ac-kv-label {
+  color: #98a2b3;
+  font-weight: 600;
+}
+
+.ac-kv code {
+  background: #f1f5f9;
+  border-radius: 4px;
+  color: #475569;
+  display: block;
+  font-size: 12px;
+  overflow-x: auto;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ---- 通知规则卡片 ---- */
+.ac-notify-rule {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+}
+
+.ac-notify-rule-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ac-notify-rule-head strong {
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.ac-notify-rule-head .small {
+  margin-left: auto;
+}
+
+.ac-notify-channel {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto auto 1fr auto;
+  margin-top: 8px;
+}
+
+.ac-notify-address {
+  color: #667085;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 编辑表单 ---- */
+.ac-notify-edit-form {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.ac-notify-edit-form label {
+  color: #475467;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 4px;
+}
+
+.ac-notify-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ============================================================
+ * 告警中心 v4：监控目标 / 规则编辑 / 工作流详情
+ * ============================================================ */
+
+/* ---- 规则编辑弹窗 ---- */
+.ac-rule-modal {
+  max-width: 640px;
+}
+
+.ac-rule-form {
+  display: grid;
+  gap: 12px;
+}
+
+.ac-rule-form label {
+  color: #475467;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 4px;
+}
+
+.ac-rule-query {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.ac-rule-toggle-line {
+  align-items: center;
+  display: flex;
+  flex-direction: row !important;
+  gap: 8px !important;
+}
+
+.ac-rule-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- 工作流详情弹窗 ---- */
+.ac-wf-modal {
+  max-width: 680px;
+}
+
+.ac-wf-nodes {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.ac-wf-node {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.ac-wf-node strong {
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-wf-connections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ac-wf-conn {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  color: #1d4ed8;
+  font-size: 12px;
+  padding: 3px 8px;
+}

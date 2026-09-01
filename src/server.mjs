@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPlatformApi } from "./platform-api.mjs";
 import { createAlertCenter } from "./alert-center.mjs";
+import { createAlertRegistry } from "./alert-registry.mjs";
 import { createDsAutoRetryManager } from "./ds-auto-retry-manager.mjs";
 import { cleanupLegacyDashboardUrls } from "./history-dashboard-url-cleanup.mjs";
 import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
@@ -28,6 +29,7 @@ try {
 const dsAutoRetryManager = createDsAutoRetryManager({ rootDir });
 const api = createPlatformApi({ rootDir, dsAutoRetryManager });
 const alertCenter = createAlertCenter({ rootDir });
+const alertRegistry = createAlertRegistry({ rootDir });
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";
 
@@ -382,6 +384,14 @@ async function handleApi(request, response, url) {
     const params = Object.fromEntries(url.searchParams.entries());
     return sendJson(response, 200, await alertCenter.getAlertRules(params.busiGroup));
   }
+  if (method === "GET" && url.pathname === "/api/alerts/rules/detail") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getAlertRuleDetail(params.id));
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/targets") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getTargets({ busiGroup: params.busiGroup, limit: params.limit || 200 }));
+  }
   if (method === "GET" && url.pathname === "/api/alerts/datasources") {
     return sendJson(response, 200, await alertCenter.getDatasources());
   }
@@ -395,18 +405,82 @@ async function handleApi(request, response, url) {
       limit: params.limit || 100,
     }));
   }
+  if (method === "GET" && url.pathname === "/api/alerts/n8n/workflows/detail") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getN8nWorkflowDetail(params.id));
+  }
   if (method === "GET" && url.pathname === "/api/alerts/n8n/executions") {
     const params = Object.fromEntries(url.searchParams.entries());
     return sendJson(response, 200, await alertCenter.getN8nExecutions({
       status: params.status || undefined,
-      limit: params.limit || 50,
+      workflowId: params.workflowId || undefined,
+      limit: params.limit || 250,
     }));
+  }
+  if (method === "GET" && url.pathname === "/api/alerts/n8n/executions/detail") {
+    const params = Object.fromEntries(url.searchParams.entries());
+    return sendJson(response, 200, await alertCenter.getN8nExecutionDetail(params.id));
+  }
+  if (method === "POST" && url.pathname === "/api/alerts/n8n/workflows/toggle") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.setN8nWorkflowActive(body.id, body.active));
+  }
+  if (method === "POST" && url.pathname === "/api/alerts/rules") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.createAlertRule(body.busiGroup, body.rule || body));
+  }
+  if (method === "PUT" && url.pathname.startsWith("/api/alerts/rules/")) {
+    const ruleId = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.updateAlertRule(ruleId, body.rule || body));
+  }
+  if (method === "POST" && url.pathname.startsWith("/api/alerts/rules/")) {
+    const ruleId = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.setAlertRuleDisabled(ruleId, Boolean(body.disabled)));
+  }
+  if (method === "PUT" && url.pathname.startsWith("/api/alerts/notify-rules/")) {
+    const notifyRuleId = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.updateNotifyRule(notifyRuleId, body.notifyRule || body));
+  }
+  if (method === "POST" && url.pathname.startsWith("/api/alerts/notify-rules/")) {
+    const notifyRuleId = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertCenter.setNotifyRuleEnable(notifyRuleId, Boolean(body.enable)));
   }
   if (method === "GET" && url.pathname === "/api/alerts/config") {
     return sendJson(response, 200, await alertCenter.getConfig());
   }
   if (method === "GET" && url.pathname === "/api/alerts/health") {
     return sendJson(response, 200, await alertCenter.getHealth());
+  }
+
+  // ---- 告警注册表（动态配置 / 新增 / 测试） ----
+  if (method === "GET" && url.pathname === "/api/alert-registry") {
+    return sendJson(response, 200, await alertRegistry.seedExamples().then(() => alertRegistry.list()));
+  }
+  if (method === "POST" && url.pathname === "/api/alert-registry") {
+    const body = await readBody(request, {});
+    return sendJson(response, 201, await alertRegistry.create(body));
+  }
+  if (method === "PUT" && url.pathname.startsWith("/api/alert-registry/") && !url.pathname.endsWith("/test")) {
+    const id = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.update(id, body));
+  }
+  if (method === "DELETE" && url.pathname.startsWith("/api/alert-registry/")) {
+    const id = url.pathname.split("/").pop();
+    return sendJson(response, 200, await alertRegistry.remove(id));
+  }
+  if (method === "POST" && url.pathname.startsWith("/api/alert-registry/") && url.pathname.endsWith("/test")) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.runTest(id, { timeoutMs: body && body.timeoutMs }));
+  }
+  if (method === "POST" && url.pathname === "/api/alert-registry/test-command") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.runTestByCommand(body || {}));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
