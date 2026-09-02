@@ -3891,6 +3891,44 @@ test("platform api manages ds gateway access policy, users, evaluate and publish
   assert.equal(after.users.find((u) => u.username === "zhang").role, "operator");
 });
 
+test("records authenticated DS auto-trigger group notification receipts in notification process", async () => {
+  const rootDir = await makeFixture();
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({ countries: { mx: { name: "墨西哥", token: "mx-ds-token" } } }),
+  );
+  const api = createPlatformApi({ rootDir });
+  try {
+    const payload = {
+      receiptId: "mx:req-1:message-1",
+      country: "mx",
+      instanceId: "3475123",
+      target: "mx-tv-bot",
+      status: "sent",
+      message: "n8n 失败重启监控｜墨西哥\n失败任务：dwb_orders",
+      requestId: "req-1",
+    };
+    const first = await api.recordDsN8nNotificationReceipt(payload, "Bearer mx-ds-token");
+    const second = await api.recordDsN8nNotificationReceipt(payload, "Bearer mx-ds-token");
+    assert.equal(first.success, true);
+    assert.equal(first.duplicate, false);
+    assert.equal(second.duplicate, true);
+    const process = await api.getDsFailureNotificationLogs({ country: "mx" });
+    assert.equal(process.logs.length, 1);
+    assert.equal(process.logs[0].source, "ds_auto_trigger");
+    assert.equal(process.logs[0].sourceLabel, "DS 自动触发");
+    assert.equal(process.logs[0].channel, "country_group");
+    assert.equal(process.logs[0].status, "sent");
+    assert.match(process.logs[0].message, /^n8n 失败重启监控｜墨西哥/);
+    await assert.rejects(
+      api.recordDsN8nNotificationReceipt({ ...payload, receiptId: "bad-token" }, "Bearer wrong-token"),
+      (error) => error.statusCode === 401,
+    );
+  } finally {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("n8n failure watch owner private chat falls back to KN_BOT_TOKEN when DS notification bot token is empty", async () => {
   const rootDir = await makeFixture();
   const pad = (n) => String(n).padStart(2, "0");
