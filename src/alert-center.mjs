@@ -98,6 +98,8 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
   let notifyCache = { rules: [], channels: [], users: [], groups: [] };
   let notifyCacheAt = 0;
   const NOTIFY_CACHE_TTL_MS = 120_000;
+  // 自动新增接收人用户时的初始登录密码（仅用于占位，用户可自行在夜莺修改）。
+  const AUTO_USER_INITIAL_PASSWORD = "Znzb@Init2026";
 
   async function ensureNotifyMap() {
     const { nightingale } = await loadConfig();
@@ -188,20 +190,59 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     // 若传 {receivers}（用户名列表）：解析为 user_ids 写入第一个 notify_config。
     // 找不到的用户名不再抛错，返回 unmatched 供前端把其电话存为固定号码。
     let unmatched = [];
+    let created = [];
     if (Array.isArray(body?.receivers)) {
       await ensureNotifyMap();
       const byName = new Map(notifyCache.users.map((u) => [u.username, u.id]));
+      // 将由 newUsers 自动创建的用户名先剔除：它们稍后统一创建/复用，避免误报 unmatched
+      const autoCreateNames = new Set((body?.newUsers || []).map((n) => String(n?.username || "").trim()).filter(Boolean));
       const ids = [];
       unmatched = [];
       for (const name of body.receivers) {
-        const id = byName.get(String(name).trim());
-        if (id != null) ids.push(id);
-        else unmatched.push(String(name).trim());
+        const uname = String(name).trim();
+        const id = byName.get(uname);
+        if (id != null) {
+          if (!ids.includes(id)) ids.push(id);
+        } else if (!autoCreateNames.has(uname)) {
+          unmatched.push(uname);
+        }
+      }
+      // 自动新增接收人：body.newUsers = [{ username, phone, nickname }]
+      // 已存在的复用其 id；不存在的自动在夜莺创建用户后加入接收。
+      if (Array.isArray(body?.newUsers)) {
+        for (const nu of body.newUsers) {
+          const username = String(nu?.username || "").trim();
+          if (!username) continue;
+          let uid = byName.get(username);
+          if (uid == null) {
+            const { nightingale } = await loadConfig();
+            await nightingale.createUser({
+              username,
+              nickname: String(nu?.nickname || username).trim(),
+              phone: String(nu?.phone || "").trim(),
+              email: String(nu?.email || "").trim(),
+              password: AUTO_USER_INITIAL_PASSWORD,
+              roles: ["Standard"],
+            });
+            // 夜莺创建用户接口 dat 为空，需重新拉取用户表拿到新用户 id
+            notifyCacheAt = 0;
+            await ensureNotifyMap();
+            uid = new Map(notifyCache.users.map((u) => [u.username, u.id])).get(username) ?? null;
+            if (uid == null) {
+              unmatched.push(username); // 创建后仍查不到，回退为固定电话
+              continue;
+            }
+            created.push(username);
+            byName.set(username, uid);
+          }
+          if (uid != null && !ids.includes(uid)) ids.push(uid);
+        }
       }
       merged.notify_configs = (merged.notify_configs || []).map((nc, i) =>
         i === 0 ? { ...nc, params: { ...(nc.params || {}), user_ids: ids } } : nc
       );
       delete merged.receivers;
+      delete merged.newUsers;
     }
     // 若传 {params} 且未传 notify_configs：合并进第一个 notify_config 的 params
     if (body?.params && !body?.notify_configs && Array.isArray(merged.notify_configs)) {
@@ -211,7 +252,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     }
     await nightingale.putNotifyRule(notifyRuleId, merged);
     notifyCacheAt = 0; // 失效缓存
-    return { ok: true, notifyRuleId, name: merged.name || "", unmatched };
+    return { ok: true, notifyRuleId, name: merged.name || "", unmatched, created };
   }
 
   /** 启用/停用通知规则。 */
