@@ -16,7 +16,7 @@ import { renderQualityRuleGeneration } from "./views/quality-rule-generation.js?
 import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
 import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260828-workspace-v1";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
-import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260831-n8n-project-logic-v27";
+import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260902-ds-failure-fixes-v2";
 import { renderAlertCenter } from "./views/alert-center.js?v=20260831-config26";
 import { renderAlertRegistry } from "./views/alert-registry.js?v=20260901-alert-registry";
 
@@ -45,6 +45,14 @@ window.addEventListener("hashchange", () => {
   state.routeQuery = parsed.query;
   render();
 });
+
+function routeRenderKey(route) {
+  const query = Object.entries(state.routeQuery || {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+  return query ? `${route.path}?${query}` : route.path;
+}
 
 // Render the shell first. Inventory and history files can be large, and waiting for
 // them here used to leave users with a completely blank page during startup.
@@ -131,13 +139,14 @@ function applyBatchSchedule(batchSchedule) {
 
 export function render() {
   const route = routes.find((item) => item.path === state.route) || routes[0];
+  const routeKey = routeRenderKey(route);
   // 路由未变且 shell 已挂载：不重建 DOM（避免 loadInitialData 多次 render 导致整页闪烁），
-  // 仅当视图自身需要刷新数据时由其内部处理。
+  // 但同一路由的查询参数可能代表详情页，必须让 hash 导航重新渲染。
   const main = document.querySelector("#main");
-  if (renderedRoute === route.path && main) {
+  if (renderedRoute === routeKey && main) {
     return;
   }
-  renderedRoute = route.path;
+  renderedRoute = routeKey;
   const app = document.querySelector("#app");
   app.innerHTML = `
     <div class="layout">

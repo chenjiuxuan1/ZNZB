@@ -1068,10 +1068,13 @@ function renderFailure(item, filters = null) {
   const status = STATUS_LABELS[displayStatus] || STATUS_LABELS.unresolved;
   const taskUnlocated = !item.taskName && !item.taskCode;
   const failureReason = failureReasonForDisplay(item);
-  const unlocatedNotice = taskUnlocated
+  // n8n auto-trigger executions intentionally expose the DS alert payload,
+  // which often has no DS task-node fields. Do not show the page-scan warning
+  // for those records; it incorrectly makes every n8n execution look empty.
+  const unlocatedNotice = taskUnlocated && !filters?.n8n
     ? `<div class="sandbox-status warn"><strong>失败节点尚未定位</strong><span>该工作流状态为失败或停止。请进入 DS 工作流实例，在失败或停止节点中查看日志确定具体原因。${item.dsInstanceUrl ? ` <a href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">查看节点日志 ↗</a>` : ""}</span></div>`
     : "";
-  const taskLabel = item.taskName || item.taskCode || "未定位到失败任务";
+  const taskLabel = item.taskName || item.taskCode || (filters?.n8n ? "DS 告警未返回任务节点名称" : "未定位到失败任务");
   const scriptLabel = item.taskType === "SQL" ? "出错 SQL" : "任务执行脚本";
   const retryCount = Number(item.retryCount || 0);
   const retryResult = item.retryResult === "recovered"
