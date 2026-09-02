@@ -180,6 +180,11 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     const existing = (await nightingale.getNotifyRules()).find((r) => Number(r.id) === Number(notifyRuleId));
     if (!existing) throw new Error(`通知规则 ${notifyRuleId} 不存在`);
     const merged = { ...existing, ...body };
+    // 顶层 params 需合并而非覆盖：body.params 通常只带部分字段（如 Mobile），
+    // 直接覆盖会丢失 Secret/Template 等，夜莺按顶层 params 校验导致保存不生效。
+    if (body?.params && typeof existing.params === "object") {
+      merged.params = { ...(existing.params || {}), ...body.params };
+    }
     // 若传 {receivers}（用户名列表）：解析为 user_ids 写入第一个 notify_config。
     // 找不到的用户名不再抛错，返回 unmatched 供前端把其电话存为固定号码。
     let unmatched = [];
@@ -204,7 +209,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
         i === 0 ? { ...nc, params: { ...(nc.params || {}), ...body.params } } : nc
       );
     }
-    await nightingale.post(`/api/n9e/notify-rules/${notifyRuleId}`, merged);
+    await nightingale.putNotifyRule(notifyRuleId, merged);
     notifyCacheAt = 0; // 失效缓存
     return { ok: true, notifyRuleId, name: merged.name || "", unmatched };
   }
@@ -555,7 +560,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     }
     const { groupId: _g, ...rest } = body || {};
     const merged = { ...existing, ...rest };
-    await nightingale.updateAlertRule(ruleId, merged);
+    await nightingale.updateAlertRule(ruleId, groupId, merged);
     return { ok: true, ruleId, name: merged.name || "" };
   }
 
@@ -580,7 +585,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     if (groupId) {
       return updateAlertRule(ruleId, { groupId, disabled: disabled ? 1 : 0 });
     }
-    await nightingale.setAlertRuleDisabled(ruleId, disabled);
+    await nightingale.setAlertRuleDisabled(ruleId, groupId, disabled);
     return { ok: true, ruleId, disabled };
   }
 
@@ -632,10 +637,10 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     const { nightingale } = await loadConfig();
     if (!nightingale) return null;
     await ensureNotifyMap();
-    // 优先单接口，失败则遍历业务组从列表查找（列表字段完整，含 notify_rule_ids）
+    // 优先单接口（GET /api/n9e/alert-rule/{id}，夜莺 v8 单数路径），失败则遍历业务组列表查找
     let detail = null;
     try {
-      detail = await nightingale.get(`/api/n9e/alert-rules/${ruleId}`);
+      detail = await nightingale.getAlertRule(ruleId);
     } catch { /* 忽略，走列表查找 */ }
     if (!detail || typeof detail !== "object" || !detail.id) {
       try {

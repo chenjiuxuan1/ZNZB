@@ -38,6 +38,16 @@ export class NightingaleClient {
     });
   }
 
+  /** 统一 PUT 请求，返回夜莺的 dat 字段。 */
+  async put(path, body = {}) {
+    const url = this.baseUrl + path;
+    return this.#request(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
   async #request(url, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -59,7 +69,15 @@ export class NightingaleClient {
         const text = await response.text().catch(() => "");
         throw new Error(`夜莺请求失败 HTTP ${response.status}: ${text.slice(0, 200)}`);
       }
-      const payload = await response.json().catch(() => ({}));
+      // 夜莺对不存在的 API 路径返回 SPA HTML 页面（HTTP 200），必须识别并报错，
+      // 否则写入操作会"静默成功"但实际没保存。
+      const contentType = response.headers.get?.("content-type") || "";
+      const rawText = await response.text().catch(() => "");
+      const isJson = contentType.includes("application/json") || /^[{[]/.test(rawText.trim());
+      if (!isJson) {
+        throw new Error(`夜莺返回非 JSON（可能是接口路径不存在）HTTP ${response.status}，请检查接口地址`);
+      }
+      const payload = JSON.parse(rawText);
       if (payload?.err) {
         throw new Error(`夜莺返回错误: ${payload.err}`);
       }
@@ -113,6 +131,11 @@ export class NightingaleClient {
     return Array.isArray(dat) ? dat : [];
   }
 
+  /** 单条告警规则详情。 */
+  async getAlertRule(ruleId) {
+    return this.get(`/api/n9e/alert-rule/${ruleId}`);
+  }
+
   /** 数据源列表。 */
   async getDatasources() {
     return this.get("/api/n9e/datasource/brief");
@@ -121,6 +144,11 @@ export class NightingaleClient {
   /** 通知规则（谁接收电话/群消息）。 */
   async getNotifyRules() {
     return this.get("/api/n9e/notify-rules");
+  }
+
+  /** 单条通知规则详情。 */
+  async getNotifyRule(notifyRuleId) {
+    return this.get(`/api/n9e/notify-rule/${notifyRuleId}`);
   }
 
   /** 通知渠道配置（电话/短信/钉钉等）。 */
@@ -146,21 +174,32 @@ export class NightingaleClient {
 
   // ---------------------------------------------------------------------------
   // 告警规则写入（配置能力）
+  // 夜莺 v8 正确路由（从前端 bundle 提取）：
+  //   创建  POST   /api/n9e/busi-group/{gid}/alert-rules
+  //   更新  PUT    /api/n9e/busi-group/{gid}/alert-rule/{id}
+  //   通知更新 PUT /api/n9e/notify-rule/{id}
+  // 旧的 POST /alert-rules/{id} 会被 SPA 兜底返回 HTML（HTTP 200），导致静默不生效。
   // ---------------------------------------------------------------------------
 
   /** 新建告警规则。body 为夜莺 alert-rule 对象。 */
   async createAlertRule(busiGroup, body) {
     const payload = { group_id: busiGroup, ...body };
-    return this.post("/api/n9e/alert-rules", payload);
+    return this.post(`/api/n9e/busi-group/${busiGroup}/alert-rules`, payload);
   }
 
   /** 更新告警规则（含启停：disabled 0/1）。 */
-  async updateAlertRule(ruleId, body) {
-    return this.post(`/api/n9e/alert-rules/${ruleId}`, body);
+  async updateAlertRule(ruleId, groupId, body) {
+    if (!groupId) throw new Error("更新告警规则需提供业务组 groupId");
+    return this.put(`/api/n9e/busi-group/${groupId}/alert-rule/${ruleId}`, body);
   }
 
-  /** 启用/停用告警规则。 */
-  async setAlertRuleDisabled(ruleId, disabled) {
-    return this.updateAlertRule(ruleId, { disabled: disabled ? 1 : 0 });
+  /** 启用/停用告警规则（需业务组）。 */
+  async setAlertRuleDisabled(ruleId, groupId, disabled) {
+    return this.updateAlertRule(ruleId, groupId, { disabled: disabled ? 1 : 0 });
+  }
+
+  /** 更新通知规则（单数路径 PUT）。 */
+  async putNotifyRule(notifyRuleId, body) {
+    return this.put(`/api/n9e/notify-rule/${notifyRuleId}`, body);
   }
 }
