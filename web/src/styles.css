@@ -8536,3 +8536,71 @@ select.ar-field {
   margin-top: 0;
 }
 .ac-rule-notify-edit-actions { grid-column: 1 / -1; }
+
+/* ---- 轻量 toast 通知（右上角滑入） ---- */
+.ac-toast-host {
+  pointer-events: none;
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  z-index: 9999;
+}
+.ac-toast {
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.16);
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  max-width: 380px;
+  opacity: 0;
+  padding: 12px 14px;
+  pointer-events: auto;
+  transform: translateX(24px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.ac-toast.ac-toast-in {
+  opacity: 1;
+  transform: translateX(0);
+}
+.ac-toast-icon {
+  align-items: center;
+  border-radius: 50%;
+  display: inline-flex;
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+  height: 22px;
+  justify-content: center;
+  margin-top: 1px;
+  width: 22px;
+}
+.ac-toast-success .ac-toast-icon { background: #ecfdf3; color: #039855; }
+.ac-toast-warn .ac-toast-icon { background: #fffaeb; color: #dc6803; }
+.ac-toast-error .ac-toast-icon { background: #fef3f2; color: #d92d20; }
+.ac-toast-body { min-width: 0; }
+.ac-toast-title {
+  color: #1d2939;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ac-toast-line {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 3px;
+  word-break: break-word;
+}
+.ac-toast-close {
+  background: transparent;
+  border: none;
+  color: #98a2b3;
+  cursor: pointer;
+  flex: none;
+  font-size: 12px;
+  padding: 2px;
+}
+.ac-toast-close:hover { color: #475467; }
