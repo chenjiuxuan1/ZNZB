@@ -112,18 +112,42 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def _build_message(country_name, rows, extra=""):
+def _build_message(country_name, mismatch_items, error=None):
+    """按校验结果构造告警文案。mismatch_items = [(check_item, mismatch_cnt), ...]（仅异常项）。"""
     lines = [
         f"🔔 多国一致性校验告警（{country_name}）",
         f"时间：{datetime.now():%Y-%m-%d %H:%M:%S}",
     ]
-    if rows is None:
+    if error:
         lines.append("校验执行失败：无法获取校验结果")
+        lines.append(f"异常信息：{error}")
+    elif mismatch_items:
+        lines.append(f"发现 {len(mismatch_items)} 项不一致：")
+        for item, cnt in mismatch_items:
+            lines.append(f"  - {item}: {cnt}")
     else:
-        lines.append(f"异常记录数：{rows}")
-    if extra:
-        lines.append(extra)
+        lines.append("全部校验项通过（mismatch_cnt 均为 0）")
     return "\n".join(lines)
+
+
+def _run_check(config):
+    """执行 CHECK_SQL，返回 (mismatch_items, error)。
+    mismatch_items = [(check_item, mismatch_cnt), ...]（仅 mismatch_cnt > 0 的项）。
+    """
+    try:
+        rows = query_all(f"select check_item, mismatch_cnt from ({CHECK_SQL}) __t", config=config)
+        mismatch_items = []
+        for row in rows:
+            item = row.get("check_item")
+            try:
+                cnt = int(row.get("mismatch_cnt") or 0)
+            except (TypeError, ValueError):
+                cnt = 0
+            if cnt > 0:
+                mismatch_items.append((str(item), cnt))
+        return mismatch_items, None
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
 
 
 def run(
@@ -136,22 +160,19 @@ def run(
     knchat_chat_id=None,
     knchat_token=None,
 ):
-    """执行校验并发送通知。返回 {success, message, rows, tv_result, knchat_result}。"""
+    """执行校验并发送通知。返回 {success, message, mismatch_items, error, tv_result, knchat_result}。
+
+    仅当存在异常项（mismatch_cnt > 0）时发送 TV + KN Chat；全部通过则不发送。
+    """
     mentions = mentions if mentions is not None else DEFAULT_MENTIONS
     country_name = COUNTRY_NAMES.get(country, country)
     config = get_starrocks_config(sr_password=sr_password, sr_backup_password=sr_backup_password)
 
     # 1. 执行校验 SQL
-    rows = None
-    error = None
-    try:
-        row = query_one(f"select count(1) as alert_count from ({CHECK_SQL}) __t", config=config)
-        rows = int(row["alert_count"]) if row else 0
-    except Exception as exc:  # noqa: BLE001
-        error = str(exc)
-        rows = None
+    mismatch_items, error = _run_check(config)
+    rows = len(mismatch_items) if mismatch_items is not None else None
 
-    message = _build_message(country_name, rows, extra=f"异常信息：{error}" if error else "")
+    message = _build_message(country_name, mismatch_items, error=error)
     print(message)
 
     tv_result = None
@@ -160,7 +181,12 @@ def run(
         print("（dry-run：不发送任何通知）")
         return {"success": True, "message": message, "rows": rows, "error": error, "tv_result": None, "knchat_result": None}
 
-    # 2. TV 告警
+    # 全部通过且无错误：不发通知，静默返回
+    if error is None and rows == 0:
+        print("✅ 全部校验项通过，未发送通知")
+        return {"success": True, "message": message, "rows": rows, "error": None, "tv_result": None, "knchat_result": None}
+
+    # 2. TV 告警（仅异常/出错时）
     try:
         tv_result = tv_sender.send_to_tv(
             message,
@@ -173,7 +199,7 @@ def run(
         tv_result = {"success": False, "response": str(exc)}
         print("TV 发送异常:", exc)
 
-    # 3. KN Chat 私信/群发
+    # 3. KN Chat 私信/群发（仅异常/出错时）
     if knchat_chat_id:
         try:
             chat_ids = [c.strip() for c in str(knchat_chat_id).split(",") if c.strip()]
@@ -194,6 +220,7 @@ def run(
         "success": success,
         "message": message,
         "rows": rows,
+        "mismatch_items": mismatch_items,
         "error": error,
         "tv_result": tv_result,
         "knchat_result": knchat_result,
