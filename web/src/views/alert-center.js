@@ -1371,7 +1371,7 @@ function renderRuleNotifySection(notify) {
     <div class="ac-rule-notify">
       <div class="ac-rule-notify-title">通知配置（告警触发后通知谁、用什么方式）</div>
       ${notify.map((nr) => `
-        <div class="ac-rule-notify-item">
+        <div class="ac-rule-notify-item" data-nr-rule-id="${escapeHtml(String(nr.ruleId))}">
           <div class="ac-rule-notify-head">
             <strong>${escapeHtml(nr.ruleName || `通知规则 #${nr.ruleId}`)}</strong>
             <span class="badge ${nr.enable ? "ok" : "warn"}">${nr.enable ? "启用" : "停用"}</span>
@@ -1384,11 +1384,70 @@ function renderRuleNotifySection(notify) {
               </span>
             `).join("")}
           </div>
+          <div class="ac-rule-notify-actions">
+            <button class="small ghost ac-rule-notify-edit" data-nr-id="${escapeHtml(String(nr.ruleId))}"
+              data-rcv="${escapeHtml(nr.channels?.[0]?.receivers?.join(",") || "")}"
+              data-phone="${escapeHtml(nr.channels?.[0]?.phone || "")}"
+              data-email="${escapeHtml(nr.channels?.[0]?.email || "")}">编辑接收人</button>
+          </div>
+          <div class="ac-rule-notify-edit-form" hidden></div>
         </div>
       `).join("")}
-      <div class="muted small ac-rule-notify-tip">如需修改通知对象或方式，请在「告警明细 → 通知」中编辑对应通知规则。</div>
+      <div class="muted small ac-rule-notify-tip">通知规则可能被多个告警规则共用，修改接收人会影响所有关联规则。</div>
     </div>
   `;
+}
+
+/** 绑定规则弹窗内"编辑接收人"：内联输入接收人/电话/邮箱后保存通知规则。 */
+function bindRuleNotifyEdit(overlay) {
+  overlay.querySelectorAll(".ac-rule-notify-edit").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const item = btn.closest(".ac-rule-notify-item");
+      const form = item.querySelector(".ac-rule-notify-edit-form");
+      if (!form.hidden) { form.hidden = true; return; }
+      const nrId = btn.dataset.nrId;
+      const receivers = btn.dataset.rcv || "";
+      const phone = btn.dataset.phone || "";
+      const email = btn.dataset.email || "";
+      form.innerHTML = `
+        <div class="ac-rule-notify-edit-inner">
+          <label>接收人（夜莺用户名，逗号分隔）
+            <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
+          </label>
+          <label>联系电话
+            <input type="text" class="ac-search-input" id="ac-rn-phone" value="${escapeHtml(phone)}">
+          </label>
+          <label>接收邮箱
+            <input type="text" class="ac-search-input" id="ac-rn-email" value="${escapeHtml(email)}">
+          </label>
+          <div class="ac-rule-notify-edit-actions">
+            <button class="small primary ac-rn-save">保存</button>
+            <button class="small ac-rn-cancel">取消</button>
+          </div>
+        </div>
+      `;
+      form.hidden = false;
+      form.querySelector(".ac-rn-cancel").addEventListener("click", () => { form.hidden = true; });
+      form.querySelector(".ac-rn-save").addEventListener("click", async () => {
+        const receiversArr = (form.querySelector("#ac-rn-rcv").value || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+        const params = {};
+        if (form.querySelector("#ac-rn-phone").value.trim()) params.Mobile = form.querySelector("#ac-rn-phone").value.trim();
+        if (form.querySelector("#ac-rn-email").value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
+        const saveBtn = form.querySelector(".ac-rn-save");
+        saveBtn.disabled = true;
+        try {
+          const payload = { receivers: receiversArr };
+          if (Object.keys(params).length) payload.params = params;
+          await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
+          alert("已保存通知接收人。");
+          form.hidden = true;
+        } catch (error) {
+          saveBtn.disabled = false;
+          alert(`保存失败：${error.message}`);
+        }
+      });
+    });
+  });
 }
 
 /** 通知渠道的接收人摘要（接收人 / 电话 / 邮箱 / 地址）。 */
@@ -1544,6 +1603,7 @@ function openRuleEditModal(rule, reload) {
   overlay.querySelector(".ac-modal-close").addEventListener("click", close);
   overlay.querySelector(".ac-rule-cancel").addEventListener("click", close);
   overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  bindRuleNotifyEdit(overlay);
   document.addEventListener("keydown", function onEsc(event) {
     if (event.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
   });

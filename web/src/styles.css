@@ -8335,3 +8335,29 @@ select.ar-field {
 }
 .ac-rule-notify-chip b { color: #1d4ed8; }
 .ac-rule-notify-tip { margin-top: 6px; }
+
+.ac-rule-notify-actions { margin-top: 6px; }
+.ac-rule-notify-edit-form {
+  margin-top: 8px;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 8px;
+}
+.ac-rule-notify-edit-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  align-items: end;
+}
+.ac-rule-notify-edit-inner label {
+  display: block;
+  font-size: 12px;
+}
+.ac-rule-notify-edit-inner input { width: 100%; }
+.ac-rule-notify-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+@media (max-width: 900px) {
+  .ac-rule-notify-edit-inner { grid-template-columns: 1fr; }
+}
