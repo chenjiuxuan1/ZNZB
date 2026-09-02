@@ -107,6 +107,12 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /重跑历史详情/);
   assert.match(source, /taskUnlocated && !filters\?\.n8n/);
   assert.match(source, /DS 失败任务补充查询/);
+  assert.match(source, /\/api\/ds-n8n-failure-watch\/evidence/);
+  assert.match(source, /function hydrateVisibleN8nEvidence/);
+  assert.match(source, /正在补充查询 DS 失败节点/);
+  assert.match(platformApi, /enrichDsEvidence: false/);
+  assert.match(platformApi, /async resolveN8nFailureEvidence/);
+  assert.match(platformApi, /timeoutMs: 8_000/);
   assert.match(source, /不重跑项目配置/);
   assert.match(source, /data-retry-project-country/);
   assert.match(source, /立即运行测试/);

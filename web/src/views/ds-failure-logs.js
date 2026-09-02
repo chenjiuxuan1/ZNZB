@@ -63,6 +63,7 @@ let model = {
   scheduledKeyword: "",
   scheduledLookbackDays: 7,
   scheduledCountryPages: {},
+  scheduledEvidenceRunId: 0,
   scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {}, groupChatIds: {}, botIds: {} },
   scheduledConfigLoaded: false,
   scheduledMessage: "",
@@ -102,19 +103,90 @@ async function loadScheduledFailures(root) {
   model.scheduledLookbackDays = lookbackDays;
   const selected = COUNTRY_OPTIONS.filter((item) => !model.scheduledCountries.length || model.scheduledCountries.includes(item.code));
   model.scheduledLoading = true;
+  model.scheduledEvidenceRunId += 1;
+  const evidenceRunId = model.scheduledEvidenceRunId;
   model.scheduledCountryPages = {};
   model.scheduledMessage = "";
   model.scheduledResult = aggregateResult(selected.map(queryingCountry));
   paint(root);
+  let loaded = false;
   try {
     const response = await apiGet(`/api/ds-n8n-failure-watch?country=${encodeURIComponent(selected.map((item) => item.code).join(","))}&days=${lookbackDays}`);
     model.scheduledResult = aggregateResult(response.countries || []);
+    loaded = true;
     if (!response.n8nWorkflow) model.scheduledMessage = "未找到 DS 告警对应的 n8n 重跑入口执行记录，请检查 N8N_BASE_URL、N8N_API_KEY 及工作流名称/路径。";
     if (response.notificationErrors?.length) model.scheduledMessage = response.notificationErrors.join("；");
   } catch (error) {
     model.scheduledResult = aggregateResult(selected.map((option) => failedCountry(option, readableQueryError(error))));
   }
   model.scheduledLoading = false;
+  if (isCurrentView()) paint(root);
+  if (loaded) void hydrateVisibleN8nEvidence(root, evidenceRunId);
+}
+
+function n8nEvidenceKey(value = {}) {
+  return `${String(value.country || "").toLowerCase()}:${String(value.projectCode || "")}:${String(value.instanceId || "")}`;
+}
+
+function visibleN8nEvidenceTargets() {
+  const countries = model.scheduledResult?.countries || [];
+  const targets = [];
+  const seen = new Set();
+  for (const country of countries) {
+    if (model.scheduledCountries.length && !model.scheduledCountries.includes(country.country)) continue;
+    const failures = filteredFailures(country.failures || [], {
+      keyword: model.scheduledKeyword,
+      status: "",
+      scheduleCategory: "n8n_auto_trigger",
+      historical: true,
+      n8n: true,
+    });
+    const pageCount = Math.max(1, Math.ceil(failures.length / 4));
+    const page = Math.max(1, Math.min(pageCount, Number(model.scheduledCountryPages[country.country]) || 1));
+    for (const failure of failures.slice((page - 1) * 4, page * 4)) {
+      if (failure.taskName || failure.taskCode || ["loading", "resolved", "not_found", "failed", "unavailable"].includes(failure.taskLookupStatus)) continue;
+      const value = { ...failure, country: country.country };
+      const key = n8nEvidenceKey(value);
+      if (!failure.projectCode || !failure.instanceId || seen.has(key)) continue;
+      seen.add(key);
+      targets.push(value);
+    }
+  }
+  return targets.slice(0, 24);
+}
+
+async function hydrateVisibleN8nEvidence(root, evidenceRunId = model.scheduledEvidenceRunId) {
+  if (evidenceRunId !== model.scheduledEvidenceRunId) return;
+  const targets = visibleN8nEvidenceTargets();
+  if (!targets.length) return;
+  const targetKeys = new Set(targets.map(n8nEvidenceKey));
+  for (const country of model.scheduledResult?.countries || []) {
+    for (const failure of country.failures || []) {
+      if (targetKeys.has(n8nEvidenceKey({ ...failure, country: country.country }))) failure.taskLookupStatus = "loading";
+    }
+  }
+  if (isCurrentView()) paint(root);
+  try {
+    const response = await apiPost("/api/ds-n8n-failure-watch/evidence", { failures: targets });
+    if (evidenceRunId !== model.scheduledEvidenceRunId) return;
+    const evidence = new Map((response.results || []).map((item) => [item.key, item]));
+    for (const country of model.scheduledResult?.countries || []) {
+      for (const failure of country.failures || []) {
+        const patch = evidence.get(n8nEvidenceKey({ ...failure, country: country.country }));
+        if (patch) Object.assign(failure, patch);
+      }
+    }
+  } catch (error) {
+    if (evidenceRunId !== model.scheduledEvidenceRunId) return;
+    for (const country of model.scheduledResult?.countries || []) {
+      for (const failure of country.failures || []) {
+        if (targetKeys.has(n8nEvidenceKey({ ...failure, country: country.country }))) {
+          failure.taskLookupStatus = "failed";
+          failure.taskLookupError = readableQueryError(error);
+        }
+      }
+    }
+  }
   if (isCurrentView()) paint(root);
 }
 
@@ -570,7 +642,7 @@ function paint(root) {
   bindCountryMultiSelect(root, "ds-scheduled-country", (values) => { model.scheduledCountries = values; });
   root.querySelector("#ds-scheduled-lookback-days")?.addEventListener("input", (event) => { model.scheduledLookbackDays = normalizeUiLookbackDays(event.target.value, 7); });
   root.querySelector("#ds-scheduled-query")?.addEventListener("click", () => loadScheduledFailures(root));
-  root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; model.scheduledCountryPages = {}; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); });
+  root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; model.scheduledCountryPages = {}; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); void hydrateVisibleN8nEvidence(root); });
   root.querySelector("#ds-scheduled-owner-save")?.addEventListener("click", () => saveScheduledOwners(root));
   root.querySelector("#ds-notification-process-open")?.addEventListener("click", () => openNotificationProcess(root));
   root.querySelector("#ds-notification-process-refresh")?.addEventListener("click", () => openNotificationProcess(root));
@@ -581,6 +653,7 @@ function paint(root) {
     if (!country) return;
     model.scheduledCountryPages = { ...model.scheduledCountryPages, [country]: page };
     paint(root);
+    void hydrateVisibleN8nEvidence(root);
   }));
 }
 
@@ -1076,6 +1149,8 @@ function renderFailure(item, filters = null) {
     : "";
   const n8nTaskFallback = item.taskLookupStatus === "not_found"
     ? "DS 实例未返回失败任务节点"
+    : item.taskLookupStatus === "loading"
+      ? "正在补充查询 DS 失败节点…"
     : item.taskLookupError
       ? "DS 失败任务查询失败"
       : "DS 告警未返回任务节点名称";

@@ -276,6 +276,9 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/ds-n8n-failure-watch") {
     return sendJson(response, 200, await api.getN8nFailureRestartWatch(Object.fromEntries(url.searchParams.entries())));
   }
+  if (method === "POST" && url.pathname === "/api/ds-n8n-failure-watch/evidence") {
+    return sendJson(response, 200, await api.resolveN8nFailureEvidence(await readBody(request, {})));
+  }
   if (method === "GET" && url.pathname === "/api/ds-failure-retry/control") {
     return sendJson(response, 200, api.getDsFailureRetryControl());
   }
