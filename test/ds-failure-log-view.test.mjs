@@ -106,6 +106,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /打开详情页/);
   assert.match(source, /重跑历史详情/);
   assert.match(source, /taskUnlocated && !filters\?\.n8n/);
+  assert.match(source, /DS 失败任务补充查询/);
   assert.match(source, /不重跑项目配置/);
   assert.match(source, /data-retry-project-country/);
   assert.match(source, /立即运行测试/);

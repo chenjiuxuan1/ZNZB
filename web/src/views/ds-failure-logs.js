@@ -1074,7 +1074,12 @@ function renderFailure(item, filters = null) {
   const unlocatedNotice = taskUnlocated && !filters?.n8n
     ? `<div class="sandbox-status warn"><strong>失败节点尚未定位</strong><span>该工作流状态为失败或停止。请进入 DS 工作流实例，在失败或停止节点中查看日志确定具体原因。${item.dsInstanceUrl ? ` <a href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener noreferrer">查看节点日志 ↗</a>` : ""}</span></div>`
     : "";
-  const taskLabel = item.taskName || item.taskCode || (filters?.n8n ? "DS 告警未返回任务节点名称" : "未定位到失败任务");
+  const n8nTaskFallback = item.taskLookupStatus === "not_found"
+    ? "DS 实例未返回失败任务节点"
+    : item.taskLookupError
+      ? "DS 失败任务查询失败"
+      : "DS 告警未返回任务节点名称";
+  const taskLabel = item.taskName || item.taskCode || (filters?.n8n ? n8nTaskFallback : "未定位到失败任务");
   const scriptLabel = item.taskType === "SQL" ? "出错 SQL" : "任务执行脚本";
   const retryCount = Number(item.retryCount || 0);
   const retryResult = item.retryResult === "recovered"
@@ -1110,6 +1115,7 @@ function renderFailure(item, filters = null) {
     ${filters?.historical && item.n8nDecision ? `<div class="ds-failure-recovery"><strong>n8n 处理规则</strong><span>${escapeHtml(item.n8nDecision)}</span></div>` : ""}
     ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
     ${filters?.n8n ? `<div class="ds-failure-recovery"><strong>n8n 执行日志</strong><span>执行 ${escapeHtml(item.n8nExecutionId || "-")} · 节点 ${escapeHtml(item.n8nLastNode || "-")} · ${escapeHtml(item.n8nTriggerStatus || "-")}${item.n8nRequestId ? ` · 请求 ${escapeHtml(item.n8nRequestId)}` : ""}${item.n8nLogPath ? ` · 远端日志 ${escapeHtml(item.n8nLogPath)}` : ""}</span></div>` : filters?.historical ? `<div class="ds-failure-recovery"><strong>后续重跑结果</strong><span>${escapeHtml(retryResult)} · 重跑 ${retryCount} 次${item.recoveryInstanceId ? ` · 最新重跑实例 ${escapeHtml(item.recoveryInstanceId)} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}` : ""}</span></div>` : item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "查询结果" : "后续状态"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
+    ${filters?.n8n && item.taskLookupError ? `<p class="field-error">DS 失败任务补充查询：${escapeHtml(item.taskLookupError)}</p>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
 }

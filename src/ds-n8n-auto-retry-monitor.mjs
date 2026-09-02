@@ -1,5 +1,6 @@
 import path from "node:path";
 import { N8nClient } from "./n8n-client.mjs";
+import { resolveN8nDsFailureEvidence } from "./ds-failure-log-monitor.mjs";
 import { deepMapStrings, loadEnvFile, readJsonFile } from "./utils.mjs";
 
 const COUNTRIES = ["cn", "ine", "ph", "th", "pk", "mx"];
@@ -89,7 +90,7 @@ export function extractDsAutoRetryRecords(executionDetail) {
     if (typeof value !== "object") return;
 
     const base = { ...inherited };
-    for (const key of ["country", "projectCode", "projectName", "workflowInstanceId", "workflowDefinitionCode", "workflowInstanceName", "commandType", "workflowExecutionStatus", "modifyBy", "runTimes", "workflowStartTime", "workflowEndTime", "workflowHost", "failureReason", "failureMessage"]) {
+    for (const key of ["country", "projectCode", "projectName", "workflowInstanceId", "workflowDefinitionCode", "workflowInstanceName", "commandType", "workflowExecutionStatus", "modifyBy", "runTimes", "workflowStartTime", "workflowEndTime", "workflowHost", "taskInstanceId", "taskName", "taskCode", "taskType", "failureReason", "failureMessage"]) {
       if (value[key] !== undefined && value[key] !== null && value[key] !== "") base[key] = value[key];
     }
     if (isDsRecord(value) || (base.workflowInstanceId && base.commandType)) {
@@ -163,13 +164,29 @@ function normalizedStatus(execution, detail) {
   return "n8n_accepted";
 }
 
+function executionResultData(detail = {}) {
+  return detail?.data?.resultData || detail?.resultData || {};
+}
+
+function executionErrorMessage(detail = {}) {
+  const resultData = executionResultData(detail);
+  const error = resultData.error || detail.error;
+  if (typeof error === "string") return error;
+  return String(error?.message || error?.description || detail.errorMessage || "");
+}
+
+function executionLastNode(detail = {}) {
+  const resultData = executionResultData(detail);
+  return String(resultData.lastNodeExecuted || detail.lastNode || "");
+}
+
 function normalizeRecord(record, execution, detail) {
   const country = normalizeCountry(record.country) || normalizeCountry(record.projectName) || normalizeCountry(record.workflowInstanceName);
   const commandType = String(record.commandType || "").toUpperCase();
   const n8nStatus = normalizedStatus(execution, detail);
   const ignoredStartWorkflow = commandType === "START_PROCESS" || commandType === "START_WORKFLOW";
   const triggerStatus = ignoredStartWorkflow ? "ignored_start_workflow" : n8nStatus;
-  const failureMessage = record.failureReason || record.failureMessage || detail?.errorMessage || (n8nStatus === "n8n_failed" ? "n8n 自动重跑入口执行失败，请查看 n8n 节点错误" : "DS 告警已触发 n8n，远端失败重跑程序已异步启动");
+  const failureMessage = record.failureReason || record.failureMessage || executionErrorMessage(detail) || (n8nStatus === "n8n_failed" ? "n8n 自动重跑入口执行失败，请查看 n8n 节点错误" : "DS 告警已触发 n8n，远端失败重跑程序已异步启动");
   const ack = extractAck(detail);
   const projectCode = record.projectCode ?? record.project_code ?? "";
   const projectName = record.projectName ?? record.project_name ?? "";
@@ -183,9 +200,10 @@ function normalizeRecord(record, execution, detail) {
     workflowCode: String(workflowCode || ""),
     workflowName: String(workflowName || ""),
     instanceId: String(instanceId || ""),
-    taskName: "",
-    taskCode: "",
-    taskType: "",
+    taskInstanceId: String(record.taskInstanceId || record.task_instance_id || ""),
+    taskName: String(record.taskName || record.task_name || record.failedTaskName || record.failed_task_name || ""),
+    taskCode: String(record.taskCode || record.task_code || record.failedTaskCode || record.failed_task_code || ""),
+    taskType: String(record.taskType || record.task_type || ""),
     failureMessage: String(failureMessage),
     failureReason: String(failureMessage),
     instanceState: String(record.workflowExecutionStatus || "FAILURE"),
@@ -211,8 +229,8 @@ function normalizeRecord(record, execution, detail) {
     // no ZNZB-saved project scope is consulted.
     n8nProjectScopeConfigured: false,
     n8nProjectScopeMatched: true,
-    n8nLastNode: detail?.lastNode || "",
-    n8nError: detail?.errorMessage || "",
+    n8nLastNode: executionLastNode(detail),
+    n8nError: executionErrorMessage(detail),
   };
 }
 
@@ -297,6 +315,8 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   projectScope: _projectScope = {},
   projectScopeConfigured: _projectScopeConfigured = false,
   n8nClient,
+  dsEvidenceResolver = resolveN8nDsFailureEvidence,
+  enrichDsEvidence = true,
   workflowName = DEFAULT_WORKFLOW_NAME,
   webhookPath = DEFAULT_WEBHOOK_PATH,
   limit = 250,
@@ -304,7 +324,7 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
 } = {}) {
   const selectedCountries = normalizeCountries(requestedCountries);
   const days = Math.max(1, Math.min(90, Math.trunc(Number(lookbackDays) || 7)));
-  const cacheKey = JSON.stringify([rootDir, selectedCountries, days, workflowName, webhookPath]);
+  const cacheKey = JSON.stringify([rootDir, selectedCountries, days, workflowName, webhookPath, Boolean(enrichDsEvidence)]);
   const cached = cache.get(cacheKey);
   if (!bypassCache && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
   // Avoid lint/no-unused regressions while keeping the old options accepted by
@@ -345,7 +365,7 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
       return { execution, detail: { id: execution.id, workflowId: execution.workflowId, status: "error", errorMessage: error.message, startedAt: execution.startedAt, stoppedAt: execution.stoppedAt } };
     }
   });
-  let totalFailures = 0;
+  const discovered = [];
   for (const { execution, detail } of details) {
     const records = extractDsAutoRetryRecords(detail);
     const effectiveRecords = records.length ? records : [{ country: "", failureReason: detail?.errorMessage || "n8n 执行未返回 DS 告警载荷", commandType: "" }];
@@ -356,15 +376,33 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
       // country. Its DS projectCode/projectName are already parsed into item;
       // there is intentionally no second filter against ZNZB configuration.
       if (!country || !countryMap.has(country)) continue;
-      const countryResult = countryMap.get(country);
-      countryResult.failures.push(item);
-      countryResult.checkedInstances += 1;
-      const projectKey = item.projectCode || item.projectName;
-      if (projectKey && !countryResult.projects.some((project) => String(project.projectCode || project.projectName) === String(projectKey))) {
-        countryResult.projects.push({ projectCode: item.projectCode, projectName: item.projectName, success: true });
-      }
-      totalFailures += 1;
+      discovered.push(item);
     }
+  }
+  const evidenceByInstance = new Map();
+  const enriched = await mapWithConcurrency(discovered, 6, async (item) => {
+    if (!enrichDsEvidence || item.taskName || item.taskCode || !item.instanceId || !item.projectCode) return item;
+    const evidenceKey = `${item.country}:${item.projectCode}:${item.instanceId}`;
+    if (!evidenceByInstance.has(evidenceKey)) {
+      evidenceByInstance.set(evidenceKey, Promise.resolve(dsEvidenceResolver(rootDir, { country: item.country, failure: item })));
+    }
+    try {
+      const evidence = await evidenceByInstance.get(evidenceKey);
+      return { ...item, ...(evidence || {}) };
+    } catch (error) {
+      return { ...item, taskLookupStatus: "failed", taskLookupError: error.message };
+    }
+  });
+  let totalFailures = 0;
+  for (const item of enriched) {
+    const countryResult = countryMap.get(item.country);
+    countryResult.failures.push(item);
+    countryResult.checkedInstances += 1;
+    const projectKey = item.projectCode || item.projectName;
+    if (projectKey && !countryResult.projects.some((project) => String(project.projectCode || project.projectName) === String(projectKey))) {
+      countryResult.projects.push({ projectCode: item.projectCode, projectName: item.projectName, success: true });
+    }
+    totalFailures += 1;
   }
   for (const country of countries) {
     country.checkedProjects = country.projects.length;

@@ -2723,6 +2723,7 @@ export function createPlatformApi({
           countries: country || undefined,
           lookbackDays: filters.days,
           n8nClient: n8nAutoRetryClient,
+          enrichDsEvidence: false,
         });
         for (const countryResult of n8nResult.countries || []) {
           for (const n8nFailure of countryResult.failures || []) {
