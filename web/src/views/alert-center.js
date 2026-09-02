@@ -1399,7 +1399,7 @@ function renderRuleNotifySection(notify) {
   `;
 }
 
-/** 绑定规则弹窗内"编辑接收人"：按渠道类型内联编辑并保存通知规则。 */
+/** 绑定规则弹窗内"编辑接收人"：多行联系人（接收人+电话），"添加联系人"按钮加行。 */
 function bindRuleNotifyEdit(overlay) {
   overlay.querySelectorAll(".ac-rule-notify-edit").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -1416,39 +1416,35 @@ function bindRuleNotifyEdit(overlay) {
       const isDing = ident === "dingtalk" || ident === "dingtalk_robot" || ident === "ali-im";
       const isVoice = ident === "ali-voice" || ident === "ivr" || ident === "phone" || ident === "voice";
       const isEmail = ident === "email";
-      // 已选中的用户（用户名）
-      const selectedSet = new Set(receivers.split(/[,，]/).map((s) => s.trim()).filter(Boolean));
+      // 用户列表（用于输入接收人时自动带出该用户登记的电话）
       let users = [];
       try {
         users = await apiGet("/api/alerts/notify-users");
       } catch { /* 用户列表加载失败仍可手动输入 */ }
-      const userOptions = (Array.isArray(users) ? users : []).map((u) => `
-        <label class="ac-rn-user-opt ${selectedSet.has(u.username) ? "sel" : ""}">
-          <input type="checkbox" value="${escapeHtml(u.username)}" ${selectedSet.has(u.username) ? "checked" : ""}>
-          <span class="ac-rn-user-name">${escapeHtml(u.username)}</span>
-          ${u.phone ? `<span class="ac-rn-user-phone">${escapeHtml(u.phone)}</span>` : ""}
-          ${u.email ? `<span class="ac-rn-user-mail">${escapeHtml(u.email)}</span>` : ""}
-        </label>
+      const userByUsername = new Map((Array.isArray(users) ? users : []).map((u) => [u.username, u]));
+      // 已有接收人拆成多行；第一行带出当前固定电话
+      const existing = receivers.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+      if (!existing.length) existing.push("");
+      const phoneForRow = (username, idx) => {
+        if (idx === 0 && phone) return phone;
+        return userByUsername.get(username)?.phone || "";
+      };
+      const contactRows = existing.map((username, idx) => `
+        <div class="ac-rn-contact-row">
+          <input type="text" class="ac-search-input ac-rn-contact-name" value="${escapeHtml(username)}" placeholder="接收人用户名">
+          <input type="text" class="ac-search-input ac-rn-contact-phone" value="${escapeHtml(phoneForRow(username, idx))}" placeholder="电话（输入用户名自动带出）">
+          <button type="button" class="small ghost ac-rn-contact-del" title="删除该行">✕</button>
+        </div>
       `).join("");
       form.innerHTML = `
         <div class="ac-rule-notify-edit-inner">
-          <div class="ac-rn-user-pick">
-            <label>通知接收人（多选）</label>
-            ${userOptions ? `<div class="ac-rn-user-list">${userOptions}</div>` : `
-              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}" placeholder="用户名，逗号分隔">
-            `}
-          </div>
           ${isVoice ? `
-            <label>固定电话（可选，追加拨打的号码）
-              <input type="text" class="ac-search-input" id="ac-rn-phone" value="${escapeHtml(phone)}" placeholder="如 19381022896">
-            </label>
-          ` : ""}
-          ${isEmail ? `
-            <label>接收邮箱（可选）
-              <input type="text" class="ac-search-input" id="ac-rn-email" value="${escapeHtml(email)}">
-            </label>
-          ` : ""}
-          ${isDing ? `
+            <div class="ac-rn-contacts">
+              <label>电话联系人（每一行一位，可添加多个）</label>
+              <div class="ac-rn-contact-list">${contactRows}</div>
+              <button type="button" class="small ghost ac-rn-contact-add">＋ 添加联系人</button>
+            </div>
+          ` : isDing ? `
             <label>@接收人（邮箱，逗号分隔）
               <input type="text" class="ac-search-input" id="ac-rn-mentions" value="${escapeHtml(mentions)}" placeholder="zhangsan@kn.group, lisi@kn.group">
             </label>
@@ -1456,6 +1452,17 @@ function bindRuleNotifyEdit(overlay) {
               <input type="text" class="ac-search-input" id="ac-rn-bot" value="${escapeHtml(bot)}" placeholder="钉钉机器人 UUID">
             </label>
           ` : ""}
+          ${isEmail ? `
+            <label>接收邮箱
+              <input type="text" class="ac-search-input" id="ac-rn-email" value="${escapeHtml(email)}">
+            </label>
+          ` : ""}
+          ${(!isVoice && !isDing && !isEmail) ? `
+            <label>接收人（用户名，逗号分隔）
+              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
+            </label>
+          ` : ""}
+          <div class="muted small ac-rn-tip">保存后按所选用户逐个拨打（取用户表登记的电话），如需指定其它号码可直接改对应行的电话。</div>
           <div class="ac-rule-notify-edit-actions">
             <button class="small primary ac-rn-save">保存</button>
             <button class="small ac-rn-cancel">取消</button>
@@ -1463,17 +1470,32 @@ function bindRuleNotifyEdit(overlay) {
         </div>
       `;
       form.hidden = false;
-      // 用户多选高亮切换
-      form.querySelectorAll(".ac-rn-user-opt input").forEach((cb) => {
-        cb.addEventListener("change", () => cb.closest(".ac-rn-user-opt").classList.toggle("sel", cb.checked));
+      // 每行：输入用户名自动带出电话；删除行
+      form.querySelectorAll(".ac-rn-contact-row").forEach((row) => bindRowEvents(row, userByUsername));
+      // 添加联系人行
+      form.querySelector(".ac-rn-contact-add")?.addEventListener("click", () => {
+        const list = form.querySelector(".ac-rn-contact-list");
+        const row = document.createElement("div");
+        row.className = "ac-rn-contact-row";
+        row.innerHTML = `
+          <input type="text" class="ac-search-input ac-rn-contact-name" placeholder="接收人用户名">
+          <input type="text" class="ac-search-input ac-rn-contact-phone" placeholder="电话（输入用户名自动带出）">
+          <button type="button" class="small ghost ac-rn-contact-del" title="删除该行">✕</button>
+        `;
+        list.appendChild(row);
+        bindRowEvents(row, userByUsername);
       });
       form.querySelector(".ac-rn-cancel").addEventListener("click", () => { form.hidden = true; });
       form.querySelector(".ac-rn-save").addEventListener("click", async () => {
-        // 收集选中的用户名
-        const checked = [...form.querySelectorAll('.ac-rn-user-opt input:checked')].map((cb) => cb.value);
-        const manualInput = form.querySelector("#ac-rn-rcv");
-        const manual = manualInput ? (manualInput.value || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean) : [];
-        const receiversArr = [...new Set([...checked, ...manual])];
+        // 收集每行的接收人 + 电话
+        const receiversArr = [];
+        const rowPhones = [];
+        form.querySelectorAll(".ac-rn-contact-row").forEach((row) => {
+          const name = row.querySelector(".ac-rn-contact-name")?.value.trim();
+          const ph = row.querySelector(".ac-rn-contact-phone")?.value.trim();
+          if (name) receiversArr.push(name);
+          if (ph) rowPhones.push(ph);
+        });
         const params = {};
         // 钉钉：@接收人（mentions）+ 机器人 ID
         if (isDing) {
@@ -1482,7 +1504,11 @@ function bindRuleNotifyEdit(overlay) {
           const botVal = (form.querySelector("#ac-rn-bot")?.value || "").trim();
           if (botVal) params.botId = botVal;
         }
-        if (form.querySelector("#ac-rn-phone")?.value.trim()) params.Mobile = form.querySelector("#ac-rn-phone").value.trim();
+        // 电话：多行时存多个号码（用户表兜底）；若仅一个号码且为用户，仍写 Mobile 兼容
+        if (isVoice && rowPhones.length) {
+          if (rowPhones.length === 1 && receiversArr.length <= 1) params.Mobile = rowPhones[0];
+          else params.Mobile = rowPhones.join(",");
+        }
         if (form.querySelector("#ac-rn-email")?.value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
         const saveBtn = form.querySelector(".ac-rn-save");
         saveBtn.disabled = true;
@@ -1500,6 +1526,19 @@ function bindRuleNotifyEdit(overlay) {
       });
     });
   });
+}
+
+/** 联系人行事件：输入用户名自动带出用户登记的电话；删除该行。 */
+function bindRowEvents(row, userByUsername) {
+  const nameInput = row.querySelector(".ac-rn-contact-name");
+  const phoneInput = row.querySelector(".ac-rn-contact-phone");
+  if (nameInput && phoneInput) {
+    nameInput.addEventListener("input", () => {
+      const u = userByUsername.get(nameInput.value.trim());
+      if (u?.phone) phoneInput.value = u.phone;
+    });
+  }
+  row.querySelector(".ac-rn-contact-del")?.addEventListener("click", () => row.remove());
 }
 
 /** 通知渠道的接收人摘要（接收人 / 电话 / 邮箱 / 地址）。 */
