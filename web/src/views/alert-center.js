@@ -1543,10 +1543,10 @@ function bindRuleNotifyEdit(overlay, ruleId, reload) {
  */
 async function saveNotifyEditForm(form, opts) {
   const { nrId, isDing, isVoice, isEmail, userByUsername, overlay, ruleId, reload } = opts;
-  // 每行分流：已知用户 -> receivers；未知用户 -> 电话作为固定号码 Mobile
+  // 每行分流：已知用户 -> receivers；未知用户 -> newUsers（自动在夜莺创建）
   const receiversArr = [];
   const fixedPhones = [];
-  const unknownNames = [];
+  const newUsers = [];
   form.querySelectorAll(".ac-rn-contact-row").forEach((row) => {
     const name = row.querySelector(".ac-rn-contact-name")?.value.trim();
     const ph = row.querySelector(".ac-rn-contact-phone")?.value.trim();
@@ -1554,8 +1554,11 @@ async function saveNotifyEditForm(form, opts) {
     if (name && userByUsername.has(name)) {
       receiversArr.push(name);
       if (ph) fixedPhones.push(ph);
+    } else if (name && isVoice) {
+      // 语音渠道：未知用户名 -> 自动在夜莺创建该用户（用填的电话）
+      newUsers.push({ username: name, phone: ph || "", nickname: name });
     } else {
-      if (name) unknownNames.push(name);
+      if (name) newUsers.push({ username: name, phone: ph || "", nickname: name });
       if (ph) fixedPhones.push(ph);
     }
   });
@@ -1582,17 +1585,19 @@ async function saveNotifyEditForm(form, opts) {
   try {
     const payload = {};
     if (receiversArr.length) payload.receivers = receiversArr;
+    if (newUsers.length) payload.newUsers = newUsers;
     if (Object.keys(params).length) payload.params = params;
     const resp = await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
     const unmatched = resp?.unmatched || [];
+    const created = resp?.created || [];
     const detail = [];
     if (receiversArr.length) detail.push(`已关联 ${receiversArr.length} 位系统用户：${receiversArr.join("、")}`);
+    if (created.length) detail.push(`已自动在夜莺创建 ${created.length} 位用户并加入接收：${created.join("、")}`);
     if (params.Mobile) detail.push(`固定电话：${params.Mobile}（告警时拨打）`);
-    if (unmatched.length) detail.push(`未识别的用户名已忽略：${unmatched.join("、")}`);
-    if (unknownNames.length) detail.push(`${unknownNames.join("、")} 不在夜莺用户表，已按填入的电话作为固定号码。`);
+    if (unmatched.length) detail.push(`未能创建/识别的用户名已忽略：${unmatched.join("、")}`);
     if (fixedPhones.length > 1) detail.push("夜莺单个固定电话限制，仅保留了第一个号码。");
     if (!detail.length) detail.push("通知配置已保存。");
-    showToast("已保存通知配置", detail, unmatched.length || unknownNames.length ? "warn" : "success");
+    showToast("已保存通知配置", detail, unmatched.length ? "warn" : "success");
     form.hidden = true;
     // 刷新弹窗内通知区 + 规则表通知列，让修改立即可见
     try {
