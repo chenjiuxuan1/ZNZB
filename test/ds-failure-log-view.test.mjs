@@ -46,6 +46,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /function renderNotificationProcessModal/);
   assert.match(source, /负责人私聊/);
   assert.match(source, /国家群发/);
+  assert.match(source, /两个模块也会通过对应国家的 TV bot_id 群发/);
+  assert.doesNotMatch(source, /定时失败任务重跑仍只私聊/);
   assert.match(source, /\/api\/ds-failure-retry\/notifications\?limit=300/);
   assert.match(source, /国家群聊 TV bot_id/);
   assert.match(source, /botIds/);

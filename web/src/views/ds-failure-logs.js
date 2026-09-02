@@ -204,7 +204,7 @@ async function saveScheduledOwners(root) {
   for (const option of COUNTRY_OPTIONS) botIds[option.code] = root.querySelector(`[data-scheduled-bot="${option.code}"]`)?.value || "";
   try {
     model.scheduledConfig = await apiPut("/api/ds-scheduled-failure-watch/config", { ...model.scheduledConfig, owners, groupChatIds, botIds });
-    model.scheduledMessage = "负责人和国家群聊已保存；n8n 失败告警会同时私聊负责人并发送到对应群聊。";
+    model.scheduledMessage = "负责人和国家群聊已保存；两个重跑模块都会私聊负责人并发送到对应国家群聊，同时在群里提醒负责人。";
   } catch (error) {
     model.scheduledMessage = `负责人配置保存失败：${error.message}`;
   }
@@ -681,7 +681,7 @@ function renderScheduledFailureWatch() {
       ${model.scheduledMessage ? `<div class="sandbox-status ${/失败|错误/.test(model.scheduledMessage) ? "error" : "warn"}"><span>${escapeHtml(model.scheduledMessage)}</span></div>` : ""}
     </section>
     <section class="panel ds-scheduled-owner-panel">
-      <div class="detail-header compact-header"><div><h3 class="panel-title">两个重跑模块共用负责人配置</h3><p class="muted">负责人邮箱用于两个模块的私聊；n8n 失败重启监控还会通过对应国家的 TV bot_id 群发并艾特负责人。定时失败任务重跑仍只私聊。</p></div><div class="ds-retry-header-actions"><button class="secondary" id="ds-notification-process-open">通知进程</button><button class="primary" id="ds-scheduled-owner-save">保存通知配置</button></div></div>
+      <div class="detail-header compact-header"><div><h3 class="panel-title">两个重跑模块共用负责人配置</h3><p class="muted">负责人邮箱用于两个模块的私聊；两个模块也会通过对应国家的 TV bot_id 群发，并在群里艾特负责人。</p></div><div class="ds-retry-header-actions"><button class="secondary" id="ds-notification-process-open">通知进程</button><button class="primary" id="ds-scheduled-owner-save">保存通知配置</button></div></div>
       <div class="ds-scheduled-owner-grid">${COUNTRY_OPTIONS.map((option) => `<div class="ds-scheduled-notify-card"><strong>${option.flag} ${option.name}</strong><label><span>负责人邮箱</span><input data-scheduled-owner="${option.code}" value="${escapeHtml(owners[option.code] || "")}" placeholder="多个邮箱用逗号分隔"></label><label><span>国家群聊 TV bot_id</span><input data-scheduled-bot="${option.code}" value="${escapeHtml(botIds[option.code] || "")}" placeholder="填写该国家群机器人 bot_id"></label><input type="hidden" data-scheduled-group="${option.code}" value="${escapeHtml(groupChatIds[option.code] || "")}"></div>`).join("")}</div>
     </section>
     <section class="ds-failure-country-list">${model.scheduledResult ? renderScheduledCountries(result.countries || []) : `<section class="panel ds-failure-empty"><strong>尚未查询</strong><p class="muted">后台会持续监控并通知；也可选择国家后手动查询当前结果。</p></section>`}</section>
