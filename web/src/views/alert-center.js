@@ -1487,14 +1487,21 @@ function bindRuleNotifyEdit(overlay) {
       });
       form.querySelector(".ac-rn-cancel").addEventListener("click", () => { form.hidden = true; });
       form.querySelector(".ac-rn-save").addEventListener("click", async () => {
-        // 收集每行的接收人 + 电话
+        // 每行分流：已知用户 -> receivers；未知用户 -> 电话作为固定号码 Mobile
         const receiversArr = [];
-        const rowPhones = [];
+        const fixedPhones = [];
+        const unknownNames = [];
         form.querySelectorAll(".ac-rn-contact-row").forEach((row) => {
           const name = row.querySelector(".ac-rn-contact-name")?.value.trim();
           const ph = row.querySelector(".ac-rn-contact-phone")?.value.trim();
-          if (name) receiversArr.push(name);
-          if (ph) rowPhones.push(ph);
+          if (!name && !ph) return; // 空行忽略
+          if (name && userByUsername.has(name)) {
+            receiversArr.push(name);
+            if (ph) fixedPhones.push(ph);
+          } else {
+            if (name) unknownNames.push(name);
+            if (ph) fixedPhones.push(ph);
+          }
         });
         const params = {};
         // 钉钉：@接收人（mentions）+ 机器人 ID
@@ -1504,20 +1511,29 @@ function bindRuleNotifyEdit(overlay) {
           const botVal = (form.querySelector("#ac-rn-bot")?.value || "").trim();
           if (botVal) params.botId = botVal;
         }
-        // 电话：多行时存多个号码（用户表兜底）；若仅一个号码且为用户，仍写 Mobile 兼容
-        if (isVoice && rowPhones.length) {
-          if (rowPhones.length === 1 && receiversArr.length <= 1) params.Mobile = rowPhones[0];
-          else params.Mobile = rowPhones.join(",");
+        // 电话：固定号码（非系统用户或补充号码），夜莺只支持单个 Mobile
+        if (isVoice && fixedPhones.length) {
+          params.Mobile = fixedPhones[0];
         }
         if (form.querySelector("#ac-rn-email")?.value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
+        // 校验：至少填一个
+        if (!receiversArr.length && !fixedPhones.length && !Object.keys(params).length) {
+          alert("请至少填写一个联系人（用户名或电话）。");
+          return;
+        }
         const saveBtn = form.querySelector(".ac-rn-save");
         saveBtn.disabled = true;
         try {
           const payload = {};
           if (receiversArr.length) payload.receivers = receiversArr;
           if (Object.keys(params).length) payload.params = params;
-          await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
-          alert("已保存通知配置。");
+          const resp = await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
+          const unmatched = resp?.unmatched || [];
+          const tip = [];
+          if (unmatched.length) tip.push(`未识别的用户名（已忽略）：${unmatched.join("、")}`);
+          if (unknownNames.length) tip.push(`${unknownNames.join("、")} 不在夜莺用户表，已按其电话作为固定号码保存。`);
+          if (fixedPhones.length > 1) tip.push("多个固定号码仅保留第一个（夜莺单个电话限制）。");
+          alert(["已保存通知配置。", ...tip].join("\n"));
           form.hidden = true;
         } catch (error) {
           saveBtn.disabled = false;

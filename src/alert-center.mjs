@@ -180,13 +180,18 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     const existing = (await nightingale.getNotifyRules()).find((r) => Number(r.id) === Number(notifyRuleId));
     if (!existing) throw new Error(`通知规则 ${notifyRuleId} 不存在`);
     const merged = { ...existing, ...body };
-    // 若传 {receivers}（用户名列表）：解析为 user_ids 后写入第一个 notify_config
+    // 若传 {receivers}（用户名列表）：解析为 user_ids 写入第一个 notify_config。
+    // 找不到的用户名不再抛错，返回 unmatched 供前端把其电话存为固定号码。
+    let unmatched = [];
     if (Array.isArray(body?.receivers)) {
       await ensureNotifyMap();
       const byName = new Map(notifyCache.users.map((u) => [u.username, u.id]));
-      const ids = body.receivers.map((name) => byName.get(String(name).trim())).filter((id) => id != null);
-      if (body.receivers.length && !ids.length) {
-        throw new Error(`未找到接收人：${body.receivers.join("、")}`);
+      const ids = [];
+      unmatched = [];
+      for (const name of body.receivers) {
+        const id = byName.get(String(name).trim());
+        if (id != null) ids.push(id);
+        else unmatched.push(String(name).trim());
       }
       merged.notify_configs = (merged.notify_configs || []).map((nc, i) =>
         i === 0 ? { ...nc, params: { ...(nc.params || {}), user_ids: ids } } : nc
@@ -201,7 +206,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     }
     await nightingale.post(`/api/n9e/notify-rules/${notifyRuleId}`, merged);
     notifyCacheAt = 0; // 失效缓存
-    return { ok: true, notifyRuleId, name: merged.name || "" };
+    return { ok: true, notifyRuleId, name: merged.name || "", unmatched };
   }
 
   /** 启用/停用通知规则。 */
