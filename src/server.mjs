@@ -511,6 +511,15 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.applyScript(id, body || {}));
   }
+
+  // ---- 多国一致性校验结果（最近 7 次） ----
+  if (method === "GET" && url.pathname === "/api/multi-country/check-results") {
+    return sendJson(response, 200, await alertRegistry.listCheckResults());
+  }
+  if (method === "POST" && url.pathname === "/api/multi-country/check-results") {
+    const body = await readBody(request, {});
+    return sendJson(response, 201, await alertRegistry.appendCheckResult(body || {}));
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 
