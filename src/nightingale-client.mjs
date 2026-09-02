@@ -172,6 +172,11 @@ export class NightingaleClient {
     return Array.isArray(dat) ? dat : dat?.list || [];
   }
 
+  /** 创建用户（通知接收人自动新增用）。 */
+  async createUser(user) {
+    return this.post("/api/n9e/users", user);
+  }
+
   // ---------------------------------------------------------------------------
   // 告警规则写入（配置能力）
   // 夜莺 v8 正确路由（从前端 bundle 提取）：
