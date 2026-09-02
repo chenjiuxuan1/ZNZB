@@ -7479,8 +7479,8 @@ button.small[disabled] {
 
 /* ---- 规则编辑弹窗 ---- */
 .ac-rule-modal {
-  max-width: 760px;
-  max-height: 700px;
+  max-width: 840px;
+  max-height: 760px;
 }
 
 .ac-rule-modal-title {
@@ -7553,9 +7553,19 @@ button.small[disabled] {
   border: 1px solid #d0d5dd;
   border-radius: 8px;
   color: #1e293b;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 400;
-  padding: 8px 10px;
+  padding: 6px 9px;
+  width: 100%;
+}
+
+/* 覆盖全局 input.ac-search-input 的筛选器 flex 拉伸，避免编辑弹窗内被撑高 */
+.ac-rule-form label > input.ac-search-input,
+.ac-rule-form label > select.ac-search-input {
+  flex: none;
+  height: 34px;
+  max-width: none;
+  min-width: 0;
   width: 100%;
 }
 
@@ -7573,7 +7583,7 @@ button.small[disabled] {
   border-radius: 8px !important;
   color: #e2e8f0 !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
-  font-size: 12px !important;
+  font-size: 13px !important;
   line-height: 1.6 !important;
   padding: 12px !important;
   resize: vertical;

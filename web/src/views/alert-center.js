@@ -1592,7 +1592,7 @@ function openRuleEditModal(rule, reload) {
           ${renderRuleNotifySection(rule.notify)}
           <section class="ac-rule-card">
             <header class="ac-rule-card-head"><span>${isSql ? "SQL 查询" : "PromQL 查询"}</span><span class="muted small">${isSql ? "SQL 规则" : "PromQL 规则"}</span></header>
-            <textarea class="ac-rule-query" id="ac-rule-query" rows="4" spellcheck="false" placeholder="${isSql ? "SELECT …" : "up == 0"}">${escapeHtml(query)}</textarea>
+            <textarea class="ac-rule-query" id="ac-rule-query" rows="9" spellcheck="false" placeholder="${isSql ? "SELECT …" : "up == 0"}">${escapeHtml(query)}</textarea>
           </section>
           <section class="ac-rule-card ac-rule-danger">
             <header class="ac-rule-card-head"><span>危险操作</span><span class="muted small">停用后不再触发告警</span></header>
