@@ -29,6 +29,11 @@ const STATUS_LABELS = {
   n8n_running: { label: "n8n 执行中", className: "warn" },
   n8n_failed: { label: "n8n 执行失败", className: "danger" },
   ignored_start_workflow: { label: "仅扫描未重跑", className: "idle" },
+  n8n_recovered: { label: "已修复", className: "ok" },
+  n8n_unresolved: { label: "未修复", className: "danger" },
+  n8n_repairing: { label: "修复中", className: "warn" },
+  n8n_unknown: { label: "修复结果待确认", className: "warn" },
+  n8n_not_retried: { label: "仅扫描未重跑", className: "idle" },
 };
 
 let model = {
@@ -1136,7 +1141,7 @@ function filteredFailures(failures, filters = null) {
 
 function renderFailure(item, filters = null) {
   const displayStatus = filters?.n8n
-    ? (item.n8nTriggerStatus || "n8n_accepted")
+    ? n8nRepairDisplayStatus(item)
     : (item.repairStatus === "recovered" ? "recovered" : item.failureType || item.repairStatus || "unresolved");
   const status = STATUS_LABELS[displayStatus] || STATUS_LABELS.unresolved;
   const taskUnlocated = !item.taskName && !item.taskCode;
@@ -1193,6 +1198,14 @@ function renderFailure(item, filters = null) {
     ${filters?.n8n && item.taskLookupError ? `<p class="field-error">DS 失败任务补充查询：${escapeHtml(item.taskLookupError)}</p>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
+}
+
+function n8nRepairDisplayStatus(item = {}) {
+  if (item.retryResult === "recovered" || item.repairStatus === "recovered") return "n8n_recovered";
+  if (["failed", "timeout_needs_owner"].includes(item.retryResult) || item.repairStatus === "unresolved") return "n8n_unresolved";
+  if (item.retryResult === "running" || item.repairStatus === "repairing") return "n8n_repairing";
+  if (item.retryResult === "not_triggered" || item.repairStatus === "not_retried") return "n8n_not_retried";
+  return "n8n_unknown";
 }
 
 function failureReasonForDisplay(item = {}) {
