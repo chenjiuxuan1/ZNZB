@@ -142,6 +142,8 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
           receivers: (p.user_ids || []).map((id) => userById.get(Number(id))?.username || `用户${id}`).filter(Boolean),
           phone: p.Mobile || p.mobile || "",
           email: p.email || "",
+          botId: p.botId || p.bot_id || "",
+          mentions: p.mentions || "",
         };
       });
       result.push({

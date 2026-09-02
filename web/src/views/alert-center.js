@@ -1375,9 +1375,12 @@ function renderRuleNotifySection(notify) {
           <div class="ac-rule-notify-head">
             <strong>${escapeHtml(nr.ruleName || `通知规则 #${nr.ruleId}`)}</strong>
             <button class="small ghost ac-rule-notify-edit" data-nr-id="${escapeHtml(String(nr.ruleId))}"
+              data-ident="${escapeHtml(nr.channels?.[0]?.ident || "")}"
               data-rcv="${escapeHtml(nr.channels?.[0]?.receivers?.join(",") || "")}"
               data-phone="${escapeHtml(nr.channels?.[0]?.phone || "")}"
-              data-email="${escapeHtml(nr.channels?.[0]?.email || "")}">✏️ 编辑接收人</button>
+              data-email="${escapeHtml(nr.channels?.[0]?.email || "")}"
+              data-bot="${escapeHtml(nr.channels?.[0]?.botId || "")}"
+              data-mentions="${escapeHtml(nr.channels?.[0]?.mentions || "")}">✏️ 编辑接收人</button>
             <span class="badge ${nr.enable ? "ok" : "warn"}">${nr.enable ? "启用" : "停用"}</span>
           </div>
           <div class="ac-rule-notify-channels">
@@ -1396,7 +1399,7 @@ function renderRuleNotifySection(notify) {
   `;
 }
 
-/** 绑定规则弹窗内"编辑接收人"：内联输入接收人/电话/邮箱后保存通知规则。 */
+/** 绑定规则弹窗内"编辑接收人"：按渠道类型内联编辑并保存通知规则。 */
 function bindRuleNotifyEdit(overlay) {
   overlay.querySelectorAll(".ac-rule-notify-edit").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -1404,20 +1407,49 @@ function bindRuleNotifyEdit(overlay) {
       const form = item.querySelector(".ac-rule-notify-edit-form");
       if (!form.hidden) { form.hidden = true; return; }
       const nrId = btn.dataset.nrId;
+      const ident = btn.dataset.ident || "";
       const receivers = btn.dataset.rcv || "";
       const phone = btn.dataset.phone || "";
       const email = btn.dataset.email || "";
+      const bot = btn.dataset.bot || "";
+      const mentions = btn.dataset.mentions || "";
+      const isDing = ident === "dingtalk" || ident === "dingtalk_robot" || ident === "ali-im";
+      const isVoice = ident === "ali-voice" || ident === "ivr" || ident === "phone" || ident === "voice";
+      const isEmail = ident === "email";
       form.innerHTML = `
         <div class="ac-rule-notify-edit-inner">
-          <label>接收人（夜莺用户名，逗号分隔）
-            <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
-          </label>
-          <label>联系电话
-            <input type="text" class="ac-search-input" id="ac-rn-phone" value="${escapeHtml(phone)}">
-          </label>
-          <label>接收邮箱
-            <input type="text" class="ac-search-input" id="ac-rn-email" value="${escapeHtml(email)}">
-          </label>
+          ${isDing ? `
+            <label>@接收人（邮箱，逗号分隔）
+              <input type="text" class="ac-search-input" id="ac-rn-mentions" value="${escapeHtml(mentions)}" placeholder="zhangsan@kn.group, lisi@kn.group">
+            </label>
+            <label>机器人 ID（botId）
+              <input type="text" class="ac-search-input" id="ac-rn-bot" value="${escapeHtml(bot)}" placeholder="钉钉机器人 UUID">
+            </label>
+            <label>接收人（用户名，逗号分隔）
+              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
+            </label>
+          ` : ""}
+          ${isVoice ? `
+            <label>接收人（用户名，逗号分隔）
+              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
+            </label>
+            <label>联系电话
+              <input type="text" class="ac-search-input" id="ac-rn-phone" value="${escapeHtml(phone)}">
+            </label>
+          ` : ""}
+          ${isEmail ? `
+            <label>接收人（用户名，逗号分隔）
+              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
+            </label>
+            <label>接收邮箱
+              <input type="text" class="ac-search-input" id="ac-rn-email" value="${escapeHtml(email)}">
+            </label>
+          ` : ""}
+          ${(!isDing && !isVoice && !isEmail) ? `
+            <label>接收人（用户名，逗号分隔）
+              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
+            </label>
+          ` : ""}
           <div class="ac-rule-notify-edit-actions">
             <button class="small primary ac-rn-save">保存</button>
             <button class="small ac-rn-cancel">取消</button>
@@ -1427,17 +1459,26 @@ function bindRuleNotifyEdit(overlay) {
       form.hidden = false;
       form.querySelector(".ac-rn-cancel").addEventListener("click", () => { form.hidden = true; });
       form.querySelector(".ac-rn-save").addEventListener("click", async () => {
-        const receiversArr = (form.querySelector("#ac-rn-rcv").value || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+        const rcvInput = form.querySelector("#ac-rn-rcv");
+        const receiversArr = (rcvInput?.value || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean);
         const params = {};
-        if (form.querySelector("#ac-rn-phone").value.trim()) params.Mobile = form.querySelector("#ac-rn-phone").value.trim();
-        if (form.querySelector("#ac-rn-email").value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
+        // 钉钉：@接收人（mentions）+ 机器人 ID
+        if (isDing) {
+          const mentionsVal = (form.querySelector("#ac-rn-mentions")?.value || "").trim();
+          if (mentionsVal) params.mentions = mentionsVal;
+          const botVal = (form.querySelector("#ac-rn-bot")?.value || "").trim();
+          if (botVal) params.botId = botVal;
+        }
+        if (form.querySelector("#ac-rn-phone")?.value.trim()) params.Mobile = form.querySelector("#ac-rn-phone").value.trim();
+        if (form.querySelector("#ac-rn-email")?.value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
         const saveBtn = form.querySelector(".ac-rn-save");
         saveBtn.disabled = true;
         try {
-          const payload = { receivers: receiversArr };
+          const payload = {};
+          if (receiversArr.length) payload.receivers = receiversArr;
           if (Object.keys(params).length) payload.params = params;
           await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
-          alert("已保存通知接收人。");
+          alert("已保存通知配置。");
           form.hidden = true;
         } catch (error) {
           saveBtn.disabled = false;
