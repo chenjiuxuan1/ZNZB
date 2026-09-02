@@ -1164,7 +1164,17 @@ async function bindConfigEvents(root, body, groups) {
       const totalPages = Math.ceil(filtered.length / AC_PAGE_SIZE) || 1;
       acPages.rules = Math.min(Math.max(acPages.rules, 1), totalPages);
       rulesTable.innerHTML = renderRulesTable(filtered, acPages.rules);
-      bindRulesActions(rulesTable, () => { acPages.rules = 1; drawRules(); });
+      // reload：重新拉取规则列表（让通知摘要列拿到最新值），再重画，避免保存后表格仍是旧值
+      bindRulesActions(rulesTable, async () => {
+        acPages.rules = 1;
+        const bg = bgSelect.value;
+        if (!bg) return;
+        try {
+          const rules = await apiGet(`/api/alerts/rules?busiGroup=${bg}`);
+          acRulesCache = rules;
+        } catch { /* 拉取失败保留旧缓存 */ }
+        drawRules();
+      });
       if (rulesPager) {
         rulesPager.innerHTML = renderAcPager("rules", acPages.rules, totalPages, filtered.length, !!(q || status !== "all" || hideEmpty));
         bindAcPagerEvents(rulesPager, (page) => { acPages.rules = page; drawRules(); });
@@ -1308,7 +1318,7 @@ function bindRulesActions(table, reload) {
       const disabled = btn.dataset.disabled === "1";
       const rule = acRulesCache.find((r) => String(r.id) === String(ruleId));
       try {
-        await apiPost(`/api/alerts/rules/${ruleId}`, { disabled: !disabled ? 1 : 0, groupId: rule?.group_id });
+        await apiPost(`/api/alerts/rules/${ruleId}`, { disabled: !disabled ? 1 : 0, groupId: rule?.groupId ?? rule?.group_id });
         await reload();
       } catch (error) {
         table.innerHTML += `<div class="error">${escapeHtml(error.message)}</div>`;
@@ -1496,8 +1506,8 @@ function bindRuleNotifyEdit(overlay, ruleId, reload) {
           ` : ""}
           <div class="muted small ac-rn-tip">保存后按所选用户逐个拨打（取用户表登记的电话），如需指定其它号码可直接改对应行的电话。</div>
           <div class="ac-rule-notify-edit-actions">
-            <button class="small primary ac-rn-save">保存</button>
-            <button class="small ac-rn-cancel">取消</button>
+            <button type="button" class="small primary ac-rn-save">保存</button>
+            <button type="button" class="small ac-rn-cancel">取消</button>
           </div>
         </div>
       `;
@@ -1821,7 +1831,7 @@ function openRuleEditModal(rule, reload) {
     const newQuery = overlay.querySelector("#ac-rule-query").value.trim();
     const disabled = overlay.querySelector("#ac-rule-disabled").checked ? 1 : 0;
     try {
-      const body = { name, severity, disabled, groupId: rule.group_id };
+      const body = { name, severity, disabled, groupId: rule.groupId ?? rule.group_id };
       // 查询字段：写 rule_config.queries[0]（保留现有 queries 结构），PromQL 规则同时写顶层 prom_ql
       const firstQuery = queries.length ? { ...queries[0] } : (isSql ? { sql: newQuery, severity } : { prom_ql: newQuery, severity, unit: "none" });
       if (isSql) firstQuery.sql = newQuery; else firstQuery.prom_ql = newQuery;
