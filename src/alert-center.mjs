@@ -498,11 +498,31 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return nightingale.getBusiGroups();
   }
 
-  /** 某业务组告警规则。 */
+  /** 某业务组告警规则（附加 notifySummary：通知渠道类型 + 接收人）。 */
   async function getAlertRules(busiGroup) {
     const { nightingale } = await loadConfig();
     if (!nightingale) return [];
-    return nightingale.getAlertRules(busiGroup);
+    const rules = await nightingale.getAlertRules(busiGroup);
+    if (!Array.isArray(rules)) return rules;
+    try { await ensureNotifyMap(); } catch { /* 通知信息解析失败不影响规则列表 */ }
+    return rules.map((r) => {
+      const notify = (r.notify_rule_ids || []).length ? parseNotifyInfo(r) : [];
+      return { ...r, notifySummary: summarizeNotify(notify) };
+    });
+  }
+
+  /** 把解析出的通知配置压缩成可读摘要（渠道类型 + 接收人）。 */
+  function summarizeNotify(notify) {
+    const parts = [];
+    for (const nr of Array.isArray(notify) ? notify : []) {
+      for (const ch of nr?.channels || []) {
+        const type = collectNotifyChannelNames([{ channels: [ch] }])[0] || ch?.channelName || ch?.ident || "未知";
+        const rc = [ch?.receivers || [], ch?.phone, ch?.email].flat().filter(Boolean);
+        const who = rc.length ? rc.join("、") : (nr?.ruleName || "");
+        parts.push(`${type}→${who}`);
+      }
+    }
+    return parts;
   }
 
   /** 新建夜莺告警规则。body 为规则字段。 */
@@ -605,20 +625,24 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     const { nightingale } = await loadConfig();
     if (!nightingale) return null;
     await ensureNotifyMap();
-    const detail = await nightingale.get(`/api/n9e/alert-rules/${ruleId}`);
-    if (!detail) return null;
-    // 解析关联通知规则
-    const notifyIds = detail?.notify_rule_ids || [];
-    const notify = [];
-    for (const nrId of notifyIds) {
-      const nr = notifyCache.rules.find((r) => Number(r.id) === Number(nrId));
-      if (!nr) continue;
-      notify.push({
-        ruleId: nr.id,
-        ruleName: nr.name || "",
-        enable: Boolean(nr.enable),
-      });
+    // 优先单接口，失败则遍历业务组从列表查找（列表字段完整，含 notify_rule_ids）
+    let detail = null;
+    try {
+      detail = await nightingale.get(`/api/n9e/alert-rules/${ruleId}`);
+    } catch { /* 忽略，走列表查找 */ }
+    if (!detail || typeof detail !== "object" || !detail.id) {
+      try {
+        const groups = await nightingale.getBusiGroups();
+        for (const g of groups) {
+          const rules = await nightingale.getAlertRules(g.id).catch(() => []);
+          const found = (Array.isArray(rules) ? rules : []).find((r) => Number(r.id) === Number(ruleId));
+          if (found) { detail = found; break; }
+        }
+      } catch { /* 忽略 */ }
     }
+    if (!detail) return null;
+    // 解析关联通知规则（渠道 / 接收人 / 用户组）
+    const notify = await parseNotifyInfo(detail);
     return {
       id: detail.id,
       name: detail.name || "",
@@ -631,7 +655,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       rule_config: detail.rule_config || {},
       prom_eval_interval: detail.prom_eval_interval,
       prom_for_duration: detail.prom_for_duration,
-      notify_rule_ids: notifyIds,
+      notify_rule_ids: detail?.notify_rule_ids || [],
       notify,
       runbook_url: detail.runbook_url || "",
       note: detail.note || "",

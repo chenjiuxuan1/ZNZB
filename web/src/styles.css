@@ -8282,3 +8282,56 @@ select.ar-field {
   color: #1d4ed8;
 }
 .ar-btn-code:hover { background: #e2eaff; }
+
+/* 规则通知配置区 */
+.ac-notify-summary {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.ac-rule-notify {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  margin-bottom: 10px;
+}
+.ac-rule-notify-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 8px;
+}
+.ac-rule-notify-item {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.ac-rule-notify-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ac-rule-notify-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ac-rule-notify-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.ac-rule-notify-chip b { color: #1d4ed8; }
+.ac-rule-notify-tip { margin-top: 6px; }
