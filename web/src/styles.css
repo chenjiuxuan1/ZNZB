@@ -8462,37 +8462,36 @@ select.ar-field {
   .ac-rule-notify-edit-inner { grid-template-columns: 1fr; }
 }
 
-/* 通知接收人多选用户列表 */
-.ac-rn-user-pick { display: block; }
-.ac-rn-user-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 4px;
-  max-height: 180px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 6px;
-  background: #fff;
+/* 通知接收人：多行联系人（接收人 + 电话） */
+.ac-rn-contacts { display: block; }
+.ac-rn-contact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
 }
-.ac-rn-user-opt {
+.ac-rn-contact-row {
   align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr 1fr auto;
+}
+.ac-rn-contact-row .ac-search-input {
+  flex: none;
+  height: 32px;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+}
+.ac-rn-contact-del {
   border: 1px solid transparent;
   border-radius: 6px;
+  color: #d92d20;
   cursor: pointer;
-  display: flex !important;
-  flex-direction: row !important;
-  font-weight: 400 !important;
-  gap: 6px !important;
-  padding: 4px 6px;
   font-size: 12px;
+  height: 32px;
+  width: 32px;
 }
-.ac-rn-user-opt:hover { background: #f1f5f9; }
-.ac-rn-user-opt.sel {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-.ac-rn-user-name { font-weight: 600; }
-.ac-rn-user-phone { color: #1d4ed8; }
-.ac-rn-user-mail { color: #64748b; font-size: 11px; }
-.ac-rn-user-opt input { width: auto !important; }
+.ac-rn-contact-del:hover { background: #fef3f2; border-color: #fecdca; }
+.ac-rn-contact-add { color: #2563eb; }
+.ac-rn-tip { margin-top: 2px; }
