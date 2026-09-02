@@ -1285,9 +1285,19 @@ function bindRulesActions(table, reload) {
     });
   });
   table.querySelectorAll("[data-rule-edit]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const rule = acRulesCache.find((r) => String(r.id) === String(btn.dataset.ruleEdit));
-      if (rule) openRuleEditModal(rule, reload);
+      if (!rule) return;
+      btn.disabled = true;
+      try {
+        const detail = await apiGet(`/api/alerts/rules/detail?id=${encodeURIComponent(rule.id)}`);
+        openRuleEditModal(detail || rule, reload);
+      } catch (error) {
+        // 详情拉取失败则用列表数据打开（无通知详情）
+        openRuleEditModal(rule, reload);
+      } finally {
+        btn.disabled = false;
+      }
     });
   });
 }
@@ -1319,7 +1329,7 @@ function renderRulesTable(rules, page = 1) {
   const rows = rules.slice(start, start + AC_PAGE_SIZE);
   return `
     <table class="data-table">
-      <thead><tr><th>规则名</th><th>查询语句</th><th>级别</th><th>状态</th><th>操作</th></tr></thead>
+      <thead><tr><th>规则名</th><th>查询语句</th><th>级别</th><th>状态</th><th>通知（渠道→接收人）</th><th>操作</th></tr></thead>
       <tbody>
         ${rows.map((rule) => `
           <tr>
@@ -1327,6 +1337,7 @@ function renderRulesTable(rules, page = 1) {
             <td class="small"><code class="ac-rule-ql">${escapeHtml(extractRuleQuery(rule) || "-")}</code></td>
             <td><span class="badge ${severityClass(rule.severity)}">${escapeHtml(severityLabel(rule.severity))}</span></td>
             <td><span class="badge ${rule.disabled ? "warn" : "ok"}">${rule.disabled ? "已停用" : "启用"}</span></td>
+            <td class="small">${renderNotifySummaryList(rule.notifySummary)}</td>
             <td>
               <button class="small" data-rule-edit="${escapeHtml(String(rule.id))}">编辑</button>
               <button class="small ${rule.disabled ? "primary" : ""}" data-rule-toggle="${escapeHtml(String(rule.id))}" data-disabled="${escapeHtml(String(rule.disabled || 0))}">
@@ -1338,6 +1349,56 @@ function renderRulesTable(rules, page = 1) {
       </tbody>
     </table>
   `;
+}
+
+/** 通知摘要渲染（规则表格列）：渠道→接收人，多条换行。 */
+function renderNotifySummaryList(summary) {
+  if (!summary || !summary.length) return `<span class="muted">未配置通知</span>`;
+  return summary.map((s) => `<div class="ac-notify-summary" title="${escapeHtml(s)}">${escapeHtml(s)}</div>`).join("");
+}
+
+/** 编辑规则弹窗内的"通知配置"区：展示每个通知规则（渠道 / 接收人 / 启停）。 */
+function renderRuleNotifySection(notify) {
+  if (!notify || !notify.length) {
+    return `
+      <div class="ac-rule-notify">
+        <div class="ac-rule-notify-title">通知配置</div>
+        <div class="muted small">该规则未关联通知规则，告警触发后不会收到通知。</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="ac-rule-notify">
+      <div class="ac-rule-notify-title">通知配置（告警触发后通知谁、用什么方式）</div>
+      ${notify.map((nr) => `
+        <div class="ac-rule-notify-item">
+          <div class="ac-rule-notify-head">
+            <strong>${escapeHtml(nr.ruleName || `通知规则 #${nr.ruleId}`)}</strong>
+            <span class="badge ${nr.enable ? "ok" : "warn"}">${nr.enable ? "启用" : "停用"}</span>
+          </div>
+          <div class="ac-rule-notify-channels">
+            ${(nr.channels || []).map((ch) => `
+              <span class="ac-rule-notify-chip">
+                <b>${escapeHtml(ch.channelName || ch.ident || "未知渠道")}</b>
+                <span>${escapeHtml(formatNotifyWho(ch))}</span>
+              </span>
+            `).join("")}
+          </div>
+        </div>
+      `).join("")}
+      <div class="muted small ac-rule-notify-tip">如需修改通知对象或方式，请在「告警明细 → 通知」中编辑对应通知规则。</div>
+    </div>
+  `;
+}
+
+/** 通知渠道的接收人摘要（接收人 / 电话 / 邮箱 / 地址）。 */
+function formatNotifyWho(ch) {
+  const parts = [];
+  if (ch.receivers && ch.receivers.length) parts.push(ch.receivers.join("、"));
+  if (ch.phone) parts.push(`电话 ${ch.phone}`);
+  if (ch.email) parts.push(`邮箱 ${ch.email}`);
+  if (ch.address && !parts.length) parts.push(ch.address);
+  return parts.join("；") || "（默认）";
 }
 
 function renderTargetsTable(list, page = 1) {
@@ -1460,6 +1521,7 @@ function openRuleEditModal(rule, reload) {
               <option value="2" ${Number(rule.severity) === 2 ? "selected" : ""}>提示 (2)</option>
             </select>
           </label>
+          ${renderRuleNotifySection(rule.notify)}
           <label>${isSql ? "SQL 查询" : "PromQL 查询"}
             <textarea class="ac-search-input ac-rule-query" id="ac-rule-query" rows="6">${escapeHtml(query)}</textarea>
           </label>
