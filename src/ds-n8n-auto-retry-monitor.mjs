@@ -252,6 +252,7 @@ function normalizeRecord(record, execution, detail) {
     scheduleCategory: "n8n_auto_trigger",
     n8nTriggerStatus: triggerStatus,
     n8nExecutionId: String(execution?.id || ""),
+    n8nExecutionAt: executionTime(execution),
     n8nWorkflowId: String(execution?.workflowId || detail?.workflowId || ""),
     n8nWorkflowName: detail?.workflowName || execution?.workflowName || "",
     n8nRequestId: String(ack?.request_id || ack?.requestId || ""),
@@ -425,8 +426,20 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
       return { ...item, taskLookupStatus: "failed", taskLookupError: error.message };
     }
   });
-  let totalFailures = 0;
+  // Deduplicate by DS instance across n8n executions: repeated n8n runs of the
+  // same original failure should show only the most recent execution, not one
+  // card per execution. Items without an instance id are kept as-is.
+  const latestByInstance = new Map();
   for (const item of enriched) {
+    const key = item.instanceId ? `${item.country}:${item.instanceId}` : `__noinstance__${item.country}:${latestByInstance.size}`;
+    const existing = latestByInstance.get(key);
+    const itemAt = Date.parse(item.n8nExecutionAt || item.startTime || 0) || 0;
+    const existingAt = Date.parse(existing?.n8nExecutionAt || existing?.startTime || 0) || 0;
+    if (!existing || itemAt >= existingAt) latestByInstance.set(key, item);
+  }
+  const deduped = [...latestByInstance.values()];
+  let totalFailures = 0;
+  for (const item of deduped) {
     const countryResult = countryMap.get(item.country);
     countryResult.failures.push(item);
     countryResult.checkedInstances += 1;
