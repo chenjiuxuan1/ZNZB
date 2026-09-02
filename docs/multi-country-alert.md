@@ -49,6 +49,18 @@
 - **TV**：`POST https://tv-service-alert.kuainiu.chat/alert/v2/array`
   - body: `{"botId":"f82292a5-45c5-42ea-84da-272b4c81ebcc","message":"...","mentions":["adamyu@kn.group"]}`
 
+## 最近 7 次校验结果（ZNZB 告警注册页）
+
+- 每次 n8n 校验完成后，`6国校验` Code 节点会把本次结果回写到平台：
+  `POST http://172.19.0.1:28787/api/multi-country/check-results`
+  - 请求体：`{ source, checkedAt, countries: [{code,label,mismatches,error}], hasAlert, hasError, text }`
+  - 平台只保留**最近 7 次**（先进先出，超出丢弃旧记录），存储于 `config/multi-country-check-results.json`（gitignore）。
+- 前端：`告警注册` 页底部「多国一致性校验 · 最近 7 次结果」区块，每次刷新展示最近 7 次；
+  有异常（`mismatch_cnt > 0`）的国家标红并列出明细。
+- 后端：`src/alert-registry.mjs` `listCheckResults()` / `appendCheckResult()`；
+  路由 `src/server.mjs` `GET/POST /api/multi-country/check-results`。
+- 平台内网回调地址：`http://172.19.0.1:28787`（ZNZB Docker 容器宿主网关，n8n 服务器可达）。
+
 ## 平台告警注册条目
 
 - 6 国条目：`mc_cn / mc_id / mc_mx / mc_th / mc_ph / mc_pk`（config/alert-registry*.json）
