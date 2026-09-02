@@ -7479,7 +7479,8 @@ button.small[disabled] {
 
 /* ---- 规则编辑弹窗 ---- */
 .ac-rule-modal {
-  max-width: 720px;
+  max-width: 760px;
+  max-height: 700px;
 }
 
 .ac-rule-modal-title {
@@ -7511,14 +7512,14 @@ button.small[disabled] {
 .ac-rule-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .ac-rule-card {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 14px;
+  padding: 12px 14px;
 }
 
 .ac-rule-card-head {
@@ -8418,14 +8419,19 @@ select.ar-field {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   margin-bottom: 8px;
 }
 .ac-rule-notify-head {
-  display: flex;
   align-items: center;
+  display: flex;
   gap: 8px;
   margin-bottom: 6px;
+  justify-content: space-between;
+}
+.ac-rule-notify-head > strong {
+  flex: 1;
+  font-size: 13px;
 }
 .ac-rule-notify-channels {
   display: flex;

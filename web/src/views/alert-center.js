@@ -1374,6 +1374,10 @@ function renderRuleNotifySection(notify) {
         <div class="ac-rule-notify-item" data-nr-rule-id="${escapeHtml(String(nr.ruleId))}">
           <div class="ac-rule-notify-head">
             <strong>${escapeHtml(nr.ruleName || `通知规则 #${nr.ruleId}`)}</strong>
+            <button class="small ghost ac-rule-notify-edit" data-nr-id="${escapeHtml(String(nr.ruleId))}"
+              data-rcv="${escapeHtml(nr.channels?.[0]?.receivers?.join(",") || "")}"
+              data-phone="${escapeHtml(nr.channels?.[0]?.phone || "")}"
+              data-email="${escapeHtml(nr.channels?.[0]?.email || "")}">✏️ 编辑接收人</button>
             <span class="badge ${nr.enable ? "ok" : "warn"}">${nr.enable ? "启用" : "停用"}</span>
           </div>
           <div class="ac-rule-notify-channels">
@@ -1383,12 +1387,6 @@ function renderRuleNotifySection(notify) {
                 <span>${escapeHtml(formatNotifyWho(ch))}</span>
               </span>
             `).join("")}
-          </div>
-          <div class="ac-rule-notify-actions">
-            <button class="small ghost ac-rule-notify-edit" data-nr-id="${escapeHtml(String(nr.ruleId))}"
-              data-rcv="${escapeHtml(nr.channels?.[0]?.receivers?.join(",") || "")}"
-              data-phone="${escapeHtml(nr.channels?.[0]?.phone || "")}"
-              data-email="${escapeHtml(nr.channels?.[0]?.email || "")}">✏️ 编辑接收人</button>
           </div>
           <div class="ac-rule-notify-edit-form" hidden></div>
         </div>
@@ -1594,7 +1592,7 @@ function openRuleEditModal(rule, reload) {
           ${renderRuleNotifySection(rule.notify)}
           <section class="ac-rule-card">
             <header class="ac-rule-card-head"><span>${isSql ? "SQL 查询" : "PromQL 查询"}</span><span class="muted small">${isSql ? "SQL 规则" : "PromQL 规则"}</span></header>
-            <textarea class="ac-rule-query" id="ac-rule-query" rows="8" spellcheck="false" placeholder="${isSql ? "SELECT …" : "up == 0"}">${escapeHtml(query)}</textarea>
+            <textarea class="ac-rule-query" id="ac-rule-query" rows="4" spellcheck="false" placeholder="${isSql ? "SELECT …" : "up == 0"}">${escapeHtml(query)}</textarea>
           </section>
           <section class="ac-rule-card ac-rule-danger">
             <header class="ac-rule-card-head"><span>危险操作</span><span class="muted small">停用后不再触发告警</span></header>
