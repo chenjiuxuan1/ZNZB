@@ -677,6 +677,20 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return { rules: Array.isArray(rules) ? rules : [], channels: Array.isArray(channels) ? channels : [] };
   }
 
+  /** 用户列表（含电话），供通知接收人多选。 */
+  async function getNotifyUsers() {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) return [];
+    const users = await nightingale.getUsers().catch(() => []);
+    return (Array.isArray(users) ? users : []).map((u) => ({
+      id: u.id,
+      username: u.username || "",
+      nickname: u.nickname || "",
+      phone: u.phone || u.mobile || "",
+      email: u.email || "",
+    })).sort((a, b) => String(a.username).localeCompare(String(b.username)));
+  }
+
   /** n8n 工作流列表（精简字段，前端只需展示用字段）。 */
   async function getN8nWorkflows({ active, limit = 100 } = {}) {
     const { n8n } = await loadConfig();
@@ -982,6 +996,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     getDatasources,
     getTargets,
     getNotifyRules,
+    getNotifyUsers,
     getN8nWorkflows,
     getN8nWorkflowDetail,
     getN8nExecutions,

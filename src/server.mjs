@@ -406,6 +406,9 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/alerts/notify-rules") {
     return sendJson(response, 200, await alertCenter.getNotifyRules());
   }
+  if (method === "GET" && url.pathname === "/api/alerts/notify-users") {
+    return sendJson(response, 200, await alertCenter.getNotifyUsers());
+  }
   if (method === "GET" && url.pathname === "/api/alerts/n8n/workflows") {
     const params = Object.fromEntries(url.searchParams.entries());
     return sendJson(response, 200, await alertCenter.getN8nWorkflows({
