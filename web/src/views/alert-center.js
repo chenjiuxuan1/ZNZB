@@ -71,6 +71,37 @@ function bindAcPagerEvents(pager, onPageChange) {
  * 克制数据可视化语言，tabular-nums + 语义色 + 轻动效。
  * DESIGN_VARIANCE 5 / MOTION_INTENSITY 4 / VISUAL_DENSITY 7。
  */
+/**
+ * 轻量 toast 通知：右上角滑入、自动消失，支持标题 + 多行说明。
+ * @param {string} title 主标题
+ * @param {string[]} [lines] 说明行（可省略）
+ * @param {"success"|"warn"|"error"} [type]
+ */
+function showToast(title, lines = [], type = "success") {
+  const host = document.createElement("div");
+  host.className = "ac-toast-host";
+  const icon = type === "error" ? "✕" : type === "warn" ? "⚠" : "✓";
+  const lineHtml = (Array.isArray(lines) ? lines : []).map((l) => `<div class="ac-toast-line">${escapeHtml(l)}</div>`).join("");
+  host.innerHTML = `
+    <div class="ac-toast ac-toast-${type}">
+      <div class="ac-toast-icon">${icon}</div>
+      <div class="ac-toast-body">
+        <div class="ac-toast-title">${escapeHtml(title)}</div>
+        ${lineHtml}
+      </div>
+      <button class="ac-toast-close" aria-label="关闭">✕</button>
+    </div>
+  `;
+  document.body.appendChild(host);
+  requestAnimationFrame(() => host.classList.add("ac-toast-in"));
+  const close = () => {
+    host.classList.remove("ac-toast-in");
+    setTimeout(() => host.remove(), 250);
+  };
+  host.querySelector(".ac-toast-close").addEventListener("click", close);
+  setTimeout(close, type === "error" ? 6000 : 4200);
+}
+
 export function renderAlertCenter(root) {
   // UI 原型：?variant=A|B|C 切换不同布局（prototype skill 子形状A，浮动底部切换条）
   const variant = readVariantParam();
@@ -1518,7 +1549,7 @@ function bindRuleNotifyEdit(overlay) {
         if (form.querySelector("#ac-rn-email")?.value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
         // 校验：至少填一个
         if (!receiversArr.length && !fixedPhones.length && !Object.keys(params).length) {
-          alert("请至少填写一个联系人（用户名或电话）。");
+          showToast("请至少填写一个联系人", ["填写用户名或电话后再保存。"], "warn");
           return;
         }
         const saveBtn = form.querySelector(".ac-rn-save");
@@ -1529,15 +1560,18 @@ function bindRuleNotifyEdit(overlay) {
           if (Object.keys(params).length) payload.params = params;
           const resp = await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
           const unmatched = resp?.unmatched || [];
-          const tip = [];
-          if (unmatched.length) tip.push(`未识别的用户名（已忽略）：${unmatched.join("、")}`);
-          if (unknownNames.length) tip.push(`${unknownNames.join("、")} 不在夜莺用户表，已按其电话作为固定号码保存。`);
-          if (fixedPhones.length > 1) tip.push("多个固定号码仅保留第一个（夜莺单个电话限制）。");
-          alert(["已保存通知配置。", ...tip].join("\n"));
+          const detail = [];
+          if (receiversArr.length) detail.push(`已关联 ${receiversArr.length} 位系统用户：${receiversArr.join("、")}`);
+          if (params.Mobile) detail.push(`固定电话：${params.Mobile}（告警时拨打）`);
+          if (unmatched.length) detail.push(`未识别的用户名已忽略：${unmatched.join("、")}`);
+          if (unknownNames.length) detail.push(`${unknownNames.join("、")} 不在夜莺用户表，已按填入的电话作为固定号码。`);
+          if (fixedPhones.length > 1) detail.push("夜莺单个固定电话限制，仅保留了第一个号码。");
+          if (!detail.length) detail.push("通知配置已保存。");
+          showToast("已保存通知配置", detail, unmatched.length || unknownNames.length ? "warn" : "success");
           form.hidden = true;
         } catch (error) {
           saveBtn.disabled = false;
-          alert(`保存失败：${error.message}`);
+          showToast("保存失败", [error.message], "error");
         }
       });
     });
