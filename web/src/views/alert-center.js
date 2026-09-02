@@ -1361,15 +1361,15 @@ function renderNotifySummaryList(summary) {
 function renderRuleNotifySection(notify) {
   if (!notify || !notify.length) {
     return `
-      <div class="ac-rule-notify">
-        <div class="ac-rule-notify-title">通知配置</div>
+      <section class="ac-rule-card">
+        <header class="ac-rule-card-head"><span>🔔 通知配置</span><span class="muted small">告警触发后通知谁</span></header>
         <div class="muted small">该规则未关联通知规则，告警触发后不会收到通知。</div>
-      </div>
+      </section>
     `;
   }
   return `
-    <div class="ac-rule-notify">
-      <div class="ac-rule-notify-title">通知配置（告警触发后通知谁、用什么方式）</div>
+    <section class="ac-rule-card ac-rule-notify">
+      <header class="ac-rule-card-head"><span>🔔 通知配置</span><span class="muted small">告警触发后通知谁、用什么方式</span></header>
       ${notify.map((nr) => `
         <div class="ac-rule-notify-item" data-nr-rule-id="${escapeHtml(String(nr.ruleId))}">
           <div class="ac-rule-notify-head">
@@ -1388,13 +1388,13 @@ function renderRuleNotifySection(notify) {
             <button class="small ghost ac-rule-notify-edit" data-nr-id="${escapeHtml(String(nr.ruleId))}"
               data-rcv="${escapeHtml(nr.channels?.[0]?.receivers?.join(",") || "")}"
               data-phone="${escapeHtml(nr.channels?.[0]?.phone || "")}"
-              data-email="${escapeHtml(nr.channels?.[0]?.email || "")}">编辑接收人</button>
+              data-email="${escapeHtml(nr.channels?.[0]?.email || "")}">✏️ 编辑接收人</button>
           </div>
           <div class="ac-rule-notify-edit-form" hidden></div>
         </div>
       `).join("")}
-      <div class="muted small ac-rule-notify-tip">通知规则可能被多个告警规则共用，修改接收人会影响所有关联规则。</div>
-    </div>
+      <div class="muted small ac-rule-notify-tip">⚠️ 通知规则可能被多个告警规则共用，修改接收人会影响所有关联规则。</div>
+    </section>
   `;
 }
 
@@ -1565,34 +1565,51 @@ function openRuleEditModal(rule, reload) {
   overlay.innerHTML = `
     <div class="ac-modal ac-rule-modal" role="dialog" aria-modal="true" aria-label="编辑告警规则">
       <div class="ac-modal-head">
-        <strong>编辑告警规则</strong>
+        <div class="ac-rule-modal-title">
+          <span class="ac-rule-modal-icon">⚙️</span>
+          <div>
+            <strong>编辑告警规则</strong>
+            <span class="ac-rule-modal-sub">${escapeHtml(rule.groupName || `规则 #${rule.id}`)}</span>
+          </div>
+        </div>
         <button class="ac-modal-close" aria-label="关闭">✕</button>
       </div>
       <div class="ac-modal-body">
         <div class="ac-rule-form">
-          <label>规则名称
-            <input type="text" class="ac-search-input" id="ac-rule-name" value="${escapeHtml(rule.name || "")}">
-          </label>
-          <label>级别
-            <select class="ac-search-input" id="ac-rule-severity">
-              <option value="0" ${Number(rule.severity) === 0 ? "selected" : ""}>严重 (0)</option>
-              <option value="1" ${Number(rule.severity) === 1 ? "selected" : ""}>警告 (1)</option>
-              <option value="2" ${Number(rule.severity) === 2 ? "selected" : ""}>提示 (2)</option>
-            </select>
-          </label>
+          <section class="ac-rule-card">
+            <header class="ac-rule-card-head"><span>基本信息</span><span class="muted small">规则名称与告警级别</span></header>
+            <div class="ac-rule-grid2">
+              <label>规则名称
+                <input type="text" class="ac-search-input" id="ac-rule-name" value="${escapeHtml(rule.name || "")}">
+              </label>
+              <label>级别
+                <select class="ac-search-input" id="ac-rule-severity">
+                  <option value="0" ${Number(rule.severity) === 0 ? "selected" : ""}>严重 (0)</option>
+                  <option value="1" ${Number(rule.severity) === 1 ? "selected" : ""}>警告 (1)</option>
+                  <option value="2" ${Number(rule.severity) === 2 ? "selected" : ""}>提示 (2)</option>
+                </select>
+              </label>
+            </div>
+          </section>
           ${renderRuleNotifySection(rule.notify)}
-          <label>${isSql ? "SQL 查询" : "PromQL 查询"}
-            <textarea class="ac-search-input ac-rule-query" id="ac-rule-query" rows="6">${escapeHtml(query)}</textarea>
-          </label>
-          <label class="ac-rule-toggle-line">
-            <input type="checkbox" id="ac-rule-disabled" ${rule.disabled ? "checked" : ""}>
-            <span>停用此规则</span>
-          </label>
-          <div class="ac-rule-form-actions">
-            <button class="primary small" id="ac-rule-save">保存</button>
-            <button class="small ac-rule-cancel">取消</button>
-          </div>
-          <p class="muted small">保存后规则即时生效。评估周期 ${escapeHtml(String(rule.prom_eval_interval || "-"))} 秒。</p>
+          <section class="ac-rule-card">
+            <header class="ac-rule-card-head"><span>${isSql ? "SQL 查询" : "PromQL 查询"}</span><span class="muted small">${isSql ? "SQL 规则" : "PromQL 规则"}</span></header>
+            <textarea class="ac-rule-query" id="ac-rule-query" rows="8" spellcheck="false" placeholder="${isSql ? "SELECT …" : "up == 0"}">${escapeHtml(query)}</textarea>
+          </section>
+          <section class="ac-rule-card ac-rule-danger">
+            <header class="ac-rule-card-head"><span>危险操作</span><span class="muted small">停用后不再触发告警</span></header>
+            <label class="ac-rule-toggle-line">
+              <input type="checkbox" id="ac-rule-disabled" ${rule.disabled ? "checked" : ""}>
+              <span>停用此规则</span>
+            </label>
+          </section>
+        </div>
+      </div>
+      <div class="ac-rule-form-actions">
+        <span class="muted small ac-rule-save-tip">保存后规则即时生效 · 评估周期 ${escapeHtml(String(rule.prom_eval_interval || "-"))} 秒</span>
+        <div class="ac-rule-form-btns">
+          <button class="small ac-rule-cancel">取消</button>
+          <button class="primary small" id="ac-rule-save">保存规则</button>
         </div>
       </div>
     </div>
