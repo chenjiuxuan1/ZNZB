@@ -36,11 +36,13 @@ test("extracts DS payload from n8n webhook JSON-string message", () => {
 });
 
 test("n8n monitor reads executions and ignores the saved project scope", async () => {
+  let executionOptions;
   const client = {
     async listWorkflows() {
       return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口", nodes: [] }] };
     },
-    async listExecutions() {
+    async listExecutions(options) {
+      executionOptions = options;
       return { data: [{ id: "n8n-1", workflowId: "wf-1", status: "success", startedAt: "2026-08-30T00:25:01.000Z", stoppedAt: "2026-08-30T00:25:03.000Z" }] };
     },
     async getExecution() {
@@ -63,6 +65,8 @@ test("n8n monitor reads executions and ignores the saved project scope", async (
   assert.equal(result.totalFailures, 1);
   assert.equal(result.countries[0].failures[0].n8nExecutionId, "n8n-1");
   assert.equal(result.countries[0].failures[0].n8nTriggerStatus, "n8n_accepted");
+  assert.equal(executionOptions.startedAfter, undefined);
+  assert.equal(executionOptions.startedBefore, undefined);
 });
 
 test("START_PROCESS is visible as scan-only and never marked as a retry", async () => {

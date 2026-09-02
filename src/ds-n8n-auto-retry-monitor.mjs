@@ -328,11 +328,14 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
     return value;
   }
 
+  // n8n's public GET /executions endpoint currently rejects the documented
+  // startedAfter/startedBefore query parameters (HTTP 400: Unknown query
+  // parameter). Query the workflow's latest executions and apply the lookback
+  // window locally instead, which keeps the monitor compatible with both the
+  // affected and older n8n versions.
   const executionPayload = await client.listExecutions({
     workflowId: workflow.id,
     limit: Math.min(limit, 250),
-    startedAfter: new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString(),
-    startedBefore: now.toISOString(),
   });
   const executions = (executionPayload?.data || []).filter((execution) => withinLookback(executionTime(execution), now, days));
   const details = await mapWithConcurrency(executions, 8, async (execution) => {
