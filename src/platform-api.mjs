@@ -2806,8 +2806,17 @@ export function createPlatformApi({
           : DEFAULT_N8N_GROUP_BOT_IDS[countryResult.country] || "").trim();
         const legacyGroupChatId = String(state.groupChatIds?.[countryResult.country] || "").trim();
         if (!ownerEmails && !groupBotId && !legacyGroupChatId) continue;
+
+        // Collect the failures of this country that still need a channel
+        // delivered, so multiple failing tables are reported in one message
+        // instead of one message per instance.
+        const pending = [];
+        const pendingKeys = new Set();
         for (const failure of countryResult.failures || []) {
           const key = `${countryResult.country}:${failure.instanceId}`;
+          // The same DS instance may appear once per scanned project; report it
+          // only once in the combined message.
+          if (pendingKeys.has(key)) continue;
           const failedAtMs = Date.parse(failure.endTime || failure.startTime || "");
           const failureNotificationLogs = notificationLogs.filter((item) => (
             String(item.country || "").toLowerCase() === String(countryResult.country || "").toLowerCase()
@@ -2834,6 +2843,26 @@ export function createPlatformApi({
             notified.add(key);
             continue;
           }
+          pendingKeys.add(key);
+          pending.push({ failure, key, pendingChannels });
+        }
+        if (pending.length === 0) continue;
+
+        // KN chat mentions use the "@" prefixed owner email in the message
+        // text; the TV webhook payload expects the plain owner email without
+        // the leading "@".
+        const ownerMentions = ownerEmails
+          .split(/[，,；;\n]+/)
+          .map((email) => email.trim())
+          .filter(Boolean)
+          .map((email) => email.startsWith("@") ? email : `@${email}`);
+        const tvMentions = ownerEmails
+          .split(/[，,；;\n]+/)
+          .map((email) => email.trim())
+          .filter(Boolean);
+
+        const countryName = countryResult.countryName || countryResult.country;
+        const sections = pending.map(({ failure }, index) => {
           const retryCount = Math.max(0, Number(failure.retryCount || 0));
           const retrySummary = failure.retryResult === "recovered"
             ? `自动重跑已恢复成功，重跑次数：${retryCount}`
@@ -2842,69 +2871,76 @@ export function createPlatformApi({
               : failure.retryResult === "failed" || failure.retryResult === "timeout_needs_owner"
                 ? `自动重跑仍未恢复：重跑次数：${retryCount}，需要负责人查看`
                 : "自动重跑仍未恢复：已发现定时任务失败，等待自动失败重试";
-          const message = [
-            `n8n 失败重启监控｜${countryResult.countryName || countryResult.country}`,
-            `失败任务：${failure.taskName || failure.workflowName || "未返回任务节点名称"}`,
-            `项目：${failure.projectName || failure.projectCode || "-"}`,
-            `工作流：${failure.workflowName || "-"}`,
-            `实例：${failure.instanceId}`,
-            `定时任务执行失败，失败原因：${failure.failureReason || failure.failureMessage || "未从 DS 实例详情中解析到明确失败原因，请查看 DS 实例日志"}`,
-            retrySummary,
-            failure.dsInstanceUrl ? `工作流实例：${failure.dsInstanceUrl}` : "",
+          return [
+            `${index + 1}. 失败任务：${failure.taskName || failure.workflowName || "未返回任务节点名称"}`,
+            `   项目：${failure.projectName || failure.projectCode || "-"} · 工作流：${failure.workflowName || "-"} · 实例：${failure.instanceId}`,
+            `   失败原因：${failure.failureReason || failure.failureMessage || "未从 DS 实例详情中解析到明确失败原因，请查看 DS 实例日志"}`,
+            `   ${retrySummary}`,
+            failure.dsInstanceUrl ? `   工作流实例：${failure.dsInstanceUrl}` : "",
           ].filter(Boolean).join("\n");
-          try {
-            const ownerMentions = ownerEmails
-              .split(/[，,；;\n]+/)
-              .map((email) => email.trim())
-              .filter(Boolean)
-              .map((email) => email.startsWith("@") ? email : `@${email}`);
-            const currentDeliveredChannels = new Set(deliveredChannels);
-            const deliveryErrors = [];
-            if (ownerEmails && pendingChannels.includes("owner_direct")) {
-              try {
-                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: ownerEmails, chatId: "", mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
-                const sentSuccessfully = Boolean(sent?.sent);
-                if (sentSuccessfully) currentDeliveredChannels.add("owner_direct");
-                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "owner_direct", target: ownerEmails, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "私聊通知未发送" });
-                if (!sentSuccessfully) deliveryErrors.push(sent?.reason || "私聊通知未发送");
-              } catch (error) {
-                deliveryErrors.push(error.message);
-                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "owner_direct", target: ownerEmails, status: "failed", message, error: error.message });
-              }
-            }
-            if (groupBotId && pendingChannels.includes("country_group")) {
-              try {
-                const sent = await notifyTextFn({ alerts: { channel: "tv", webhookUrl: DEFAULT_TV_WEBHOOK_URL, botId: groupBotId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
-                const sentSuccessfully = Boolean(sent?.sent);
-                if (sentSuccessfully) currentDeliveredChannels.add("country_group");
-                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: groupBotId, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "群发通知未发送" });
-                if (!sentSuccessfully) deliveryErrors.push(sent?.reason || "群发通知未发送");
-              } catch (error) {
-                deliveryErrors.push(error.message);
-                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: groupBotId, status: "failed", message, error: error.message });
-              }
-            } else if (legacyGroupChatId && pendingChannels.includes("country_group")) {
-              try {
-                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: "", chatId: legacyGroupChatId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
-                const sentSuccessfully = Boolean(sent?.sent);
-                if (sentSuccessfully) currentDeliveredChannels.add("country_group");
-                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: legacyGroupChatId, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "群发通知未发送" });
-                if (!sentSuccessfully) deliveryErrors.push(sent?.reason || "群发通知未发送");
-              } catch (error) {
-                deliveryErrors.push(error.message);
-                recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: legacyGroupChatId, status: "failed", message, error: error.message });
-              }
-            }
-            const incompleteChannels = expectedChannels.filter((channel) => !currentDeliveredChannels.has(channel));
-            if (incompleteChannels.length > 0) {
-              const detail = deliveryErrors.filter(Boolean).join("；") || "通知未发送到对应目标";
-              throw new Error(`${incompleteChannels.join("、")} 未完成：${detail}`);
-            }
-            notified.add(key);
-            notificationCount += 1;
-          } catch (error) {
-            notificationErrors.push(`${countryResult.country}:${failure.instanceId}：${error.message}`);
+        });
+        const message = [`n8n 失败重启监控｜${countryName}`, ...sections].join("\n\n");
+
+        const wantOwner = ownerEmails && pending.some((p) => p.pendingChannels.includes("owner_direct"));
+        const wantGroup = (groupBotId || legacyGroupChatId) && pending.some((p) => p.pendingChannels.includes("country_group"));
+        const deliveryErrors = [];
+        const ownerDeliveredKeys = new Set();
+        const groupDeliveredKeys = new Set();
+        // Keep one notification-log entry per instance (so per-channel retry
+        // history stays correct), all carrying the same combined message.
+        const recordBatch = (channel, target, ok, error) => {
+          const fallback = channel === "owner_direct" ? "私聊通知未发送" : "群发通知未发送";
+          for (const p of pending) {
+            recordNotification({ country: countryResult.country, countryName, instanceId: p.failure.instanceId, channel, target, status: ok ? "sent" : "failed", message, error: ok ? "" : (error || fallback) });
           }
+        };
+
+        if (wantOwner) {
+          try {
+            const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: ownerEmails, chatId: "", mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
+            const ok = Boolean(sent?.sent);
+            if (ok) pending.forEach((p) => ownerDeliveredKeys.add(p.key));
+            recordBatch("owner_direct", ownerEmails, ok, sent?.reason || "");
+            if (!ok) deliveryErrors.push(sent?.reason || "私聊通知未发送");
+          } catch (error) {
+            deliveryErrors.push(error.message);
+            recordBatch("owner_direct", ownerEmails, false, error.message);
+          }
+        }
+        if (wantGroup && groupBotId) {
+          try {
+            const sent = await notifyTextFn({ alerts: { channel: "tv", webhookUrl: DEFAULT_TV_WEBHOOK_URL, botId: groupBotId, mentions: tvMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
+            const ok = Boolean(sent?.sent);
+            if (ok) pending.forEach((p) => groupDeliveredKeys.add(p.key));
+            recordBatch("country_group", groupBotId, ok, sent?.reason || "");
+            if (!ok) deliveryErrors.push(sent?.reason || "群发通知未发送");
+          } catch (error) {
+            deliveryErrors.push(error.message);
+            recordBatch("country_group", groupBotId, false, error.message);
+          }
+        } else if (wantGroup && legacyGroupChatId) {
+          try {
+            const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: "", chatId: legacyGroupChatId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
+            const ok = Boolean(sent?.sent);
+            if (ok) pending.forEach((p) => groupDeliveredKeys.add(p.key));
+            recordBatch("country_group", legacyGroupChatId, ok, sent?.reason || "");
+            if (!ok) deliveryErrors.push(sent?.reason || "群发通知未发送");
+          } catch (error) {
+            deliveryErrors.push(error.message);
+            recordBatch("country_group", legacyGroupChatId, false, error.message);
+          }
+        }
+
+        for (const p of pending) {
+          const ownerOk = ownerDeliveredKeys.has(p.key) || !p.pendingChannels.includes("owner_direct");
+          const groupOk = groupDeliveredKeys.has(p.key) || !p.pendingChannels.includes("country_group");
+          if (ownerOk && groupOk) {
+            notified.add(p.key);
+            notificationCount += 1;
+          }
+        }
+        if (deliveryErrors.length) {
+          notificationErrors.push(`${countryResult.country}:${pending.map((p) => p.failure.instanceId).join(",")}：${deliveryErrors.filter(Boolean).join("；")}`);
         }
       }
       const retained = [...notified].slice(-2000);

@@ -4095,3 +4095,71 @@ test("DS page scan suppresses the group delivery when n8n already handled the in
     await fs.rm(rootDir, { recursive: true, force: true });
   }
 });
+
+test("n8n failure watch combines multiple country failures into one message and @-mentions owners in the TV group", async () => {
+  const rootDir = await makeFixture();
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const now = new Date();
+  const nowStr = fmt(now);
+  const startStr = fmt(new Date(now.getTime() - 5 * 60 * 1000));
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "https://gateway.example/ds",
+      countries: { ph: { name: "菲律宾", token: "test-token" } },
+      projects: { ph: [{ name: "PH_DW", code: "2001" }] },
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduled-failure-watch.json"),
+    JSON.stringify({ enabled: true, intervalMinutes: 5, owners: { ph: "owner@kn.group" }, botIds: { ph: "ph-tv-bot" }, groupChatIds: {} }),
+  );
+  const originalFetch = globalThis.fetch;
+  const captured = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    let data = {};
+    if (request.action === "list_instances") {
+      data = {
+        totalList: [
+          { workflowDefinitionCode: "wf-a", workflowInstanceName: "table_a", workflowInstanceId: "5551001", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: startStr, workflowEndTime: nowStr },
+          { workflowDefinitionCode: "wf-b", workflowInstanceName: "table_b", workflowInstanceId: "5551002", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: startStr, workflowEndTime: nowStr },
+        ],
+        total: 2,
+      };
+    } else if (request.action === "list_task_instances") {
+      data = { processInstanceState: "FAILURE", taskList: [{ taskInstanceId: "t-x", workflowInstanceId: "5551001", taskCode: "task-1", name: "table_a", state: "FAILURE", endTime: nowStr }] };
+    } else if (request.action === "get_task_log") {
+      data = { task_name: "table_a", task_instance_id: "t-x", state: "FAILURE", log: "ERROR connection refused" };
+    } else if (request.action === "extract_task_runtime_config") {
+      data = { task_type: "SQL", runtime_config: { sql: "select 1" } };
+    }
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data }); } };
+  };
+  const api = createPlatformApi({
+    rootDir,
+    notifyTextFn: async (config, message, metadata) => {
+      captured.push({ config, message, metadata });
+      return { sent: true };
+    },
+  });
+  try {
+    const result = await api.checkDsScheduledFailures({ country: "ph", days: 1 });
+    const ownerCalls = captured.filter((c) => c.config.alerts.channel === "knBot" && c.config.alerts.recipientEmails === "owner@kn.group");
+    const groupCalls = captured.filter((c) => c.config.alerts.channel === "tv");
+    // One combined message per channel, not one message per failing table.
+    assert.equal(ownerCalls.length, 1);
+    assert.equal(groupCalls.length, 1);
+    assert.match(ownerCalls[0].message, /5551001/);
+    assert.match(ownerCalls[0].message, /5551002/);
+    assert.match(ownerCalls[0].message, /2\. /);
+    // TV group mentions use the plain owner email; KN chat uses the @-prefixed form.
+    assert.deepEqual(groupCalls[0].config.alerts.mentions, ["owner@kn.group"]);
+    assert.deepEqual(ownerCalls[0].config.alerts.mentions, ["@owner@kn.group"]);
+    assert.equal(result.notificationCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
