@@ -422,6 +422,16 @@ export function extractDsFailureReason(log, fallback = "") {
   if (/Connection refused/i.test(rawLog)) {
     return "目标服务拒绝连接：服务可能未启动、地址或端口配置错误，或网络策略未放行";
   }
+  // Surface the underlying permission/authentication failure even when it is
+  // wrapped by a generic writer error (e.g. DataX "Failed to flush data to
+  // StarRocks" caused by a 401 "Access denied for user@host"). Otherwise the
+  // permission detail is buried and the failure is misjudged as recoverable.
+  if (/(?:Access denied|permission denied|not authorized|unauthorized|insufficient privilege)/i.test(rawLog)) {
+    const denied = (rawLog.match(/Access denied(?: for [^\s"'{},]+)?/i) || [])[0]
+      || (rawLog.match(/(?:permission denied|not authorized|unauthorized|insufficient privilege)[^\n]{0,60}/i) || [])[0]
+      || "访问被拒绝";
+    return `${denied.trim()}：目标服务拒绝访问/认证失败，请检查账号密码、权限及来源主机配置`;
+  }
   const stackFrame = (line) => /(?:^|\s)(?:at\s+)?[\w$<>.]+\([^)]*\.(?:java|scala|kt|py):\d+\)\s*$/i.test(line)
     || /^\s*\.\.\.\s+\d+\s+more\s*$/i.test(line);
   const candidates = lines.map((line, index) => {

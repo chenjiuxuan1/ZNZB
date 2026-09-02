@@ -172,6 +172,23 @@ at org.apache.dolphinscheduler.plugin.datasource.starrocks.param.StarRocksDataSo
   });
 });
 
+test("DS failure reason surfaces a StarRocks access-denied cause instead of the generic flush wrapper", () => {
+  const log = `
+2026-09-02 16:24:05.765 INFO  -  -> [Thread-1] WARN  StarRocksStreamLoadVisitor - Request failed with code:401, err:{"status":"FAILED","code":"1","msg":"Access denied for e_load@192.168.42.37","message":"Access denied for e_load@192.168.42.37"}
+2026-09-02 16:24:05.769 INFO  -  -> java.io.IOException: Failed to flush data to StarRocks.
+2026-09-02 16:24:15.286 INFO  -  -> Caused by: java.io.IOException: Failed to flush data to StarRocks.`;
+  const reason = extractDsFailureReason(log);
+  assert.match(reason, /Access denied for e_load@192\.168\.42\.37/);
+  assert.match(reason, /拒绝访问/);
+  assert.doesNotMatch(reason, /Failed to flush data to StarRocks/);
+  assert.deepEqual(classifyDsFailureType({ failureMessage: reason, taskName: "ods_argus_zeus" }), {
+    failureType: "permission_error",
+    retryable: false,
+    retryDecision: "权限不足，需人工处理",
+  });
+  assert.equal(classifyN8nFailureReason(reason), "unknown");
+});
+
 test("DS failure records distinguish scheduled and non-scheduled triggers", () => {
   const failures = classifyWorkflowFailures([
     { workflowDefinitionCode: "scheduled", workflowInstanceId: "s-1", workflowInstanceName: "scheduled", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-19 08:00:00" },
