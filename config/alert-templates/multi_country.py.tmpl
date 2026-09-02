@@ -10,8 +10,11 @@
   - TV 告警（默认，send_to_tv）
   - KN Chat 私信/群发（提供 --knchat-chat-id，token 读环境变量 KNCHAT_BOT_TOKEN）
 
+【测试群约定】所有测试消息发送到「PL告警测试群」chat_id=-10950（数仓告警机器人
+Data_Warehouse_Alarm_Robot 已在群内）。正式告警目标群按各自需求另行指定。
+
 真实密码请通过环境变量传入:
-    SR_PASSWORD=... SR_BACKUP_PASSWORD=... python3 alert/multi_country_alert.py --country cn --knchat-chat-id -10XXXXXXX
+    SR_PASSWORD=... SR_BACKUP_PASSWORD=... python3 alert/multi_country_alert.py --country cn --knchat-chat-id -10950
 """
 
 import argparse
