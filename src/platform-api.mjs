@@ -2862,24 +2862,32 @@ export function createPlatformApi({
           .filter(Boolean);
 
         const countryName = countryResult.countryName || countryResult.country;
+        // Use the same "定时失败任务重跑失败" notification layout as the
+        // scheduled auto-retry module, so the two notification sources read
+        // consistently. Multiple failing tables are combined into one message.
         const sections = pending.map(({ failure }, index) => {
           const retryCount = Math.max(0, Number(failure.retryCount || 0));
-          const retrySummary = failure.retryResult === "recovered"
+          const retryResult = failure.retryResult === "recovered"
             ? `自动重跑已恢复成功，重跑次数：${retryCount}`
             : failure.retryResult === "running"
-              ? `目前自动失败重试中，执行次数：${retryCount}`
+              ? `自动重跑后任务仍在运行中，重跑次数：${retryCount}`
               : failure.retryResult === "failed" || failure.retryResult === "timeout_needs_owner"
                 ? `自动重跑仍未恢复：重跑次数：${retryCount}，需要负责人查看`
-                : "自动重跑仍未恢复：已发现定时任务失败，等待自动失败重试";
-          return [
-            `${index + 1}. 失败任务：${failure.taskName || failure.workflowName || "未返回任务节点名称"}`,
-            `   项目：${failure.projectName || failure.projectCode || "-"} · 工作流：${failure.workflowName || "-"} · 实例：${failure.instanceId}`,
-            `   失败原因：${failure.failureReason || failure.failureMessage || "未从 DS 实例详情中解析到明确失败原因，请查看 DS 实例日志"}`,
-            `   ${retrySummary}`,
-            failure.dsInstanceUrl ? `   工作流实例：${failure.dsInstanceUrl}` : "",
-          ].filter(Boolean).join("\n");
+                : "已发现定时任务失败，等待自动失败重试";
+          const lines = [
+            `${pending.length > 1 ? `[${index + 1}] ` : ""}国家：${String(countryResult.country).toUpperCase()}`,
+            `项目：${failure.projectName || failure.projectCode || "-"}`,
+            `工作流：${failure.workflowName || failure.workflowCode || "-"}`,
+            `失败任务：${failure.taskName || failure.failedTaskName || "未返回任务节点名称"}`,
+            `实例 ID：${failure.instanceId || "-"}`,
+            `原失败原因：${failure.failureReason || failure.failureMessage || "未解析到明确失败原因，请查看 DS 实例日志"}`,
+            `本轮重跑次数：${retryCount}`,
+            `处理结果：${retryResult}`,
+            failure.dsInstanceUrl ? `工作流实例：${failure.dsInstanceUrl}` : "",
+          ].filter(Boolean);
+          return lines.join("\n");
         });
-        const message = [`n8n 失败重启监控｜${countryName}`, ...sections].join("\n\n");
+        const message = ["定时失败任务重跑失败", ...sections].join("\n\n");
 
         const wantOwner = ownerEmails && pending.some((p) => p.pendingChannels.includes("owner_direct"));
         const wantGroup = (groupBotId || legacyGroupChatId) && pending.some((p) => p.pendingChannels.includes("country_group"));
