@@ -4015,7 +4015,9 @@ test("n8n failure watch owner private chat falls back to KN_BOT_TOKEN when DS no
     );
     assert.ok(ownerCall, "expected an owner private chat notify call");
     assert.equal(ownerCall.config.alerts.botToken, "${KN_BOT_TOKEN}");
-    assert.match(ownerCall.message, /^n8n 失败重启监控｜中国/);
+    assert.match(ownerCall.message, /^定时失败任务重跑失败/);
+    assert.match(ownerCall.message, /国家：CN/);
+    assert.match(ownerCall.message, /实例 ID：1815635/);
     assert.deepEqual(ownerCall.config.alerts.mentions, ["@rockyzong@kn.group"]);
     assert.equal(ownerCall.metadata.title, "n8n 失败重启监控");
     assert.equal(result.notificationCount, 1);
@@ -4087,7 +4089,8 @@ test("DS page scan suppresses the group delivery when n8n already handled the in
     assert.equal(captured.length, 1);
     assert.equal(captured[0].config.alerts.recipientEmails, "owner@kn.group");
     assert.equal(captured[0].config.alerts.channel, "knBot");
-    assert.match(captured[0].message, /^n8n 失败重启监控｜印尼/);
+    assert.match(captured[0].message, /^定时失败任务重跑失败/);
+    assert.match(captured[0].message, /国家：INE/);
     const logs = await api.getDsFailureNotificationLogs({ country: "ine" });
     assert.deepEqual(logs.logs.map((item) => item.channel), ["owner_direct"]);
   } finally {
@@ -4153,7 +4156,7 @@ test("n8n failure watch combines multiple country failures into one message and 
     assert.equal(groupCalls.length, 1);
     assert.match(ownerCalls[0].message, /5551001/);
     assert.match(ownerCalls[0].message, /5551002/);
-    assert.match(ownerCalls[0].message, /2\. /);
+    assert.match(ownerCalls[0].message, /\[2\] /);
     // TV group mentions use the plain owner email; KN chat uses the @-prefixed form.
     assert.deepEqual(groupCalls[0].config.alerts.mentions, ["owner@kn.group"]);
     assert.deepEqual(ownerCalls[0].config.alerts.mentions, ["@owner@kn.group"]);
