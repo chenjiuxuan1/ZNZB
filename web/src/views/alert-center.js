@@ -1416,38 +1416,44 @@ function bindRuleNotifyEdit(overlay) {
       const isDing = ident === "dingtalk" || ident === "dingtalk_robot" || ident === "ali-im";
       const isVoice = ident === "ali-voice" || ident === "ivr" || ident === "phone" || ident === "voice";
       const isEmail = ident === "email";
+      // 已选中的用户（用户名）
+      const selectedSet = new Set(receivers.split(/[,，]/).map((s) => s.trim()).filter(Boolean));
+      let users = [];
+      try {
+        users = await apiGet("/api/alerts/notify-users");
+      } catch { /* 用户列表加载失败仍可手动输入 */ }
+      const userOptions = (Array.isArray(users) ? users : []).map((u) => `
+        <label class="ac-rn-user-opt ${selectedSet.has(u.username) ? "sel" : ""}">
+          <input type="checkbox" value="${escapeHtml(u.username)}" ${selectedSet.has(u.username) ? "checked" : ""}>
+          <span class="ac-rn-user-name">${escapeHtml(u.username)}</span>
+          ${u.phone ? `<span class="ac-rn-user-phone">${escapeHtml(u.phone)}</span>` : ""}
+          ${u.email ? `<span class="ac-rn-user-mail">${escapeHtml(u.email)}</span>` : ""}
+        </label>
+      `).join("");
       form.innerHTML = `
         <div class="ac-rule-notify-edit-inner">
+          <div class="ac-rn-user-pick">
+            <label>通知接收人（多选）</label>
+            ${userOptions ? `<div class="ac-rn-user-list">${userOptions}</div>` : `
+              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}" placeholder="用户名，逗号分隔">
+            `}
+          </div>
+          ${isVoice ? `
+            <label>固定电话（可选，追加拨打的号码）
+              <input type="text" class="ac-search-input" id="ac-rn-phone" value="${escapeHtml(phone)}" placeholder="如 19381022896">
+            </label>
+          ` : ""}
+          ${isEmail ? `
+            <label>接收邮箱（可选）
+              <input type="text" class="ac-search-input" id="ac-rn-email" value="${escapeHtml(email)}">
+            </label>
+          ` : ""}
           ${isDing ? `
             <label>@接收人（邮箱，逗号分隔）
               <input type="text" class="ac-search-input" id="ac-rn-mentions" value="${escapeHtml(mentions)}" placeholder="zhangsan@kn.group, lisi@kn.group">
             </label>
             <label>机器人 ID（botId）
               <input type="text" class="ac-search-input" id="ac-rn-bot" value="${escapeHtml(bot)}" placeholder="钉钉机器人 UUID">
-            </label>
-            <label>接收人（用户名，逗号分隔）
-              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
-            </label>
-          ` : ""}
-          ${isVoice ? `
-            <label>接收人（用户名，逗号分隔）
-              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
-            </label>
-            <label>联系电话
-              <input type="text" class="ac-search-input" id="ac-rn-phone" value="${escapeHtml(phone)}">
-            </label>
-          ` : ""}
-          ${isEmail ? `
-            <label>接收人（用户名，逗号分隔）
-              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
-            </label>
-            <label>接收邮箱
-              <input type="text" class="ac-search-input" id="ac-rn-email" value="${escapeHtml(email)}">
-            </label>
-          ` : ""}
-          ${(!isDing && !isVoice && !isEmail) ? `
-            <label>接收人（用户名，逗号分隔）
-              <input type="text" class="ac-search-input" id="ac-rn-rcv" value="${escapeHtml(receivers)}">
             </label>
           ` : ""}
           <div class="ac-rule-notify-edit-actions">
@@ -1457,10 +1463,17 @@ function bindRuleNotifyEdit(overlay) {
         </div>
       `;
       form.hidden = false;
+      // 用户多选高亮切换
+      form.querySelectorAll(".ac-rn-user-opt input").forEach((cb) => {
+        cb.addEventListener("change", () => cb.closest(".ac-rn-user-opt").classList.toggle("sel", cb.checked));
+      });
       form.querySelector(".ac-rn-cancel").addEventListener("click", () => { form.hidden = true; });
       form.querySelector(".ac-rn-save").addEventListener("click", async () => {
-        const rcvInput = form.querySelector("#ac-rn-rcv");
-        const receiversArr = (rcvInput?.value || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+        // 收集选中的用户名
+        const checked = [...form.querySelectorAll('.ac-rn-user-opt input:checked')].map((cb) => cb.value);
+        const manualInput = form.querySelector("#ac-rn-rcv");
+        const manual = manualInput ? (manualInput.value || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean) : [];
+        const receiversArr = [...new Set([...checked, ...manual])];
         const params = {};
         // 钉钉：@接收人（mentions）+ 机器人 ID
         if (isDing) {

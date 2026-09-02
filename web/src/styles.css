@@ -8461,3 +8461,38 @@ select.ar-field {
 @media (max-width: 900px) {
   .ac-rule-notify-edit-inner { grid-template-columns: 1fr; }
 }
+
+/* 通知接收人多选用户列表 */
+.ac-rn-user-pick { display: block; }
+.ac-rn-user-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+}
+.ac-rn-user-opt {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex !important;
+  flex-direction: row !important;
+  font-weight: 400 !important;
+  gap: 6px !important;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.ac-rn-user-opt:hover { background: #f1f5f9; }
+.ac-rn-user-opt.sel {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.ac-rn-user-name { font-weight: 600; }
+.ac-rn-user-phone { color: #1d4ed8; }
+.ac-rn-user-mail { color: #64748b; font-size: 11px; }
+.ac-rn-user-opt input { width: auto !important; }
