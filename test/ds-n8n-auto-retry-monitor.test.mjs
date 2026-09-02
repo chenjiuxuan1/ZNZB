@@ -78,11 +78,29 @@ test("n8n monitor reads executions and ignores the saved project scope", async (
   assert.equal(result.totalFailures, 1);
   assert.equal(result.countries[0].failures[0].n8nExecutionId, "n8n-1");
   assert.equal(result.countries[0].failures[0].n8nTriggerStatus, "n8n_accepted");
+  assert.equal(result.countries[0].failures[0].repairStatus, "unknown");
+  assert.equal(result.countries[0].failures[0].retryResult, "unknown");
   assert.equal(result.countries[0].failures[0].taskName, "dwd_orders");
   assert.equal(result.countries[0].failures[0].failureReason, "StarRocks 查询连接中断");
   assert.equal(evidenceCalls, 1);
   assert.equal(executionOptions.startedAfter, undefined);
   assert.equal(executionOptions.startedBefore, undefined);
+});
+
+test("n8n monitor derives the DS repair outcome from execution notification text", async () => {
+  const detail = fakeDetail();
+  detail.data.resultData.runData["发送恢复通知"] = [{ data: { main: [[{ json: { message: "自动重跑已恢复成功，重跑次数：2" } }]] } }];
+  const client = {
+    async listWorkflows() { return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口" }] }; },
+    async listExecutions() { return { data: [{ id: "n8n-recovered", workflowId: "wf-1", status: "success", startedAt: "2026-08-30T00:25:01.000Z" }] }; },
+    async getExecution() { return detail; },
+  };
+  const result = await inspectN8nAutoRetryExecutions("/tmp/znzb-recovered-outcome", {
+    now: new Date("2026-08-30T12:00:00Z"), countries: ["ph"], n8nClient: client, enrichDsEvidence: false, bypassCache: true,
+  });
+  const item = result.countries[0].failures[0];
+  assert.equal(item.repairStatus, "recovered");
+  assert.equal(item.retryResult, "recovered");
 });
 
 test("n8n monitor deduplicates DS task evidence queries for repeated executions of one instance", async () => {

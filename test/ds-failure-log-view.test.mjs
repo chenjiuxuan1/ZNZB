@@ -110,6 +110,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /\/api\/ds-n8n-failure-watch\/evidence/);
   assert.match(source, /function hydrateVisibleN8nEvidence/);
   assert.match(source, /正在补充查询 DS 失败节点/);
+  assert.match(source, /function n8nRepairDisplayStatus/);
+  assert.match(source, /n8n_recovered: \{ label: "已修复"/);
+  assert.match(source, /n8n_unresolved: \{ label: "未修复"/);
+  assert.match(source, /n8n_unknown: \{ label: "修复结果待确认"/);
   assert.match(platformApi, /enrichDsEvidence: false/);
   assert.match(platformApi, /async resolveN8nFailureEvidence/);
   assert.match(platformApi, /timeoutMs: 8_000/);
