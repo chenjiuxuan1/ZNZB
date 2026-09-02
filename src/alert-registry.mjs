@@ -34,6 +34,9 @@ import { createAlertScriptTemplate } from "./alert-script-template.mjs";
 
 const DEFAULT_CONFIG_FILE = "config/alert-registry.json";
 const EXAMPLE_CONFIG_FILE = "config/alert-registry.example.json";
+const MULTI_COUNTRY_RESULTS_FILE = "config/multi-country-check-results.json";
+const DEFAULT_MULTI_COUNTRY_RESULTS = { runs: [] };
+const MULTI_COUNTRY_RESULTS_KEEP = 7;
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
@@ -360,6 +363,45 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return template.applyUpdate(entry, { commitMessage, skipGit, skipDeploy });
   }
 
+  // ---- 多国一致性校验结果（保留最近 7 次） ----
+
+  async function resultsPath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MULTI_COUNTRY_RESULTS_FILE);
+  }
+
+  async function loadResults() {
+    const file = await resultsPath();
+    return readJsonFile(file, DEFAULT_MULTI_COUNTRY_RESULTS);
+  }
+
+  /** 读取最近 7 次多国校验结果（最新在前）。 */
+  async function listCheckResults() {
+    const data = await loadResults();
+    return data.runs || [];
+  }
+
+  /**
+   * 追加一次多国校验结果，保留最近 7 次（超出的旧记录丢弃）。
+   * result: { checkedAt?, id?, countries: [{code, label, mismatches: [{check_item, mismatch_cnt}]}], hasAlert, hasError, text? }
+   */
+  async function appendCheckResult(result = {}) {
+    const data = await loadResults();
+    const run = {
+      id: result.id || randomUUID(),
+      checkedAt: result.checkedAt || new Date().toISOString(),
+      source: result.source || "multi-country",
+      countries: Array.isArray(result.countries) ? result.countries : [],
+      hasAlert: Boolean(result.hasAlert),
+      hasError: Boolean(result.hasError),
+      text: result.text || "",
+      summary: result.summary || null,
+    };
+    const runs = [run, ...(data.runs || [])].slice(0, MULTI_COUNTRY_RESULTS_KEEP);
+    await writeJsonFileAtomic(await resultsPath(), { runs });
+    return { ok: true, kept: runs.length, limit: MULTI_COUNTRY_RESULTS_KEEP, run };
+  }
+
   return {
     list,
     get,
@@ -374,5 +416,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     seedExamples,
     normalizeEntry,
     resolveEnv,
+    listCheckResults,
+    appendCheckResult,
   };
 }

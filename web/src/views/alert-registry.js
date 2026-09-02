@@ -29,12 +29,69 @@ export function renderAlertRegistry(root) {
       <div class="panel-title">测试结果</div>
       <div id="ar-test-output"></div>
     </section>
+    <section class="panel">
+      <div class="panel-title">多国一致性校验 · 最近 7 次结果</div>
+      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每次校验后回写；有异常（mismatch_cnt &gt; 0）的国家会标红。</div>
+      <div id="mc-results"></div>
+    </section>
   `;
 
-  root.querySelector("#ar-refresh").addEventListener("click", () => loadList(root));
+  root.querySelector("#ar-refresh").addEventListener("click", () => {
+    loadList(root);
+    loadMcResults(root);
+  });
   root.querySelector("#ar-new").addEventListener("click", () => openEditor(root, null));
 
   loadList(root);
+  loadMcResults(root);
+}
+
+/** 加载最近 7 次多国一致性校验结果。 */
+async function loadMcResults(root) {
+  const el = root.querySelector("#mc-results");
+  if (!el) return;
+  let runs;
+  try {
+    runs = await apiGet("/api/multi-country/check-results");
+  } catch (error) {
+    el.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
+    return;
+  }
+  if (!Array.isArray(runs) || !runs.length) {
+    el.innerHTML = `<div class="notice">暂无校验记录。运行「多国一致性校验告警」后会自动回写最近 7 次结果。</div>`;
+    return;
+  }
+  el.innerHTML = runs.map((run, idx) => {
+    const ts = formatTs(run.checkedAt);
+    const summary = (run.countries || []).map((c) => {
+      const m = c.mismatches || [];
+      const has = m.length > 0;
+      const cls = has ? "mc-badge mc-badge-red" : "mc-badge mc-badge-green";
+      const detail = has
+        ? ` (${m.map((x) => `${x.check_item}=${x.mismatch_cnt}`).join(", ")})`
+        : "";
+      return `<span class="${cls}">${escapeHtml(c.label || c.code || "")}${detail}</span>`;
+    }).join(" ");
+    const alertMark = run.hasAlert ? ` <span class="mc-badge mc-badge-red">异常</span>` : ` <span class="mc-badge mc-badge-green">正常</span>`;
+    return `
+      <div class="mc-run ${idx === 0 ? "mc-run-latest" : ""}">
+        <div class="mc-run-head">
+          <span class="mc-run-id">#${run.id ? String(run.id).slice(0, 8) : idx + 1}</span>
+          <span class="mc-run-ts">${ts}</span>
+          ${alertMark}
+        </div>
+        <div class="mc-run-countries">${summary || `<span class="mc-badge mc-badge-gray">无国家数据</span>`}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function formatTs(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 async function loadList(root) {
