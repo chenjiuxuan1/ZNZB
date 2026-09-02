@@ -35,7 +35,7 @@ test("extracts DS payload from n8n webhook JSON-string message", () => {
   assert.equal(records[0].country, "ph");
 });
 
-test("n8n monitor reads executions and filters to selected project scope", async () => {
+test("n8n monitor reads executions and ignores the saved project scope", async () => {
   const client = {
     async listWorkflows() {
       return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口", nodes: [] }] };
@@ -51,7 +51,9 @@ test("n8n monitor reads executions and filters to selected project scope", async
     now: new Date("2026-08-30T12:00:00Z"),
     countries: ["ph"],
     lookbackDays: 7,
-    projectScope: { ph: ["15843450427744"] },
+    // A deliberately non-matching scope must not hide the DS record parsed
+    // from the n8n execution detail.
+    projectScope: { ph: ["another-project"] },
     projectScopeConfigured: true,
     n8nClient: client,
     bypassCache: true,

@@ -2699,14 +2699,9 @@ export function createPlatformApi({
      */
     async getN8nFailureRestartWatch(filters = {}) {
       const country = String(filters.country || "").trim().toLowerCase();
-      const state = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
-      const projectScopeConfigured = state.n8nProjectScopeConfigured === true
-        || Object.prototype.hasOwnProperty.call(state, "n8nProjects");
       return inspectN8nAutoRetryExecutions(rootDir, {
         countries: country || undefined,
         lookbackDays: filters.days,
-        projectScope: projectScopeConfigured ? normalizeN8nProjectScope(state.n8nProjects) : {},
-        projectScopeConfigured,
         n8nClient: n8nAutoRetryClient,
       });
     },
@@ -2714,16 +2709,33 @@ export function createPlatformApi({
     async checkDsScheduledFailures(filters = {}) {
       const country = String(filters.country || "").trim().toLowerCase();
       const state = await readJsonFile(resolve("dsScheduledFailureWatch"), {});
-      const hasN8nProjectScope = state.n8nProjectScopeConfigured === true
-        || Object.prototype.hasOwnProperty.call(state, "n8nProjects");
-      // The n8n monitor is opt-in by project. An unconfigured scope must not
-      // silently turn every DS project into an n8n restart candidate.
-      const projectScope = hasN8nProjectScope ? normalizeN8nProjectScope(state.n8nProjects) : {};
       const result = await inspectOriginalScheduledFailures(rootDir, {
         countries: country || undefined,
         lookbackDays: filters.days,
-        projectScope,
       });
+      // The original DS alert -> n8n workflow may already have sent the
+      // failure to the country's group. Use its execution detail as the
+      // source of truth and suppress only the duplicate group delivery from
+      // this page scan; owner private notifications remain independent.
+      const n8nGroupNotifiedKeys = new Set();
+      try {
+        const n8nResult = await inspectN8nAutoRetryExecutions(rootDir, {
+          countries: country || undefined,
+          lookbackDays: filters.days,
+          n8nClient: n8nAutoRetryClient,
+        });
+        for (const countryResult of n8nResult.countries || []) {
+          for (const n8nFailure of countryResult.failures || []) {
+            const triggerStatus = String(n8nFailure.n8nTriggerStatus || "");
+            if (!n8nFailure.instanceId || triggerStatus === "n8n_failed" || triggerStatus === "ignored_start_workflow") continue;
+            n8nGroupNotifiedKeys.add(`${countryResult.country}:${n8nFailure.instanceId}`);
+          }
+        }
+      } catch {
+        // n8n may be unavailable while the DS page scan is still usable. In
+        // that case keep the page notification behavior and do not fail the
+        // whole scan because deduplication is best effort.
+      }
       const notified = new Set(Array.isArray(state.notifiedInstanceIds) ? state.notifiedInstanceIds.map(String) : []);
       const notificationConfig = await this.getDsNotificationConfig();
       const knBotToken = String(notificationConfig.botToken || "${KN_BOT_TOKEN}").trim();
@@ -2766,9 +2778,10 @@ export function createPlatformApi({
           );
           const hasNotificationHistory = failureNotificationLogs.length > 0;
           if (!failure.instanceId || notified.has(key) || !Number.isFinite(failedAtMs) || (failedAtMs < notificationCutoffMs && !hasNotificationHistory)) continue;
+          const n8nGroupAlreadyNotified = n8nGroupNotifiedKeys.has(key);
           const expectedChannels = [
             ...(ownerEmails ? ["owner_direct"] : []),
-            ...((groupBotId || legacyGroupChatId) ? ["country_group"] : []),
+            ...((groupBotId || legacyGroupChatId) && !n8nGroupAlreadyNotified ? ["country_group"] : []),
           ];
           const pendingChannels = expectedChannels.filter((channel) => !deliveredChannels.has(channel));
           if (pendingChannels.length === 0) {
@@ -2781,10 +2794,10 @@ export function createPlatformApi({
             : failure.retryResult === "running"
               ? `目前自动失败重试中，执行次数：${retryCount}`
               : failure.retryResult === "failed" || failure.retryResult === "timeout_needs_owner"
-                ? `自动重跑仍未恢复，重跑次数：${retryCount}，需要负责人查看`
-                : "已发现定时任务失败，等待自动失败重试";
+                ? `自动重跑仍未恢复：重跑次数：${retryCount}，需要负责人查看`
+                : "自动重跑仍未恢复：已发现定时任务失败，等待自动失败重试";
           const message = [
-            `失败任务扫描触发｜${countryResult.countryName || countryResult.country}`,
+            `n8n 失败重启监控｜${countryResult.countryName || countryResult.country}`,
             `失败任务：${failure.taskName || failure.workflowName || "未返回任务节点名称"}`,
             `项目：${failure.projectName || failure.projectCode || "-"}`,
             `工作流：${failure.workflowName || "-"}`,
@@ -2803,7 +2816,7 @@ export function createPlatformApi({
             const deliveryErrors = [];
             if (ownerEmails && pendingChannels.includes("owner_direct")) {
               try {
-                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: ownerEmails, chatId: "", mentions: ownerMentions } }, message, { title: "失败任务扫描触发", severity: "warning", timestamp: result.checkedAt });
+                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: ownerEmails, chatId: "", mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
                 const sentSuccessfully = Boolean(sent?.sent);
                 if (sentSuccessfully) currentDeliveredChannels.add("owner_direct");
                 recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "owner_direct", target: ownerEmails, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "私聊通知未发送" });
@@ -2815,7 +2828,7 @@ export function createPlatformApi({
             }
             if (groupBotId && pendingChannels.includes("country_group")) {
               try {
-                const sent = await notifyTextFn({ alerts: { channel: "tv", webhookUrl: DEFAULT_TV_WEBHOOK_URL, botId: groupBotId, mentions: ownerMentions } }, message, { title: "失败任务扫描触发", severity: "warning", timestamp: result.checkedAt });
+                const sent = await notifyTextFn({ alerts: { channel: "tv", webhookUrl: DEFAULT_TV_WEBHOOK_URL, botId: groupBotId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
                 const sentSuccessfully = Boolean(sent?.sent);
                 if (sentSuccessfully) currentDeliveredChannels.add("country_group");
                 recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: groupBotId, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "群发通知未发送" });
@@ -2826,7 +2839,7 @@ export function createPlatformApi({
               }
             } else if (legacyGroupChatId && pendingChannels.includes("country_group")) {
               try {
-                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: "", chatId: legacyGroupChatId, mentions: ownerMentions } }, message, { title: "失败任务扫描触发", severity: "warning", timestamp: result.checkedAt });
+                const sent = await notifyTextFn({ alerts: { ...notificationConfig, channel: "knBot", botToken: knBotToken, recipientEmails: "", chatId: legacyGroupChatId, mentions: ownerMentions } }, message, { title: "n8n 失败重启监控", severity: "warning", timestamp: result.checkedAt });
                 const sentSuccessfully = Boolean(sent?.sent);
                 if (sentSuccessfully) currentDeliveredChannels.add("country_group");
                 recordNotification({ country: countryResult.country, countryName: countryResult.countryName, instanceId: failure.instanceId, channel: "country_group", target: legacyGroupChatId, status: sent?.sent ? "sent" : "failed", message, error: sent?.sent ? "" : sent?.reason || "群发通知未发送" });
