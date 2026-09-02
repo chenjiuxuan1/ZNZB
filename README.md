@@ -425,6 +425,7 @@ export N8N_API_KEY='<n8n API Key>'
 | GET | `/api/alerts/n8n/workflows` | n8n 工作流（精简字段） |
 | GET | `/api/alerts/n8n/executions` | n8n 执行（精简字段） |
 | GET | `/api/ds-n8n-failure-watch?country=ph&days=7` | 读取 DS 告警实际触发的“各国-DS失败自动重跑统一入口”n8n 执行日志；项目编号和项目名称以 n8n 执行详情中的 DS 告警载荷为准，不依赖 ZNZB 项目范围 |
+| POST | `/api/ds-n8n-failure-watch/notification-receipt` | 接收原 n8n 自动重跑脚本的国家群发回执并写入通知进程；Bearer token 必须匹配该国家现有 DS token，同一 receiptId 自动去重 |
 | GET | `/api/alerts/config` | 配置脱敏信息 |
 | GET | `/api/alerts/health` | 上游连通性 |
 

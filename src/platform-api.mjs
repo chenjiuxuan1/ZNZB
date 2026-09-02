@@ -35,6 +35,7 @@ import {
 } from "./ds-scheduler-monitor.mjs";
 import { inspectDsFailureLogs, inspectOriginalScheduledFailures, normalizeN8nProjectScope, resolveN8nDsFailureEvidence } from "./ds-failure-log-monitor.mjs";
 import { inspectN8nAutoRetryExecutions } from "./ds-n8n-auto-retry-monitor.mjs";
+import { assertDsN8nNotificationReceiptAuthorized } from "./ds-n8n-notification-receipt-auth.mjs";
 import {
   loadHiveSchedulerConfig,
   saveHiveSchedulerConfig,
@@ -115,6 +116,15 @@ const DEFAULT_N8N_GROUP_BOT_IDS = {
   pk: "dc751f2d-d626-4ab9-8a96-c042808c6dce",
   mx: "163ad872-4b4d-4493-8ec7-838f8eb9848d",
 };
+const DS_FAILURE_COUNTRY_NAMES = {
+  cn: "中国",
+  ine: "印尼",
+  ph: "菲律宾",
+  th: "泰国",
+  pk: "巴基斯坦",
+  mx: "墨西哥",
+};
+const DS_FAILURE_COUNTRY_CODES = Object.keys(DS_FAILURE_COUNTRY_NAMES);
 const DEFAULT_DUTY_PLATFORM_BASE_URL = "https://big-data-duty-management-platform.kuainiujinke.com";
 const DEFAULT_WATTREL_GATEWAY_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/wattrel-query";
 const DEFAULT_WATTREL_CONFIG = {
@@ -2967,6 +2977,51 @@ export function createPlatformApi({
         .sort((a, b) => (Date.parse(b.time || "") || 0) - (Date.parse(a.time || "") || 0))
         .slice(0, limit);
       return { logs, retentionDays: 7 };
+    },
+
+    async recordDsN8nNotificationReceipt(input = {}, authorization = "") {
+      const country = String(input.country || "").trim().toLowerCase();
+      if (!DS_FAILURE_COUNTRY_CODES.includes(country)) throw badRequest("Invalid country", ["country 必须是 cn/ine/ph/th/pk/mx。"]);
+      const dsConfig = await loadDsSchedulerConfig(rootDir);
+      assertDsN8nNotificationReceiptAuthorized(authorization, dsConfig.countries?.[country]?.token);
+      const instanceId = String(input.instanceId || input.workflowInstanceId || "").trim();
+      const message = String(input.message || "").trim();
+      if (!instanceId || !message) throw badRequest("Invalid notification receipt", ["instanceId 和 message 不能为空。"]);
+      const status = input.status === "sent" ? "sent" : "failed";
+      const receiptId = String(input.receiptId || "").trim();
+      let savedLog = null;
+      let duplicateReceipt = false;
+      await updateJsonAtomic(resolve("dsScheduledFailureWatch"), {}, (state = {}) => {
+        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const logs = (Array.isArray(state.notificationLogs) ? state.notificationLogs : [])
+          .filter((item) => (Date.parse(item?.time || "") || 0) >= cutoff);
+        const duplicate = receiptId && logs.find((item) => item.receiptId === receiptId);
+        if (duplicate) {
+          duplicateReceipt = true;
+          savedLog = duplicate;
+          return state;
+        }
+        savedLog = {
+          id: randomUUID(),
+          receiptId,
+          time: input.time && Number.isFinite(Date.parse(input.time)) ? new Date(input.time).toISOString() : new Date().toISOString(),
+          source: "ds_auto_trigger",
+          sourceLabel: "DS 自动触发",
+          country,
+          countryName: String(input.countryName || DS_FAILURE_COUNTRY_NAMES[country] || country),
+          instanceId,
+          channel: "country_group",
+          target: String(input.target || input.botId || "").trim(),
+          status,
+          message,
+          error: status === "sent" ? "" : String(input.error || "群发通知未发送"),
+          requestId: String(input.requestId || "").trim(),
+        };
+        logs.push(savedLog);
+        if (logs.length > 500) logs.splice(0, logs.length - 500);
+        return { ...state, notificationLogs: logs };
+      });
+      return { success: true, duplicate: duplicateReceipt, receipt: savedLog };
     },
 
     deleteDsFailureRetryRun(input = {}) {
