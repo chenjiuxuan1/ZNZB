@@ -294,9 +294,10 @@ function projectMatchesN8nScope(project, country, projectScope) {
   return configured.some((value) => identities.includes(value));
 }
 
-async function postActionOnce(webhookUrl, country, token, action, payload = {}) {
+async function postActionOnce(webhookUrl, country, token, action, payload = {}, options = {}) {
+  const timeoutMs = Math.max(1_000, Math.min(REQUEST_TIMEOUT_MS, Number(options.timeoutMs) || REQUEST_TIMEOUT_MS));
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchCompatible(webhookUrl, {
       method: "POST",
@@ -317,7 +318,7 @@ async function postActionOnce(webhookUrl, country, token, action, payload = {}) 
     }
     return parsed.data && typeof parsed.data === "object" ? parsed.data : {};
   } catch (error) {
-    if (error.name === "AbortError") throw new Error("DS 网关请求超时（60 秒）");
+    if (error.name === "AbortError") throw new Error(`DS 网关请求超时（${Math.ceil(timeoutMs / 1000)} 秒）`);
     throw error;
   } finally {
     clearTimeout(timer);
@@ -592,7 +593,7 @@ async function listFailureTaskCandidates(failure, context, instanceIdValue) {
       state_type: "FAILURE",
       page_no: 1,
       page_size: TASK_PAGE_SIZE,
-    });
+    }, context.requestOptions);
     const filteredFailures = recordList(filtered).filter((item) => {
       const ownerInstanceId = String(item.workflow_instance_id || item.workflowInstanceId || item.process_instance_id || item.processInstanceId || "").trim();
       return (!ownerInstanceId || ownerInstanceId === instanceIdValue) && FAILED_STATES.has(stateOf(item));
@@ -605,7 +606,8 @@ async function listFailureTaskCandidates(failure, context, instanceIdValue) {
         total: pageTotal(filtered),
       };
     }
-  } catch {
+  } catch (error) {
+    if (context.fastFail && isTransientGatewayError(error)) throw error;
     // Continue with the compatible unfiltered paging path.
   }
 
@@ -614,14 +616,15 @@ async function listFailureTaskCandidates(failure, context, instanceIdValue) {
   let tasksRead = 0;
   let reportedTotal = null;
 
-  for (let pageNo = 1; pageNo <= MAX_TASK_PAGES; pageNo += 1) {
+  const maxTaskPages = Math.max(1, Math.min(MAX_TASK_PAGES, Number(context.maxTaskPages) || MAX_TASK_PAGES));
+  for (let pageNo = 1; pageNo <= maxTaskPages; pageNo += 1) {
     const response = await postAction(context.webhookUrl, context.country, context.token, "list_task_instances", {
       project_code: failure.projectCode,
       instance_id: instanceIdValue,
       process_instance_id: instanceIdValue,
       page_no: pageNo,
       page_size: TASK_PAGE_SIZE,
-    });
+    }, context.requestOptions);
     const records = recordList(response);
     const responseTotal = pageTotal(response);
     if (responseTotal != null) reportedTotal = responseTotal;
@@ -665,7 +668,7 @@ async function listFailureTaskCandidates(failure, context, instanceIdValue) {
   return {
     candidates: retryTasks.sort((a, b) => taskRetryCount(b) - taskRetryCount(a)
       || timestamp(endTime(b) || instanceTime(b)) - timestamp(endTime(a) || instanceTime(a))),
-    pagesRead: MAX_TASK_PAGES,
+    pagesRead: maxTaskPages,
     tasksRead,
     total: reportedTotal,
   };
@@ -707,7 +710,7 @@ async function resolveFailureTask(failure, context, options = {}) {
           project_code: failure.projectCode,
           task_instance_id: taskInstanceId,
           task_type: "SUB_WORKFLOW",
-        });
+        }, context.requestOptions);
         const subData = objectData(sub);
         const subInstanceId = String(subData.sub_workflow_instance_id || subData.subWorkflowInstanceId || "").trim();
         if (!subInstanceId) continue;
@@ -716,7 +719,7 @@ async function resolveFailureTask(failure, context, options = {}) {
           const subInstance = objectData(await postAction(context.webhookUrl, context.country, context.token, "get_instance", {
             project_code: failure.projectCode,
             instance_id: subInstanceId,
-          }));
+          }, context.requestOptions));
           subWorkflowCode = workflowCode(subInstance);
         } catch {
           // The child task list and log are still useful if instance detail is unavailable.
@@ -740,7 +743,7 @@ async function resolveFailureTask(failure, context, options = {}) {
       logData = await postAction(context.webhookUrl, context.country, context.token, "get_task_log", {
         project_code: failure.projectCode,
         task_instance_id: taskInstanceId,
-      });
+      }, context.requestOptions);
     } catch {
       if (!isSameInstanceRecovery(failure) || FAILED_STATES.has(stateOf(task))) return base;
       continue;
@@ -844,7 +847,7 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
  * execution. This does not scan projects or discover additional failures; it
  * only queries the exact project + workflow instance carried by the alert.
  */
-export async function resolveN8nDsFailureEvidence(rootDir, { country, failure = {} } = {}) {
+export async function resolveN8nDsFailureEvidence(rootDir, { country, failure = {}, timeoutMs = 8_000 } = {}) {
   const countryCode = String(country || "").trim().toLowerCase();
   const config = await loadDsSchedulerConfig(rootDir);
   const countryConfig = config.countries?.[countryCode] || {};
@@ -871,7 +874,14 @@ export async function resolveN8nDsFailureEvidence(rootDir, { country, failure = 
     };
   }
   try {
-    const resolved = await resolveFailureTask(failure, { webhookUrl, country: countryCode, token });
+    const resolved = await resolveFailureTask(failure, {
+      webhookUrl,
+      country: countryCode,
+      token,
+      fastFail: true,
+      maxTaskPages: 3,
+      requestOptions: { timeoutMs, retries: 0 },
+    });
     if (!resolved) {
       return {
         dsInstanceUrl,
@@ -934,14 +944,15 @@ export function classifyDsFailureReason(reason = "") {
   return recoverable.some((pattern) => pattern.test(text)) ? "recoverable" : "unknown";
 }
 
-async function postAction(webhookUrl, country, token, action, payload = {}) {
+async function postAction(webhookUrl, country, token, action, payload = {}, options = {}) {
   try {
-    return await postActionOnce(webhookUrl, country, token, action, payload);
+    return await postActionOnce(webhookUrl, country, token, action, payload, options);
   } catch (error) {
-    if (!isTransientGatewayError(error)) throw error;
+    const retries = Math.max(0, Math.min(1, Number(options.retries ?? 1)));
+    if (!retries || !isTransientGatewayError(error)) throw error;
     await new Promise((resolve) => setTimeout(resolve, 300));
     try {
-      return await postActionOnce(webhookUrl, country, token, action, payload);
+      return await postActionOnce(webhookUrl, country, token, action, payload, options);
     } catch (retryError) {
       throw new Error(`网关瞬时连接失败，自动重试 1 次后仍未恢复：${retryError.message}`);
     }
