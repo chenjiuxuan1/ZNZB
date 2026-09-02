@@ -131,10 +131,13 @@ test("n8n monitor deduplicates DS task evidence queries for repeated executions 
     },
     bypassCache: true,
   });
-  assert.equal(result.countries[0].failures.length, 2);
+  // Repeated n8n executions of the same DS instance collapse to a single row
+  // showing the most recent execution only.
+  assert.equal(result.countries[0].failures.length, 1);
+  assert.equal(result.countries[0].failures[0].n8nExecutionId, "n8n-b");
+  assert.equal(result.countries[0].failures[0].taskName, "dwd_orders");
+  assert.equal(result.countries[0].failures[0].n8nLastNode, "菲律宾启动后台重跑");
   assert.equal(evidenceCalls, 1);
-  assert.deepEqual(result.countries[0].failures.map((item) => item.taskName), ["dwd_orders", "dwd_orders"]);
-  assert.deepEqual(result.countries[0].failures.map((item) => item.n8nLastNode), ["菲律宾启动后台重跑", "菲律宾启动后台重跑"]);
 });
 
 test("START_PROCESS is visible as scan-only and never marked as a retry", async () => {
