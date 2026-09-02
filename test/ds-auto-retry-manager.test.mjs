@@ -386,13 +386,13 @@ test("manual run submits at most one retry while automatic retry is disabled", a
   assert.ok(manager.getLogs().some((item) => item.event === "manual_run_completed"));
 });
 
-test("privately notifies the country owner when a submitted retry is not recovered", async () => {
+test("notifies the country owner privately and in the configured country TV group when a retry is not recovered", async () => {
   const sent = [];
   const manager = createDsAutoRetryManager({
     rootDir: "/unused",
     inspectFn: async () => resultWith({ failureMessage: "Connection reset by peer", retryable: true, projectName: "国内数仓", workflowName: "hourly_etl", taskName: "load_orders" }),
     configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
-    ownerConfigLoader: async () => ({ sharedOwners: { cn: "cn-owner@kn.group" }, sharedGroupChatIds: { cn: "-100-cn-group" } }),
+    ownerConfigLoader: async () => ({ sharedOwners: { cn: "cn-owner@kn.group" }, sharedBotIds: { cn: "cn-tv-bot" } }),
     notifyFn: async (config, message) => { sent.push({ config, message }); return { sent: true }; },
     actionFn: async ({ action }) => action === "get_workflow" ? { releaseState: "ONLINE" } : action === "retry_instance" ? { success: true } : { state: "FAILURE" },
     now: () => fixedNow,
@@ -401,13 +401,36 @@ test("privately notifies the country owner when a submitted retry is not recover
   manager.runNow({ countries: ["cn"] });
   await new Promise((resolve) => setImmediate(resolve));
   await Promise.all([...manager.active.values()]);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].config.alerts.recipientEmails, "cn-owner@kn.group");
-  assert.equal(sent[0].config.alerts.chatId, undefined);
-  assert.equal(sent[0].config.alerts.mentions, undefined);
-  assert.match(sent[0].message, /load_orders/);
-  assert.match(sent[0].message, /仍为 FAILURE/);
-  assert.ok(manager.getLogs().some((item) => item.event === "retry_failure_notification_sent"));
+  assert.equal(sent.length, 2);
+  const ownerDelivery = sent.find((item) => item.config.alerts.channel === "knBot");
+  const groupDelivery = sent.find((item) => item.config.alerts.channel === "tv");
+  assert.equal(ownerDelivery.config.alerts.recipientEmails, "cn-owner@kn.group");
+  assert.equal(ownerDelivery.config.alerts.chatId, undefined);
+  assert.equal(groupDelivery.config.alerts.botId, "cn-tv-bot");
+  assert.deepEqual(groupDelivery.config.alerts.mentions, ["@cn-owner@kn.group"]);
+  assert.match(groupDelivery.message, /load_orders/);
+  assert.match(groupDelivery.message, /仍为 FAILURE/);
+  const notificationLogs = manager.getLogs().filter((item) => item.event === "retry_failure_notification_sent");
+  assert.deepEqual(notificationLogs.map((item) => item.notificationChannel).sort(), ["country_group", "owner_direct"]);
+});
+
+test("keeps owner and group retry-failure delivery outcomes independent", async () => {
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({ failureMessage: "Connection reset by peer", retryable: true, taskName: "load_orders" }),
+    configLoader: async () => ({ n8nWebhookUrl: "https://gateway.example", countries: { cn: { token: "token" } } }),
+    ownerConfigLoader: async () => ({ sharedOwners: { cn: "cn-owner@kn.group" }, sharedBotIds: { cn: "cn-tv-bot" } }),
+    notifyFn: async (config) => config.alerts.channel === "knBot" ? { sent: true } : { sent: false, reason: "group unavailable" },
+    actionFn: async ({ action }) => action === "get_workflow" ? { releaseState: "ONLINE" } : action === "retry_instance" ? { success: true } : { state: "FAILURE" },
+    now: () => fixedNow,
+    sleep: async () => {},
+  });
+  manager.runNow({ countries: ["cn"] });
+  await new Promise((resolve) => setImmediate(resolve));
+  await Promise.all([...manager.active.values()]);
+  const logs = manager.getLogs().filter((item) => item.notificationChannel);
+  assert.ok(logs.some((item) => item.notificationChannel === "owner_direct" && item.notificationStatus === "sent"));
+  assert.ok(logs.some((item) => item.notificationChannel === "country_group" && item.notificationStatus === "failed"));
 });
 
 test("only scans START_PROCESS failures and never submits a retry", async () => {
