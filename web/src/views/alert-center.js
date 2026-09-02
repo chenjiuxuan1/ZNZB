@@ -1452,6 +1452,7 @@ function bindRuleNotifyEdit(overlay, ruleId, reload) {
       try {
         users = await apiGet("/api/alerts/notify-users");
       } catch { /* 用户列表加载失败仍可手动输入 */ }
+      if (Array.isArray(users)) overlay.__acNotifyUsers = users;
       const userByUsername = new Map((Array.isArray(users) ? users : []).map((u) => [u.username, u]));
       // 已有接收人拆成多行；第一行带出当前固定电话
       const existing = receivers.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
@@ -1518,78 +1519,91 @@ function bindRuleNotifyEdit(overlay, ruleId, reload) {
       });
       form.querySelector(".ac-rn-cancel").addEventListener("click", () => { form.hidden = true; });
       form.querySelector(".ac-rn-save").addEventListener("click", async () => {
-        // 每行分流：已知用户 -> receivers；未知用户 -> 电话作为固定号码 Mobile
-        const receiversArr = [];
-        const fixedPhones = [];
-        const unknownNames = [];
-        form.querySelectorAll(".ac-rn-contact-row").forEach((row) => {
-          const name = row.querySelector(".ac-rn-contact-name")?.value.trim();
-          const ph = row.querySelector(".ac-rn-contact-phone")?.value.trim();
-          if (!name && !ph) return; // 空行忽略
-          if (name && userByUsername.has(name)) {
-            receiversArr.push(name);
-            if (ph) fixedPhones.push(ph);
-          } else {
-            if (name) unknownNames.push(name);
-            if (ph) fixedPhones.push(ph);
-          }
+        await saveNotifyEditForm(form, {
+          nrId, isDing, isVoice, isEmail, userByUsername, overlay, ruleId, reload,
         });
-        const params = {};
-        // 钉钉：@接收人（mentions）+ 机器人 ID
-        if (isDing) {
-          const mentionsVal = (form.querySelector("#ac-rn-mentions")?.value || "").trim();
-          if (mentionsVal) params.mentions = mentionsVal;
-          const botVal = (form.querySelector("#ac-rn-bot")?.value || "").trim();
-          if (botVal) params.botId = botVal;
-        }
-        // 电话：固定号码（非系统用户或补充号码），夜莺只支持单个 Mobile
-        if (isVoice && fixedPhones.length) {
-          params.Mobile = fixedPhones[0];
-        }
-        if (form.querySelector("#ac-rn-email")?.value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
-        // 校验：至少填一个
-        if (!receiversArr.length && !fixedPhones.length && !Object.keys(params).length) {
-          showToast("请至少填写一个联系人", ["填写用户名或电话后再保存。"], "warn");
-          return;
-        }
-        const saveBtn = form.querySelector(".ac-rn-save");
-        saveBtn.disabled = true;
-        try {
-          const payload = {};
-          if (receiversArr.length) payload.receivers = receiversArr;
-          if (Object.keys(params).length) payload.params = params;
-          const resp = await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
-          const unmatched = resp?.unmatched || [];
-          const detail = [];
-          if (receiversArr.length) detail.push(`已关联 ${receiversArr.length} 位系统用户：${receiversArr.join("、")}`);
-          if (params.Mobile) detail.push(`固定电话：${params.Mobile}（告警时拨打）`);
-          if (unmatched.length) detail.push(`未识别的用户名已忽略：${unmatched.join("、")}`);
-          if (unknownNames.length) detail.push(`${unknownNames.join("、")} 不在夜莺用户表，已按填入的电话作为固定号码。`);
-          if (fixedPhones.length > 1) detail.push("夜莺单个固定电话限制，仅保留了第一个号码。");
-          if (!detail.length) detail.push("通知配置已保存。");
-          showToast("已保存通知配置", detail, unmatched.length || unknownNames.length ? "warn" : "success");
-          form.hidden = true;
-          // 刷新弹窗内通知区 + 规则表通知列，让修改立即可见
-          try {
-            if (ruleId) {
-              const fresh = await apiGet(`/api/alerts/rules/detail?id=${encodeURIComponent(ruleId)}`);
-              if (fresh?.notify) {
-                const section = overlay.querySelector(".ac-rule-notify");
-                if (section) {
-                  section.outerHTML = renderRuleNotifySection(fresh.notify);
-                  bindRuleNotifyEdit(overlay, ruleId, reload);
-                }
-              }
-            }
-            if (typeof reload === "function") reload();
-          } catch { /* 刷新失败不影响已保存 */ }
-        } catch (error) {
-          saveBtn.disabled = false;
-          showToast("保存失败", [error.message], "error");
-        }
       });
     });
   });
+}
+
+/**
+ * 保存一条通知编辑表单（多行联系人 -> receivers/Mobile）。返回 { ok, errors }。
+ * 由"编辑接收人-保存"按钮与"保存规则"按钮共用，避免未提交的修改被丢失。
+ */
+async function saveNotifyEditForm(form, opts) {
+  const { nrId, isDing, isVoice, isEmail, userByUsername, overlay, ruleId, reload } = opts;
+  // 每行分流：已知用户 -> receivers；未知用户 -> 电话作为固定号码 Mobile
+  const receiversArr = [];
+  const fixedPhones = [];
+  const unknownNames = [];
+  form.querySelectorAll(".ac-rn-contact-row").forEach((row) => {
+    const name = row.querySelector(".ac-rn-contact-name")?.value.trim();
+    const ph = row.querySelector(".ac-rn-contact-phone")?.value.trim();
+    if (!name && !ph) return; // 空行忽略
+    if (name && userByUsername.has(name)) {
+      receiversArr.push(name);
+      if (ph) fixedPhones.push(ph);
+    } else {
+      if (name) unknownNames.push(name);
+      if (ph) fixedPhones.push(ph);
+    }
+  });
+  const params = {};
+  // 钉钉：@接收人（mentions）+ 机器人 ID
+  if (isDing) {
+    const mentionsVal = (form.querySelector("#ac-rn-mentions")?.value || "").trim();
+    if (mentionsVal) params.mentions = mentionsVal;
+    const botVal = (form.querySelector("#ac-rn-bot")?.value || "").trim();
+    if (botVal) params.botId = botVal;
+  }
+  // 电话：固定号码（非系统用户或补充号码），夜莺只支持单个 Mobile
+  if (isVoice && fixedPhones.length) {
+    params.Mobile = fixedPhones[0];
+  }
+  if (form.querySelector("#ac-rn-email")?.value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
+  // 校验：至少填一个
+  if (!receiversArr.length && !fixedPhones.length && !Object.keys(params).length) {
+    showToast("请至少填写一个联系人", ["填写用户名或电话后再保存。"], "warn");
+    return { ok: false, errors: ["empty"] };
+  }
+  const saveBtn = form.querySelector(".ac-rn-save");
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    const payload = {};
+    if (receiversArr.length) payload.receivers = receiversArr;
+    if (Object.keys(params).length) payload.params = params;
+    const resp = await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
+    const unmatched = resp?.unmatched || [];
+    const detail = [];
+    if (receiversArr.length) detail.push(`已关联 ${receiversArr.length} 位系统用户：${receiversArr.join("、")}`);
+    if (params.Mobile) detail.push(`固定电话：${params.Mobile}（告警时拨打）`);
+    if (unmatched.length) detail.push(`未识别的用户名已忽略：${unmatched.join("、")}`);
+    if (unknownNames.length) detail.push(`${unknownNames.join("、")} 不在夜莺用户表，已按填入的电话作为固定号码。`);
+    if (fixedPhones.length > 1) detail.push("夜莺单个固定电话限制，仅保留了第一个号码。");
+    if (!detail.length) detail.push("通知配置已保存。");
+    showToast("已保存通知配置", detail, unmatched.length || unknownNames.length ? "warn" : "success");
+    form.hidden = true;
+    // 刷新弹窗内通知区 + 规则表通知列，让修改立即可见
+    try {
+      if (ruleId) {
+        const fresh = await apiGet(`/api/alerts/rules/detail?id=${encodeURIComponent(ruleId)}`);
+        if (fresh?.notify) {
+          const section = overlay.querySelector(".ac-rule-notify");
+          if (section) {
+            section.outerHTML = renderRuleNotifySection(fresh.notify);
+            bindRuleNotifyEdit(overlay, ruleId, reload);
+          }
+        }
+      }
+      if (typeof reload === "function") reload();
+    } catch { /* 刷新失败不影响已保存 */ }
+    return { ok: true, errors: [] };
+  } catch (error) {
+    if (saveBtn) saveBtn.disabled = false;
+    showToast("保存失败", [error.message], "error");
+    return { ok: false, errors: [error.message] };
+  }
 }
 
 /** 联系人行事件：输入用户名自动带出用户登记的电话；删除该行。 */
@@ -1783,6 +1797,25 @@ function openRuleEditModal(rule, reload) {
   overlay.querySelector("#ac-rule-save").addEventListener("click", async () => {
     const saveBtn = overlay.querySelector("#ac-rule-save");
     saveBtn.disabled = true;
+    // 先保存所有打开中的通知编辑表单，避免接收人修改被丢失
+    const openForms = [...overlay.querySelectorAll(".ac-rule-notify-edit-form")].filter((f) => !f.hidden);
+    for (const form of openForms) {
+      const item = form.closest(".ac-rule-notify-item");
+      const editBtn = item?.querySelector(".ac-rule-notify-edit");
+      if (!editBtn) continue;
+      const notifyResp = await saveNotifyEditForm(form, {
+        nrId: editBtn.dataset.nrId,
+        isDing: editBtn.dataset.ident === "dingtalk" || editBtn.dataset.ident === "dingtalk_robot" || editBtn.dataset.ident === "ali-im",
+        isVoice: editBtn.dataset.ident === "ali-voice" || editBtn.dataset.ident === "ivr" || editBtn.dataset.ident === "phone" || editBtn.dataset.ident === "voice",
+        isEmail: editBtn.dataset.ident === "email",
+        userByUsername: new Map((overlay.__acNotifyUsers || []).map((u) => [u.username, u])),
+        overlay, ruleId: rule.id, reload,
+      });
+      if (!notifyResp.ok) {
+        saveBtn.disabled = false;
+        return; // 通知保存失败则中止规则保存
+      }
+    }
     const name = overlay.querySelector("#ac-rule-name").value.trim();
     const severity = Number(overlay.querySelector("#ac-rule-severity").value);
     const newQuery = overlay.querySelector("#ac-rule-query").value.trim();
