@@ -839,6 +839,74 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
   }
 }
 
+/**
+ * Resolve task-level evidence for a DS alert already discovered from an n8n
+ * execution. This does not scan projects or discover additional failures; it
+ * only queries the exact project + workflow instance carried by the alert.
+ */
+export async function resolveN8nDsFailureEvidence(rootDir, { country, failure = {} } = {}) {
+  const countryCode = String(country || "").trim().toLowerCase();
+  const config = await loadDsSchedulerConfig(rootDir);
+  const countryConfig = config.countries?.[countryCode] || {};
+  const token = String(countryConfig.token || "").trim();
+  const webhookUrl = String(config.n8nWebhookUrl || "").trim();
+  const dsInstanceUrl = buildDsInstanceUrl(
+    countryCode,
+    failure.projectCode,
+    failure.instanceId,
+    countryConfig.dsUiUrl || countryConfig.ds_ui_url || "",
+  );
+  if (!failure.instanceId || !failure.projectCode) {
+    return {
+      dsInstanceUrl,
+      taskLookupStatus: "unavailable",
+      taskLookupError: "n8n 告警载荷缺少项目编号或工作流实例 ID，无法查询 DS 失败任务",
+    };
+  }
+  if (!webhookUrl || !token) {
+    return {
+      dsInstanceUrl,
+      taskLookupStatus: "unavailable",
+      taskLookupError: !token ? "该国家 DS Token 未配置，无法补充查询失败任务" : "DS 查询网关未配置，无法补充查询失败任务",
+    };
+  }
+  try {
+    const resolved = await resolveFailureTask(failure, { webhookUrl, country: countryCode, token });
+    if (!resolved) {
+      return {
+        dsInstanceUrl,
+        taskLookupStatus: "not_found",
+        taskLookupError: "DS 工作流实例未返回失败或停止的任务节点",
+      };
+    }
+    const log = resolved.logData?.log || resolved.logData?.task_log || resolved.logData?.content || "";
+    const failureReason = extractDsFailureReason(log, "");
+    return {
+      dsInstanceUrl,
+      taskLookupStatus: "resolved",
+      taskLookupError: "",
+      resolvedWorkflowCode: resolved.workflowCode || failure.workflowCode || "",
+      resolvedWorkflowInstanceId: resolved.workflowInstanceId || failure.instanceId || "",
+      taskInstanceId: resolved.taskInstanceId || "",
+      taskName: resolved.taskName || "",
+      taskCode: resolved.taskCode || "",
+      taskType: resolved.taskType || "",
+      taskState: resolved.taskState || "",
+      taskQueryPages: resolved.taskQueryPages,
+      taskQueryReadCount: resolved.taskQueryReadCount,
+      taskQueryTotal: resolved.taskQueryTotal,
+      failureMessage: failureReason,
+      failureReason,
+    };
+  } catch (error) {
+    return {
+      dsInstanceUrl,
+      taskLookupStatus: "failed",
+      taskLookupError: error.message,
+    };
+  }
+}
+
 function isTransientGatewayError(error) {
   return /(?:connection (?:closed|reset)|closed by remote host|port 22|econnreset|socket hang up|fetch failed|request timeout|请求超时|网关返回非 JSON（HTTP 200）)/i.test(String(error?.message || error || ""));
 }
