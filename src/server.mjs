@@ -279,6 +279,12 @@ async function handleApi(request, response, url) {
   if (method === "POST" && url.pathname === "/api/ds-n8n-failure-watch/evidence") {
     return sendJson(response, 200, await api.resolveN8nFailureEvidence(await readBody(request, {})));
   }
+  if (method === "POST" && url.pathname === "/api/ds-n8n-failure-watch/notification-receipt") {
+    return sendJson(response, 200, await api.recordDsN8nNotificationReceipt(
+      await readBody(request, {}),
+      request.headers.authorization || "",
+    ));
+  }
   if (method === "GET" && url.pathname === "/api/ds-failure-retry/control") {
     return sendJson(response, 200, api.getDsFailureRetryControl());
   }
