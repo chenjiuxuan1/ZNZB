@@ -1431,7 +1431,7 @@ function renderRuleNotifySection(notify) {
 }
 
 /** 绑定规则弹窗内"编辑接收人"：多行联系人（接收人+电话），"添加联系人"按钮加行。 */
-function bindRuleNotifyEdit(overlay) {
+function bindRuleNotifyEdit(overlay, ruleId, reload) {
   overlay.querySelectorAll(".ac-rule-notify-edit").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const item = btn.closest(".ac-rule-notify-item");
@@ -1569,6 +1569,20 @@ function bindRuleNotifyEdit(overlay) {
           if (!detail.length) detail.push("通知配置已保存。");
           showToast("已保存通知配置", detail, unmatched.length || unknownNames.length ? "warn" : "success");
           form.hidden = true;
+          // 刷新弹窗内通知区 + 规则表通知列，让修改立即可见
+          try {
+            if (ruleId) {
+              const fresh = await apiGet(`/api/alerts/rules/detail?id=${encodeURIComponent(ruleId)}`);
+              if (fresh?.notify) {
+                const section = overlay.querySelector(".ac-rule-notify");
+                if (section) {
+                  section.outerHTML = renderRuleNotifySection(fresh.notify);
+                  bindRuleNotifyEdit(overlay, ruleId, reload);
+                }
+              }
+            }
+            if (typeof reload === "function") reload();
+          } catch { /* 刷新失败不影响已保存 */ }
         } catch (error) {
           saveBtn.disabled = false;
           showToast("保存失败", [error.message], "error");
@@ -1761,7 +1775,7 @@ function openRuleEditModal(rule, reload) {
   overlay.querySelector(".ac-modal-close").addEventListener("click", close);
   overlay.querySelector(".ac-rule-cancel").addEventListener("click", close);
   overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
-  bindRuleNotifyEdit(overlay);
+  bindRuleNotifyEdit(overlay, rule.id, reload);
   document.addEventListener("keydown", function onEsc(event) {
     if (event.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
   });
@@ -1787,10 +1801,11 @@ function openRuleEditModal(rule, reload) {
       if (!isSql) body.prom_ql = newQuery;
       await apiPut(`/api/alerts/rules/${rule.id}`, body);
       close();
+      showToast("规则已保存", ["告警规则修改已生效。"], "success");
       await reload();
     } catch (error) {
       saveBtn.disabled = false;
-      alert(`保存失败：${error.message}`);
+      showToast("保存失败", [error.message], "error");
     }
   });
 }
