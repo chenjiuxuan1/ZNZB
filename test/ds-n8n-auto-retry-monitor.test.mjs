@@ -37,6 +37,7 @@ test("extracts DS payload from n8n webhook JSON-string message", () => {
 
 test("n8n monitor reads executions and ignores the saved project scope", async () => {
   let executionOptions;
+  let evidenceCalls = 0;
   const client = {
     async listWorkflows() {
       return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口", nodes: [] }] };
@@ -58,6 +59,18 @@ test("n8n monitor reads executions and ignores the saved project scope", async (
     projectScope: { ph: ["another-project"] },
     projectScopeConfigured: true,
     n8nClient: client,
+    dsEvidenceResolver: async () => {
+      evidenceCalls += 1;
+      return {
+        taskLookupStatus: "resolved",
+        taskInstanceId: "task-instance-1",
+        taskName: "dwd_orders",
+        taskCode: "task-code-1",
+        taskType: "SQL",
+        failureReason: "StarRocks 查询连接中断",
+        failureMessage: "StarRocks 查询连接中断",
+      };
+    },
     bypassCache: true,
   });
   assert.equal(result.source, "n8n-auto-trigger-execution-log");
@@ -65,8 +78,45 @@ test("n8n monitor reads executions and ignores the saved project scope", async (
   assert.equal(result.totalFailures, 1);
   assert.equal(result.countries[0].failures[0].n8nExecutionId, "n8n-1");
   assert.equal(result.countries[0].failures[0].n8nTriggerStatus, "n8n_accepted");
+  assert.equal(result.countries[0].failures[0].taskName, "dwd_orders");
+  assert.equal(result.countries[0].failures[0].failureReason, "StarRocks 查询连接中断");
+  assert.equal(evidenceCalls, 1);
   assert.equal(executionOptions.startedAfter, undefined);
   assert.equal(executionOptions.startedBefore, undefined);
+});
+
+test("n8n monitor deduplicates DS task evidence queries for repeated executions of one instance", async () => {
+  let evidenceCalls = 0;
+  const client = {
+    async listWorkflows() { return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口" }] }; },
+    async listExecutions() {
+      return { data: [
+        { id: "n8n-a", workflowId: "wf-1", status: "success", startedAt: "2026-08-30T00:25:01.000Z" },
+        { id: "n8n-b", workflowId: "wf-1", status: "success", startedAt: "2026-08-30T00:26:01.000Z" },
+      ] };
+    },
+    async getExecution(id) {
+      const detail = fakeDetail();
+      detail.id = id;
+      detail.data.resultData.lastNodeExecuted = "菲律宾启动后台重跑";
+      return detail;
+    },
+  };
+  const result = await inspectN8nAutoRetryExecutions("/tmp/znzb-deduplicated-evidence", {
+    now: new Date("2026-08-30T12:00:00Z"),
+    countries: ["ph"],
+    lookbackDays: 7,
+    n8nClient: client,
+    dsEvidenceResolver: async () => {
+      evidenceCalls += 1;
+      return { taskLookupStatus: "resolved", taskName: "dwd_orders", taskCode: "task-1" };
+    },
+    bypassCache: true,
+  });
+  assert.equal(result.countries[0].failures.length, 2);
+  assert.equal(evidenceCalls, 1);
+  assert.deepEqual(result.countries[0].failures.map((item) => item.taskName), ["dwd_orders", "dwd_orders"]);
+  assert.deepEqual(result.countries[0].failures.map((item) => item.n8nLastNode), ["菲律宾启动后台重跑", "菲律宾启动后台重跑"]);
 });
 
 test("START_PROCESS is visible as scan-only and never marked as a retry", async () => {
