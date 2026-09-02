@@ -8438,60 +8438,101 @@ select.ar-field {
 
 .ac-rule-notify-actions { margin-top: 6px; }
 .ac-rule-notify-edit-form {
-  margin-top: 8px;
+  margin-top: 10px;
   border-top: 1px dashed #cbd5e1;
-  padding-top: 8px;
+  padding-top: 12px;
 }
 .ac-rule-notify-edit-inner {
   display: grid;
+  gap: 10px;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
   align-items: end;
 }
+.ac-rule-notify-edit-inner > * { min-width: 0; }
 .ac-rule-notify-edit-inner label {
   display: block;
   font-size: 12px;
+  color: #475467;
+  font-weight: 600;
+}
+.ac-rule-notify-edit-inner label > input,
+.ac-rule-notify-edit-inner label > select,
+.ac-rule-notify-edit-inner label > textarea {
+  width: 100%;
+  margin-top: 4px;
 }
 .ac-rule-notify-edit-inner input { width: 100%; }
 .ac-rule-notify-edit-actions {
   display: flex;
   gap: 8px;
-  margin-top: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
 }
 @media (max-width: 900px) {
   .ac-rule-notify-edit-inner { grid-template-columns: 1fr; }
 }
 
 /* 通知接收人：多行联系人（接收人 + 电话） */
-.ac-rn-contacts { display: block; }
+.ac-rn-contacts {
+  display: block;
+  grid-column: 1 / -1;
+}
 .ac-rn-contact-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 4px 0 8px;
+  gap: 8px;
+  margin: 6px 0 10px;
 }
 .ac-rn-contact-row {
   align-items: center;
   display: grid;
-  gap: 6px;
-  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr 34px;
 }
 .ac-rn-contact-row .ac-search-input {
   flex: none;
-  height: 32px;
+  height: 34px;
   max-width: none;
   min-width: 0;
   width: 100%;
+  text-align: left;
 }
 .ac-rn-contact-del {
-  border: 1px solid transparent;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d0d5dd;
   border-radius: 6px;
-  color: #d92d20;
+  color: #98a2b3;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  height: 34px;
+  justify-content: center;
+  transition: all .15s;
+  width: 34px;
+}
+.ac-rn-contact-del:hover { background: #fef3f2; border-color: #fecdca; color: #d92d20; }
+.ac-rn-contact-add {
+  background: transparent;
+  border: 1px dashed #bfdbfe;
+  border-radius: 8px;
+  color: #2563eb;
   cursor: pointer;
   font-size: 12px;
-  height: 32px;
-  width: 32px;
+  font-weight: 600;
+  padding: 7px 14px;
+  transition: all .15s;
+  width: 100%;
 }
-.ac-rn-contact-del:hover { background: #fef3f2; border-color: #fecdca; }
-.ac-rn-contact-add { color: #2563eb; }
-.ac-rn-tip { margin-top: 2px; }
+.ac-rn-contact-add:hover { background: #eff6ff; border-color: #60a5fa; }
+.ac-rn-tip {
+  align-items: flex-start;
+  color: #667085;
+  display: flex;
+  font-size: 11px;
+  gap: 5px;
+  grid-column: 1 / -1;
+  line-height: 1.5;
+  margin-top: 0;
+}
+.ac-rule-notify-edit-actions { grid-column: 1 / -1; }
