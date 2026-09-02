@@ -33,7 +33,7 @@ import {
   checkAllCountries,
   notifyDsSchedulerCheck,
 } from "./ds-scheduler-monitor.mjs";
-import { inspectDsFailureLogs, inspectOriginalScheduledFailures, normalizeN8nProjectScope } from "./ds-failure-log-monitor.mjs";
+import { inspectDsFailureLogs, inspectOriginalScheduledFailures, normalizeN8nProjectScope, resolveN8nDsFailureEvidence } from "./ds-failure-log-monitor.mjs";
 import { inspectN8nAutoRetryExecutions } from "./ds-n8n-auto-retry-monitor.mjs";
 import {
   loadHiveSchedulerConfig,
@@ -2703,7 +2703,42 @@ export function createPlatformApi({
         countries: country || undefined,
         lookbackDays: filters.days,
         n8nClient: n8nAutoRetryClient,
+        // Return n8n executions immediately. Task-level DS evidence is loaded
+        // separately for the four visible rows on each country page.
+        enrichDsEvidence: false,
       });
+    },
+
+    async resolveN8nFailureEvidence(input = {}) {
+      const rawFailures = Array.isArray(input.failures) ? input.failures.slice(0, 24) : [];
+      const unique = [];
+      const seen = new Set();
+      for (const value of rawFailures) {
+        const country = String(value?.country || "").trim().toLowerCase();
+        const projectCode = String(value?.projectCode || "").trim();
+        const instanceId = String(value?.instanceId || "").trim();
+        const key = `${country}:${projectCode}:${instanceId}`;
+        if (!country || !projectCode || !instanceId || seen.has(key)) continue;
+        seen.add(key);
+        unique.push({ key, country, failure: { ...value, country, projectCode, instanceId } });
+      }
+      const results = new Array(unique.length);
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < unique.length) {
+          const index = cursor;
+          cursor += 1;
+          const item = unique[index];
+          const evidence = await resolveN8nDsFailureEvidence(rootDir, {
+            country: item.country,
+            failure: item.failure,
+            timeoutMs: 8_000,
+          });
+          results[index] = { key: item.key, country: item.country, projectCode: item.failure.projectCode, instanceId: item.failure.instanceId, ...evidence };
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(8, unique.length) }, worker));
+      return { results };
     },
 
     async checkDsScheduledFailures(filters = {}) {
