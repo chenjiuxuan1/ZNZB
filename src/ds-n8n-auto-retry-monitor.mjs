@@ -90,7 +90,7 @@ export function extractDsAutoRetryRecords(executionDetail) {
     if (typeof value !== "object") return;
 
     const base = { ...inherited };
-    for (const key of ["country", "projectCode", "projectName", "workflowInstanceId", "workflowDefinitionCode", "workflowInstanceName", "commandType", "workflowExecutionStatus", "modifyBy", "runTimes", "workflowStartTime", "workflowEndTime", "workflowHost", "taskInstanceId", "taskName", "taskCode", "taskType", "failureReason", "failureMessage"]) {
+    for (const key of ["country", "projectCode", "projectName", "workflowInstanceId", "workflowDefinitionCode", "workflowInstanceName", "commandType", "workflowExecutionStatus", "modifyBy", "runTimes", "workflowStartTime", "workflowEndTime", "workflowHost", "taskInstanceId", "taskName", "taskCode", "taskType", "failureReason", "failureMessage", "retryResult", "repairStatus", "retryCount", "recoveryState", "recoveryInstanceId"]) {
       if (value[key] !== undefined && value[key] !== null && value[key] !== "") base[key] = value[key];
     }
     if (isDsRecord(value) || (base.workflowInstanceId && base.commandType)) {
@@ -164,6 +164,35 @@ function normalizedStatus(execution, detail) {
   return "n8n_accepted";
 }
 
+function deriveRepairOutcome(record = {}, detail = {}, triggerStatus = "") {
+  const explicit = String(record.retryResult || record.repairStatus || record.recoveryState || "").trim().toLowerCase();
+  let text = "";
+  try {
+    text = JSON.stringify({ record, detail });
+  } catch {
+    text = `${record.failureMessage || ""} ${record.failureReason || ""}`;
+  }
+  if (["recovered", "success", "succeed", "succeeded"].includes(explicit)
+    || /(?:自动重跑|重跑后).{0,20}(?:恢复成功|已恢复|修复成功)|自动修复成功/i.test(text)) {
+    return { repairStatus: "recovered", retryResult: "recovered" };
+  }
+  if (["failed", "failure", "unresolved", "timeout_needs_owner"].includes(explicit)
+    || /自动重跑.{0,30}(?:全部失败|仍未恢复)|重跑后仍失败|需要负责人查看/i.test(text)) {
+    return { repairStatus: "unresolved", retryResult: "failed" };
+  }
+  if (["running", "repairing", "retrying"].includes(explicit)
+    || /目前自动失败重试中|自动重跑中|正在重跑|正在重试/i.test(text)
+    || triggerStatus === "n8n_running") {
+    return { repairStatus: "repairing", retryResult: "running" };
+  }
+  if (triggerStatus === "ignored_start_workflow") return { repairStatus: "not_retried", retryResult: "not_triggered" };
+  if (triggerStatus === "n8n_failed") return { repairStatus: "unresolved", retryResult: "failed" };
+  // An accepted asynchronous request is not proof that DS recovered. Keep it
+  // explicitly unknown until the n8n execution or notification returns a
+  // concrete retry outcome.
+  return { repairStatus: "unknown", retryResult: "unknown" };
+}
+
 function executionResultData(detail = {}) {
   return detail?.data?.resultData || detail?.resultData || {};
 }
@@ -186,6 +215,7 @@ function normalizeRecord(record, execution, detail) {
   const n8nStatus = normalizedStatus(execution, detail);
   const ignoredStartWorkflow = commandType === "START_PROCESS" || commandType === "START_WORKFLOW";
   const triggerStatus = ignoredStartWorkflow ? "ignored_start_workflow" : n8nStatus;
+  const repairOutcome = deriveRepairOutcome(record, detail, triggerStatus);
   const failureMessage = record.failureReason || record.failureMessage || executionErrorMessage(detail) || (n8nStatus === "n8n_failed" ? "n8n 自动重跑入口执行失败，请查看 n8n 节点错误" : "DS 告警已触发 n8n，远端失败重跑程序已异步启动");
   const ack = extractAck(detail);
   const projectCode = record.projectCode ?? record.project_code ?? "";
@@ -209,9 +239,11 @@ function normalizeRecord(record, execution, detail) {
     instanceState: String(record.workflowExecutionStatus || "FAILURE"),
     startTime: record.workflowStartTime || executionTime(execution),
     endTime: record.workflowEndTime || detail?.stoppedAt || execution?.stoppedAt || "",
-    retryCount: Math.max(0, Number(record.runTimes || 0) - 1),
-    repairStatus: triggerStatus === "n8n_failed" ? "unresolved" : "repairing",
-    retryResult: triggerStatus === "n8n_failed" ? "failed" : triggerStatus === "ignored_start_workflow" ? "not_triggered" : "running",
+    retryCount: Math.max(0, Number(record.retryCount ?? record.runTimes ?? 0) - (record.retryCount == null ? 1 : 0)),
+    repairStatus: repairOutcome.repairStatus,
+    retryResult: repairOutcome.retryResult,
+    recoveryState: String(record.recoveryState || ""),
+    recoveryInstanceId: String(record.recoveryInstanceId || ""),
     failureType: "n8n_auto_trigger",
     retryDecision: ignoredStartWorkflow
       ? "启动工作流类型仅扫描，不执行失败重跑"
