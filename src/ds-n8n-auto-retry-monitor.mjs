@@ -43,24 +43,6 @@ function normalizeCountries(value) {
   return result.length ? result : [...COUNTRIES];
 }
 
-function normalizeScope(scope = {}) {
-  const result = {};
-  for (const country of COUNTRIES) {
-    const values = Array.isArray(scope?.[country]) ? scope[country] : [];
-    result[country] = [...new Set(values.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean))];
-  }
-  return result;
-}
-
-function scopeMatches(record, scope, country) {
-  const allowed = scope[country] || [];
-  if (!allowed.length) return false;
-  const identities = [record.projectCode, record.projectName, record.project_code, record.project_name]
-    .filter((value) => value !== undefined && value !== null)
-    .map((value) => String(value).trim().toLowerCase());
-  return identities.some((identity) => allowed.includes(identity));
-}
-
 function parseJsonString(value) {
   if (typeof value !== "string") return null;
   const text = value.trim();
@@ -181,7 +163,7 @@ function normalizedStatus(execution, detail) {
   return "n8n_accepted";
 }
 
-function normalizeRecord(record, execution, detail, scope, projectScopeConfigured) {
+function normalizeRecord(record, execution, detail) {
   const country = normalizeCountry(record.country) || normalizeCountry(record.projectName) || normalizeCountry(record.workflowInstanceName);
   const commandType = String(record.commandType || "").toUpperCase();
   const n8nStatus = normalizedStatus(execution, detail);
@@ -224,8 +206,11 @@ function normalizeRecord(record, execution, detail, scope, projectScopeConfigure
     n8nWorkflowName: detail?.workflowName || execution?.workflowName || "",
     n8nRequestId: String(ack?.request_id || ack?.requestId || ""),
     n8nLogPath: extractRemoteLogPath(detail),
-    n8nProjectScopeConfigured: projectScopeConfigured,
-    n8nProjectScopeMatched: scopeMatches(record, scope, country),
+    // Kept for response compatibility with older consumers. Project inclusion
+    // is now determined solely by the DS project fields parsed from n8n detail;
+    // no ZNZB-saved project scope is consulted.
+    n8nProjectScopeConfigured: false,
+    n8nProjectScopeMatched: true,
     n8nLastNode: detail?.lastNode || "",
     n8nError: detail?.errorMessage || "",
   };
@@ -279,7 +264,7 @@ async function mapWithConcurrency(values, concurrency, fn) {
   return result;
 }
 
-function emptyCountry(country, projectScopeConfigured, error = "") {
+function emptyCountry(country, error = "") {
   return {
     country,
     countryName: COUNTRY_NAMES[country] || country,
@@ -291,8 +276,8 @@ function emptyCountry(country, projectScopeConfigured, error = "") {
     projects: [],
     checkedProjects: 0,
     checkedInstances: 0,
-    n8nProjectScopeConfigured: projectScopeConfigured,
-    n8nProjectScopeMatched: false,
+    n8nProjectScopeConfigured: false,
+    n8nProjectScopeMatched: true,
     targetDate: "",
   };
 }
@@ -306,8 +291,11 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   now = new Date(),
   countries: requestedCountries,
   lookbackDays = 7,
-  projectScope = {},
-  projectScopeConfigured = false,
+  // Deprecated compatibility parameters. The monitor no longer filters by a
+  // ZNZB project scope; DS projectCode/projectName from n8n execution detail
+  // are the sole source of project identity.
+  projectScope: _projectScope = {},
+  projectScopeConfigured: _projectScopeConfigured = false,
   n8nClient,
   workflowName = DEFAULT_WORKFLOW_NAME,
   webhookPath = DEFAULT_WEBHOOK_PATH,
@@ -316,11 +304,14 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
 } = {}) {
   const selectedCountries = normalizeCountries(requestedCountries);
   const days = Math.max(1, Math.min(90, Math.trunc(Number(lookbackDays) || 7)));
-  const scope = normalizeScope(projectScope);
-  const cacheKey = JSON.stringify([rootDir, selectedCountries, days, scope, workflowName, webhookPath]);
+  const cacheKey = JSON.stringify([rootDir, selectedCountries, days, workflowName, webhookPath]);
   const cached = cache.get(cacheKey);
   if (!bypassCache && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
-  const countries = selectedCountries.map((country) => emptyCountry(country, projectScopeConfigured));
+  // Avoid lint/no-unused regressions while keeping the old options accepted by
+  // callers that have not yet removed them.
+  void _projectScope;
+  void _projectScopeConfigured;
+  const countries = selectedCountries.map((country) => emptyCountry(country));
   const countryMap = new Map(countries.map((country) => [country.country, country]));
   const client = await loadN8nClient(rootDir, n8nClient);
   const workflows = await listAllWorkflows(client);
@@ -332,7 +323,7 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
       country.queryFailed = true;
       country.error = error;
     }
-    const value = { source: "n8n-auto-trigger-execution-log", mode: "n8n-auto-trigger-execution-log", checkedAt: now.toISOString(), lookbackDays: days, n8nWorkflow: null, n8nConfigured: true, n8nProjectScopeConfigured: projectScopeConfigured, totalExecutions: 0, totalFailures: 0, countries };
+    const value = { source: "n8n-auto-trigger-execution-log", mode: "n8n-auto-trigger-execution-log", checkedAt: now.toISOString(), lookbackDays: days, n8nWorkflow: null, n8nConfigured: true, n8nProjectScopeConfigured: false, totalExecutions: 0, totalFailures: 0, countries };
     cache.set(cacheKey, { at: Date.now(), value });
     return value;
   }
@@ -356,9 +347,12 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
     const records = extractDsAutoRetryRecords(detail);
     const effectiveRecords = records.length ? records : [{ country: "", failureReason: detail?.errorMessage || "n8n 执行未返回 DS 告警载荷", commandType: "" }];
     for (const record of effectiveRecords) {
-      const item = normalizeRecord(record, execution, detail, scope, projectScopeConfigured);
+      const item = normalizeRecord(record, execution, detail);
       const country = item.country;
-      if (!country || !countryMap.has(country) || !scopeMatches(item, scope, country)) continue;
+      // A record is included when n8n execution detail identifies a supported
+      // country. Its DS projectCode/projectName are already parsed into item;
+      // there is intentionally no second filter against ZNZB configuration.
+      if (!country || !countryMap.has(country)) continue;
       const countryResult = countryMap.get(country);
       countryResult.failures.push(item);
       countryResult.checkedInstances += 1;
@@ -371,7 +365,6 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   }
   for (const country of countries) {
     country.checkedProjects = country.projects.length;
-    country.n8nProjectScopeMatched = country.failures.length > 0;
     country.targetDate = now.toISOString().slice(0, 10);
     country.failures.sort((a, b) => Date.parse(b.startTime || 0) - Date.parse(a.startTime || 0));
   }
@@ -382,7 +375,7 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
     lookbackDays: days,
     n8nWorkflow: { id: String(workflow.id), name: workflow.name || workflowName, webhookPath },
     n8nConfigured: true,
-    n8nProjectScopeConfigured: projectScopeConfigured,
+    n8nProjectScopeConfigured: false,
     totalExecutions: executions.length,
     totalFailures,
     countries,

@@ -37,30 +37,6 @@
   gap: 10px;
   padding: 12px;
 }
-.ds-n8n-scope-panel { margin-bottom: 14px; }
-.ds-n8n-scope-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.ds-n8n-scope-card {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-}
-.ds-n8n-scope-options { display: grid; gap: 8px; }
-.ds-n8n-scope-option {
-  align-items: center;
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-}
-.ds-n8n-scope-option input { min-height: 0; }
-.ds-n8n-scope-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ds-n8n-scope-option small { color: var(--muted); margin-left: 4px; }
 .ds-notification-process-backdrop { align-items: center; background: rgb(15 23 42 / .42); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 1100; }
 .ds-notification-process-modal { display: flex; flex-direction: column; max-height: calc(100vh - 48px); overflow: hidden; width: min(1180px, calc(100vw - 48px)); }
 .ds-notification-process-summary { align-items: center; display: flex; gap: 10px; margin: 12px 0; }
@@ -75,10 +51,9 @@
 .ds-notification-process-item pre { background: var(--panel-soft); border-radius: 8px; margin: 9px 0 0; overflow: auto; padding: 12px; white-space: pre-wrap; }
 @media (max-width: 1100px) {
   .ds-scheduled-owner-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ds-n8n-scope-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
-  .ds-scheduled-owner-grid, .ds-scheduled-filter-grid, .ds-n8n-scope-grid { grid-template-columns: 1fr !important; }
+  .ds-scheduled-owner-grid, .ds-scheduled-filter-grid { grid-template-columns: 1fr !important; }
 }
 
 .ds-failure-retry-control {

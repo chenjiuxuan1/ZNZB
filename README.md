@@ -424,7 +424,7 @@ export N8N_API_KEY='<n8n API Key>'
 | GET | `/api/alerts/notify-rules` | 通知规则+渠道（电话打给谁） |
 | GET | `/api/alerts/n8n/workflows` | n8n 工作流（精简字段） |
 | GET | `/api/alerts/n8n/executions` | n8n 执行（精简字段） |
-| GET | `/api/ds-n8n-failure-watch?country=ph&days=7` | 读取 DS 告警实际触发的“各国-DS失败自动重跑统一入口”n8n 执行日志（仅纳入 n8n 项目范围） |
+| GET | `/api/ds-n8n-failure-watch?country=ph&days=7` | 读取 DS 告警实际触发的“各国-DS失败自动重跑统一入口”n8n 执行日志；项目编号和项目名称以 n8n 执行详情中的 DS 告警载荷为准，不依赖 ZNZB 项目范围 |
 | GET | `/api/alerts/config` | 配置脱敏信息 |
 | GET | `/api/alerts/health` | 上游连通性 |
 

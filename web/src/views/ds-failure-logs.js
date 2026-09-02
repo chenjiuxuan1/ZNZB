@@ -63,8 +63,7 @@ let model = {
   scheduledKeyword: "",
   scheduledLookbackDays: 7,
   scheduledCountryPages: {},
-  scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {}, groupChatIds: {}, botIds: {}, n8nProjects: {}, n8nProjectScopeConfigured: false },
-  scheduledProjectOptions: {},
+  scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {}, groupChatIds: {}, botIds: {} },
   scheduledConfigLoaded: false,
   scheduledMessage: "",
   notificationProcessOpen: false,
@@ -86,18 +85,9 @@ export function renderDsFailureLogs(root) {
 
 async function refreshScheduledConfig(root) {
   try {
-    const [watchResult, dsResult] = await Promise.allSettled([
-      apiGet("/api/ds-scheduled-failure-watch/config"),
-      apiGet("/api/ds-scheduler/config"),
-    ]);
-    if (watchResult.status === "rejected") throw watchResult.reason;
-    model.scheduledConfig = watchResult.value;
-    if (dsResult.status === "fulfilled") {
-      model.scheduledProjectOptions = buildScheduledProjectOptions(dsResult.value);
-    } else {
-      model.scheduledProjectOptions = {};
-      model.scheduledMessage = `n8n 项目范围读取失败：${readableQueryError(dsResult.reason)}`;
-    }
+    // n8n monitor project identity comes from each n8n execution detail. Do
+    // not query DS scheduler config just to build a local project allow-list.
+    model.scheduledConfig = await apiGet("/api/ds-scheduled-failure-watch/config");
   } catch (error) {
     model.scheduledMessage = readableQueryError(error);
   } finally {
@@ -144,24 +134,6 @@ async function saveScheduledOwners(root) {
   paint(root);
 }
 
-async function saveN8nProjectScope(root) {
-  const n8nProjects = {};
-  for (const option of COUNTRY_OPTIONS) {
-    n8nProjects[option.code] = [...root.querySelectorAll(`[data-scheduled-project="${option.code}"]:checked`)]
-      .map((input) => input.value)
-      .filter(Boolean);
-  }
-  try {
-    model.scheduledConfig = await apiPut("/api/ds-scheduled-failure-watch/config", { ...model.scheduledConfig, n8nProjects });
-    model.scheduledResult = null;
-    model.scheduledCountryPages = {};
-    model.scheduledMessage = "n8n 项目范围已保存；只有勾选项目会出现在 n8n 失败重启监控并触发通知。";
-  } catch (error) {
-    model.scheduledMessage = `n8n 项目范围保存失败：${error.message}`;
-  }
-  paint(root);
-}
-
 async function openNotificationProcess(root) {
   model.notificationProcessOpen = true;
   model.notificationProcessLoading = true;
@@ -176,27 +148,6 @@ async function openNotificationProcess(root) {
     model.notificationProcessLoading = false;
     if (isCurrentView()) paint(root);
   }
-}
-
-function buildScheduledProjectOptions(config = {}) {
-  const result = {};
-  for (const option of COUNTRY_OPTIONS) {
-    const source = config.projects?.[option.code] || config.projectStatus?.[option.code]?.projects || [];
-    const fallbackCode = String(config.projectCodes?.[option.code] || "").trim();
-    const fallbackName = String(config.projectNames?.[option.code] || "").trim();
-    const items = source.length ? source : (fallbackCode ? [{ code: fallbackCode, name: fallbackName }] : []);
-    const seen = new Set();
-    result[option.code] = items.map((item) => ({
-      code: String(item.code || "").trim(),
-      name: String(item.name || "").trim(),
-    })).filter((item) => {
-      const key = item.code || item.name;
-      if (!key || seen.has(key.toLowerCase())) return false;
-      seen.add(key.toLowerCase());
-      return true;
-    });
-  }
-  return result;
 }
 
 async function refreshRetryPanel(root) {
@@ -621,7 +572,6 @@ function paint(root) {
   root.querySelector("#ds-scheduled-query")?.addEventListener("click", () => loadScheduledFailures(root));
   root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; model.scheduledCountryPages = {}; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); });
   root.querySelector("#ds-scheduled-owner-save")?.addEventListener("click", () => saveScheduledOwners(root));
-  root.querySelector("#ds-n8n-scope-save")?.addEventListener("click", () => saveN8nProjectScope(root));
   root.querySelector("#ds-notification-process-open")?.addEventListener("click", () => openNotificationProcess(root));
   root.querySelector("#ds-notification-process-refresh")?.addEventListener("click", () => openNotificationProcess(root));
   root.querySelector("#ds-notification-process-close")?.addEventListener("click", () => { model.notificationProcessOpen = false; paint(root); });
@@ -642,7 +592,7 @@ function renderScheduledFailureWatch() {
   return `<section class="ds-scheduled-failure-watch" ${model.activeTab === "scheduled" ? "" : 'style="display:none"'}>
     <section class="panel ds-failure-toolbar">
       <div class="detail-header compact-header">
-        <div><h2 class="panel-title">n8n失败重启监控</h2><p class="muted">仅读取 DS 告警实际触发的“各国-DS失败自动重跑统一入口”n8n 执行记录（Global-Intelligent-Alarm-Repair-Assistant）；最多重跑 3 次并观察 30 分钟的处理结果由 n8n/远程脚本记录，页面自身的 DS 定时扫描和定时失败任务重跑不会出现在这里。</p></div>
+        <div><h2 class="panel-title">n8n失败重启监控</h2><p class="muted">仅读取 DS 告警实际触发的“各国-DS失败自动重跑统一入口”n8n 执行记录（Global-Intelligent-Alarm-Repair-Assistant）；项目编号和项目名称直接以 n8n 执行详情中的 DS 告警载荷为准，不依赖 ZNZB 保存的项目范围。最多重跑 3 次并观察 30 分钟的处理结果由 n8n/远程脚本记录，页面自身的 DS 定时扫描和定时失败任务重跑不会出现在这里。</p></div>
         <button class="primary" id="ds-scheduled-query" ${model.scheduledLoading ? "disabled" : ""}>${model.scheduledLoading ? "正在查询…" : model.scheduledResult ? "重新查询" : "查询"}</button>
       </div>
       <div class="ds-failure-filter-grid ds-scheduled-filter-grid">
@@ -652,7 +602,6 @@ function renderScheduledFailureWatch() {
       </div>
       ${model.scheduledMessage ? `<div class="sandbox-status ${/失败|错误/.test(model.scheduledMessage) ? "error" : "warn"}"><span>${escapeHtml(model.scheduledMessage)}</span></div>` : ""}
     </section>
-    ${renderN8nProjectScope()}
     <section class="panel ds-scheduled-owner-panel">
       <div class="detail-header compact-header"><div><h3 class="panel-title">两个重跑模块共用负责人配置</h3><p class="muted">负责人邮箱用于两个模块的私聊；n8n 失败重启监控还会通过对应国家的 TV bot_id 群发并艾特负责人。定时失败任务重跑仍只私聊。</p></div><div class="ds-retry-header-actions"><button class="secondary" id="ds-notification-process-open">通知进程</button><button class="primary" id="ds-scheduled-owner-save">保存通知配置</button></div></div>
       <div class="ds-scheduled-owner-grid">${COUNTRY_OPTIONS.map((option) => `<div class="ds-scheduled-notify-card"><strong>${option.flag} ${option.name}</strong><label><span>负责人邮箱</span><input data-scheduled-owner="${option.code}" value="${escapeHtml(owners[option.code] || "")}" placeholder="多个邮箱用逗号分隔"></label><label><span>国家群聊 TV bot_id</span><input data-scheduled-bot="${option.code}" value="${escapeHtml(botIds[option.code] || "")}" placeholder="填写该国家群机器人 bot_id"></label><input type="hidden" data-scheduled-group="${option.code}" value="${escapeHtml(groupChatIds[option.code] || "")}"></div>`).join("")}</div>
@@ -1067,8 +1016,6 @@ function renderCountry(country, filters = null) {
   const page = Math.max(1, Math.min(pageCount, Number(filters?.page) || 1));
   const visibleFailures = filters?.historical ? failures.slice((page - 1) * pageSize, page * pageSize) : failures;
   const allFailureCount = (country.failures || []).length;
-  const n8nScopeMissing = filters?.n8n && !country.n8nProjectScopeConfigured;
-  const scopeExcluded = filters?.n8n && country.n8nProjectScopeConfigured && country.n8nProjectScopeMatched === false;
   const configuredBadge = country.configured
     ? `<span class="badge ${country.success ? "ok" : "danger"}">${country.success ? "已检查" : "检查失败"}</span>`
     : `<span class="badge warn">待配置</span>`;
@@ -1083,30 +1030,9 @@ function renderCountry(country, filters = null) {
     </div>
     ${country.error ? `<div class="sandbox-status ${country.configured ? "error" : "warn"}"><strong>${country.queryFailed ? "国家查询失败" : country.configured ? "部分项目读取失败" : "尚未接入"}</strong><span>${escapeHtml(country.error)}${country.configured ? "" : '，请先前往 <a href="#/ds-scheduler">DS调度监控</a> 完成 Token 和项目配置。'}</span></div>` : ""}
     ${country.configured && country.success && failures.length === 0
-      ? `<div class="ds-failure-empty">${n8nScopeMissing ? "尚未配置 n8n 失败重启项目范围。" : scopeExcluded ? "该国家没有纳入 n8n 失败重启项目范围。" : allFailureCount ? "当前筛选条件下没有失败任务。" : filters?.n8n ? `该国家${rangeLabel}没有 DS 告警触发的 n8n 执行记录。` : filters?.historical ? `该国家${rangeLabel}没有 n8n 失败重启任务。` : `该国家${rangeLabel}没有失败任务。`}</div>`
+      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : filters?.n8n ? `该国家${rangeLabel}没有 DS 告警触发的 n8n 执行记录。` : filters?.historical ? `该国家${rangeLabel}没有 n8n 失败重启任务。` : `该国家${rangeLabel}没有失败任务。`}</div>`
       : visibleFailures.map((failure) => renderFailure(failure, filters)).join("")}
     ${filters?.historical && failures.length > pageSize ? renderScheduledCountryPagination(country.country, failures.length, page, pageCount) : ""}
-  </section>`;
-}
-
-function renderN8nProjectScope() {
-  const configured = model.scheduledConfig.n8nProjectScopeConfigured === true;
-  const selected = model.scheduledConfig.n8nProjects || {};
-  const cards = COUNTRY_OPTIONS.map((option) => {
-    const values = (selected[option.code] || []).map((value) => String(value).trim().toLowerCase());
-    const projects = model.scheduledProjectOptions[option.code] || [];
-    const content = projects.length
-      ? projects.map((project) => {
-        const key = project.code || project.name;
-        const checked = [project.code, project.name].some((value) => values.includes(String(value || "").trim().toLowerCase()));
-        return `<label class="ds-n8n-scope-option"><input type="checkbox" data-scheduled-project="${option.code}" value="${escapeHtml(key)}" ${checked ? "checked" : ""}><span>${escapeHtml(project.name || project.code)}${project.code ? ` <small>${escapeHtml(project.code)}</small>` : ""}</span></label>`;
-      }).join("")
-      : `<span class="muted">尚未在 DS 调度监控中配置项目</span>`;
-    return `<div class="ds-n8n-scope-card"><strong>${option.flag} ${option.name}</strong><div class="ds-n8n-scope-options">${content}</div></div>`;
-  }).join("");
-  return `<section class="panel ds-n8n-scope-panel">
-    <div class="detail-header compact-header"><div><h3 class="panel-title">n8n 失败重启项目范围</h3><p class="muted">仅勾选纳入 n8n 失败重启的项目；未勾选项目不会查询、展示或发送 n8n 失败通知。${configured ? "" : "当前尚未配置范围，监控不会展示任何项目。"}</p></div><button class="primary" id="ds-n8n-scope-save">保存项目范围</button></div>
-    <div class="ds-n8n-scope-grid">${cards}</div>
   </section>`;
 }
 

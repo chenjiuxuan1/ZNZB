@@ -3977,15 +3977,81 @@ test("n8n failure watch owner private chat falls back to KN_BOT_TOKEN when DS no
     );
     assert.ok(ownerCall, "expected an owner private chat notify call");
     assert.equal(ownerCall.config.alerts.botToken, "${KN_BOT_TOKEN}");
-    assert.match(ownerCall.message, /^失败任务扫描触发｜中国/);
+    assert.match(ownerCall.message, /^n8n 失败重启监控｜中国/);
     assert.deepEqual(ownerCall.config.alerts.mentions, ["@rockyzong@kn.group"]);
-    assert.equal(ownerCall.metadata.title, "失败任务扫描触发");
+    assert.equal(ownerCall.metadata.title, "n8n 失败重启监控");
     assert.equal(result.notificationCount, 1);
-    assert.deepEqual([...new Set(requestedProjects.filter(Boolean))], ["1001"]);
+    assert.deepEqual([...new Set(requestedProjects.filter(Boolean))].sort(), ["1001", "1002"]);
     const notificationProcess = await api.getDsFailureNotificationLogs({ country: "cn" });
     assert.equal(notificationProcess.logs.length, 2);
     assert.ok(notificationProcess.logs.every((item) => item.sourceLabel === "失败任务扫描触发"));
     assert.deepEqual(notificationProcess.logs.map((item) => item.channel).sort(), ["country_group", "owner_direct"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("DS page scan suppresses the group delivery when n8n already handled the instance", async () => {
+  const rootDir = await makeFixture();
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const now = new Date();
+  const nowStr = fmt(now);
+  const startStr = fmt(new Date(now.getTime() - 5 * 60 * 1000));
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduler.config.json"),
+    JSON.stringify({
+      n8nWebhookUrl: "https://gateway.example/ds",
+      countries: { ine: { name: "印尼", token: "test-token" } },
+      projects: { ine: [{ name: "DW_DWB", code: "1001" }] },
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootDir, "config/ds-scheduled-failure-watch.json"),
+    JSON.stringify({ enabled: true, intervalMinutes: 5, owners: { ine: "owner@kn.group" }, botIds: { ine: "ine-tv-bot" }, groupChatIds: {} }),
+  );
+  const originalFetch = globalThis.fetch;
+  const captured = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    let data = {};
+    if (request.action === "list_instances") {
+      data = {
+        totalList: [{ workflowDefinitionCode: "wf-1", workflowInstanceName: "daily_orders", workflowInstanceId: "1815635", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: startStr, workflowEndTime: nowStr }],
+        total: 1,
+      };
+    } else if (request.action === "list_task_instances") {
+      data = { processInstanceState: "FAILURE", taskList: [{ taskInstanceId: "t-1", workflowInstanceId: "1815635", taskCode: "task-1", name: "dwd_orders", state: "FAILURE", endTime: nowStr }] };
+    } else if (request.action === "get_task_log") {
+      data = { task_name: "dwd_orders", task_instance_id: "t-1", state: "FAILURE", log: "ERROR connection refused" };
+    } else if (request.action === "extract_task_runtime_config") {
+      data = { task_type: "SQL", runtime_config: { sql: "select 1" } };
+    }
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data }); } };
+  };
+  const n8nAutoRetryClient = {
+    async listWorkflows() { return { data: [{ id: "wf-n8n", name: "各国-DS失败自动重跑统一入口" }] }; },
+    async listExecutions() { return { data: [{ id: "n8n-1815635", workflowId: "wf-n8n", status: "success", startedAt: now.toISOString() }] }; },
+    async getExecution() {
+      return {
+        id: "n8n-1815635",
+        workflowId: "wf-n8n",
+        status: "success",
+        data: { resultData: { runData: { Webhook: [{ data: { main: [[{ json: { country: "ine", message: JSON.stringify([{ projectCode: "1001", projectName: "DW_DWB", workflowInstanceId: "1815635", workflowInstanceName: "daily_orders", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE" }]) } }]] } }] } } },
+      };
+    },
+  };
+  const api = createPlatformApi({ rootDir, n8nAutoRetryClient, notifyTextFn: async (config, message, metadata) => { captured.push({ config, message, metadata }); return { sent: true }; } });
+  try {
+    const result = await api.checkDsScheduledFailures({ country: "ine", days: 1 });
+    assert.equal(result.notificationCount, 1);
+    assert.equal(captured.length, 1);
+    assert.equal(captured[0].config.alerts.recipientEmails, "owner@kn.group");
+    assert.equal(captured[0].config.alerts.channel, "knBot");
+    assert.match(captured[0].message, /^n8n 失败重启监控｜印尼/);
+    const logs = await api.getDsFailureNotificationLogs({ country: "ine" });
+    assert.deepEqual(logs.logs.map((item) => item.channel), ["owner_direct"]);
   } finally {
     globalThis.fetch = originalFetch;
     await fs.rm(rootDir, { recursive: true, force: true });
