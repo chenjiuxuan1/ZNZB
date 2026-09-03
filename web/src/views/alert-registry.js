@@ -59,12 +59,13 @@ export function renderAlertRegistry(root) {
 }
 
 // 多国校验结果页状态（筛选 + 分页）
-const mcState = { country: "", onlyAlert: false, page: 1, pageSize: 10, runs: [] };
+const mcState = { country: "", onlyAlert: false, page: 1, pageSize: 10, runs: [], scheduleMinute: 55 };
 
 /** 加载多国一致性校验结果（筛选 + 分页）。 */
 async function loadMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
+  el.innerHTML = `<div class="mc-loading">⏳ 正在加载校验结果…</div>`;
   let runs;
   try {
     runs = await apiGet("/api/multi-country/check-results");
@@ -103,7 +104,7 @@ async function loadMcSchedule(root) {
   if (!input || !saveBtn) return;
   try {
     const s = await apiGet("/api/multi-country/schedule");
-    if (s && Number.isInteger(s.minute)) input.value = s.minute;
+    if (s && Number.isInteger(s.minute)) { input.value = s.minute; mcState.scheduleMinute = s.minute; }
   } catch (e) {
     if (status) status.textContent = "读取定时配置失败";
   }
@@ -170,7 +171,11 @@ function renderMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
   if (!mcState.runs.length) {
-    el.innerHTML = `<div class="notice">暂无校验记录。运行「多国一致性校验告警」后会自动回写。</div>`;
+    el.innerHTML = `<div class="mc-empty">
+      <div class="mc-empty-icon">📊</div>
+      <div class="mc-empty-title">暂无多国一致性校验记录</div>
+      <div class="mc-empty-desc">「多国一致性校验告警」n8n 工作流会在每个整点的第 ${escapeHtml(mcState.scheduleMinute ?? 55)} 分自动执行，异常时会回写到这里。</div>
+    </div>`;
     renderMcPager(root, 0);
     return;
   }
@@ -272,7 +277,11 @@ function renderMcPager(root, totalPages) {
 function renderMcEmpty(filteredCount) {
   const el = document.querySelector("#mc-results");
   if (el && filteredCount === 0 && mcState.runs.length) {
-    el.innerHTML = `<div class="notice">没有符合当前筛选条件的记录。</div>`;
+    el.innerHTML = `<div class="mc-empty">
+      <div class="mc-empty-icon">🔍</div>
+      <div class="mc-empty-title">没有符合当前筛选条件的记录</div>
+      <div class="mc-empty-desc">试试清除「只看异常」或更换国家筛选。</div>
+    </div>`;
   }
 }
 
