@@ -591,7 +591,7 @@ function renderGroupDetailRows(alerts) {
   return `
     <table class="data-table ac-alert-table">
       <thead>
-        <tr><th>级别</th><th>规则 / 含义</th><th>国家</th><th>目标</th><th>触发值</th><th>通知</th><th>状态</th></tr>
+        <tr><th>级别</th><th>规则 / 含义</th><th>国家</th><th>目标</th><th>触发值</th><th>触发时间</th><th>通知</th><th>状态</th></tr>
       </thead>
       <tbody>
         ${acDetailAlerts.map((alert, idx) => `
@@ -607,6 +607,7 @@ function renderGroupDetailRows(alerts) {
             </td>
             <td class="small">${escapeHtml(alert.target || "-")}</td>
             <td class="num">${escapeHtml(alert.triggerValue ?? "-")}</td>
+            <td class="small">${escapeHtml(formatIso(alert.triggerTime))}</td>
             <td class="ac-alert-notify">
               ${renderNotifySummary(alert.notify)}
             </td>
