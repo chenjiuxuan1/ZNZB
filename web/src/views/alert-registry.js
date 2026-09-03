@@ -88,6 +88,42 @@ async function loadMcResults(root) {
 }
 
 /** 渲染当前筛选 + 分页下的多国校验结果。 */
+// 明细表分页状态（key: runId|countryCode）
+const mcDetailPage = {};
+const MC_DETAIL_PAGE_SIZE = 20;
+const MC_DETAIL_MAX = 200;
+
+/** 渲染单个国家的差异明细表（含明细分页，每页 20 条，最多 200 条）。 */
+function renderMcDetailBlock(c) {
+  const dets = (c.details || []).slice(0, MC_DETAIL_MAX);
+  if (!dets.length) return "";
+  const key = (c.runId || "") + "|" + (c.code || c.label || "");
+  if (!(key in mcDetailPage)) mcDetailPage[key] = 1;
+  const totalPages = Math.max(1, Math.ceil(dets.length / MC_DETAIL_PAGE_SIZE));
+  if (mcDetailPage[key] > totalPages) mcDetailPage[key] = totalPages;
+  const page = mcDetailPage[key];
+  const start = (page - 1) * MC_DETAIL_PAGE_SIZE;
+  const pageDets = dets.slice(start, start + MC_DETAIL_PAGE_SIZE);
+  const rows = pageDets.map((d) => `<tr><td>${escapeHtml(d.check_item)}</td><td>${escapeHtml(d.asset_item_no)}</td><td>${escapeHtml(d.user_id)}</td><td>${d.src_value === null || d.src_value === undefined ? '<span class="mc-null">无</span>' : escapeHtml(d.src_value)}</td><td>${d.dest_value === null || d.dest_value === undefined ? '<span class="mc-null">无</span>' : escapeHtml(d.dest_value)}</td></tr>`).join("");
+  const pagerHtml = totalPages > 1
+    ? `<div class="mc-detail-pager">
+        <button class="mc-page-btn mc-detail-page-btn" data-key="${escapeHtml(key)}" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>‹ 上一页</button>
+        <span class="mc-page-info">${page} / ${totalPages}（共 ${dets.length} 条）</span>
+        <button class="mc-page-btn mc-detail-page-btn" data-key="${escapeHtml(key)}" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>下一页 ›</button>
+      </div>`
+    : `<div class="mc-page-info">共 ${dets.length} 条</div>`;
+  return `
+    <div class="mc-detail-body" data-mc-detail-key="${escapeHtml(key)}">
+      <div class="mc-sql-title">差异明细（最多展示 ${MC_DETAIL_MAX} 条）</div>
+      <table class="mc-detail-table">
+        <thead><tr><th>检查项</th><th>资产号</th><th>用户ID</th><th>源值</th><th>目标值</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${pagerHtml}
+    </div>
+  `;
+}
+
 function renderMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
@@ -121,10 +157,8 @@ function renderMcResults(root) {
     const alertMark = run.hasAlert ? ` <span class="mc-badge mc-badge-red">异常</span>` : ` <span class="mc-badge mc-badge-green">正常</span>`;
     const detailPanels = abnormal.map((c) => {
       const m = c.mismatches || [];
-      const dets = c.details || [];
       const sql = c.sql || c.detailSql || "";
       if (!m.length && !sql) return "";
-      const detailRows = dets.map((d) => `<tr><td>${escapeHtml(d.check_item)}</td><td>${escapeHtml(d.asset_item_no)}</td><td>${escapeHtml(d.user_id)}</td><td>${d.src_value === null || d.src_value === undefined ? '<span class="mc-null">无</span>' : escapeHtml(d.src_value)}</td><td>${d.dest_value === null || d.dest_value === undefined ? '<span class="mc-null">无</span>' : escapeHtml(d.dest_value)}</td></tr>`).join("");
       const summaryHtml = m.length
         ? `<div class="mc-summary">异常 ${m.length} 项：${m.map((x) => `${escapeHtml(x.check_item)}（${escapeHtml(x.mismatch_cnt)} 条）`).join("、")}</div>`
         : "";
@@ -133,12 +167,7 @@ function renderMcResults(root) {
           <summary>📄 ${escapeHtml(c.label || c.code || "")} · 校验语句与差异明细</summary>
           ${summaryHtml}
           ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）</div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
-          ${dets.length ? `
-          <div class="mc-sql-title">差异明细</div>
-          <table class="mc-detail-table">
-            <thead><tr><th>检查项</th><th>资产号</th><th>用户ID</th><th>源值</th><th>目标值</th></tr></thead>
-            <tbody>${detailRows}</tbody>
-          </table>` : ""}
+          ${renderMcDetailBlock({ ...c, runId: run.id })}
         </details>
       `;
     }).join("");
@@ -154,6 +183,25 @@ function renderMcResults(root) {
       </div>
     `;
   }).join("");
+  // 明细分页按钮
+  el.querySelectorAll(".mc-detail-page-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.key;
+      const p = Number(btn.dataset.page);
+      const tp = Math.max(1, Math.ceil(((mcState.runs.find((r) => r.id === key.split("|")[0])?.countries || []).find((c) => (c.code || c.label || "") === key.split("|")[1])?.details || []).length / MC_DETAIL_PAGE_SIZE));
+      if (key && p >= 1 && p <= tp) {
+        mcDetailPage[key] = p;
+        // 找到对应国家详情面板，局部重渲染
+        const runId = key.split("|")[0];
+        const code = key.split("|")[1];
+        const run = mcState.runs.find((r) => String(r.id).slice(0, 8) === String(runId).slice(0, 8) || r.id === runId);
+        const detailsEl = el.querySelector(`[data-mc-detail-key="${CSS.escape(key)}"]`);
+        if (detailsEl) {
+          detailsEl.innerHTML = renderMcDetailBlock({ ...(run?.countries || []).find((c) => (c.code || c.label || "") === code), runId });
+        }
+      }
+    });
+  });
   renderMcPager(root, totalPages);
   renderMcEmpty(filtered.length);
 }
