@@ -158,3 +158,32 @@ test("START_PROCESS is visible as scan-only and never marked as a retry", async 
   assert.equal(item.n8nTriggerStatus, "ignored_start_workflow");
   assert.equal(item.retryResult, "not_triggered");
 });
+
+test("n8n monitor applies an inclusive explicit date range locally", async () => {
+  const client = {
+    async listWorkflows() { return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口" }] }; },
+    async listExecutions() {
+      return { data: [
+        { id: "inside", workflowId: "wf-1", status: "success", startedAt: "2026-09-02T15:59:59.000Z" },
+        { id: "outside", workflowId: "wf-1", status: "success", startedAt: "2026-09-03T16:00:00.000Z" },
+      ] };
+    },
+    async getExecution(id) {
+      const detail = fakeDetail();
+      detail.id = id;
+      return detail;
+    },
+  };
+  const result = await inspectN8nAutoRetryExecutions("/tmp/znzb-explicit-date-range", {
+    countries: ["ph"],
+    startDate: "2026-09-02",
+    endDate: "2026-09-03",
+    n8nClient: client,
+    enrichDsEvidence: false,
+    bypassCache: true,
+  });
+  assert.equal(result.startDate, "2026-09-02");
+  assert.equal(result.endDate, "2026-09-03");
+  assert.equal(result.lookbackDays, 2);
+  assert.equal(result.totalExecutions, 1);
+});

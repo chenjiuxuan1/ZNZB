@@ -357,6 +357,57 @@ button.ds-retry-action {
   gap: 6px;
 }
 
+.ds-date-range-filter {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(135px, 1fr) minmax(135px, 1fr);
+  min-width: 310px;
+}
+
+.ds-date-range-filter > strong {
+  align-self: center;
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.ds-date-range-filter label {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.ds-date-range-filter label span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ds-failure-country-actions {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+}
+
+.ds-country-collapse-toggle {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 5px;
+  min-height: 32px;
+  padding: 5px 10px;
+}
+
+.ds-country-collapse-toggle:hover {
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
 .ds-failure-legend {
   align-items: center;
   color: var(--muted);
@@ -408,6 +459,12 @@ button.ds-retry-action {
 .ds-failure-country-count span {
   color: var(--muted);
   font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .ds-date-range-filter { grid-template-columns: 1fr; min-width: 0; }
+  .ds-date-range-filter label { grid-template-columns: 40px minmax(0, 1fr); }
+  .ds-failure-country-actions { align-items: flex-end; flex-direction: column-reverse; gap: 8px; }
 }
 
 .ds-failure-empty {
