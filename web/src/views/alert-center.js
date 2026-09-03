@@ -1084,6 +1084,12 @@ function renderInventory(data) {
         <p class="muted">聚合夜莺与 n8n 的全部告警通知体系，按 电话 / 钉钉 / knchat·tv 三类盘点。点击行内「编辑」可修改通知规则或查看关联告警规则，为统一管理与改造控制提供底账。${stats.generatedAt ? `<br>更新于 ${formatIso(stats.generatedAt)}` : ""}</p>
       </div>
     </div>
+    ${data?.stale?.receiverCount ? `
+    <div class="ac-inv-stale-banner">
+      <span class="ac-inv-stale-ic">⚠️</span>
+      <span class="ac-inv-stale-msg">检测到 <strong>${escapeHtml(data.stale.ruleCount)}</strong> 条通知规则引用了 <strong>${escapeHtml(data.stale.receiverCount)}</strong> 个已删除用户（告警电话/钉钉可能无法送达）。可一键清理移除这些失效引用：</span>
+      <button type="button" class="small ac-inv-clean-btn" id="ac-inv-clean-btn">一键清理失效接收人</button>
+    </div>` : ""}
     <div class="ac-inv-stats">
       ${statCards.map((s) => `
         <div class="ac-inv-stat is-${s.cls}">
@@ -1173,8 +1179,8 @@ function renderInvTable(rules, kind) {
                     ${escapeHtml(u.nickname || u.username)}
                     ${u.phone ? `<span class="muted small">${escapeHtml(u.phone)}</span>` : ""}
                   </span>` : `
-                  <span class="inv-user inv-user-missing" title="通知规则引用了该用户 ID，但该用户已不在夜莺用户表（可能已被删除）。告警将无法拨打到该人，建议点「编辑」移除或替换为有效接收人。">
-                    ⚠️ 已失效用户 #${escapeHtml(String(u.id ?? u.username).replace(/^用户/, ""))}${u.phone ? ` · ${escapeHtml(u.phone)}` : ""}
+                  <span class="inv-user inv-user-missing" title="该用户已从夜莺删除，告警无法送达。可用顶部「一键清理失效接收人」移除。">
+                    ${escapeHtml(u.username || `已失效 #${u.id}`)}
                   </span>`}
                 `).join("") : `<span class="muted small">未指定用户</span>`}
               </td>
@@ -1228,8 +1234,32 @@ function renderInvN8nTable(workflows) {
   `;
 }
 
-/** 通知全景交互绑定：通知规则启停/编辑、关联告警规则查看、n8n 工作流启停。 */
+/** 通知全景交互绑定：通知规则启停/编辑、关联告警规则查看、n8n 工作流启停、一键清理失效接收人。 */
 function bindInventoryEvents(root, body) {
+  // 一键清理失效接收人
+  const cleanBtn = body.querySelector("#ac-inv-clean-btn");
+  if (cleanBtn) {
+    cleanBtn.addEventListener("click", async () => {
+      if (!confirm("确认从所有通知规则中移除已删除用户的引用吗？\n此操作会修改夜莺中的通知规则（只移除失效用户，不影响有效接收人）。")) return;
+      cleanBtn.disabled = true;
+      cleanBtn.textContent = "清理中…";
+      try {
+        const res = await apiPost("/api/alerts/notify-rules/clean-stale-users", {});
+        const removed = res?.totalRemoved ?? 0;
+        const rules = res?.rulesCleaned ?? 0;
+        const lines = [`已从 ${rules} 条通知规则中移除 ${removed} 个失效用户引用。`, "页面已刷新，失效用户提示消失。"];
+        if (res?.emptyAfter?.length) {
+          lines.push(`⚠️ 其中 ${res.emptyAfter.length} 条规则清理后已无任何有效接收人（${res.emptyAfter.map((r) => r.name).slice(0, 3).join("、")}${res.emptyAfter.length > 3 ? " 等" : ""}），建议补充接收人或停用。`);
+        }
+        showToast("清理完成", lines, "success");
+        await reloadInventoryTab(root, body);
+      } catch (error) {
+        cleanBtn.disabled = false;
+        cleanBtn.textContent = "一键清理失效接收人";
+        showToast("清理失败", [error.message], "warn");
+      }
+    });
+  }
   // 通知规则启停
   body.querySelectorAll("[data-nr-toggle]").forEach((btn) => {
     btn.addEventListener("click", async () => {
