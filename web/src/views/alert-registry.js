@@ -31,12 +31,23 @@ export function renderAlertRegistry(root) {
     </section>
     <section class="panel">
       <div class="panel-title">多国一致性校验 · 最近 200 次结果</div>
-      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。</div>
-      <div class="mc-toolbar">
+      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。定时默认每小时 55 分，可在下方调整。</div>
+      <div class="mc-controls">
+        <span class="mc-schedule-label mc-controls-title">⏰ 定时</span>
+        <span class="mc-schedule-label">每小时</span>
+        <input type="number" id="mc-schedule-minute" min="0" max="59" value="55" class="mc-schedule-input" />
+        <span class="mc-schedule-label">分</span>
+        <button class="mc-page-btn" id="mc-schedule-save">保存</button>
+        <span class="mc-schedule-status" id="mc-schedule-status"></span>
+        <span class="mc-controls-divider"></span>
         <label class="mc-filter-check"><input type="checkbox" id="mc-only-alert" /> 只看异常</label>
         <select id="mc-country-filter"><option value="">全部国家</option></select>
         <div class="mc-pager" id="mc-pager"></div>
       </div>
+      <details class="mc-notify" id="mc-notify-panel">
+        <summary>📞 电话通知配置（同国连续 N 次异常未处理，自动打电话给对应联系人）</summary>
+        <div class="mc-notify-body" id="mc-notify-body"></div>
+      </details>
       <div id="mc-results"></div>
     </section>
   `;
@@ -52,12 +63,13 @@ export function renderAlertRegistry(root) {
 }
 
 // 多国校验结果页状态（筛选 + 分页）
-const mcState = { country: "", onlyAlert: false, page: 1, pageSize: 10, runs: [] };
+const mcState = { country: "", onlyAlert: false, page: 1, pageSize: 5, runs: [], scheduleMinute: 55 };
 
 /** 加载多国一致性校验结果（筛选 + 分页）。 */
 async function loadMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
+  el.innerHTML = `<div class="mc-loading">⏳ 正在加载校验结果…</div>`;
   let runs;
   try {
     runs = await apiGet("/api/multi-country/check-results");
@@ -85,6 +97,114 @@ async function loadMcResults(root) {
     countrySel.value = mcState.country;
   }
   renderMcResults(root);
+  loadMcSchedule(root);
+  loadMcNotify(root);
+}
+
+/** 多国校验 · 电话通知配置状态。 */
+const mcNotifyState = { countries: {}, saving: false };
+
+/** 加载并绑定多国校验电话通知配置（每国联系人 + 电话/群消息开关 + 电话阈值）。 */
+async function loadMcNotify(root) {
+  const body = root.querySelector("#mc-notify-body");
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载通知配置…</div>`;
+  let cfg;
+  try {
+    cfg = await apiGet("/api/multi-country/notify");
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  const countries = (cfg && cfg.countries) || {};
+  mcNotifyState.countries = countries;
+  const countryNames = { cn: "中国", id: "印尼", mx: "墨西哥", th: "泰国", ph: "菲律宾", pk: "巴基斯坦" };
+  const order = ["cn", "id", "mx", "th", "ph", "pk"];
+  const rows = order
+    .filter((code) => countries[code])
+    .map((code) => {
+      const c = countries[code];
+      return `
+        <div class="mc-notify-row" data-code="${code}">
+          <span class="mc-notify-country">${escapeHtml(countryNames[code] || code)}</span>
+          <input type="text" class="mc-notify-contacts" data-code="${code}" value="${escapeHtml((c.contacts || []).join(","))}" placeholder="手机号/夜莺用户名，多个用逗号分隔" />
+          <label class="mc-notify-toggle"><input type="checkbox" data-code="${code}" data-field="phone" ${c.phone !== false ? "checked" : ""} /> 电话</label>
+          <label class="mc-notify-toggle"><input type="checkbox" data-code="${code}" data-field="group" ${c.group !== false ? "checked" : ""} /> 群消息</label>
+          <label class="mc-notify-threshold">连续 <input type="number" class="mc-notify-num" data-code="${code}" data-field="strikeThreshold" min="1" max="99" value="${c.strikeThreshold || 6}" /> 次打</label>
+        </div>
+      `;
+    })
+    .join("");
+  body.innerHTML = `
+    <div class="mc-notify-rows">${rows}</div>
+    <div class="mc-notify-actions">
+      <button class="mc-page-btn" id="mc-notify-save">保存通知配置</button>
+      <span class="mc-schedule-status" id="mc-notify-status"></span>
+    </div>`;
+  const saveBtn = root.querySelector("#mc-notify-save");
+  const status = root.querySelector("#mc-notify-status");
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      if (mcNotifyState.saving) return;
+      mcNotifyState.saving = true;
+      if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+      const next = {};
+      for (const code of order) {
+        if (!countries[code]) continue;
+        const row = body.querySelector(`.mc-notify-row[data-code="${code}"]`);
+        if (!row) continue;
+        const contacts = (row.querySelector(".mc-notify-contacts")?.value || "").split(",").map((s) => s.trim()).filter(Boolean);
+        const phone = row.querySelector('input[data-field="phone"]')?.checked ?? countries[code].phone !== false;
+        const group = row.querySelector('input[data-field="group"]')?.checked ?? countries[code].group !== false;
+        const threshold = Number(row.querySelector('input[data-field="strikeThreshold"]')?.value) || 6;
+        next[code] = { contacts, phone, group, strikeThreshold: threshold };
+      }
+      try {
+        const res = await apiPut("/api/multi-country/notify", { countries: next });
+        if (res && res.ok) {
+          mcNotifyState.countries = res.countries || next;
+          if (status) { status.textContent = "✅ 已保存通知配置"; status.className = "mc-schedule-status ok"; }
+        } else {
+          if (status) { status.textContent = "❌ 保存失败"; status.className = "mc-schedule-status error"; }
+        }
+      } catch (e) {
+        if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+      }
+      mcNotifyState.saving = false;
+    };
+  }
+}
+async function loadMcSchedule(root) {
+  const input = root.querySelector("#mc-schedule-minute");
+  const saveBtn = root.querySelector("#mc-schedule-save");
+  const status = root.querySelector("#mc-schedule-status");
+  if (!input || !saveBtn) return;
+  try {
+    const s = await apiGet("/api/multi-country/schedule");
+    if (s && Number.isInteger(s.minute)) { input.value = s.minute; mcState.scheduleMinute = s.minute; }
+  } catch (e) {
+    if (status) status.textContent = "读取定时配置失败";
+  }
+  if (status) status.textContent = "";
+  saveBtn.onclick = async () => {
+    const minute = Number(input.value);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      if (status) { status.textContent = "请输入 0-59 的整数分钟"; status.className = "mc-schedule-status error"; }
+      return;
+    }
+    if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+    try {
+      const res = await apiPut("/api/multi-country/schedule", { minute });
+      if (res && res.ok) {
+        if (status) { status.textContent = `✅ 已保存：每小时 ${res.minute} 分校验`; status.className = "mc-schedule-status ok"; }
+      } else {
+        const err = res && res.sync && res.sync.error ? res.sync.error : "保存失败";
+        if (status) { status.textContent = `❌ ${err}`; status.className = "mc-schedule-status error"; }
+      }
+    } catch (e) {
+      if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+    }
+  };
 }
 
 /** 渲染当前筛选 + 分页下的多国校验结果。 */
@@ -128,7 +248,11 @@ function renderMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
   if (!mcState.runs.length) {
-    el.innerHTML = `<div class="notice">暂无校验记录。运行「多国一致性校验告警」后会自动回写。</div>`;
+    el.innerHTML = `<div class="mc-empty">
+      <div class="mc-empty-icon">📊</div>
+      <div class="mc-empty-title">暂无多国一致性校验记录</div>
+      <div class="mc-empty-desc">「多国一致性校验告警」n8n 工作流会在每个整点的第 ${escapeHtml(mcState.scheduleMinute ?? 55)} 分自动执行，异常时会回写到这里。</div>
+    </div>`;
     renderMcPager(root, 0);
     return;
   }
@@ -166,7 +290,7 @@ function renderMcResults(root) {
         <details class="mc-detail">
           <summary>📄 ${escapeHtml(c.label || c.code || "")} · 校验语句与差异明细</summary>
           ${summaryHtml}
-          ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）</div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
+          ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）<button class="mc-copy-btn" data-copy-sql="${escapeHtml(sql)}" title="复制校验语句">📋 复制</button></div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
           ${renderMcDetailBlock({ ...c, runId: run.id })}
         </details>
       `;
@@ -202,6 +326,30 @@ function renderMcResults(root) {
       }
     });
   });
+  // 复制校验语句按钮（事件委托，覆盖局部重渲染）
+  el.querySelectorAll(".mc-copy-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const sql = btn.dataset.copySql || "";
+      const original = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(sql);
+        btn.textContent = "✅ 已复制";
+        btn.classList.add("copied");
+      } catch (e) {
+        // clipboard 不可用时 fallback
+        const ta = document.createElement("textarea");
+        ta.value = sql;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); btn.textContent = "✅ 已复制"; btn.classList.add("copied"); }
+        catch (e2) { btn.textContent = "❌ 复制失败"; }
+        document.body.removeChild(ta);
+      }
+      setTimeout(() => { btn.textContent = original; btn.classList.remove("copied"); }, 1500);
+    });
+  });
   renderMcPager(root, totalPages);
   renderMcEmpty(filtered.length);
 }
@@ -230,7 +378,11 @@ function renderMcPager(root, totalPages) {
 function renderMcEmpty(filteredCount) {
   const el = document.querySelector("#mc-results");
   if (el && filteredCount === 0 && mcState.runs.length) {
-    el.innerHTML = `<div class="notice">没有符合当前筛选条件的记录。</div>`;
+    el.innerHTML = `<div class="mc-empty">
+      <div class="mc-empty-icon">🔍</div>
+      <div class="mc-empty-title">没有符合当前筛选条件的记录</div>
+      <div class="mc-empty-desc">试试清除「只看异常」或更换国家筛选。</div>
+    </div>`;
   }
 }
 

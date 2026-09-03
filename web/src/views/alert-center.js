@@ -1132,16 +1132,25 @@ function renderInvSection(dotCls, title, desc, bodyHtml, count) {
 /** 夜莺通知规则表（电话 / 钉钉 / 其它）。 */
 function renderInvTable(rules, kind) {
   if (!rules || !rules.length) return `<p class="muted">无记录。</p>`;
+  // fixed 布局：显式列宽（%）保证任何视口下列对齐、不横向溢出
+  const colWidths = kind === "phone"
+    ? ["24%", "7%", "18%", "9%", "34%", "8%"]
+    : kind === "dingtalk"
+    ? ["23%", "7%", "15%", "18%", "29%", "8%"]
+    : ["28%", "8%", "20%", "36%", "8%"];
+  const extraTh = kind === "phone" ? `<th>固定电话</th>` : kind === "dingtalk" ? `<th>机器人 / @</th>` : "";
   return `
     <div class="table-wrap">
       <table class="data-table ac-inv-table">
+        <colgroup>
+          ${colWidths.map((w) => `<col style="width:${w}">`).join("")}
+        </colgroup>
         <thead>
           <tr>
             <th>通知规则</th>
             <th>启停</th>
             <th>接收人</th>
-            ${kind === "phone" ? `<th>固定电话</th>` : ""}
-            ${kind === "dingtalk" ? `<th>机器人 / @</th>` : ""}
+            ${extraTh}
             <th>关联告警规则</th>
             <th>操作</th>
           </tr>
@@ -1159,14 +1168,18 @@ function renderInvTable(rules, kind) {
               </td>
               <td class="inv-receivers">
                 ${r.receivers?.length ? r.receivers.map((u) => `
+                  ${u.username && !String(u.username).startsWith("用户") ? `
                   <span class="inv-user">
                     ${escapeHtml(u.nickname || u.username)}
                     ${u.phone ? `<span class="muted small">${escapeHtml(u.phone)}</span>` : ""}
-                  </span>
+                  </span>` : `
+                  <span class="inv-user inv-user-missing" title="该 user_id 已不在夜莺用户表（可能已删除/失效），需在编辑中移除或改填有效用户">
+                    ⚠️ ${escapeHtml(u.username || `用户 id=${u.id}`)}${u.phone ? ` · ${escapeHtml(u.phone)}` : ""}
+                  </span>`}
                 `).join("") : `<span class="muted small">未指定用户</span>`}
               </td>
               ${kind === "phone" ? `<td class="small">${r.fixedPhones?.length ? r.fixedPhones.map((p) => `<span class="inv-phone">${escapeHtml(p)}</span>`).join(" ") : `<span class="muted small">-</span>`}</td>` : ""}
-              ${kind === "dingtalk" ? `<td class="small">${r.botId ? `机器人 <code>${escapeHtml(String(r.botId).slice(0, 10))}…</code>` : `<span class="muted small">-</span>`}${r.mentions ? `<div class="muted small">@ ${escapeHtml(r.mentions)}</div>` : ""}</td>` : ""}
+              ${kind === "dingtalk" ? `<td class="inv-ding-cell">${r.botId ? `<span class="muted small">机器人 <code>${escapeHtml(String(r.botId).slice(0, 10))}…</code></span>` : `<span class="muted small">-</span>`}${r.mentions ? `<div class="inv-ding-mentions" title="${escapeHtml(r.mentions)}">@ ${escapeHtml(r.mentions)}</div>` : ""}</td>` : ""}
               <td class="small">
                 <span class="badge ${r.alertRuleCount ? "" : "warn"}">${escapeHtml(r.alertRuleCount ?? 0)}</span>
                 ${r.alertRuleCount ? `<div class="inv-alert-names">${r.alertRules?.slice(0, 5).map((a) => `<a href="javascript:void(0)" class="inv-alert-link" data-alert-id="${escapeHtml(String(a.id))}" data-alert-group="${escapeHtml(String(a.groupId ?? ""))}" data-alert-name="${escapeHtml(a.name)}" title="查看/编辑该告警规则">${escapeHtml(a.name)}</a>`).join("、")}${r.alertRuleCount > 5 ? ` <span class="muted">等 ${r.alertRuleCount} 条</span>` : ""}</div>` : `<div class="muted small">未关联告警规则</div>`}
@@ -1188,8 +1201,11 @@ function renderInvN8nTable(workflows) {
   return `
     <div class="table-wrap">
       <table class="data-table ac-inv-table">
+        <colgroup>
+          <col style="width:34%"><col style="width:8%"><col style="width:10%"><col style="width:14%"><col style="width:26%"><col style="width:8%">
+        </colgroup>
         <thead>
-          <tr><th>工作流</th><th>激活</th><th>触发</th><th>发送目标</th><th>Webhook</th><th>节点</th><th>操作</th></tr>
+          <tr><th>工作流</th><th>激活</th><th>触发</th><th>发送目标</th><th>Webhook</th><th>节点</th></tr>
         </thead>
         <tbody>
           ${workflows.map((w) => `
@@ -1204,7 +1220,6 @@ function renderInvN8nTable(workflows) {
               </td>
               <td class="small">${w.webhookUrl ? `<span class="muted" title="${escapeHtml(w.webhookUrl)}">${escapeHtml(w.webhookUrl.replace(/^https?:\/\/[^/]+/, ""))}</span>` : `<span class="muted small">-</span>`}</td>
               <td class="num small">${escapeHtml(w.nodeCount ?? 0)}</td>
-              <td><span class="muted small">（在 n8n 编辑）</span></td>
             </tr>
           `).join("")}
         </tbody>
