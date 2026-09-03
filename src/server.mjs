@@ -466,6 +466,9 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertCenter.setAlertRuleDisabled(ruleId, Boolean(body.disabled)));
   }
+  if (method === "POST" && url.pathname === "/api/alerts/notify-rules/clean-stale-users") {
+    return sendJson(response, 200, await alertCenter.cleanStaleNotifyUsers());
+  }
   if (method === "PUT" && url.pathname.startsWith("/api/alerts/notify-rules/")) {
     const notifyRuleId = url.pathname.split("/").pop();
     const body = await readBody(request, {});

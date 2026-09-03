@@ -7831,9 +7831,18 @@ button.small[disabled] {
 .inv-user:last-child { margin-bottom: 0; }
 .inv-user .muted { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .inv-user-missing {
-  background: #fef2f2; color: #b91c1c; border: 1px dashed #fca5a5;
-  border-radius: 4px; padding: 1px 6px; font-size: 12px; cursor: help;
+  color: #9ca3af; font-size: 12px; cursor: help;
+  text-decoration: line-through;
 }
+/* 失效用户提示条 */
+.ac-inv-stale-banner {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
+  border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; font-size: 13px;
+}
+.ac-inv-stale-ic { font-size: 15px; }
+.ac-inv-stale-msg { flex: 1; min-width: 220px; }
+.ac-inv-clean-btn { white-space: nowrap; }
 .inv-phone { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; white-space: nowrap; display: inline-block; margin: 1px 2px 1px 0; }
 .inv-phones { display: flex; flex-wrap: wrap; gap: 2px; }
 .inv-phones-cell { min-width: 90px; }

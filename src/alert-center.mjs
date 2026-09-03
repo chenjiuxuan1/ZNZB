@@ -262,6 +262,44 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return updateNotifyRule(notifyRuleId, { enable: Boolean(enable) });
   }
 
+  /** 批量清理通知规则中引用的失效用户（用户表已删除的 id）。幂等：只移除失效项，不影响有效接收人。 */
+  async function cleanStaleNotifyUsers() {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) return { ok: true, cleaned: [], totalRemoved: 0, rulesCleaned: 0, emptyAfter: [] };
+    await ensureNotifyMap();
+    const validIds = new Set(notifyCache.users.map((u) => Number(u.id)));
+    const cleaned = [];
+    const emptyAfter = [];
+    let totalRemoved = 0;
+    for (const nr of notifyCache.rules) {
+      let removedAny = false;
+      let removedHere = [];
+      const nextConfigs = (nr.notify_configs || []).map((nc) => {
+        const p = nc.params || {};
+        const ids = p.user_ids || [];
+        const bad = ids.filter((id) => !validIds.has(Number(id)));
+        if (!bad.length) return nc;
+        removedAny = true;
+        removedHere.push(...bad);
+        const good = ids.filter((id) => validIds.has(Number(id)));
+        return { ...nc, params: { ...p, user_ids: good } };
+      });
+      if (!removedAny) continue;
+      const merged = { ...nr, notify_configs: nextConfigs };
+      await nightingale.putNotifyRule(nr.id, merged);
+      totalRemoved += removedHere.length;
+      cleaned.push({ nrId: nr.id, name: nr.name || "", removed: removedHere });
+      // 清理后该规则是否完全无接收人（无 user_ids 且无 Mobile/botId）
+      const stillHas = nextConfigs.some((nc) => {
+        const q = nc.params || {};
+        return (q.user_ids || []).length > 0 || q.Mobile || q.mobile || q.botId || q.bot_id || q.email || q.mentions || q.access_token;
+      });
+      if (!stillHas) emptyAfter.push({ nrId: nr.id, name: nr.name || "" });
+    }
+    if (totalRemoved) notifyCacheAt = 0; // 失效缓存
+    return { ok: true, cleaned, totalRemoved, rulesCleaned: cleaned.length, emptyAfter };
+  }
+
   /** 归一化一条夜莺告警。 */
   async function normalizeN9eAlert(alert) {
     const tags = {};
@@ -1256,6 +1294,10 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
         alertRuleTotal: alertRules.length,
         receiverUsers: notifyCache.users.length,
       },
+      stale: {
+        ruleCount: phoneWith.concat(dingtalkWith, otherWith).filter((r) => (r.receivers || []).some((u) => !u.username || String(u.username).startsWith("用户"))).length,
+        receiverCount: phoneWith.concat(dingtalkWith, otherWith).reduce((n, r) => n + (r.receivers || []).filter((u) => !u.username || String(u.username).startsWith("用户")).length, 0),
+      },
       phone: phoneWith,
       dingtalk: dingtalkWith,
       other: otherWith,
@@ -1356,6 +1398,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     setAlertRuleDisabled,
     updateNotifyRule,
     setNotifyRuleEnable,
+    cleanStaleNotifyUsers,
     getMonitorOverview,
     getAlertsInventory,
     getConfig,
