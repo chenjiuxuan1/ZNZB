@@ -9242,7 +9242,8 @@ select.ar-field {
   font-size: 12px;
   color: #667085;
 }
-.mc-group-owners {
+.mc-group-owners,
+.mc-notify-owners {
   flex: 1;
   min-width: 220px;
   padding: 5px 8px;
@@ -9251,8 +9252,15 @@ select.ar-field {
   font-size: 12px;
   color: #344054;
 }
-.mc-group-owners:focus-visible {
+.mc-group-owners:focus-visible,
+.mc-notify-owners:focus-visible {
   outline: none;
   border-color: #2e90fa;
   box-shadow: 0 0 0 2px rgba(46, 144, 250, 0.15);
+}
+.mc-notify-field-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #98a2b3;
+  font-weight: 500;
 }
