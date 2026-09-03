@@ -151,10 +151,32 @@ function executionTime(execution) {
   return execution?.startedAt || execution?.createdAt || execution?.started_at || "";
 }
 
-function withinLookback(value, now, days) {
+function localDateInTimeZone(now, timeZone = "Asia/Shanghai") {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+function shiftDate(value, days) {
+  const [year, month, day] = String(value).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+function normalizeDateRange(startDate, endDate, now, fallbackDays) {
+  const valid = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+  const fallbackEnd = localDateInTimeZone(now);
+  const normalizedEnd = valid(endDate) ? String(endDate) : fallbackEnd;
+  const normalizedStart = valid(startDate) ? String(startDate) : shiftDate(normalizedEnd, -(fallbackDays - 1));
+  if (normalizedStart > normalizedEnd) throw new Error("开始日期不能晚于结束日期");
+  const days = Math.round((Date.parse(`${normalizedEnd}T00:00:00Z`) - Date.parse(`${normalizedStart}T00:00:00Z`)) / 86_400_000) + 1;
+  if (days > 90) throw new Error("单次查询时间范围最多为 90 天");
+  return { startDate: normalizedStart, endDate: normalizedEnd, days };
+}
+
+function withinDateRange(value, range) {
   const time = Date.parse(value || "");
   if (!Number.isFinite(time)) return true;
-  return time >= now.getTime() - days * 24 * 60 * 60 * 1000;
+  const start = Date.parse(`${range.startDate}T00:00:00+08:00`);
+  const endExclusive = Date.parse(`${shiftDate(range.endDate, 1)}T00:00:00+08:00`);
+  return time >= start && time < endExclusive;
 }
 
 function normalizedStatus(execution, detail) {
@@ -342,6 +364,8 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   now = new Date(),
   countries: requestedCountries,
   lookbackDays = 7,
+  startDate,
+  endDate,
   // Deprecated compatibility parameters. The monitor no longer filters by a
   // ZNZB project scope; DS projectCode/projectName from n8n execution detail
   // are the sole source of project identity.
@@ -357,7 +381,8 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
 } = {}) {
   const selectedCountries = normalizeCountries(requestedCountries);
   const days = Math.max(1, Math.min(90, Math.trunc(Number(lookbackDays) || 7)));
-  const cacheKey = JSON.stringify([rootDir, selectedCountries, days, workflowName, webhookPath, Boolean(enrichDsEvidence)]);
+  const range = normalizeDateRange(startDate, endDate, now, days);
+  const cacheKey = JSON.stringify([rootDir, selectedCountries, range.startDate, range.endDate, workflowName, webhookPath, Boolean(enrichDsEvidence)]);
   const cached = cache.get(cacheKey);
   if (!bypassCache && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
   // Avoid lint/no-unused regressions while keeping the old options accepted by
@@ -376,7 +401,7 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
       country.queryFailed = true;
       country.error = error;
     }
-    const value = { source: "n8n-auto-trigger-execution-log", mode: "n8n-auto-trigger-execution-log", checkedAt: now.toISOString(), lookbackDays: days, n8nWorkflow: null, n8nConfigured: true, n8nProjectScopeConfigured: false, totalExecutions: 0, totalFailures: 0, countries };
+    const value = { source: "n8n-auto-trigger-execution-log", mode: "n8n-auto-trigger-execution-log", checkedAt: now.toISOString(), startDate: range.startDate, endDate: range.endDate, lookbackDays: range.days, n8nWorkflow: null, n8nConfigured: true, n8nProjectScopeConfigured: false, totalExecutions: 0, totalFailures: 0, countries };
     cache.set(cacheKey, { at: Date.now(), value });
     return value;
   }
@@ -390,7 +415,7 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
     workflowId: workflow.id,
     limit: Math.min(limit, 250),
   });
-  const executions = (executionPayload?.data || []).filter((execution) => withinLookback(executionTime(execution), now, days));
+  const executions = (executionPayload?.data || []).filter((execution) => withinDateRange(executionTime(execution), range));
   const details = await mapWithConcurrency(executions, 8, async (execution) => {
     try {
       return { execution, detail: await client.getExecution(execution.id, { includeData: true }) };
@@ -451,14 +476,18 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   }
   for (const country of countries) {
     country.checkedProjects = country.projects.length;
-    country.targetDate = now.toISOString().slice(0, 10);
+    country.startDate = range.startDate;
+    country.endDate = range.endDate;
+    country.targetDate = range.endDate;
     country.failures.sort((a, b) => Date.parse(b.startTime || 0) - Date.parse(a.startTime || 0));
   }
   const value = {
     source: "n8n-auto-trigger-execution-log",
     mode: "n8n-auto-trigger-execution-log",
     checkedAt: now.toISOString(),
-    lookbackDays: days,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    lookbackDays: range.days,
     n8nWorkflow: { id: String(workflow.id), name: workflow.name || workflowName, webhookPath },
     n8nConfigured: true,
     n8nProjectScopeConfigured: false,

@@ -222,6 +222,16 @@ export function normalizeLookbackDays(value, fallback = 1) {
   return Math.max(1, Math.min(90, Math.trunc(parsed)));
 }
 
+function normalizeInspectionDateRange(startDate, endDate, fallbackEndDate, fallbackDays = 1) {
+  const valid = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+  const normalizedEnd = valid(endDate) ? String(endDate) : fallbackEndDate;
+  const normalizedStart = valid(startDate) ? String(startDate) : shiftDate(normalizedEnd, -(fallbackDays - 1));
+  if (normalizedStart > normalizedEnd) throw new Error("开始日期不能晚于结束日期");
+  const days = Math.round((Date.parse(`${normalizedEnd}T00:00:00Z`) - Date.parse(`${normalizedStart}T00:00:00Z`)) / 86_400_000) + 1;
+  if (days > 90) throw new Error("单次查询时间范围最多为 90 天");
+  return { startDate: normalizedStart, endDate: normalizedEnd, days };
+}
+
 function scheduleCategoryOf(item = {}) {
   return commandTypeOf(item) === "SCHEDULER" ? "scheduled_online" : "non_scheduled_online";
 }
@@ -1072,10 +1082,10 @@ function shiftDate(date, days) {
   return shifted.toISOString().slice(0, 10);
 }
 
-async function listProjectInstances({ webhookUrl, country, token, projectCode, targetDate, timeZone, lookbackDays = 1 }) {
+async function listProjectInstances({ webhookUrl, country, token, projectCode, targetDate, startDate: requestedStartDate, timeZone, lookbackDays = 1 }) {
   const instances = [];
   const seen = new Set();
-  const startDate = shiftDate(targetDate, -(Math.max(1, Number(lookbackDays) || 1) - 1));
+  const startDate = requestedStartDate || shiftDate(targetDate, -(Math.max(1, Number(lookbackDays) || 1) - 1));
   for (let pageNo = 1; pageNo <= MAX_INSTANCE_PAGES; pageNo += 1) {
     const data = await postAction(webhookUrl, country, token, "list_instances", {
       project_code: projectCode,
@@ -1109,7 +1119,7 @@ async function listProjectInstances({ webhookUrl, country, token, projectCode, t
   });
 }
 
-async function inspectProject({ webhookUrl, country, token, project, targetDate, timeZone, dsUiBaseUrl, originalScheduledOnly = false, lookbackDays = 1, now = new Date() }) {
+async function inspectProject({ webhookUrl, country, token, project, targetDate, startDate, timeZone, dsUiBaseUrl, originalScheduledOnly = false, lookbackDays = 1, now = new Date() }) {
   try {
     const instances = await listProjectInstances({
       webhookUrl,
@@ -1117,6 +1127,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
       token,
       projectCode: project.code,
       targetDate,
+      startDate,
       timeZone,
       lookbackDays,
     });
@@ -1133,7 +1144,7 @@ async function inspectProject({ webhookUrl, country, token, project, targetDate,
   }
 }
 
-async function inspectCountry(config, country, now, originalScheduledOnly = false, lookbackDays = 1, projectScope = null) {
+async function inspectCountry(config, country, now, originalScheduledOnly = false, lookbackDays = 1, projectScope = null, requestedDateRange = null) {
   const countryConfig = config.countries?.[country] || {};
   const countryName = countryConfig.name || COUNTRY_LABELS[country];
   const token = String(countryConfig.token || "").trim();
@@ -1143,7 +1154,11 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
     ? allProjects.filter((project) => projectMatchesN8nScope(project, country, projectScope))
     : allProjects;
   const timeZone = COUNTRY_TIMEZONES[country];
-  const targetDate = todayInTimeZone(timeZone, now);
+  const defaultTargetDate = todayInTimeZone(timeZone, now);
+  const dateRange = normalizeInspectionDateRange(requestedDateRange?.startDate, requestedDateRange?.endDate, defaultTargetDate, lookbackDays);
+  const targetDate = dateRange.endDate;
+  const startDate = dateRange.startDate;
+  lookbackDays = dateRange.days;
   const dsUiBaseUrl = String(countryConfig.dsUiUrl || countryConfig.ds_ui_url || "").trim();
   if (!token || !allProjects.length) {
     return {
@@ -1151,6 +1166,8 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
       countryName,
       timeZone,
       targetDate,
+      startDate,
+      endDate: targetDate,
       lookbackDays,
       configured: false,
       success: false,
@@ -1167,6 +1184,8 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
       countryName,
       timeZone,
       targetDate,
+      startDate,
+      endDate: targetDate,
       lookbackDays,
       configured: true,
       success: true,
@@ -1186,6 +1205,7 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
     token,
     project,
     targetDate,
+    startDate,
     timeZone,
     dsUiBaseUrl,
     originalScheduledOnly,
@@ -1198,6 +1218,8 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
     countryName,
     timeZone,
     targetDate,
+    startDate,
+    endDate: targetDate,
     lookbackDays,
     configured: true,
     success: projectResults.some((item) => item.success),
@@ -1211,16 +1233,20 @@ async function inspectCountry(config, country, now, originalScheduledOnly = fals
   };
 }
 
-export async function inspectDsFailureLogs(rootDir, { now = new Date(), countries: requestedCountries, lookbackDays: requestedLookbackDays = 1 } = {}) {
+export async function inspectDsFailureLogs(rootDir, { now = new Date(), countries: requestedCountries, lookbackDays: requestedLookbackDays = 1, startDate, endDate } = {}) {
   const config = await loadDsSchedulerConfig(rootDir);
   const selectedCountries = normalizeCountrySelection(requestedCountries);
   const lookbackDays = normalizeLookbackDays(requestedLookbackDays, 1);
-  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, false, lookbackDays)));
+  const explicitRange = startDate || endDate ? { startDate, endDate } : null;
+  const countries = await Promise.all(selectedCountries.map((country) => inspectCountry(config, country, now, false, lookbackDays, null, explicitRange)));
   const failures = countries.flatMap((item) => item.failures || []);
+  const responseStartDate = explicitRange ? countries[0]?.startDate || startDate : null;
+  const responseEndDate = explicitRange ? countries[0]?.endDate || endDate : null;
   return {
     checkedAt: new Date().toISOString(),
-    dateMode: lookbackDays === 1 ? "country-local-today" : "country-local-lookback",
-    lookbackDays,
+    dateMode: explicitRange ? "explicit-date-range" : lookbackDays === 1 ? "country-local-today" : "country-local-lookback",
+    ...(explicitRange ? { startDate: responseStartDate, endDate: responseEndDate } : {}),
+    lookbackDays: explicitRange ? countries[0]?.lookbackDays || lookbackDays : lookbackDays,
     totalCountries: selectedCountries.length,
     configuredCountries: countries.filter((item) => item.configured).length,
     checkedProjects: countries.reduce((sum, item) => sum + item.checkedProjects, 0),

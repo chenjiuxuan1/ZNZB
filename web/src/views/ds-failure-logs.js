@@ -44,7 +44,8 @@ let model = {
   status: "",
   scheduleCategory: "",
   keyword: "",
-  lookbackDays: 1,
+  startDate: defaultDateRange(1).startDate,
+  endDate: defaultDateRange(1).endDate,
   completed: 0,
   total: 0,
   runId: 0,
@@ -66,8 +67,10 @@ let model = {
   scheduledLoading: false,
   scheduledCountries: [],
   scheduledKeyword: "",
-  scheduledLookbackDays: 7,
+  scheduledStartDate: defaultDateRange(7).startDate,
+  scheduledEndDate: defaultDateRange(7).endDate,
   scheduledCountryPages: {},
+  scheduledCollapsedCountries: {},
   scheduledEvidenceRunId: 0,
   scheduledConfig: { enabled: true, intervalMinutes: 5, owners: {}, groupChatIds: {}, botIds: {} },
   scheduledConfigLoaded: false,
@@ -104,8 +107,14 @@ async function refreshScheduledConfig(root) {
 
 async function loadScheduledFailures(root) {
   if (model.scheduledLoading) return;
-  const lookbackDays = normalizeUiLookbackDays(root.querySelector("#ds-scheduled-lookback-days")?.value, 7);
-  model.scheduledLookbackDays = lookbackDays;
+  const range = readDateRange(root, "ds-scheduled", defaultDateRange(7));
+  if (!range.valid) {
+    model.scheduledMessage = range.error;
+    paint(root);
+    return;
+  }
+  model.scheduledStartDate = range.startDate;
+  model.scheduledEndDate = range.endDate;
   const selected = COUNTRY_OPTIONS.filter((item) => !model.scheduledCountries.length || model.scheduledCountries.includes(item.code));
   model.scheduledLoading = true;
   model.scheduledEvidenceRunId += 1;
@@ -116,7 +125,7 @@ async function loadScheduledFailures(root) {
   paint(root);
   let loaded = false;
   try {
-    const response = await apiGet(`/api/ds-n8n-failure-watch?country=${encodeURIComponent(selected.map((item) => item.code).join(","))}&days=${lookbackDays}`);
+    const response = await apiGet(`/api/ds-n8n-failure-watch?country=${encodeURIComponent(selected.map((item) => item.code).join(","))}&startDate=${range.startDate}&endDate=${range.endDate}`);
     model.scheduledResult = aggregateResult(response.countries || []);
     loaded = true;
     if (!response.n8nWorkflow) model.scheduledMessage = "未找到 DS 告警对应的 n8n 重跑入口执行记录，请检查 N8N_BASE_URL、N8N_API_KEY 及工作流名称/路径。";
@@ -139,6 +148,7 @@ function visibleN8nEvidenceTargets() {
   const seen = new Set();
   for (const country of countries) {
     if (model.scheduledCountries.length && !model.scheduledCountries.includes(country.country)) continue;
+    if (model.scheduledCollapsedCountries[country.country]) continue;
     const failures = filteredFailures(country.failures || [], {
       keyword: model.scheduledKeyword,
       status: "",
@@ -377,8 +387,14 @@ async function saveRetryCountries(root, values) {
 async function load(root) {
   if (model.loading) return;
   clearAutoRefresh();
-  const lookbackDays = normalizeUiLookbackDays(root.querySelector("#ds-failure-lookback-days")?.value, 1);
-  model.lookbackDays = lookbackDays;
+  const range = readDateRange(root, "ds-failure", defaultDateRange(1));
+  if (!range.valid) {
+    model.error = range.error;
+    paint(root);
+    return;
+  }
+  model.startDate = range.startDate;
+  model.endDate = range.endDate;
   const selected = COUNTRY_OPTIONS.filter((item) => !model.countries.length || model.countries.includes(item.code));
 
   const runId = ++model.runId;
@@ -394,7 +410,7 @@ async function load(root) {
   await Promise.all(selected.map(async (option) => {
     let country;
     try {
-      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}&days=${lookbackDays}`, { signal });
+      const response = await apiGet(`/api/ds-failure-logs?country=${encodeURIComponent(option.code)}&startDate=${range.startDate}&endDate=${range.endDate}`, { signal });
       country = response.countries?.[0] || failedCountry(option, "接口未返回该国家的检查结果");
     } catch (error) {
       country = failedCountry(option, readableQueryError(error));
@@ -550,7 +566,7 @@ function paint(root) {
     <div class="workspace-tabs ds-failure-page-tabs" role="tablist">
       <button class="${model.activeTab === "today" ? "active" : ""}" data-ds-failure-tab="today"><small>01</small><strong>当天失败任务</strong><span>查询当天全部失败实例</span></button>
       <button class="${model.activeTab === "retry" ? "active" : ""}" data-ds-failure-tab="retry"><small>02</small><strong>定时失败任务重跑</strong><span>手动测试、定时重跑与历史</span></button>
-      <button class="${model.activeTab === "scheduled" ? "active" : ""}" data-ds-failure-tab="scheduled"><small>03</small><strong>n8n失败重启监控</strong><span>按自定义天数查看 n8n 失败重启任务</span></button>
+      <button class="${model.activeTab === "scheduled" ? "active" : ""}" data-ds-failure-tab="scheduled"><small>03</small><strong>n8n失败重启监控</strong><span>按时间范围查看 n8n 失败重启任务</span></button>
     </div>
     ${model.error ? `<div class="sandbox-status error"><strong>无法查询</strong><span>${escapeHtml(model.error)}</span></div>` : ""}
     <section class="panel ds-failure-toolbar" ${model.activeTab === "today" ? "" : 'style="display:none"'}>
@@ -561,7 +577,7 @@ function paint(root) {
       </div>
       <div class="ds-failure-filter-grid">
         ${renderCountryMultiSelect("ds-failure-country", "国家", model.countries, model.loading)}
-        <label>查询最近几天<input id="ds-failure-lookback-days" type="number" min="1" max="90" step="1" value="${model.lookbackDays}" ${model.loading ? "disabled" : ""} placeholder="1-90"></label>
+        ${renderDateRangeFilter("ds-failure", model.startDate, model.endDate, model.loading)}
         <label>修复状态<select id="ds-failure-status"><option value="">全部状态</option>${Object.entries(STATUS_LABELS).map(([value, item]) => `<option value="${value}" ${model.status === value ? "selected" : ""}>${item.label}</option>`).join("")}</select></label>
         <label>定时状态<select id="ds-failure-schedule-category"><option value="">全部任务</option><option value="scheduled_online" ${model.scheduleCategory === "scheduled_online" ? "selected" : ""}>定时上线任务</option><option value="non_scheduled_online" ${model.scheduleCategory === "non_scheduled_online" ? "selected" : ""}>非定时上线任务</option></select></label>
         <label>搜索项目或任务<input id="ds-failure-keyword" value="${escapeHtml(model.keyword)}" placeholder="项目、工作流、失败任务或原因"></label>
@@ -612,7 +628,8 @@ function paint(root) {
   root.querySelector("#ds-failure-query")?.addEventListener("click", () => load(root));
   root.querySelector("#ds-failure-stop-query")?.addEventListener("click", () => stopQuery(root));
   bindCountryMultiSelect(root, "ds-failure-country", (values) => { model.countries = values; });
-  root.querySelector("#ds-failure-lookback-days")?.addEventListener("input", (event) => { model.lookbackDays = normalizeUiLookbackDays(event.target.value, 1); });
+  root.querySelector("#ds-failure-start-date")?.addEventListener("change", (event) => { model.startDate = event.target.value; });
+  root.querySelector("#ds-failure-end-date")?.addEventListener("change", (event) => { model.endDate = event.target.value; });
   root.querySelector("#ds-failure-status")?.addEventListener("change", (event) => { model.status = event.target.value; paint(root); });
   root.querySelector("#ds-failure-schedule-category")?.addEventListener("change", (event) => { model.scheduleCategory = event.target.value; paint(root); });
   root.querySelector("#ds-failure-keyword")?.addEventListener("input", (event) => { model.keyword = event.target.value; paint(root); root.querySelector("#ds-failure-keyword")?.focus(); });
@@ -645,7 +662,8 @@ function paint(root) {
   });
   bindCountryMultiSelect(root, "ds-retry-country", (values) => { void saveRetryCountries(root, values); });
   bindCountryMultiSelect(root, "ds-scheduled-country", (values) => { model.scheduledCountries = values; });
-  root.querySelector("#ds-scheduled-lookback-days")?.addEventListener("input", (event) => { model.scheduledLookbackDays = normalizeUiLookbackDays(event.target.value, 7); });
+  root.querySelector("#ds-scheduled-start-date")?.addEventListener("change", (event) => { model.scheduledStartDate = event.target.value; });
+  root.querySelector("#ds-scheduled-end-date")?.addEventListener("change", (event) => { model.scheduledEndDate = event.target.value; });
   root.querySelector("#ds-scheduled-query")?.addEventListener("click", () => loadScheduledFailures(root));
   root.querySelector("#ds-scheduled-keyword")?.addEventListener("input", (event) => { model.scheduledKeyword = event.target.value; model.scheduledCountryPages = {}; paint(root); root.querySelector("#ds-scheduled-keyword")?.focus(); void hydrateVisibleN8nEvidence(root); });
   root.querySelector("#ds-scheduled-owner-save")?.addEventListener("click", () => saveScheduledOwners(root));
@@ -659,6 +677,16 @@ function paint(root) {
     model.scheduledCountryPages = { ...model.scheduledCountryPages, [country]: page };
     paint(root);
     void hydrateVisibleN8nEvidence(root);
+  }));
+  root.querySelectorAll("[data-scheduled-country-toggle]").forEach((button) => button.addEventListener("click", () => {
+    const country = String(button.dataset.scheduledCountryToggle || "");
+    if (!country) return;
+    model.scheduledCollapsedCountries = {
+      ...model.scheduledCollapsedCountries,
+      [country]: !model.scheduledCollapsedCountries[country],
+    };
+    paint(root);
+    if (!model.scheduledCollapsedCountries[country]) void hydrateVisibleN8nEvidence(root);
   }));
 }
 
@@ -675,7 +703,7 @@ function renderScheduledFailureWatch() {
       </div>
       <div class="ds-failure-filter-grid ds-scheduled-filter-grid">
         ${renderCountryMultiSelect("ds-scheduled-country", "国家", model.scheduledCountries, model.scheduledLoading)}
-        <label>查询最近几天<input id="ds-scheduled-lookback-days" type="number" min="1" max="90" step="1" value="${model.scheduledLookbackDays}" ${model.scheduledLoading ? "disabled" : ""} placeholder="1-90"></label>
+        ${renderDateRangeFilter("ds-scheduled", model.scheduledStartDate, model.scheduledEndDate, model.scheduledLoading)}
         <label>搜索项目或任务<input id="ds-scheduled-keyword" value="${escapeHtml(model.scheduledKeyword)}" placeholder="项目、工作流、失败任务或原因"></label>
       </div>
       ${model.scheduledMessage ? `<div class="sandbox-status ${/失败|错误/.test(model.scheduledMessage) ? "error" : "warn"}"><span>${escapeHtml(model.scheduledMessage)}</span></div>` : ""}
@@ -1053,10 +1081,53 @@ function toDateTimeLocal(value) {
   return local.toISOString().slice(0, 16);
 }
 
+function formatLocalDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function shiftLocalDate(value, days) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + Number(days || 0), 12);
+  return formatLocalDate(date);
+}
+
+function defaultDateRange(days = 1) {
+  const endDate = formatLocalDate();
+  return { startDate: shiftLocalDate(endDate, -(Math.max(1, Number(days) || 1) - 1)), endDate };
+}
+
+function readDateRange(root, prefix, fallback) {
+  const startDate = root.querySelector(`#${prefix}-start-date`)?.value || fallback.startDate;
+  const endDate = root.querySelector(`#${prefix}-end-date`)?.value || fallback.endDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return { valid: false, error: "请选择完整的开始和结束日期。" };
+  }
+  if (startDate > endDate) return { valid: false, error: "开始日期不能晚于结束日期。" };
+  const start = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate}T12:00:00`);
+  const days = Math.round((end - start) / 86_400_000) + 1;
+  if (days > 90) return { valid: false, error: "单次查询时间范围最多为 90 天。" };
+  return { valid: true, startDate, endDate, days };
+}
+
+function renderDateRangeFilter(prefix, startDate, endDate, disabled = false) {
+  return `<div class="ds-date-range-filter">
+    <strong>时间筛选</strong>
+    <label for="${prefix}-start-date"><span>开始</span><input id="${prefix}-start-date" type="date" value="${escapeHtml(startDate)}" ${disabled ? "disabled" : ""}></label>
+    <label for="${prefix}-end-date"><span>结束</span><input id="${prefix}-end-date" type="date" value="${escapeHtml(endDate)}" ${disabled ? "disabled" : ""}></label>
+  </div>`;
+}
+
 function renderCountries(countries) {
   const visible = countries.filter((country) => !model.countries.length || model.countries.includes(country.country));
   if (!visible.length) return `<section class="panel"><p class="muted">所选国家尚未查询，请点击“重新查询”。</p></section>`;
-  return visible.map((country) => renderCountry(country, { lookbackDays: model.lookbackDays })).join("");
+  return visible.map((country) => renderCountry(country, { startDate: model.startDate, endDate: model.endDate })).join("");
 }
 
 function renderScheduledCountries(countries) {
@@ -1068,24 +1139,22 @@ function renderScheduledCountries(countries) {
     scheduleCategory: "n8n_auto_trigger",
     historical: true,
     n8n: true,
-    lookbackDays: model.scheduledLookbackDays,
+    startDate: model.scheduledStartDate,
+    endDate: model.scheduledEndDate,
+    collapsed: Boolean(model.scheduledCollapsedCountries[country.country]),
     page: model.scheduledCountryPages[country.country] || 1,
   })).join("");
 }
 
-function normalizeUiLookbackDays(value, fallback) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(1, Math.min(90, Math.trunc(parsed)));
-}
-
 function renderCountry(country, filters = null) {
   const meta = COUNTRY_META[country.country] || {};
-  const lookbackDays = normalizeUiLookbackDays(filters?.lookbackDays ?? country.lookbackDays, filters?.historical ? 7 : 1);
-  const rangeLabel = lookbackDays === 1 ? "当天" : `最近 ${lookbackDays} 天`;
+  const startDate = filters?.startDate || country.startDate || country.targetDate || "-";
+  const endDate = filters?.endDate || country.endDate || country.targetDate || "-";
+  const rangeLabel = startDate === endDate ? startDate : `${startDate} 至 ${endDate}`;
+  const collapsed = Boolean(filters?.n8n && filters?.collapsed);
   if (country.querying) {
     return `<section class="panel ds-failure-country-card ds-failure-querying">
-      <div class="detail-header compact-header"><div><h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)}</h2><p class="muted">正在读取${rangeLabel}实例、失败任务和日志…</p></div><span class="badge warn">查询中</span></div>
+      <div class="detail-header compact-header"><div><h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)}</h2><p class="muted">正在读取 ${escapeHtml(rangeLabel)} 的实例、失败任务和日志…</p></div><span class="badge warn">查询中</span></div>
     </section>`;
   }
   const failures = filteredFailures(country.failures || [], filters);
@@ -1102,15 +1171,18 @@ function renderCountry(country, filters = null) {
     <div class="detail-header compact-header">
       <div>
         <h2 class="panel-title">${meta.flag || ""} ${escapeHtml(country.countryName || country.country)} ${configuredBadge}</h2>
-        <p class="muted">监控项目：${escapeHtml(projects || "尚未配置")} · ${lookbackDays === 1 ? `当地日期：${escapeHtml(country.targetDate || "-")}` : `截至当地日期：${escapeHtml(country.targetDate || "-")}（${rangeLabel}）`} · 已读取实例：${country.checkedInstances || 0}</p>
+        <p class="muted">监控项目：${escapeHtml(projects || "尚未配置")} · 时间范围：${escapeHtml(rangeLabel)} · 已读取实例：${country.checkedInstances || 0}</p>
       </div>
-      <div class="ds-failure-country-count"><strong>${allFailureCount}</strong><span>个失败工作流</span></div>
+      <div class="ds-failure-country-actions">
+        ${filters?.n8n ? `<button class="ds-country-collapse-toggle" type="button" data-scheduled-country-toggle="${escapeHtml(country.country)}" aria-expanded="${collapsed ? "false" : "true"}">${collapsed ? "展开记录" : "收起记录"}<span aria-hidden="true">${collapsed ? "⌄" : "⌃"}</span></button>` : ""}
+        <div class="ds-failure-country-count"><strong>${allFailureCount}</strong><span>个失败工作流</span></div>
+      </div>
     </div>
-    ${country.error ? `<div class="sandbox-status ${country.configured ? "error" : "warn"}"><strong>${country.queryFailed ? "国家查询失败" : country.configured ? "部分项目读取失败" : "尚未接入"}</strong><span>${escapeHtml(country.error)}${country.configured ? "" : '，请先前往 <a href="#/ds-scheduler">DS调度监控</a> 完成 Token 和项目配置。'}</span></div>` : ""}
-    ${country.configured && country.success && failures.length === 0
-      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : filters?.n8n ? `该国家${rangeLabel}没有 DS 告警触发的 n8n 执行记录。` : filters?.historical ? `该国家${rangeLabel}没有 n8n 失败重启任务。` : `该国家${rangeLabel}没有失败任务。`}</div>`
-      : visibleFailures.map((failure) => renderFailure(failure, filters)).join("")}
-    ${filters?.historical && failures.length > pageSize ? renderScheduledCountryPagination(country.country, failures.length, page, pageCount) : ""}
+    ${collapsed ? "" : country.error ? `<div class="sandbox-status ${country.configured ? "error" : "warn"}"><strong>${country.queryFailed ? "国家查询失败" : country.configured ? "部分项目读取失败" : "尚未接入"}</strong><span>${escapeHtml(country.error)}${country.configured ? "" : '，请先前往 <a href="#/ds-scheduler">DS调度监控</a> 完成 Token 和项目配置。'}</span></div>` : ""}
+    ${collapsed ? "" : country.configured && country.success && failures.length === 0
+      ? `<div class="ds-failure-empty">${allFailureCount ? "当前筛选条件下没有失败任务。" : filters?.n8n ? `该国家在 ${escapeHtml(rangeLabel)} 没有 DS 告警触发的 n8n 执行记录。` : filters?.historical ? `该国家在 ${escapeHtml(rangeLabel)} 没有 n8n 失败重启任务。` : `该国家在 ${escapeHtml(rangeLabel)} 没有失败任务。`}</div>`
+      : collapsed ? "" : visibleFailures.map((failure) => renderFailure(failure, filters)).join("")}
+    ${!collapsed && filters?.historical && failures.length > pageSize ? renderScheduledCountryPagination(country.country, failures.length, page, pageCount) : ""}
   </section>`;
 }
 
