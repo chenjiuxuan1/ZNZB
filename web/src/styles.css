@@ -8914,3 +8914,12 @@ select.ar-field {
 }
 .mc-page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .mc-page-info { font-size: 12px; color: #667085; }
+
+/* ---- 多国校验 · 明细分页 ---- */
+.mc-detail-body { margin-top: 4px; }
+.mc-detail-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
