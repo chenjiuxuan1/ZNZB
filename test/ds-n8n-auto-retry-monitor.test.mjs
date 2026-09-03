@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractDsAutoRetryRecords,
+  extractAck,
+  extractRemoteLogPath,
   inspectN8nAutoRetryExecutions,
   parseRetryLogOutcome,
   resolveAutoRepairLogPath,
@@ -32,6 +34,22 @@ test("resolveAutoRepairLogPath reconstructs unresolved legacy n8n paths", () => 
     "/root/concrete.log",
   );
   assert.equal(resolveAutoRepairLogPath({ country: "ine", n8nRequestId: "bad/request" }), "");
+  assert.equal(resolveAutoRepairLogPath({ country: "ine", n8nRequestId: "requestId" }), "");
+});
+
+test("n8n execution metadata prefers runtime values over workflow code templates", () => {
+  const concretePath = "/root/Global-Intelligent-Alarm-Repair-Assistant/auto_repair_records/ds_failed_auto_retry_logs/ine_ds_failed_auto_retry_ine-ds-alert-1788357218021.log";
+  const detail = {
+    workflowData: { nodes: [{ parameters: { jsCode: "const requestId = 'requestId'; const log = `/${country.key}_ds_failed_auto_retry_${requestId}.log`;" } }] },
+    data: { resultData: { runData: { 整理响应: [{ data: { main: [[{ json: {
+      accepted: true,
+      background_started: true,
+      request_id: "ine-ds-alert-1788357218021",
+      runner: { log: concretePath },
+    } }]] } }] } } },
+  };
+  assert.equal(extractAck(detail).request_id, "ine-ds-alert-1788357218021");
+  assert.equal(extractRemoteLogPath(detail), concretePath);
 });
 
 
@@ -190,6 +208,31 @@ test("START_PROCESS is visible as scan-only and never marked as a retry", async 
   const item = result.countries[0].failures[0];
   assert.equal(item.n8nTriggerStatus, "ignored_start_workflow");
   assert.equal(item.retryResult, "not_triggered");
+});
+
+test("START_FAILURE_TASK_PROCESS retry callbacks are excluded from n8n monitor", async () => {
+  const client = {
+    async listWorkflows() { return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口" }] }; },
+    async listExecutions() { return { data: [{ id: "n8n-retry-callback", workflowId: "wf-1", status: "success", startedAt: "2026-08-30T00:25:01.000Z" }] }; },
+    async getExecution() {
+      const detail = fakeDetail();
+      detail.data.resultData.runData.DS失败告警Webhook[0].data.main[0][0].json.message = JSON.stringify([{
+        country: "ph",
+        projectCode: "p",
+        commandType: "START_FAILURE_TASK_PROCESS",
+        workflowExecutionStatus: "FAILURE",
+        workflowInstanceId: "retry-instance",
+      }]);
+      detail.data.resultData.lastNodeExecuted = "整理已忽略告警响应";
+      return detail;
+    },
+  };
+  const result = await inspectN8nAutoRetryExecutions("/tmp/znzb-retry-callback", {
+    now: new Date("2026-08-30T12:00:00Z"), countries: ["ph"], lookbackDays: 7,
+    n8nClient: client, enrichDsEvidence: false, bypassCache: true,
+  });
+  assert.equal(result.totalFailures, 0);
+  assert.equal(result.countries[0].failures.length, 0);
 });
 
 test("n8n monitor applies an inclusive explicit date range locally", async () => {

@@ -134,19 +134,78 @@ function findText(value, pattern) {
   return "";
 }
 
-function extractRemoteLogPath(executionDetail) {
-  const candidate = findText(executionDetail, /(?:auto_repair|ds_failed_auto_retry)[^\s"']*\.log/i);
-  if (!candidate) return "";
-  const match = candidate.match(/(?:\/|[A-Za-z]:\\)[^\s"']*(?:auto_repair|ds_failed_auto_retry)[^\s"']*\.log/i);
-  return match?.[0] || candidate.slice(0, 500);
+function collectStrings(value, result = [], depth = 0) {
+  if (depth > 30 || value === null || value === undefined) return result;
+  if (typeof value === "string") {
+    result.push(value);
+    const parsed = parseJsonString(value);
+    if (parsed !== null) collectStrings(parsed, result, depth + 1);
+    return result;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectStrings(item, result, depth + 1);
+    return result;
+  }
+  if (typeof value === "object") {
+    for (const item of Object.values(value)) collectStrings(item, result, depth + 1);
+  }
+  return result;
 }
 
-function extractAck(executionDetail) {
-  const text = findText(executionDetail, /background_started|accepted|request_id/);
-  const parsed = parseJsonString(text);
-  if (parsed && typeof parsed === "object") return parsed;
-  const requestId = text.match(/request_id["':= ]+([A-Za-z0-9._-]+)/i)?.[1] || "";
-  return { request_id: requestId, raw: text.slice(0, 500) };
+export function extractRemoteLogPath(executionDetail) {
+  const candidates = [];
+  for (const text of collectStrings(executionDetail)) {
+    const matches = text.match(/(?:\/|[A-Za-z]:\\)[^\s"']*(?:auto_repair|ds_failed_auto_retry)[^\s"']*\.log/ig) || [];
+    candidates.push(...matches);
+  }
+  candidates.sort((a, b) => {
+    const score = (value) => (value.startsWith(AUTO_REPAIR_LOG_DIR) ? 100 : 0)
+      + (!/\$\{/.test(value) ? 20 : 0)
+      + (/(?:^|[-_])ds-alert-\d+/i.test(value) ? 10 : 0);
+    return score(b) - score(a);
+  });
+  return candidates[0] || "";
+}
+
+function isConcreteRequestId(value) {
+  const text = String(value || "").trim();
+  return /^[A-Za-z0-9._-]+$/.test(text)
+    && !["requestid", "request_id", "unknown"].includes(text.toLowerCase());
+}
+
+export function extractAck(executionDetail) {
+  const candidates = [];
+  const visit = (value, depth = 0) => {
+    if (depth > 30 || value === null || value === undefined) return;
+    if (typeof value === "string") {
+      const parsed = parseJsonString(value);
+      if (parsed !== null) visit(parsed, depth + 1);
+      const matches = value.matchAll(/request_id["':= ]+([A-Za-z0-9._-]+)/ig);
+      for (const match of matches) {
+        if (isConcreteRequestId(match[1])) candidates.push({ request_id: match[1], raw: value.slice(0, 500), score: 1 });
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    if (typeof value !== "object") return;
+    const requestId = value.request_id ?? value.requestId;
+    if (isConcreteRequestId(requestId)) {
+      const log = String(value.log || value.log_path || value.runner?.log || "");
+      candidates.push({
+        ...value,
+        request_id: String(requestId).trim(),
+        score: 10 + (value.accepted === true ? 5 : 0) + (value.background_started === true ? 5 : 0)
+          + (log.startsWith(AUTO_REPAIR_LOG_DIR) && !/\$\{/.test(log) ? 10 : 0),
+      });
+    }
+    for (const child of Object.values(value)) visit(child, depth + 1);
+  };
+  visit(executionDetail);
+  candidates.sort((a, b) => (b.score || 0) - (a.score || 0));
+  return candidates[0] || { request_id: "", raw: "" };
 }
 
 function executionTime(execution) {
@@ -238,10 +297,13 @@ function normalizeRecord(record, execution, detail) {
   const commandType = String(record.commandType || "").toUpperCase();
   const n8nStatus = normalizedStatus(execution, detail);
   const ignoredStartWorkflow = commandType === "START_PROCESS" || commandType === "START_WORKFLOW";
-  const triggerStatus = ignoredStartWorkflow ? "ignored_start_workflow" : n8nStatus;
+  const ignoredRetryAlert = commandType === "START_FAILURE_TASK_PROCESS";
+  const triggerStatus = ignoredRetryAlert ? "ignored_retry_alert" : (ignoredStartWorkflow ? "ignored_start_workflow" : n8nStatus);
   const repairOutcome = deriveRepairOutcome(record, detail, triggerStatus);
   const failureMessage = record.failureReason || record.failureMessage || executionErrorMessage(detail) || (n8nStatus === "n8n_failed" ? "n8n 自动重跑入口执行失败，请查看 n8n 节点错误" : "DS 告警已触发 n8n，远端失败重跑程序已异步启动");
   const ack = extractAck(detail);
+  const n8nLogPath = extractRemoteLogPath(detail);
+  const requestIdFromLog = n8nLogPath.match(/_ds_failed_auto_retry_([A-Za-z0-9._-]+)\.log$/i)?.[1] || "";
   const projectCode = record.projectCode ?? record.project_code ?? "";
   const projectName = record.projectName ?? record.project_name ?? "";
   const workflowCode = record.workflowDefinitionCode ?? record.workflow_definition_code ?? "";
@@ -271,6 +333,8 @@ function normalizeRecord(record, execution, detail) {
     failureType: "n8n_auto_trigger",
     retryDecision: ignoredStartWorkflow
       ? "启动工作流类型仅扫描，不执行失败重跑"
+      : ignoredRetryAlert
+        ? "自动重跑产生的二次失败告警已忽略，避免递归触发"
       : "DS 告警已自动触发 n8n 失败重跑入口；页面仅展示 n8n 执行日志，不重复扫描 DS",
     originalScheduledFailure: true,
     scheduleCategory: "n8n_auto_trigger",
@@ -279,8 +343,8 @@ function normalizeRecord(record, execution, detail) {
     n8nExecutionAt: executionTime(execution),
     n8nWorkflowId: String(execution?.workflowId || detail?.workflowId || ""),
     n8nWorkflowName: detail?.workflowName || execution?.workflowName || "",
-    n8nRequestId: String(ack?.request_id || ack?.requestId || ""),
-    n8nLogPath: extractRemoteLogPath(detail),
+    n8nRequestId: String(ack?.request_id || ack?.requestId || (isConcreteRequestId(requestIdFromLog) ? requestIdFromLog : "")),
+    n8nLogPath,
     // Kept for response compatibility with older consumers. Project inclusion
     // is now determined solely by the DS project fields parsed from n8n detail;
     // no ZNZB-saved project scope is consulted.
@@ -369,7 +433,7 @@ export function resolveAutoRepairLogPath(item = {}) {
   if (recorded.startsWith("/") && !/\$\{/.test(recorded)) return recorded;
   const country = normalizeCountry(item.country);
   const requestId = String(item.n8nRequestId || "").trim();
-  if (!country || !/^[A-Za-z0-9._-]+$/.test(requestId)) return "";
+  if (!country || !isConcreteRequestId(requestId)) return "";
   return `${AUTO_REPAIR_LOG_DIR}/${country}_ds_failed_auto_retry_${requestId}.log`;
 }
 
@@ -506,7 +570,11 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
       // A record is included when n8n execution detail identifies a supported
       // country. Its DS projectCode/projectName are already parsed into item;
       // there is intentionally no second filter against ZNZB configuration.
-      if (!country || !countryMap.has(country)) continue;
+      // START_FAILURE_TASK_PROCESS is emitted by a retry instance itself. The
+      // n8n workflow intentionally acknowledges and ignores it to prevent an
+      // infinite retry loop, so it is not a separate auto-repair run and must
+      // not appear as a pending result in this monitor.
+      if (!country || !countryMap.has(country) || item.n8nTriggerStatus === "ignored_retry_alert") continue;
       discovered.push(item);
     }
   }
