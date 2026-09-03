@@ -44,13 +44,9 @@ export function renderAlertRegistry(root) {
         <select id="mc-country-filter"><option value="">全部国家</option></select>
         <div class="mc-pager" id="mc-pager"></div>
       </div>
-      <details class="mc-notify" id="mc-notify-panel">
-        <summary>📞 电话通知配置（同国连续 N 次异常未处理，自动打电话给对应联系人）</summary>
+      <details class="mc-notify" id="mc-notify-panel" open>
+        <summary>📢 通知配置（发送群 chat id + 各国家 @负责人 / 电话联系人，有报警时末尾 @ 负责人、达阈值自动打电话）</summary>
         <div class="mc-notify-body" id="mc-notify-body"></div>
-      </details>
-      <details class="mc-notify" id="mc-group-panel">
-        <summary>📢 发送群设置（告警发送群 chat id + 各国家负责人，有报警时末尾 @ 对应负责人）</summary>
-        <div class="mc-notify-body" id="mc-group-body"></div>
       </details>
       <div id="mc-results"></div>
     </section>
@@ -103,35 +99,43 @@ async function loadMcResults(root) {
   renderMcResults(root);
   loadMcSchedule(root);
   loadMcNotify(root);
-  loadMcGroup(root);
 }
 
 /** 多国校验 · 电话通知配置状态。 */
-const mcNotifyState = { countries: {}, saving: false };
+const mcNotifyState = { countries: {}, owners: {}, chatId: -1073807215, saving: false };
 
-/** 加载并绑定多国校验电话通知配置（每国联系人 + 电话/群消息开关 + 电话阈值）。 */
+/** 加载并绑定多国校验通知配置（发送群 chat id + 每国 @负责人 / 电话联系人 + 开关 + 电话阈值）。 */
 async function loadMcNotify(root) {
   const body = root.querySelector("#mc-notify-body");
   if (!body) return;
   body.innerHTML = `<div class="mc-loading">⏳ 正在加载通知配置…</div>`;
-  let cfg;
+  let cfg, gcfg;
   try {
-    cfg = await apiGet("/api/multi-country/notify");
+    [cfg, gcfg] = await Promise.all([
+      apiGet("/api/multi-country/notify"),
+      apiGet("/api/multi-country/group"),
+    ]);
   } catch (e) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
     return;
   }
   const countries = (cfg && cfg.countries) || {};
+  const owners = (gcfg && gcfg.owners) || {};
+  const chatId = gcfg && gcfg.chatId != null ? gcfg.chatId : -1073807215;
   mcNotifyState.countries = countries;
+  mcNotifyState.owners = owners;
+  mcNotifyState.chatId = chatId;
   const countryNames = { cn: "中国", id: "印尼", mx: "墨西哥", th: "泰国", ph: "菲律宾", pk: "巴基斯坦" };
   const order = ["cn", "id", "mx", "th", "ph", "pk"];
   const rows = order
-    .filter((code) => countries[code])
     .map((code) => {
-      const c = countries[code];
+      const c = countries[code] || {};
       return `
         <div class="mc-notify-row" data-code="${code}">
           <span class="mc-notify-country">${escapeHtml(countryNames[code] || code)}</span>
+          <span class="mc-notify-field-label" title="有报警时在群通知末尾 @ 这些负责人">@负责人</span>
+          <input type="text" class="mc-notify-owners" data-code="${code}" value="${escapeHtml((owners[code] || []).join(","))}" placeholder="KN 用户名，如 xxx@kn.group，多个用逗号分隔" />
+          <span class="mc-notify-field-label" title="连续 N 次异常未处理时打电话给这些联系人">电话联系人</span>
           <input type="text" class="mc-notify-contacts" data-code="${code}" value="${escapeHtml((c.contacts || []).join(","))}" placeholder="手机号/夜莺用户名，多个用逗号分隔" />
           <label class="mc-notify-toggle"><input type="checkbox" data-code="${code}" data-field="phone" ${c.phone !== false ? "checked" : ""} /> 电话</label>
           <label class="mc-notify-toggle"><input type="checkbox" data-code="${code}" data-field="group" ${c.group !== false ? "checked" : ""} /> 群消息</label>
@@ -141,6 +145,11 @@ async function loadMcNotify(root) {
     })
     .join("");
   body.innerHTML = `
+    <div class="mc-group-chat">
+      <label class="mc-group-chat-label">告警发送群 chat id：</label>
+      <input type="text" class="mc-group-chatid" value="${escapeHtml(String(chatId))}" placeholder="如 -1073807215" />
+      <span class="mc-group-chat-hint">群 chat id（负数表示群）。修改后告警将发送到该群。</span>
+    </div>
     <div class="mc-notify-rows">${rows}</div>
     <div class="mc-notify-actions">
       <button class="mc-page-btn" id="mc-notify-save">保存通知配置</button>
@@ -154,20 +163,34 @@ async function loadMcNotify(root) {
       mcNotifyState.saving = true;
       if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
       const next = {};
+      const nextOwners = {};
       for (const code of order) {
-        if (!countries[code]) continue;
         const row = body.querySelector(`.mc-notify-row[data-code="${code}"]`);
         if (!row) continue;
+        const prev = countries[code] || {};
         const contacts = (row.querySelector(".mc-notify-contacts")?.value || "").split(",").map((s) => s.trim()).filter(Boolean);
-        const phone = row.querySelector('input[data-field="phone"]')?.checked ?? countries[code].phone !== false;
-        const group = row.querySelector('input[data-field="group"]')?.checked ?? countries[code].group !== false;
+        const ownerList = (row.querySelector(".mc-notify-owners")?.value || "").split(",").map((s) => s.trim()).filter(Boolean);
+        const phone = row.querySelector('input[data-field="phone"]')?.checked ?? prev.phone !== false;
+        const group = row.querySelector('input[data-field="group"]')?.checked ?? prev.group !== false;
         const threshold = Number(row.querySelector('input[data-field="strikeThreshold"]')?.value) || 6;
         next[code] = { contacts, phone, group, strikeThreshold: threshold };
+        nextOwners[code] = ownerList;
+      }
+      const nextChatId = Number(body.querySelector(".mc-group-chatid")?.value);
+      if (!Number.isFinite(nextChatId)) {
+        if (status) { status.textContent = "❌ chat id 必须是数字"; status.className = "mc-schedule-status error"; }
+        mcNotifyState.saving = false;
+        return;
       }
       try {
-        const res = await apiPut("/api/multi-country/notify", { countries: next });
-        if (res && res.ok) {
-          mcNotifyState.countries = res.countries || next;
+        const [nres, gres] = await Promise.all([
+          apiPut("/api/multi-country/notify", { countries: next }),
+          apiPut("/api/multi-country/group", { chatId: nextChatId, owners: nextOwners }),
+        ]);
+        if (nres && nres.ok && gres && gres.ok) {
+          mcNotifyState.countries = nres.countries || next;
+          mcNotifyState.owners = gres.owners || nextOwners;
+          mcNotifyState.chatId = nextChatId;
           if (status) { status.textContent = "✅ 已保存通知配置"; status.className = "mc-schedule-status ok"; }
         } else {
           if (status) { status.textContent = "❌ 保存失败"; status.className = "mc-schedule-status error"; }
@@ -176,79 +199,6 @@ async function loadMcNotify(root) {
         if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
       }
       mcNotifyState.saving = false;
-    };
-  }
-}
-
-/** 多国校验 · 发送群配置状态（群 chat id + 各国家负责人 @ 清单）。 */
-const mcGroupState = { saving: false };
-
-/** 加载并绑定多国校验发送群配置（发送群 chat id + 各国家负责人，有报警时末尾 @ 负责人）。 */
-async function loadMcGroup(root) {
-  const body = root.querySelector("#mc-group-body");
-  if (!body) return;
-  body.innerHTML = `<div class="mc-loading">⏳ 正在加载发送群配置…</div>`;
-  let cfg;
-  try {
-    cfg = await apiGet("/api/multi-country/group");
-  } catch (e) {
-    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
-    return;
-  }
-  const chatId = cfg && cfg.chatId != null ? cfg.chatId : -1073807215;
-  const owners = (cfg && cfg.owners) || {};
-  const countryNames = { cn: "中国", id: "印尼", mx: "墨西哥", th: "泰国", ph: "菲律宾", pk: "巴基斯坦" };
-  const order = ["cn", "id", "mx", "th", "ph", "pk"];
-  const rows = order
-    .map((code) => `
-      <div class="mc-notify-row" data-code="${code}">
-        <span class="mc-notify-country">${escapeHtml(countryNames[code] || code)}</span>
-        <input type="text" class="mc-group-owners" data-code="${code}" value="${escapeHtml((owners[code] || []).join(","))}" placeholder="KN 用户名（如 xxx@kn.group），多个用逗号分隔" />
-      </div>
-    `)
-    .join("");
-  body.innerHTML = `
-    <div class="mc-group-chat">
-      <label class="mc-group-chat-label">告警发送群 chat id：</label>
-      <input type="text" class="mc-group-chatid" value="${escapeHtml(String(chatId))}" placeholder="如 -1073807215" />
-      <span class="mc-group-chat-hint">群 chat id（负数表示群）。修改后告警将发送到该群。</span>
-    </div>
-    <div class="mc-notify-rows">${rows}</div>
-    <div class="mc-notify-actions">
-      <button class="mc-page-btn" id="mc-group-save">保存发送群设置</button>
-      <span class="mc-schedule-status" id="mc-group-status"></span>
-    </div>`;
-  const saveBtn = root.querySelector("#mc-group-save");
-  const status = root.querySelector("#mc-group-status");
-  if (saveBtn) {
-    saveBtn.onclick = async () => {
-      if (mcGroupState.saving) return;
-      mcGroupState.saving = true;
-      if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
-      const nextOwners = {};
-      for (const code of order) {
-        const row = body.querySelector(`.mc-notify-row[data-code="${code}"]`);
-        if (!row) continue;
-        const list = (row.querySelector(".mc-group-owners")?.value || "").split(",").map((s) => s.trim()).filter(Boolean);
-        nextOwners[code] = list;
-      }
-      const nextChatId = Number(body.querySelector(".mc-group-chatid")?.value);
-      if (!Number.isFinite(nextChatId)) {
-        if (status) { status.textContent = "❌ chat id 必须是数字"; status.className = "mc-schedule-status error"; }
-        mcGroupState.saving = false;
-        return;
-      }
-      try {
-        const res = await apiPut("/api/multi-country/group", { chatId: nextChatId, owners: nextOwners });
-        if (res && res.ok) {
-          if (status) { status.textContent = "✅ 已保存发送群设置"; status.className = "mc-schedule-status ok"; }
-        } else {
-          if (status) { status.textContent = "❌ 保存失败"; status.className = "mc-schedule-status error"; }
-        }
-      } catch (e) {
-        if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
-      }
-      mcGroupState.saving = false;
     };
   }
 }
