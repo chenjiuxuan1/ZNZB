@@ -32,14 +32,14 @@ export function renderAlertRegistry(root) {
     <section class="panel">
       <div class="panel-title">多国一致性校验 · 最近 200 次结果</div>
       <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。定时默认每小时 55 分，可在下方调整。</div>
-      <div class="mc-schedule">
-        <span class="mc-schedule-label">⏰ 定时校验：每小时</span>
+      <div class="mc-controls">
+        <span class="mc-schedule-label mc-controls-title">⏰ 定时</span>
+        <span class="mc-schedule-label">每小时</span>
         <input type="number" id="mc-schedule-minute" min="0" max="59" value="55" class="mc-schedule-input" />
         <span class="mc-schedule-label">分</span>
         <button class="mc-page-btn" id="mc-schedule-save">保存</button>
         <span class="mc-schedule-status" id="mc-schedule-status"></span>
-      </div>
-      <div class="mc-toolbar">
+        <span class="mc-controls-divider"></span>
         <label class="mc-filter-check"><input type="checkbox" id="mc-only-alert" /> 只看异常</label>
         <select id="mc-country-filter"><option value="">全部国家</option></select>
         <div class="mc-pager" id="mc-pager"></div>
@@ -59,7 +59,7 @@ export function renderAlertRegistry(root) {
 }
 
 // 多国校验结果页状态（筛选 + 分页）
-const mcState = { country: "", onlyAlert: false, page: 1, pageSize: 10, runs: [], scheduleMinute: 55 };
+const mcState = { country: "", onlyAlert: false, page: 1, pageSize: 5, runs: [], scheduleMinute: 55 };
 
 /** 加载多国一致性校验结果（筛选 + 分页）。 */
 async function loadMcResults(root) {

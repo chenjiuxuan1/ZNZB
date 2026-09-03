@@ -8895,21 +8895,6 @@ select.ar-field {
 }
 
 /* ---- 多国校验 · 工具栏/筛选/分页 ---- */
-.mc-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-.mc-filter-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #344054;
-  cursor: pointer;
-}
 #mc-country-filter {
   padding: 5px 8px;
   border: 1px solid #d0d5dd;
@@ -8917,6 +8902,8 @@ select.ar-field {
   font-size: 13px;
   background: #fff;
   color: #344054;
+  max-width: 140px;
+  min-width: 110px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 #mc-country-filter:focus-visible {
@@ -8963,8 +8950,8 @@ select.ar-field {
   margin-top: 6px;
 }
 
-/* ---- 多国校验 · 定时设置 ---- */
-.mc-schedule {
+/* ---- 多国校验 · 统一控制栏（定时 + 筛选） ---- */
+.mc-controls {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -8973,27 +8960,68 @@ select.ar-field {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  flex-wrap: wrap;
+  overflow-x: auto;
+  white-space: nowrap;
 }
+.mc-controls-title {
+  font-weight: 600;
+}
+.mc-controls-divider {
+  width: 1px;
+  height: 18px;
+  background: #d0d5dd;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+.mc-controls .mc-pager {
+  flex-shrink: 0;
+  margin-left: 0;
+}
+.mc-controls > * { flex-shrink: 0; }
 .mc-schedule-label {
   font-size: 13px;
   color: #344054;
 }
 .mc-schedule-input {
-  width: 64px;
+  width: 56px;
   padding: 5px 8px;
   border: 1px solid #d0d5dd;
   border-radius: 6px;
   font-size: 13px;
   text-align: center;
   color: #344054;
+  font-variant-numeric: tabular-nums;
 }
 .mc-schedule-status {
   font-size: 12px;
   color: #667085;
+  margin-left: 2px;
 }
 .mc-schedule-status.ok { color: #067647; }
 .mc-schedule-status.error { color: #b42318; }
+
+/* 只看异常做成胶囊开关 */
+.mc-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #344054;
+  cursor: pointer;
+  padding: 4px 10px;
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 999px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  user-select: none;
+}
+.mc-filter-check:hover { border-color: #98a2b3; }
+.mc-filter-check:has(input:checked) {
+  background: #eaf1ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+.mc-filter-check input { accent-color: #2563eb; }
 
 /* ---- 多国校验 · 加载/空状态 ---- */
 .mc-loading {
