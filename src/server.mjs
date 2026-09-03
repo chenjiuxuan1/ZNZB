@@ -418,6 +418,10 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/alerts/notify-rules") {
     return sendJson(response, 200, await alertCenter.getNotifyRules());
   }
+  if (method === "GET" && url.pathname.startsWith("/api/alerts/notify-rules/") && url.pathname.endsWith("/detail")) {
+    const notifyRuleId = url.pathname.split("/").filter(Boolean)[3];
+    return sendJson(response, 200, await alertCenter.getNotifyRuleDetail(notifyRuleId));
+  }
   if (method === "GET" && url.pathname === "/api/alerts/notify-users") {
     return sendJson(response, 200, await alertCenter.getNotifyUsers());
   }
