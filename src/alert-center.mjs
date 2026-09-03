@@ -1012,6 +1012,256 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return counter;
   }
 
+  // ---------------------------------------------------------------------------
+  // 通知体系全景盘点（电话 / 钉钉 / knchat+tv）
+  // 聚合夜莺通知规则 + 告警规则关联 + n8n 告警通知工作流，供"通知全景"页展示。
+  // ---------------------------------------------------------------------------
+
+  /** 夜莺渠道 ident -> 大盘分类。 */
+  const INVENTORY_CHANNEL_CATEGORY = {
+    "ali-voice": "phone",
+    "tx-voice": "phone",
+    dingtalk: "dingtalk",
+    "ali-sms": "other",
+    "tx-sms": "other",
+    email: "other",
+    wecom: "other",
+    feishu: "other",
+    feishucard: "other",
+    lark: "other",
+    larkcard: "other",
+    telegram: "other",
+    flashduty: "other",
+  };
+
+  /** 夜间谓词：判断通知规则所属渠道分类（电话/钉钉/其它）。 */
+  function categorizeNotifyRule(nr, chById) {
+    const categories = new Set();
+    for (const nc of nr?.notify_configs || []) {
+      const ch = chById.get(nc.channel_id);
+      const ident = ch?.ident || "";
+      const cat = INVENTORY_CHANNEL_CATEGORY[ident];
+      if (cat) categories.add(cat);
+      else if (ident) categories.add("other");
+    }
+    return categories;
+  }
+
+  /** 解析通知规则接收人明细。 */
+  function buildNotifyReceiverInfo(nr, userById) {
+    const receivers = [];
+    const phones = new Set();
+    let botId = "";
+    let mentions = "";
+    let email = "";
+    for (const nc of nr?.notify_configs || []) {
+      const p = nc.params || {};
+      for (const uid of p.user_ids || []) {
+        const u = userById.get(Number(uid));
+        receivers.push({
+          id: uid,
+          username: u?.username || `用户${uid}`,
+          nickname: u?.nickname || "",
+          phone: u?.phone || "",
+        });
+      }
+      if (p.Mobile || p.mobile) phones.add(p.Mobile || p.mobile);
+      if (p.botId || p.bot_id) botId = p.botId || p.bot_id;
+      if (p.mentions) mentions = p.mentions;
+      if (p.email) email = p.email;
+    }
+    // 去重接收人（同一用户多 config 时）
+    const seen = new Set();
+    const uniqueReceivers = receivers.filter((r) => {
+      const key = r.id ?? r.username;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return { receivers: uniqueReceivers, fixedPhones: [...phones], botId, mentions, email };
+  }
+
+  /** 拉取所有业务组的告警规则（含 notify_rule_ids）。 */
+  async function fetchAllAlertRules() {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) return [];
+    const groups = await nightingale.getBusiGroups().catch(() => []);
+    const all = [];
+    for (const g of Array.isArray(groups) ? groups : []) {
+      const rules = await nightingale.getAlertRules(g.id).catch(() => []);
+      if (!Array.isArray(rules)) continue;
+      for (const r of rules) {
+        all.push({
+          id: r.id,
+          name: r.name || "",
+          groupId: r.group_id ?? r.groupId,
+          groupName: g.name || "",
+          severity: r.severity,
+          disabled: r.disabled,
+          cate: r.cate,
+          notifyRuleIds: (r.notify_rule_ids || []).map(Number),
+        });
+      }
+    }
+    return all;
+  }
+
+  /** 聚合通知全景数据。 */
+  async function getAlertsInventory() {
+    const { nightingale, n8n } = await loadConfig();
+    await ensureNotifyMap();
+    const chById = new Map(notifyCache.channels.map((c) => [c.id, c]));
+    const userById = new Map(notifyCache.users.map((u) => [u.id, u]));
+
+    const phone = [];
+    const dingtalk = [];
+    const other = [];
+
+    // 1) 夜莺通知规则按渠道分类
+    for (const nr of notifyCache.rules) {
+      const cats = categorizeNotifyRule(nr, chById);
+      const info = buildNotifyReceiverInfo(nr, userById);
+      const item = {
+        nrId: nr.id,
+        name: nr.name || "",
+        enable: Boolean(nr.enable),
+        description: nr.description || "",
+        userGroupIds: nr.user_group_ids || [],
+        ...info,
+      };
+      if (cats.has("phone")) phone.push(item);
+      else if (cats.has("dingtalk")) dingtalk.push(item);
+      else if (cats.size) other.push(item);
+    }
+
+    // 2) 告警规则关联计数（每条通知规则被哪些告警规则引用）
+    const alertRules = await fetchAllAlertRules();
+    const nrToAlerts = new Map();
+    for (const ar of alertRules) {
+      for (const nid of ar.notifyRuleIds) {
+        if (!nrToAlerts.has(nid)) nrToAlerts.set(nid, []);
+        nrToAlerts.get(nid).push(ar);
+      }
+    }
+    const attachAlerts = (item) => {
+      const linked = nrToAlerts.get(Number(item.nrId)) || [];
+      item.alertRuleCount = linked.length;
+      item.alertRules = linked.slice(0, 30).map((ar) => ({
+        id: ar.id,
+        name: ar.name,
+        groupName: ar.groupName,
+        severity: ar.severity,
+        disabled: ar.disabled,
+      }));
+      item.alertRuleTotal = linked.length;
+      return item;
+    };
+    const phoneWith = phone.map(attachAlerts);
+    const dingtalkWith = dingtalk.map(attachAlerts);
+    const otherWith = other.map(attachAlerts);
+
+    // 3) n8n 工作流：识别 knchat/tv 发送 + 告警生成/修复/巡检
+    let knchatTv = [];
+    let n8nAlarm = [];
+    if (n8n) {
+      const payload = await n8n.listWorkflows({ limit: 250 }).catch(() => ({ data: [] }));
+      const list = Array.isArray(payload) ? payload : payload?.data || [];
+      const detailCache = new Map();
+      for (const w of list) {
+        if (w.isArchived) continue;
+        let nodes = [];
+        try {
+          if (!detailCache.has(w.id)) detailCache.set(w.id, await n8n.getWorkflow(w.id));
+          const wf = detailCache.get(w.id);
+          const wd = wf?.data || wf || {};
+          nodes = Array.isArray(wd.nodes) ? wd.nodes : [];
+        } catch { /* 单条失败跳过 */ }
+        const sendTargets = classifyN8nSendTargets(w, nodes);
+        if (sendTargets.length) {
+          knchatTv.push({
+            id: w.id,
+            name: w.name || "",
+            active: Boolean(w.active),
+            triggerType: nodes.length ? nodes.map((n) => n.type || "").filter((t) => t.includes("Trigger")).map((t) => t.split(".").pop()).join("、") || "无标准触发" : "",
+            webhookUrl: w.webhookUrl || "",
+            nodeCount: nodes.length,
+            sendTargets,
+          });
+        } else if (isN8nAlarmWorkflow(w.name)) {
+          n8nAlarm.push({
+            id: w.id,
+            name: w.name || "",
+            active: Boolean(w.active),
+            triggerType: nodes.length ? nodes.map((n) => n.type || "").filter((t) => t.includes("Trigger")).map((t) => t.split(".").pop()).join("、") || "无标准触发" : "",
+            webhookUrl: w.webhookUrl || "",
+            nodeCount: nodes.length,
+            category: classifyN8nAlarmCategory(w.name),
+          });
+        }
+      }
+    }
+
+    return {
+      generatedAt: new Date().toISOString(),
+      stats: {
+        phone: phoneWith.length,
+        dingtalk: dingtalkWith.length,
+        other: otherWith.length,
+        knchatTv: knchatTv.length,
+        n8nAlarm: n8nAlarm.length,
+        alertRuleTotal: alertRules.length,
+        receiverUsers: notifyCache.users.length,
+      },
+      phone: phoneWith,
+      dingtalk: dingtalkWith,
+      other: otherWith,
+      knchatTv,
+      n8nAlarm,
+    };
+  }
+
+  /** 从 n8n 工作流节点识别发送目标渠道（knchat / tv / 钉钉 等）。 */
+  function classifyN8nSendTargets(wf, nodes) {
+    const targets = new Set();
+    const look = (s) => {
+      if (!s) return;
+      if (/bot\.kn\.chat|knchat|sendMessag|sidecar\.kuainiu\.chat|kn\.chat/i.test(s)) targets.add("knchat");
+      if (/tv-service|tv-service-alert|\/alert\/v2|kuainiu\.chat\/alert/i.test(s)) targets.add("tv");
+      if (/oapi\.dingtalk|dingtalk/i.test(s)) targets.add("dingtalk");
+      if (/wecom/i.test(s)) targets.add("wecom");
+    };
+    for (const n of nodes) {
+      const p = n?.parameters || {};
+      look(p.url);
+      look(p.method);
+      if (typeof p.jsonBody === "string") look(p.jsonBody);
+      if (typeof p.jsCode === "string") look(p.jsCode);
+      if (typeof p.functionCode === "string") look(p.functionCode);
+    }
+    // 工作流名兜底
+    look(wf?.name || "");
+    return [...targets];
+  }
+
+  /** 判断是否为"告警生成/修复/巡检"类 n8n 工作流（发送目标非直接可识别，但属于告警链路）。 */
+  function isN8nAlarmWorkflow(name) {
+    const n = String(name || "").toLowerCase();
+    const kw = ["告警", "alert", "巡检", "僵尸表", "僵尸任务", "扫描", "重跑", "智能告警", "修复", "监控", "watch", "dwd", "异常sql", "治理", "推送"];
+    return kw.some((k) => n.includes(k));
+  }
+
+  /** n8n 告警工作流子分类。 */
+  function classifyN8nAlarmCategory(name) {
+    const n = String(name || "");
+    if (/智能告警|告警生成/.test(n)) return "告警生成";
+    if (/告警修复/.test(n)) return "告警修复";
+    if (/巡检|僵尸表|僵尸任务|每日.*扫描|零访问/.test(n)) return "巡检扫描";
+    if (/一致性校验|产出校验|监控告警|监控/.test(n)) return "监控校验";
+    if (/重跑|自动重跑|修复/.test(n)) return "自动处置";
+    if (/异常sql|治理|优化/.test(n)) return "SQL治理";
+    return "其它告警";
+  }
+
   /** 读取告警中心配置（脱敏 token）。 */
   async function getConfig() {
     const { config } = await loadConfig();
@@ -1062,6 +1312,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     updateNotifyRule,
     setNotifyRuleEnable,
     getMonitorOverview,
+    getAlertsInventory,
     getConfig,
     getHealth,
   };

@@ -120,6 +120,7 @@ export function renderAlertCenter(root) {
       <button class="ac-tab active" data-ac-tab="dashboard">实时看板</button>
       <button class="ac-tab" data-ac-tab="history">告警日志</button>
       <button class="ac-tab" data-ac-tab="config">配置管理</button>
+      <button class="ac-tab" data-ac-tab="inventory">通知全景</button>
     </div>
     <section class="panel ac-panel">
       <div id="ac-body"></div>
@@ -207,6 +208,8 @@ async function loadTab(root, tab) {
       await loadHistoryTab(root, body, refreshTime);
     } else if (tab === "config") {
       await loadConfigTab(root, body, refreshTime);
+    } else if (tab === "inventory") {
+      await loadInventoryTab(root, body, refreshTime);
     }
   } catch (error) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
@@ -1035,6 +1038,178 @@ function bindHistoryExpand(tableEl) {
       btn.textContent = detail.hidden ? (btn.dataset.hisLabel || "展开") : "收起";
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// 通知全景 Tab（所有告警信息：电话 / 钉钉 / knchat+tv）
+// ---------------------------------------------------------------------------
+
+async function loadInventoryTab(root, body, refreshTime) {
+  if (refreshTime) refreshTime.textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN")}`;
+  const data = await apiGet("/api/alerts/inventory").catch((error) => ({ error: error.message }));
+  body.innerHTML = renderInventory(data);
+  bindInventoryEvents(root, body);
+}
+
+/** 通知全景页渲染。 */
+function renderInventory(data) {
+  if (data?.error) {
+    return `
+      <div class="sandbox-status error"><strong>通知全景加载失败</strong><span>${escapeHtml(data.error)}</span></div>
+    `;
+  }
+  const stats = data?.stats || {};
+  const phone = data?.phone || [];
+  const dingtalk = data?.dingtalk || [];
+  const other = data?.other || [];
+  const knchatTv = data?.knchatTv || [];
+  const n8nAlarm = data?.n8nAlarm || [];
+  // n8n 告警类按 category 分组
+  const n8nByCat = {};
+  for (const w of n8nAlarm) {
+    (n8nByCat[w.category || "其它"] = n8nByCat[w.category || "其它"] || []).push(w);
+  }
+  return `
+    <div class="ac-inv-head">
+      <div>
+        <h2 class="panel-title">通知全景 · 所有告警信息</h2>
+        <p class="muted">聚合夜莺与 n8n 的全部告警通知体系，按 电话 / 钉钉 / knchat·tv 三类盘点，为统一管理与改造控制提供底账。${stats.generatedAt ? `更新于 ${formatIso(stats.generatedAt)}` : ""}</p>
+      </div>
+    </div>
+    <div class="ac-inv-stats">
+      <div class="ac-inv-stat"><strong>${escapeHtml(stats.phone ?? 0)}</strong><span>电话告警规则</span></div>
+      <div class="ac-inv-stat"><strong>${escapeHtml(stats.dingtalk ?? 0)}</strong><span>钉钉告警规则</span></div>
+      <div class="ac-inv-stat"><strong>${escapeHtml(stats.knchatTv ?? 0)}</strong><span>knchat/tv 工作流</span></div>
+      <div class="ac-inv-stat"><strong>${escapeHtml(stats.n8nAlarm ?? 0)}</strong><span>n8n 告警链路</span></div>
+      <div class="ac-inv-stat"><strong>${escapeHtml(stats.alertRuleTotal ?? 0)}</strong><span>夜莺告警规则</span></div>
+      <div class="ac-inv-stat"><strong>${escapeHtml(stats.receiverUsers ?? 0)}</strong><span>夜莺接收人用户</span></div>
+    </div>
+
+    <section class="sub-panel">
+      <div class="inv-sec-head">
+        <h3 class="inv-sec-title"><span class="inv-dot phone"></span>电话告警 <span class="badge">${escapeHtml(phone.length)}</span></h3>
+        <p class="muted small">夜莺语音/电话渠道通知规则（ali-voice），告警时逐个拨打接收人在用户表登记的电话；固定电话为 ivr 模板号码。</p>
+      </div>
+      ${renderInvTable(phone, "phone")}
+    </section>
+
+    <section class="sub-panel">
+      <div class="inv-sec-head">
+        <h3 class="inv-sec-title"><span class="inv-dot ding"></span>钉钉告警 <span class="badge">${escapeHtml(dingtalk.length)}</span></h3>
+        <p class="muted small">夜莺钉钉渠道通知规则（dingtalk），通过群机器人推送，@接收人。</p>
+      </div>
+      ${renderInvTable(dingtalk, "dingtalk")}
+    </section>
+
+    <section class="sub-panel">
+      <div class="inv-sec-head">
+        <h3 class="inv-sec-title"><span class="inv-dot knchat"></span>knchat / TV 通知（n8n） <span class="badge">${escapeHtml(knchatTv.length)}</span></h3>
+        <p class="muted small">n8n 中直接发送 KN 聊天（快牛IM）或 TV（影音告警）的工作流。</p>
+      </div>
+      ${knchatTv.length ? renderInvN8nTable(knchatTv) : `<p class="muted">未发现。</p>`}
+    </section>
+
+    <section class="sub-panel">
+      <div class="inv-sec-head">
+        <h3 class="inv-sec-title"><span class="inv-dot alarm"></span>n8n 告警链路（生成 / 修复 / 巡检） <span class="badge">${escapeHtml(n8nAlarm.length)}</span></h3>
+        <p class="muted small">n8n 中承担告警生成、告警修复、僵尸扫描巡检、自动处置等职责的工作流（不含已归档）。</p>
+      </div>
+      ${Object.entries(n8nByCat).map(([cat, list]) => `
+        <div class="inv-cat-block">
+          <h4 class="inv-cat-title">${escapeHtml(cat)} <span class="badge">${escapeHtml(list.length)}</span></h4>
+          ${renderInvN8nTable(list)}
+        </div>
+      `).join("") || `<p class="muted">未发现。</p>`}
+    </section>
+
+    ${other.length ? `
+    <section class="sub-panel">
+      <div class="inv-sec-head">
+        <h3 class="inv-sec-title"><span class="inv-dot other"></span>其它渠道（夜莺） <span class="badge">${escapeHtml(other.length)}</span></h3>
+      </div>
+      ${renderInvTable(other, "other")}
+    </section>` : ""}
+  `;
+}
+
+/** 夜莺通知规则表（电话 / 钉钉 / 其它）。 */
+function renderInvTable(rules, kind) {
+  if (!rules || !rules.length) return `<p class="muted">无记录。</p>`;
+  return `
+    <div class="table-wrap">
+      <table class="data-table ac-inv-table">
+        <thead>
+          <tr>
+            <th>通知规则</th>
+            <th>启停</th>
+            <th>接收人</th>
+            ${kind === "phone" ? `<th>固定电话</th>` : ""}
+            ${kind === "dingtalk" ? `<th>机器人 / @</th>` : ""}
+            <th>关联告警规则</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rules.map((r) => `
+            <tr>
+              <td>
+                <strong>${escapeHtml(r.name || "-")}</strong>
+                ${r.description ? `<div class="muted small">${escapeHtml(r.description)}</div>` : ""}
+                <div class="muted small">规则 #${escapeHtml(r.nrId)}</div>
+              </td>
+              <td>${r.enable ? `<span class="badge ok">启用</span>` : `<span class="badge warn">停用</span>`}</td>
+              <td class="inv-receivers">
+                ${r.receivers?.length ? r.receivers.map((u) => `
+                  <span class="inv-user">
+                    ${escapeHtml(u.nickname || u.username)}
+                    ${u.phone ? `<span class="muted small">${escapeHtml(u.phone)}</span>` : ""}
+                  </span>
+                `).join("") : `<span class="muted small">未指定用户</span>`}
+              </td>
+              ${kind === "phone" ? `<td class="small">${r.fixedPhones?.length ? r.fixedPhones.map((p) => `<span class="inv-phone">${escapeHtml(p)}</span>`).join(" ") : `<span class="muted small">-</span>`}</td>` : ""}
+              ${kind === "dingtalk" ? `<td class="small">${r.botId ? `机器人 <code>${escapeHtml(String(r.botId).slice(0, 10))}…</code>` : `<span class="muted small">-</span>`}${r.mentions ? `<div class="muted small">@ ${escapeHtml(r.mentions)}</div>` : ""}</td>` : ""}
+              <td class="small">
+                <span class="badge ${r.alertRuleCount ? "" : "warn"}">${escapeHtml(r.alertRuleCount ?? 0)}</span>
+                ${r.alertRuleCount ? `<div class="muted small inv-alert-names">${r.alertRules?.slice(0, 5).map((a) => escapeHtml(a.name)).join("、")}${r.alertRuleCount > 5 ? ` 等 ${r.alertRuleCount} 条` : ""}</div>` : `<div class="muted small">未关联告警规则</div>`}
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/** n8n 工作流表（knchat/tv / 告警链路）。 */
+function renderInvN8nTable(workflows) {
+  if (!workflows || !workflows.length) return `<p class="muted">无记录。</p>`;
+  return `
+    <div class="table-wrap">
+      <table class="data-table ac-inv-table">
+        <thead>
+          <tr><th>工作流</th><th>激活</th><th>触发</th><th>发送目标</th><th>Webhook</th><th>节点</th></tr>
+        </thead>
+        <tbody>
+          ${workflows.map((w) => `
+            <tr>
+              <td><strong>${escapeHtml(w.name || "-")}</strong><div class="muted small">${escapeHtml(w.id || "")}</div></td>
+              <td>${w.active ? `<span class="badge ok">激活</span>` : `<span class="badge warn">未激活</span>`}</td>
+              <td class="small">${escapeHtml(w.triggerType || "-")}</td>
+              <td class="small">
+                ${(w.sendTargets || []).map((t) => `<span class="badge ${t === "knchat" ? "inv-badge-knchat" : t === "tv" ? "inv-badge-tv" : ""}">${escapeHtml(t)}</span>`).join(" ") || `<span class="muted small">-</span>`}
+              </td>
+              <td class="small">${w.webhookUrl ? `<span class="muted" title="${escapeHtml(w.webhookUrl)}">${escapeHtml(w.webhookUrl.replace(/^https?:\/\/[^/]+/, ""))}</span>` : `<span class="muted small">-</span>`}</td>
+              <td class="num small">${escapeHtml(w.nodeCount ?? 0)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/** 通知全景交互绑定（暂为占位，后续可加行展开/筛选）。 */
+function bindInventoryEvents(root, body) {
+  // 预留：后续在此绑定筛选/展开等交互
 }
 
 // ---------------------------------------------------------------------------

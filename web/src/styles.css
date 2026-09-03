@@ -7758,6 +7758,47 @@ button.small[disabled] {
 .ac-variant-bar .ac-variant-label { font-size: 13px; white-space: nowrap; }
 .ac-variant-bar .ac-variant-close { color: #fca5a5; }
 
+/* ---- 通知全景 Tab（ac-inv-*） ---- */
+.ac-inv-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.ac-inv-stat {
+  background: var(--panel-bg, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: center;
+}
+.ac-inv-stat strong { display: block; font-size: 26px; line-height: 1.2; color: #0f172a; }
+.ac-inv-stat span { font-size: 12px; color: #64748b; }
+.inv-sec-head { margin-bottom: 10px; }
+.inv-sec-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; margin: 0 0 4px;
+}
+.inv-sec-title .badge { background: #e2e8f0; color: #475569; }
+.inv-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.inv-dot.phone { background: #0ea5e9; }
+.inv-dot.ding { background: #2563eb; }
+.inv-dot.knchat { background: #10b981; }
+.inv-dot.alarm { background: #f59e0b; }
+.inv-dot.other { background: #94a3b8; }
+.table-wrap { overflow-x: auto; }
+.ac-inv-table th { font-size: 12px; white-space: nowrap; }
+.ac-inv-table td { vertical-align: top; padding: 8px 10px; }
+.inv-receivers { display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
+.inv-user { display: inline-flex; align-items: center; gap: 6px; }
+.inv-phone { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
+.inv-alert-names { max-width: 260px; line-height: 1.5; }
+.inv-cat-block { margin: 10px 0 16px; }
+.inv-cat-title { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; margin: 0 0 8px; }
+.inv-cat-title .badge { background: #f1f5f9; color: #64748b; }
+.inv-badge-knchat { background: #d1fae5 !important; color: #065f46 !important; }
+.inv-badge-tv { background: #fef3c7 !important; color: #92400e !important; }
+
 /* ---- 变体 A：分栏工作台 ---- */
 .va-hero {
   align-items: center;
@@ -8723,3 +8764,60 @@ select.ar-field {
 .mc-badge-green { background: #dcfce7; color: #15803d; }
 .mc-badge-red { background: #fee2e2; color: #b91c1c; }
 .mc-badge-gray { background: #f1f5f9; color: #475569; }
+
+/* ---- 多国校验 · 校验语句与差异明细 ---- */
+.mc-detail {
+  margin-top: 8px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #fafafa;
+  padding: 6px 10px;
+}
+.mc-detail summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+  padding: 2px 0;
+  user-select: none;
+}
+.mc-sql-title {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.mc-sql {
+  margin: 4px 0 8px;
+  padding: 8px;
+  background: #0f172a;
+  color: #d1d5db;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.mc-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.mc-detail-table th, .mc-detail-table td {
+  border: 1px solid #e4e7ec;
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.mc-detail-table th {
+  background: #f2f4f7;
+  color: #475569;
+  font-weight: 600;
+}
+.mc-detail-table td {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #344054;
+}
