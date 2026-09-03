@@ -9071,3 +9071,32 @@ select.ar-field {
   border-color: #b2ccff;
   box-shadow: 0 1px 3px rgb(16 24 40 / 0.08);
 }
+
+/* ---- 多国校验 · 复制按钮 ---- */
+.mc-sql-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mc-copy-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 11px;
+  color: #475467;
+  cursor: pointer;
+  line-height: 1.5;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.mc-copy-btn:hover {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eaf1ff;
+}
+.mc-copy-btn.copied {
+  border-color: #12b76a;
+  color: #067647;
+  background: #ecfdf3;
+}
