@@ -730,6 +730,37 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     return { rules: Array.isArray(rules) ? rules : [], channels: Array.isArray(channels) ? channels : [] };
   }
 
+  /** 单条通知规则详情（含接收人/渠道/固定电话解析），供通知全景编辑弹窗回填。 */
+  async function getNotifyRuleDetail(notifyRuleId) {
+    const { nightingale } = await loadConfig();
+    if (!nightingale) throw new Error("夜莺未配置");
+    await ensureNotifyMap();
+    const nr = notifyCache.rules.find((r) => Number(r.id) === Number(notifyRuleId));
+    if (!nr) throw new Error(`通知规则 ${notifyRuleId} 不存在`);
+    const chById = new Map(notifyCache.channels.map((c) => [c.id, c]));
+    const userById = new Map(notifyCache.users.map((u) => [u.id, u]));
+    const info = buildNotifyReceiverInfo(nr, userById, chById);
+    // 关联告警规则
+    const alertRules = await fetchAllAlertRules();
+    const linked = alertRules.filter((ar) => ar.notifyRuleIds.includes(Number(notifyRuleId)));
+    return {
+      nrId: nr.id,
+      name: nr.name || "",
+      enable: Boolean(nr.enable),
+      description: nr.description || "",
+      ...info,
+      alertRuleCount: linked.length,
+      alertRules: linked.slice(0, 50).map((ar) => ({
+        id: ar.id,
+        name: ar.name,
+        groupId: ar.groupId,
+        groupName: ar.groupName,
+        severity: ar.severity,
+        disabled: ar.disabled,
+      })),
+    };
+  }
+
   /** 用户列表（含电话），供通知接收人多选。 */
   async function getNotifyUsers() {
     const { nightingale } = await loadConfig();
@@ -1048,14 +1079,19 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
   }
 
   /** 解析通知规则接收人明细。 */
-  function buildNotifyReceiverInfo(nr, userById) {
+  function buildNotifyReceiverInfo(nr, userById, chById) {
     const receivers = [];
     const phones = new Set();
     let botId = "";
     let mentions = "";
     let email = "";
+    const channelIdents = new Set();
+    const channelNames = new Set();
     for (const nc of nr?.notify_configs || []) {
       const p = nc.params || {};
+      const ch = chById?.get(nc.channel_id);
+      if (ch?.ident) channelIdents.add(ch.ident);
+      if (ch?.name) channelNames.add(ch.name);
       for (const uid of p.user_ids || []) {
         const u = userById.get(Number(uid));
         receivers.push({
@@ -1078,7 +1114,15 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
       seen.add(key);
       return true;
     });
-    return { receivers: uniqueReceivers, fixedPhones: [...phones], botId, mentions, email };
+    return {
+      receivers: uniqueReceivers,
+      fixedPhones: [...phones],
+      botId,
+      mentions,
+      email,
+      channelIdent: [...channelIdents][0] || "",
+      channelName: [...channelNames][0] || "",
+    };
   }
 
   /** 拉取所有业务组的告警规则（含 notify_rule_ids）。 */
@@ -1120,7 +1164,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     // 1) 夜莺通知规则按渠道分类
     for (const nr of notifyCache.rules) {
       const cats = categorizeNotifyRule(nr, chById);
-      const info = buildNotifyReceiverInfo(nr, userById);
+      const info = buildNotifyReceiverInfo(nr, userById, chById);
       const item = {
         nrId: nr.id,
         name: nr.name || "",
@@ -1299,6 +1343,7 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     getDatasources,
     getTargets,
     getNotifyRules,
+    getNotifyRuleDetail,
     getNotifyUsers,
     getN8nWorkflows,
     getN8nWorkflowDetail,
