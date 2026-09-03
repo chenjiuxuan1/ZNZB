@@ -2641,7 +2641,12 @@ export function createPlatformApi({
 
     async getDsFailureLogs(filters = {}) {
       const country = String(filters.country || "").trim().toLowerCase();
-      return inspectDsFailureLogs(rootDir, { countries: country || undefined, lookbackDays: filters.days });
+      return inspectDsFailureLogs(rootDir, {
+        countries: country || undefined,
+        lookbackDays: filters.days,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+      });
     },
 
     async getDsScheduledFailureWatchConfig() {
@@ -2712,6 +2717,8 @@ export function createPlatformApi({
       return inspectN8nAutoRetryExecutions(rootDir, {
         countries: country || undefined,
         lookbackDays: filters.days,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
         n8nClient: n8nAutoRetryClient,
         // Return n8n executions immediately. Task-level DS evidence is loaded
         // separately for the four visible rows on each country page.
