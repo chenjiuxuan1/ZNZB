@@ -596,7 +596,14 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       const list = Array.isArray(next[code]) ? next[code] : [];
       owners[code] = list.map(String).filter((x) => x.trim()).slice(0, 20);
     }
-    const chatId = cfg.chatId != null ? Number(cfg.chatId) : current.chatId;
+    let chatId = current.chatId;
+    if (cfg.chatId !== undefined && cfg.chatId !== null && String(cfg.chatId).trim() !== "") {
+      const n = Number(cfg.chatId);
+      if (!Number.isInteger(n)) {
+        throw Object.assign(new Error(`发送群 chat id 必须是整数：${cfg.chatId}`), { statusCode: 400 });
+      }
+      chatId = n;
+    }
     const result = { chatId, owners };
     await writeJsonFileAtomic(await groupPath(), result);
     return { ok: true, ...result };
