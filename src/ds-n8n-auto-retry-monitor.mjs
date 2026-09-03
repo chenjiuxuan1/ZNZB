@@ -15,6 +15,7 @@ const COUNTRY_NAMES = {
 };
 const DEFAULT_WORKFLOW_NAME = "各国-DS失败自动重跑统一入口";
 const DEFAULT_WEBHOOK_PATH = "ds-failed-auto-rerun";
+const AUTO_REPAIR_LOG_DIR = "/root/Global-Intelligent-Alarm-Repair-Assistant/auto_repair_records/ds_failed_auto_retry_logs";
 const ENV_PATTERN = /\$\{([A-Z0-9_]+)\}/g;
 const CACHE_TTL_MS = 30_000;
 const cache = new Map();
@@ -357,6 +358,21 @@ export function parseRetryLogOutcome(content = "") {
   return { status: "unknown", reason: "" };
 }
 
+/**
+ * Older n8n executions sometimes persisted the expression text itself, for
+ * example /${country.key}_ds_failed_auto_retry_${requestId}.log. The remote
+ * worker still wrote the log using the concrete country and request id, so the
+ * real path can be reconstructed safely from those two recorded fields.
+ */
+export function resolveAutoRepairLogPath(item = {}) {
+  const recorded = String(item.n8nLogPath || "").trim();
+  if (recorded.startsWith("/") && !/\$\{/.test(recorded)) return recorded;
+  const country = normalizeCountry(item.country);
+  const requestId = String(item.n8nRequestId || "").trim();
+  if (!country || !/^[A-Za-z0-9._-]+$/.test(requestId)) return "";
+  return `${AUTO_REPAIR_LOG_DIR}/${country}_ds_failed_auto_retry_${requestId}.log`;
+}
+
 async function listAllWorkflows(client) {
   const workflows = [];
   let cursor;
@@ -526,20 +542,20 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   // and read failures are surfaced separately instead of masquerading as
   // "pending confirmation".
   const finalItems = await mapWithConcurrency(deduped, 4, async (item) => {
-    const logPath = String(item.n8nLogPath || "").trim();
-    // Some n8n executions go through an "ignored alert" branch and never record
-    // a real request id / log path — the value stays an unresolved template such
-    // as /${country.key}_ds_failed_auto_retry_${requestId}.log. Those have no
-    // readable log, so skip instead of failing the read.
-    if (!logPath || !logPath.startsWith("/") || /\$\{/.test(logPath)) {
+    const recordedLogPath = String(item.n8nLogPath || "").trim();
+    const logPath = resolveAutoRepairLogPath(item);
+    if (!logPath) {
       return { ...item, retryLogReadStatus: "skipped", retryLogError: "n8n 执行未记录可读取的远端日志路径" };
     }
+    const itemWithResolvedPath = logPath === recordedLogPath
+      ? item
+      : { ...item, n8nLogPathRaw: recordedLogPath, n8nLogPath: logPath };
     const read = await readAutoRepairLogViaGateway(rootDir, item.country, logPath);
     if (!read.ok) {
-      return { ...item, retryLogReadStatus: "failed", retryLogError: read.error };
+      return { ...itemWithResolvedPath, retryLogReadStatus: "failed", retryLogError: read.error };
     }
     const outcome = parseRetryLogOutcome(read.content);
-    const base = { ...item, retryLogReadStatus: "ok", retryLogReason: outcome.reason };
+    const base = { ...itemWithResolvedPath, retryLogReadStatus: "ok", retryLogReason: outcome.reason };
     if (outcome.status === "recovered") return { ...base, repairStatus: "recovered", retryResult: "recovered" };
     if (outcome.status === "failed") return { ...base, repairStatus: "unresolved", retryResult: "failed" };
     if (outcome.status === "running") return { ...base, repairStatus: "repairing", retryResult: "running" };
