@@ -8863,3 +8863,12 @@ select.ar-field {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: #344054;
 }
+.mc-summary {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #b91c1c;
+}
+.mc-null {
+  color: #98a2b3;
+  font-style: italic;
+}
