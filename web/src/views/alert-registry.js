@@ -213,7 +213,7 @@ function renderMcResults(root) {
         <details class="mc-detail">
           <summary>📄 ${escapeHtml(c.label || c.code || "")} · 校验语句与差异明细</summary>
           ${summaryHtml}
-          ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）</div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
+          ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）<button class="mc-copy-btn" data-copy-sql="${escapeHtml(sql)}" title="复制校验语句">📋 复制</button></div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
           ${renderMcDetailBlock({ ...c, runId: run.id })}
         </details>
       `;
@@ -247,6 +247,30 @@ function renderMcResults(root) {
           detailsEl.innerHTML = renderMcDetailBlock({ ...(run?.countries || []).find((c) => (c.code || c.label || "") === code), runId });
         }
       }
+    });
+  });
+  // 复制校验语句按钮（事件委托，覆盖局部重渲染）
+  el.querySelectorAll(".mc-copy-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const sql = btn.dataset.copySql || "";
+      const original = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(sql);
+        btn.textContent = "✅ 已复制";
+        btn.classList.add("copied");
+      } catch (e) {
+        // clipboard 不可用时 fallback
+        const ta = document.createElement("textarea");
+        ta.value = sql;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); btn.textContent = "✅ 已复制"; btn.classList.add("copied"); }
+        catch (e2) { btn.textContent = "❌ 复制失败"; }
+        document.body.removeChild(ta);
+      }
+      setTimeout(() => { btn.textContent = original; btn.classList.remove("copied"); }, 1500);
     });
   });
   renderMcPager(root, totalPages);
