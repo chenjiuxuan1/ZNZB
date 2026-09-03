@@ -187,28 +187,30 @@ export function createAlertCenter({ rootDir = process.cwd(), configFile } = {}) 
     if (body?.params && typeof existing.params === "object") {
       merged.params = { ...(existing.params || {}), ...body.params };
     }
-    // 若传 {receivers}（用户名列表）：解析为 user_ids 写入第一个 notify_config。
-    // 找不到的用户名不再抛错，返回 unmatched 供前端把其电话存为固定号码。
+    // 接收人解析：receivers（已知用户）+ newUsers（自动创建/复用）-> user_ids。
+    // 两者任一存在即更新 user_ids。注意 newUsers 可能单独出现（无 receivers）。
     let unmatched = [];
     let created = [];
-    if (Array.isArray(body?.receivers)) {
+    let ids = null;
+    if (Array.isArray(body?.receivers) || Array.isArray(body?.newUsers)) {
       await ensureNotifyMap();
       const byName = new Map(notifyCache.users.map((u) => [u.username, u.id]));
-      // 将由 newUsers 自动创建的用户名先剔除：它们稍后统一创建/复用，避免误报 unmatched
       const autoCreateNames = new Set((body?.newUsers || []).map((n) => String(n?.username || "").trim()).filter(Boolean));
-      const ids = [];
+      ids = [];
       unmatched = [];
-      for (const name of body.receivers) {
-        const uname = String(name).trim();
-        const id = byName.get(uname);
-        if (id != null) {
-          if (!ids.includes(id)) ids.push(id);
-        } else if (!autoCreateNames.has(uname)) {
-          unmatched.push(uname);
+      // 1. 已知用户 receivers
+      if (Array.isArray(body?.receivers)) {
+        for (const name of body.receivers) {
+          const uname = String(name).trim();
+          const id = byName.get(uname);
+          if (id != null) {
+            if (!ids.includes(id)) ids.push(id);
+          } else if (!autoCreateNames.has(uname)) {
+            unmatched.push(uname);
+          }
         }
       }
-      // 自动新增接收人：body.newUsers = [{ username, phone, nickname }]
-      // 已存在的复用其 id；不存在的自动在夜莺创建用户后加入接收。
+      // 2. 自动新增 newUsers（已存在复用，不存在创建后加入）
       if (Array.isArray(body?.newUsers)) {
         for (const nu of body.newUsers) {
           const username = String(nu?.username || "").trim();

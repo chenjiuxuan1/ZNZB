@@ -1576,8 +1576,8 @@ async function saveNotifyEditForm(form, opts) {
     params.Mobile = fixedPhones[0];
   }
   if (form.querySelector("#ac-rn-email")?.value.trim()) params.email = form.querySelector("#ac-rn-email").value.trim();
-  // 校验：至少填一个
-  if (!receiversArr.length && !fixedPhones.length && !Object.keys(params).length) {
+  // 校验：至少填一个（含待自动创建的新用户）
+  if (!receiversArr.length && !newUsers.length && !fixedPhones.length && !Object.keys(params).length) {
     showToast("请至少填写一个联系人", ["填写用户名或电话后再保存。"], "warn");
     return { ok: false, errors: ["empty"] };
   }
