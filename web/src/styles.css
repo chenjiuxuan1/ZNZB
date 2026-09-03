@@ -7824,6 +7824,10 @@ button.small[disabled] {
 .inv-receivers { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
 .inv-user { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .inv-user .muted { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.inv-user-missing {
+  background: #fef2f2; color: #b91c1c; border: 1px dashed #fca5a5;
+  border-radius: 4px; padding: 1px 6px; font-size: 12px; cursor: help;
+}
 .inv-phone { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
 .inv-alert-names { max-width: 280px; line-height: 1.6; word-break: break-all; }
 .inv-alert-names .muted { white-space: nowrap; }

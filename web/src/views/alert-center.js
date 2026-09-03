@@ -1159,10 +1159,14 @@ function renderInvTable(rules, kind) {
               </td>
               <td class="inv-receivers">
                 ${r.receivers?.length ? r.receivers.map((u) => `
+                  ${u.username && !String(u.username).startsWith("用户") ? `
                   <span class="inv-user">
                     ${escapeHtml(u.nickname || u.username)}
                     ${u.phone ? `<span class="muted small">${escapeHtml(u.phone)}</span>` : ""}
-                  </span>
+                  </span>` : `
+                  <span class="inv-user inv-user-missing" title="该 user_id 已不在夜莺用户表（可能已删除/失效），需在编辑中移除或改填有效用户">
+                    ⚠️ ${escapeHtml(u.username || `用户 id=${u.id}`)}${u.phone ? ` · ${escapeHtml(u.phone)}` : ""}
+                  </span>`}
                 `).join("") : `<span class="muted small">未指定用户</span>`}
               </td>
               ${kind === "phone" ? `<td class="small">${r.fixedPhones?.length ? r.fixedPhones.map((p) => `<span class="inv-phone">${escapeHtml(p)}</span>`).join(" ") : `<span class="muted small">-</span>`}</td>` : ""}
@@ -1189,7 +1193,7 @@ function renderInvN8nTable(workflows) {
     <div class="table-wrap">
       <table class="data-table ac-inv-table">
         <thead>
-          <tr><th>工作流</th><th>激活</th><th>触发</th><th>发送目标</th><th>Webhook</th><th>节点</th><th>操作</th></tr>
+          <tr><th>工作流</th><th>激活</th><th>触发</th><th>发送目标</th><th>Webhook</th><th>节点</th></tr>
         </thead>
         <tbody>
           ${workflows.map((w) => `
@@ -1204,7 +1208,6 @@ function renderInvN8nTable(workflows) {
               </td>
               <td class="small">${w.webhookUrl ? `<span class="muted" title="${escapeHtml(w.webhookUrl)}">${escapeHtml(w.webhookUrl.replace(/^https?:\/\/[^/]+/, ""))}</span>` : `<span class="muted small">-</span>`}</td>
               <td class="num small">${escapeHtml(w.nodeCount ?? 0)}</td>
-              <td><span class="muted small">（在 n8n 编辑）</span></td>
             </tr>
           `).join("")}
         </tbody>
