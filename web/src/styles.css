@@ -9205,3 +9205,54 @@ select.ar-field {
   gap: 10px;
   margin-top: 10px;
 }
+
+/* 多国校验 · 发送群设置 */
+.mc-group-chat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+}
+.mc-group-chat-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0c4a6e;
+  flex-shrink: 0;
+}
+.mc-group-chatid {
+  width: 160px;
+  padding: 5px 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #344054;
+  font-variant-numeric: tabular-nums;
+}
+.mc-group-chatid:focus-visible {
+  outline: none;
+  border-color: #2e90fa;
+  box-shadow: 0 0 0 2px rgba(46, 144, 250, 0.15);
+}
+.mc-group-chat-hint {
+  font-size: 12px;
+  color: #667085;
+}
+.mc-group-owners {
+  flex: 1;
+  min-width: 220px;
+  padding: 5px 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #344054;
+}
+.mc-group-owners:focus-visible {
+  outline: none;
+  border-color: #2e90fa;
+  box-shadow: 0 0 0 2px rgba(46, 144, 250, 0.15);
+}
