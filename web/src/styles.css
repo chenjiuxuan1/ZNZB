@@ -7820,12 +7820,15 @@ button.small[disabled] {
 .ac-inv-table { width: 100%; min-width: 640px; table-layout: fixed; }
 .ac-inv-table th { font-size: 12px; white-space: nowrap; }
 .table-wrap .ac-inv-table td { vertical-align: top; padding: 9px 10px; overflow-wrap: break-word; white-space: normal; }
+.table-wrap .ac-inv-table td.inv-receivers,
+.table-wrap .ac-inv-table td.inv-phones-cell { vertical-align: middle; }
 .ac-inv-table td strong { word-break: break-all; }
 .ac-inv-table td .muted { word-break: break-all; }
 .ac-inv-table tbody tr.is-disabled { opacity: 0.55; }
 .ac-inv-table tbody tr:hover { background: #f8fafc; }
-.inv-receivers { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
-.inv-user { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.inv-receivers { min-width: 150px; }
+.inv-user { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.inv-user:last-child { margin-bottom: 0; }
 .inv-user .muted { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .inv-user-missing {
   background: #fef2f2; color: #b91c1c; border: 1px dashed #fca5a5;
