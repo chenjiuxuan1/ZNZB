@@ -547,6 +547,13 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/multi-country/enabled-countries") {
     return sendJson(response, 200, await alertRegistry.getMcEnabledCountries());
   }
+  if (method === "GET" && url.pathname === "/api/multi-country/group") {
+    return sendJson(response, 200, await alertRegistry.getMcGroup());
+  }
+  if (method === "PUT" && url.pathname === "/api/multi-country/group") {
+    const body = await readBody(request);
+    return sendJson(response, 200, await alertRegistry.setMcGroup(body));
+  }
   if (method === "POST" && url.pathname === "/api/multi-country/phone") {
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.callMcPhone(body || {}));

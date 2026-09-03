@@ -48,6 +48,10 @@ export function renderAlertRegistry(root) {
         <summary>📞 电话通知配置（同国连续 N 次异常未处理，自动打电话给对应联系人）</summary>
         <div class="mc-notify-body" id="mc-notify-body"></div>
       </details>
+      <details class="mc-notify" id="mc-group-panel">
+        <summary>📢 发送群设置（告警发送群 chat id + 各国家负责人，有报警时末尾 @ 对应负责人）</summary>
+        <div class="mc-notify-body" id="mc-group-body"></div>
+      </details>
       <div id="mc-results"></div>
     </section>
   `;
@@ -99,6 +103,7 @@ async function loadMcResults(root) {
   renderMcResults(root);
   loadMcSchedule(root);
   loadMcNotify(root);
+  loadMcGroup(root);
 }
 
 /** 多国校验 · 电话通知配置状态。 */
@@ -174,6 +179,80 @@ async function loadMcNotify(root) {
     };
   }
 }
+
+/** 多国校验 · 发送群配置状态（群 chat id + 各国家负责人 @ 清单）。 */
+const mcGroupState = { saving: false };
+
+/** 加载并绑定多国校验发送群配置（发送群 chat id + 各国家负责人，有报警时末尾 @ 负责人）。 */
+async function loadMcGroup(root) {
+  const body = root.querySelector("#mc-group-body");
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载发送群配置…</div>`;
+  let cfg;
+  try {
+    cfg = await apiGet("/api/multi-country/group");
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  const chatId = cfg && cfg.chatId != null ? cfg.chatId : -1073807215;
+  const owners = (cfg && cfg.owners) || {};
+  const countryNames = { cn: "中国", id: "印尼", mx: "墨西哥", th: "泰国", ph: "菲律宾", pk: "巴基斯坦" };
+  const order = ["cn", "id", "mx", "th", "ph", "pk"];
+  const rows = order
+    .map((code) => `
+      <div class="mc-notify-row" data-code="${code}">
+        <span class="mc-notify-country">${escapeHtml(countryNames[code] || code)}</span>
+        <input type="text" class="mc-group-owners" data-code="${code}" value="${escapeHtml((owners[code] || []).join(","))}" placeholder="KN 用户名（如 xxx@kn.group），多个用逗号分隔" />
+      </div>
+    `)
+    .join("");
+  body.innerHTML = `
+    <div class="mc-group-chat">
+      <label class="mc-group-chat-label">告警发送群 chat id：</label>
+      <input type="text" class="mc-group-chatid" value="${escapeHtml(String(chatId))}" placeholder="如 -1073807215" />
+      <span class="mc-group-chat-hint">群 chat id（负数表示群）。修改后告警将发送到该群。</span>
+    </div>
+    <div class="mc-notify-rows">${rows}</div>
+    <div class="mc-notify-actions">
+      <button class="mc-page-btn" id="mc-group-save">保存发送群设置</button>
+      <span class="mc-schedule-status" id="mc-group-status"></span>
+    </div>`;
+  const saveBtn = root.querySelector("#mc-group-save");
+  const status = root.querySelector("#mc-group-status");
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      if (mcGroupState.saving) return;
+      mcGroupState.saving = true;
+      if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+      const nextOwners = {};
+      for (const code of order) {
+        const row = body.querySelector(`.mc-notify-row[data-code="${code}"]`);
+        if (!row) continue;
+        const list = (row.querySelector(".mc-group-owners")?.value || "").split(",").map((s) => s.trim()).filter(Boolean);
+        nextOwners[code] = list;
+      }
+      const nextChatId = Number(body.querySelector(".mc-group-chatid")?.value);
+      if (!Number.isFinite(nextChatId)) {
+        if (status) { status.textContent = "❌ chat id 必须是数字"; status.className = "mc-schedule-status error"; }
+        mcGroupState.saving = false;
+        return;
+      }
+      try {
+        const res = await apiPut("/api/multi-country/group", { chatId: nextChatId, owners: nextOwners });
+        if (res && res.ok) {
+          if (status) { status.textContent = "✅ 已保存发送群设置"; status.className = "mc-schedule-status ok"; }
+        } else {
+          if (status) { status.textContent = "❌ 保存失败"; status.className = "mc-schedule-status error"; }
+        }
+      } catch (e) {
+        if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+      }
+      mcGroupState.saving = false;
+    };
+  }
+}
+
 async function loadMcSchedule(root) {
   const input = root.querySelector("#mc-schedule-minute");
   const saveBtn = root.querySelector("#mc-schedule-save");

@@ -59,6 +59,20 @@ const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
 
+// 多国校验 · 发送群配置（群 chat id + 各国家负责人 @ 清单，有报警时在通知末尾 @ 对应负责人）
+const MC_GROUP_FILE = "config/mc-group.json";
+const DEFAULT_MC_GROUP = {
+  chatId: -1073807215,
+  owners: {
+    cn: ["owenzhang@kn.group", "rockyzong@kn.group", "adamyu@kn.group"],
+    id: ["gretchenhe@kn.group", "riverzhai@kn.group", "pengshanxiu@kn.group", "hongbotong@kn.group", "hawkinshe.j@kn.group"],
+    mx: ["kuiwu@kn.group", "enzodeng@kn.group"],
+    th: ["qilonghuang@kn.group"],
+    ph: ["simontang@kn.group", "jiangchuanchen@kn.group"],
+    pk: ["adamyu@kn.group", "moonmu@kn.group"],
+  },
+};
+
 const ENV_PATTERN = /\$\{([A-Z0-9_]+)\}/g;
 
 /** 内联环境变量占位 ${KEY}。 */
@@ -545,6 +559,48 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return { ok: true, countries };
   }
 
+  async function groupPath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_GROUP_FILE);
+  }
+
+  /** 加载发送群配置（chatId + 各国家负责人）。 */
+  async function loadMcGroup() {
+    const file = await groupPath();
+    const raw = await readJsonFile(file, {});
+    if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) {
+      return JSON.parse(JSON.stringify(DEFAULT_MC_GROUP));
+    }
+    const owners = {};
+    for (const code of MC_COUNTRIES) {
+      const list = Array.isArray(raw.owners && raw.owners[code]) ? raw.owners[code] : [];
+      owners[code] = list.map(String).filter((x) => x.trim()).slice(0, 20);
+    }
+    return {
+      chatId: raw.chatId != null ? Number(raw.chatId) : DEFAULT_MC_GROUP.chatId,
+      owners,
+    };
+  }
+
+  async function getMcGroup() {
+    return loadMcGroup();
+  }
+
+  async function setMcGroup(cfg = {}) {
+    const current = await loadMcGroup();
+    const owners = { ...current.owners };
+    const next = cfg.owners || {};
+    for (const code of MC_COUNTRIES) {
+      if (!(code in next)) continue;
+      const list = Array.isArray(next[code]) ? next[code] : [];
+      owners[code] = list.map(String).filter((x) => x.trim()).slice(0, 20);
+    }
+    const chatId = cfg.chatId != null ? Number(cfg.chatId) : current.chatId;
+    const result = { chatId, owners };
+    await writeJsonFileAtomic(await groupPath(), result);
+    return { ok: true, ...result };
+  }
+
   /** 获取当前连续异常计数。 */
   async function getMcStrikes() {
     return loadMcStrike();
@@ -705,6 +761,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     setMcNotify,
     getMcStrikes,
     getMcEnabledCountries,
+    getMcGroup,
+    setMcGroup,
     callMcPhone,
   };
 }
