@@ -34,6 +34,8 @@ const STATUS_LABELS = {
   n8n_repairing: { label: "修复中", className: "warn" },
   n8n_unknown: { label: "修复结果待确认", className: "warn" },
   n8n_not_retried: { label: "仅扫描未重跑", className: "idle" },
+  n8n_log_failed: { label: "结果日志读取失败", className: "danger" },
+  n8n_log_not_configured: { label: "未配置远端日志读取", className: "idle" },
 };
 
 let model = {
@@ -1273,6 +1275,8 @@ function renderFailure(item, filters = null) {
 }
 
 function n8nRepairDisplayStatus(item = {}) {
+  if (item.retryLogReadStatus === "failed") return "n8n_log_failed";
+  if (item.retryLogReadStatus === "not_configured") return "n8n_log_not_configured";
   if (item.retryResult === "recovered" || item.repairStatus === "recovered") return "n8n_recovered";
   if (["failed", "timeout_needs_owner"].includes(item.retryResult) || item.repairStatus === "unresolved") return "n8n_unresolved";
   if (item.retryResult === "running" || item.repairStatus === "repairing") return "n8n_repairing";

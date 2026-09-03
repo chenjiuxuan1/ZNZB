@@ -1,4 +1,5 @@
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { N8nClient } from "./n8n-client.mjs";
 import { resolveN8nDsFailureEvidence } from "./ds-failure-log-monitor.mjs";
 import { deepMapStrings, loadEnvFile, readJsonFile } from "./utils.mjs";
@@ -300,6 +301,84 @@ async function loadN8nClient(rootDir, supplied) {
   return new N8nClient({ baseUrl, apiKey, timeoutMs: 20_000 });
 }
 
+/**
+ * Load the SSH connection used to read the auto-repair assistant's remote retry
+ * log. Configure via config/alerts.config.json -> n8n.autoRepairLog, e.g.
+ * { "enabled": true, "ssh": { "host": "...", "port": 36000, "user": "root",
+ *   "identityFile": "" }, "timeoutMs": 15000 } or the DS_AUTO_REPAIR_SSH_* env.
+ */
+async function loadAutoRepairLogConfig(rootDir) {
+  const raw = await readJsonFile(path.join(rootDir, "config/alerts.config.json"), {});
+  const section = (raw && raw.n8n && raw.n8n.autoRepairLog) || {};
+  const ssh = section.ssh || {};
+  const host = process.env.DS_AUTO_REPAIR_SSH_HOST || resolveEnv(ssh.host) || "";
+  const user = process.env.DS_AUTO_REPAIR_SSH_USER || resolveEnv(ssh.user) || "root";
+  const port = Number(process.env.DS_AUTO_REPAIR_SSH_PORT || ssh.port || 22);
+  const identityFile = process.env.DS_AUTO_REPAIR_SSH_IDENTITY || resolveEnv(ssh.identityFile || ssh.keyFile || "");
+  const enabled = section.enabled !== false && Boolean(host);
+  return {
+    enabled,
+    host,
+    user,
+    port,
+    identityFile,
+    options: Array.isArray(ssh.options) ? ssh.options.map((item) => String(item)) : ["StrictHostKeyChecking=no", "ConnectTimeout=10"],
+    timeoutMs: Number(section.timeoutMs || 15_000),
+    tailLines: Number(section.tailLines || 200),
+  };
+}
+
+/** Read the tail of a remote log over SSH. Returns { ok, content, error }. */
+function readRemoteLogViaSsh({ host, user, port, identityFile, options, timeoutMs = 15_000, tailLines = 200, logPath }) {
+  return new Promise((resolve) => {
+    if (!host || !logPath) return resolve({ ok: false, error: "未配置远端日志读取（缺少 SSH 主机或日志路径）" });
+    const safePath = String(logPath).replace(/^~\/?/, "").replace(/'/g, "'\\''");
+    const args = [];
+    if (port) args.push("-p", String(port));
+    if (identityFile) args.push("-i", identityFile);
+    for (const option of options || []) args.push("-o", option);
+    args.push(`${user ? `${user}@` : ""}${host}`);
+    args.push(`tail -n ${Math.max(10, Number(tailLines) || 200)} '${safePath}'`);
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const child = spawn("ssh", args, { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    const timer = setTimeout(() => { child.kill("SIGTERM"); }, timeoutMs);
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    child.on("error", (error) => finish({ ok: false, error: error.message }));
+    child.on("close", (code) => {
+      if (code !== 0) return finish({ ok: false, error: stderr.trim() || `SSH 退出码 ${code}` });
+      finish({ ok: true, content: stdout });
+    });
+  });
+}
+
+/**
+ * Parse the final outcome from the auto-repair retry log. The tail of the log
+ * is scanned for the async program's final status keywords.
+ */
+export function parseRetryLogOutcome(content = "") {
+  const text = String(content || "").trim();
+  if (!text) return { status: "unknown", reason: "" };
+  if (/(?:恢复成功|已恢复|修复成功|重跑.*成功|成功.*恢复|已成功修复)/i.test(text)) {
+    return { status: "recovered", reason: "远端日志显示恢复成功" };
+  }
+  if (/(?:全部失败|重跑(?:后)?(?:仍|再)?失败|仍未恢复|最终.*失败|重试.*失败|处理失败)/i.test(text)) {
+    return { status: "failed", reason: "远端日志显示重跑失败" };
+  }
+  if (/(?:正在重跑|重跑中|仍在运行|运行中|尚未完成|未结束|等待.*重跑)/i.test(text)) {
+    return { status: "running", reason: "远端日志显示仍在重跑" };
+  }
+  return { status: "unknown", reason: "" };
+}
+
 async function listAllWorkflows(client) {
   const workflows = [];
   let cursor;
@@ -463,8 +542,32 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
     if (!existing || itemAt >= existingAt) latestByInstance.set(key, item);
   }
   const deduped = [...latestByInstance.values()];
+  // Correlate the async repair result back to each original DS instance by
+  // reading the remote retry log (n8nLogPath) the n8n execution recorded. Only
+  // items carrying a log path are read; missing/unknown outcomes stay unknown
+  // and read failures are surfaced separately instead of masquerading as
+  // "pending confirmation".
+  const repairLogConfig = await loadAutoRepairLogConfig(rootDir);
+  const finalItems = await mapWithConcurrency(deduped, 4, async (item) => {
+    if (!item.n8nLogPath) {
+      return { ...item, retryLogReadStatus: repairLogConfig.enabled ? "skipped" : "not_configured" };
+    }
+    if (!repairLogConfig.enabled) {
+      return { ...item, retryLogReadStatus: "not_configured" };
+    }
+    const read = await readRemoteLogViaSsh({ ...repairLogConfig, logPath: item.n8nLogPath });
+    if (!read.ok) {
+      return { ...item, retryLogReadStatus: "failed", retryLogError: read.error };
+    }
+    const outcome = parseRetryLogOutcome(read.content);
+    const base = { ...item, retryLogReadStatus: "ok", retryLogReason: outcome.reason };
+    if (outcome.status === "recovered") return { ...base, repairStatus: "recovered", retryResult: "recovered" };
+    if (outcome.status === "failed") return { ...base, repairStatus: "unresolved", retryResult: "failed" };
+    if (outcome.status === "running") return { ...base, repairStatus: "repairing", retryResult: "running" };
+    return { ...base, retryLogReason: "远端日志未解析出明确最终状态" };
+  });
   let totalFailures = 0;
-  for (const item of deduped) {
+  for (const item of finalItems) {
     const countryResult = countryMap.get(item.country);
     countryResult.failures.push(item);
     countryResult.checkedInstances += 1;
