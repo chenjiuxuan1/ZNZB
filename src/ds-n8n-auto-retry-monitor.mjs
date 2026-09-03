@@ -526,10 +526,15 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   // and read failures are surfaced separately instead of masquerading as
   // "pending confirmation".
   const finalItems = await mapWithConcurrency(deduped, 4, async (item) => {
-    if (!item.n8nLogPath) {
-      return { ...item, retryLogReadStatus: "skipped" };
+    const logPath = String(item.n8nLogPath || "").trim();
+    // Some n8n executions go through an "ignored alert" branch and never record
+    // a real request id / log path — the value stays an unresolved template such
+    // as /${country.key}_ds_failed_auto_retry_${requestId}.log. Those have no
+    // readable log, so skip instead of failing the read.
+    if (!logPath || !logPath.startsWith("/") || /\$\{/.test(logPath)) {
+      return { ...item, retryLogReadStatus: "skipped", retryLogError: "n8n 执行未记录可读取的远端日志路径" };
     }
-    const read = await readAutoRepairLogViaGateway(rootDir, item.country, item.n8nLogPath);
+    const read = await readAutoRepairLogViaGateway(rootDir, item.country, logPath);
     if (!read.ok) {
       return { ...item, retryLogReadStatus: "failed", retryLogError: read.error };
     }
