@@ -307,7 +307,7 @@ function renderDailyOverview(report) {
       let umap = byCountry.get(c.country);
       if (!umap) { umap = new Map(); byCountry.set(c.country, umap); }
       for (const op of (d.operators || [])) {
-        const name = op.user || "未知";
+        const name = op.user || "已离职";
         umap.set(name, (umap.get(name) || 0) + op.requests);
       }
     }
@@ -570,7 +570,7 @@ function renderCountryOperatorRow(op) {
   const hasToken = Boolean(op.token && op.token !== "-");
   const user = (op.user || "").trim();
   const tokenLabel = hasToken ? op.token : "未使用Token";
-  const nameTag = hasToken ? (user ? `（${escapeHtml(user)}）` : "（未知）") : "";
+  const nameTag = hasToken ? (user ? `（${escapeHtml(user)}）` : "（已离职）") : "";
   return `
     <tr>
       <td><code class="dsu-token-tag">${escapeHtml(tokenLabel)}</code>${nameTag}</td>
