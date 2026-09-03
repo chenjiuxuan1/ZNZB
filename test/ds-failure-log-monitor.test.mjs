@@ -189,6 +189,30 @@ test("DS failure reason surfaces a StarRocks access-denied cause instead of the 
   assert.equal(classifyN8nFailureReason(reason), "unknown");
 });
 
+test("DS failure reason falls back to the log tail when the head has no parseable error", () => {
+  const log = `
+2026-09-02 22:01:56.175 INFO  - Initialize Task Context
+2026-09-02 22:01:56.206 INFO  - Initialized physicalTask: SHELL successfully
+2026-09-02 22:02:04.397 INFO  - Flink SQL> [INFO] Execute statement succeed.
+2026-09-02 22:02:08.875 INFO  - INSERT INTO hive_paimon.dwb.demo SELECT ... (hundreds of columns)
+2026-09-02 22:11:29.072 INFO  - >>>❌❌❌ SQL执行失败，exit_code=0
+2026-09-02 22:11:29.078 INFO  - process has exited. execute path:/tmp/..., processExitValue:1
+2026-09-02 22:11:29.174 INFO  - Finalize Task Instance`;
+  const reason = extractDsFailureReason(log);
+  assert.match(reason, /SQL执行失败/);
+  assert.match(reason, /日志尾部疑似报错/);
+  // No SQL/code/permission evidence -> still treated as a retryable failure.
+  assert.equal(classifyDsFailureType({ failureMessage: reason, taskName: "flink_sync" }).retryable, true);
+});
+
+test("DS failure reason distinguishes an empty gateway log from an unparseable one", () => {
+  assert.equal(extractDsFailureReason(""), "DS 网关未返回任务日志内容，无法解析失败原因");
+  assert.equal(extractDsFailureReason("   \n \n "), "DS 网关未返回任务日志内容，无法解析失败原因");
+  // A non-empty log with only neutral INFO lines and no tail error keeps the
+  // generic fallback rather than claiming the gateway returned nothing.
+  assert.equal(extractDsFailureReason("INFO - task started\nINFO - task finished"), "任务日志未返回明确失败原因");
+});
+
 test("DS failure records distinguish scheduled and non-scheduled triggers", () => {
   const failures = classifyWorkflowFailures([
     { workflowDefinitionCode: "scheduled", workflowInstanceId: "s-1", workflowInstanceName: "scheduled", commandType: "SCHEDULER", workflowExecutionStatus: "FAILURE", workflowStartTime: "2026-08-19 08:00:00" },
