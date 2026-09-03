@@ -79,19 +79,21 @@ async function loadMcResults(root) {
       const dets = c.details || [];
       const sql = c.sql || c.detailSql || "";
       if (!m.length && !sql) return "";
-      const mismatchRows = m.map((x) => `<tr><td>${escapeHtml(x.check_item)}</td><td>${escapeHtml(x.mismatch_cnt)}</td><td></td><td></td><td></td></tr>`).join("");
-      const detailRows = dets.map((d) => `<tr><td>${escapeHtml(d.check_item)}</td><td>${escapeHtml(d.asset_item_no)}</td><td>${escapeHtml(d.user_id)}</td><td>${escapeHtml(d.src_value)}</td><td>${escapeHtml(d.dest_value)}</td></tr>`).join("");
+      const detailRows = dets.map((d) => `<tr><td>${escapeHtml(d.check_item)}</td><td>${escapeHtml(d.asset_item_no)}</td><td>${escapeHtml(d.user_id)}</td><td>${d.src_value === null || d.src_value === undefined ? '<span class="mc-null">无</span>' : escapeHtml(d.src_value)}</td><td>${d.dest_value === null || d.dest_value === undefined ? '<span class="mc-null">无</span>' : escapeHtml(d.dest_value)}</td></tr>`).join("");
+      const summaryHtml = m.length
+        ? `<div class="mc-summary">异常 ${m.length} 项：${m.map((x) => `${escapeHtml(x.check_item)}（${escapeHtml(x.mismatch_cnt)} 条）`).join("、")}</div>`
+        : "";
       return `
         <details class="mc-detail">
           <summary>📄 ${escapeHtml(c.label || c.code || "")} · 校验语句与差异明细</summary>
+          ${summaryHtml}
           ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）</div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
+          ${dets.length ? `
+          <div class="mc-sql-title">差异明细（每条最多展示 ${escapeHtml(dets.length)} 条）</div>
           <table class="mc-detail-table">
-            <thead><tr><th>检查项</th><th>资产号</th><th>用户ID</th><th>源值(资产侧)</th><th>目标值(汇总侧)</th></tr></thead>
-            <tbody>
-              ${mismatchRows}
-              ${detailRows}
-            </tbody>
-          </table>
+            <thead><tr><th>检查项</th><th>资产号</th><th>用户ID</th><th>源值</th><th>目标值</th></tr></thead>
+            <tbody>${detailRows}</tbody>
+          </table>` : ""}
         </details>
       `;
     }).join("");
