@@ -1069,51 +1069,40 @@ function renderInventory(data) {
   for (const w of n8nAlarm) {
     (n8nByCat[w.category || "其它"] = n8nByCat[w.category || "其它"] || []).push(w);
   }
+  const statCards = [
+    { key: "phone", label: "电话告警规则", icon: "📞", cls: "phone" },
+    { key: "dingtalk", label: "钉钉告警规则", icon: "💬", cls: "ding" },
+    { key: "knchatTv", label: "knchat/tv 工作流", icon: "📣", cls: "knchat" },
+    { key: "n8nAlarm", label: "n8n 告警链路", icon: "🔁", cls: "alarm" },
+    { key: "alertRuleTotal", label: "夜莺告警规则", icon: "📋", cls: "rule" },
+    { key: "receiverUsers", label: "夜莺接收人用户", icon: "👤", cls: "user" },
+  ];
   return `
     <div class="ac-inv-head">
       <div>
         <h2 class="panel-title">通知全景 · 所有告警信息</h2>
-        <p class="muted">聚合夜莺与 n8n 的全部告警通知体系，按 电话 / 钉钉 / knchat·tv 三类盘点，为统一管理与改造控制提供底账。${stats.generatedAt ? `更新于 ${formatIso(stats.generatedAt)}` : ""}</p>
+        <p class="muted">聚合夜莺与 n8n 的全部告警通知体系，按 电话 / 钉钉 / knchat·tv 三类盘点。点击行内「编辑」可修改通知规则或查看关联告警规则，为统一管理与改造控制提供底账。${stats.generatedAt ? `<br>更新于 ${formatIso(stats.generatedAt)}` : ""}</p>
       </div>
     </div>
     <div class="ac-inv-stats">
-      <div class="ac-inv-stat"><strong>${escapeHtml(stats.phone ?? 0)}</strong><span>电话告警规则</span></div>
-      <div class="ac-inv-stat"><strong>${escapeHtml(stats.dingtalk ?? 0)}</strong><span>钉钉告警规则</span></div>
-      <div class="ac-inv-stat"><strong>${escapeHtml(stats.knchatTv ?? 0)}</strong><span>knchat/tv 工作流</span></div>
-      <div class="ac-inv-stat"><strong>${escapeHtml(stats.n8nAlarm ?? 0)}</strong><span>n8n 告警链路</span></div>
-      <div class="ac-inv-stat"><strong>${escapeHtml(stats.alertRuleTotal ?? 0)}</strong><span>夜莺告警规则</span></div>
-      <div class="ac-inv-stat"><strong>${escapeHtml(stats.receiverUsers ?? 0)}</strong><span>夜莺接收人用户</span></div>
+      ${statCards.map((s) => `
+        <div class="ac-inv-stat is-${s.cls}">
+          <span class="ac-inv-stat-icon">${s.icon}</span>
+          <strong>${escapeHtml(stats[s.key] ?? 0)}</strong>
+          <span>${escapeHtml(s.label)}</span>
+        </div>
+      `).join("")}
     </div>
 
-    <section class="sub-panel">
-      <div class="inv-sec-head">
-        <h3 class="inv-sec-title"><span class="inv-dot phone"></span>电话告警 <span class="badge">${escapeHtml(phone.length)}</span></h3>
-        <p class="muted small">夜莺语音/电话渠道通知规则（ali-voice），告警时逐个拨打接收人在用户表登记的电话；固定电话为 ivr 模板号码。</p>
-      </div>
-      ${renderInvTable(phone, "phone")}
-    </section>
-
-    <section class="sub-panel">
-      <div class="inv-sec-head">
-        <h3 class="inv-sec-title"><span class="inv-dot ding"></span>钉钉告警 <span class="badge">${escapeHtml(dingtalk.length)}</span></h3>
-        <p class="muted small">夜莺钉钉渠道通知规则（dingtalk），通过群机器人推送，@接收人。</p>
-      </div>
-      ${renderInvTable(dingtalk, "dingtalk")}
-    </section>
-
-    <section class="sub-panel">
-      <div class="inv-sec-head">
-        <h3 class="inv-sec-title"><span class="inv-dot knchat"></span>knchat / TV 通知（n8n） <span class="badge">${escapeHtml(knchatTv.length)}</span></h3>
-        <p class="muted small">n8n 中直接发送 KN 聊天（快牛IM）或 TV（影音告警）的工作流。</p>
-      </div>
-      ${knchatTv.length ? renderInvN8nTable(knchatTv) : `<p class="muted">未发现。</p>`}
-    </section>
-
-    <section class="sub-panel">
-      <div class="inv-sec-head">
-        <h3 class="inv-sec-title"><span class="inv-dot alarm"></span>n8n 告警链路（生成 / 修复 / 巡检） <span class="badge">${escapeHtml(n8nAlarm.length)}</span></h3>
-        <p class="muted small">n8n 中承担告警生成、告警修复、僵尸扫描巡检、自动处置等职责的工作流（不含已归档）。</p>
-      </div>
+    ${renderInvSection("phone", "电话告警", "夜莺语音/电话渠道通知规则（ali-voice），告警时逐个拨打接收人在用户表登记的电话；固定电话为 ivr 模板号码。", renderInvTable(phone, "phone"), phone.length)}
+    ${renderInvSection("ding", "钉钉告警", "夜莺钉钉渠道通知规则（dingtalk），通过群机器人推送，@接收人。", renderInvTable(dingtalk, "dingtalk"), dingtalk.length)}
+    ${renderInvSection("knchat", "knchat / TV 通知（n8n）", "n8n 中直接发送 KN 聊天（快牛IM）或 TV（影音告警）的工作流，可启停。", knchatTv.length ? renderInvN8nTable(knchatTv) : `<p class="muted">未发现。</p>`, knchatTv.length)}
+    <section class="sub-panel inv-panel">
+      <header class="inv-panel-head is-alarm">
+        <div class="inv-panel-title"><span class="inv-dot alarm"></span>n8n 告警链路（生成 / 修复 / 巡检）</div>
+        <span class="badge inv-panel-count">${escapeHtml(n8nAlarm.length)}</span>
+      </header>
+      <p class="muted small inv-panel-desc">n8n 中承担告警生成、告警修复、僵尸扫描巡检、自动处置等职责的工作流（不含已归档），可启停。</p>
       ${Object.entries(n8nByCat).map(([cat, list]) => `
         <div class="inv-cat-block">
           <h4 class="inv-cat-title">${escapeHtml(cat)} <span class="badge">${escapeHtml(list.length)}</span></h4>
@@ -1122,13 +1111,21 @@ function renderInventory(data) {
       `).join("") || `<p class="muted">未发现。</p>`}
     </section>
 
-    ${other.length ? `
-    <section class="sub-panel">
-      <div class="inv-sec-head">
-        <h3 class="inv-sec-title"><span class="inv-dot other"></span>其它渠道（夜莺） <span class="badge">${escapeHtml(other.length)}</span></h3>
-      </div>
-      ${renderInvTable(other, "other")}
-    </section>` : ""}
+    ${other.length ? renderInvSection("other", "其它渠道（夜莺）", "", renderInvTable(other, "other"), other.length) : ""}
+  `;
+}
+
+/** 通知全景区块外壳。 */
+function renderInvSection(dotCls, title, desc, bodyHtml, count) {
+  return `
+    <section class="sub-panel inv-panel">
+      <header class="inv-panel-head is-${dotCls}">
+        <div class="inv-panel-title"><span class="inv-dot ${dotCls}"></span>${escapeHtml(title)}</div>
+        <span class="badge inv-panel-count">${escapeHtml(count)}</span>
+      </header>
+      ${desc ? `<p class="muted small inv-panel-desc">${escapeHtml(desc)}</p>` : ""}
+      ${bodyHtml}
+    </section>
   `;
 }
 
@@ -1146,17 +1143,20 @@ function renderInvTable(rules, kind) {
             ${kind === "phone" ? `<th>固定电话</th>` : ""}
             ${kind === "dingtalk" ? `<th>机器人 / @</th>` : ""}
             <th>关联告警规则</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
           ${rules.map((r) => `
-            <tr>
+            <tr class="${r.enable ? "" : "is-disabled"}">
               <td>
                 <strong>${escapeHtml(r.name || "-")}</strong>
                 ${r.description ? `<div class="muted small">${escapeHtml(r.description)}</div>` : ""}
-                <div class="muted small">规则 #${escapeHtml(r.nrId)}</div>
+                <div class="muted small">规则 #${escapeHtml(r.nrId)} · ${escapeHtml(r.channelName || r.channelIdent || "")}</div>
               </td>
-              <td>${r.enable ? `<span class="badge ok">启用</span>` : `<span class="badge warn">停用</span>`}</td>
+              <td>
+                <button type="button" class="inv-toggle ${r.enable ? "is-on" : ""}" data-nr-toggle="${escapeHtml(String(r.nrId))}" data-nr-enable="${r.enable ? "1" : "0"}" title="切换启停">${r.enable ? "启用" : "停用"}</button>
+              </td>
               <td class="inv-receivers">
                 ${r.receivers?.length ? r.receivers.map((u) => `
                   <span class="inv-user">
@@ -1169,7 +1169,10 @@ function renderInvTable(rules, kind) {
               ${kind === "dingtalk" ? `<td class="small">${r.botId ? `机器人 <code>${escapeHtml(String(r.botId).slice(0, 10))}…</code>` : `<span class="muted small">-</span>`}${r.mentions ? `<div class="muted small">@ ${escapeHtml(r.mentions)}</div>` : ""}</td>` : ""}
               <td class="small">
                 <span class="badge ${r.alertRuleCount ? "" : "warn"}">${escapeHtml(r.alertRuleCount ?? 0)}</span>
-                ${r.alertRuleCount ? `<div class="muted small inv-alert-names">${r.alertRules?.slice(0, 5).map((a) => escapeHtml(a.name)).join("、")}${r.alertRuleCount > 5 ? ` 等 ${r.alertRuleCount} 条` : ""}</div>` : `<div class="muted small">未关联告警规则</div>`}
+                ${r.alertRuleCount ? `<div class="inv-alert-names">${r.alertRules?.slice(0, 5).map((a) => `<a href="javascript:void(0)" class="inv-alert-link" data-alert-id="${escapeHtml(String(a.id))}" data-alert-group="${escapeHtml(String(a.groupId ?? ""))}" data-alert-name="${escapeHtml(a.name)}" title="查看/编辑该告警规则">${escapeHtml(a.name)}</a>`).join("、")}${r.alertRuleCount > 5 ? ` <span class="muted">等 ${r.alertRuleCount} 条</span>` : ""}</div>` : `<div class="muted small">未关联告警规则</div>`}
+              </td>
+              <td>
+                <button type="button" class="small ac-inv-edit" data-nr-edit="${escapeHtml(String(r.nrId))}" data-nr-name="${escapeHtml(r.name || "")}" data-nr-kind="${escapeHtml(kind)}" data-nr-channel="${escapeHtml(r.channelIdent || "")}">编辑</button>
               </td>
             </tr>
           `).join("")}
@@ -1186,19 +1189,22 @@ function renderInvN8nTable(workflows) {
     <div class="table-wrap">
       <table class="data-table ac-inv-table">
         <thead>
-          <tr><th>工作流</th><th>激活</th><th>触发</th><th>发送目标</th><th>Webhook</th><th>节点</th></tr>
+          <tr><th>工作流</th><th>激活</th><th>触发</th><th>发送目标</th><th>Webhook</th><th>节点</th><th>操作</th></tr>
         </thead>
         <tbody>
           ${workflows.map((w) => `
-            <tr>
+            <tr class="${w.active ? "" : "is-disabled"}">
               <td><strong>${escapeHtml(w.name || "-")}</strong><div class="muted small">${escapeHtml(w.id || "")}</div></td>
-              <td>${w.active ? `<span class="badge ok">激活</span>` : `<span class="badge warn">未激活</span>`}</td>
+              <td>
+                <button type="button" class="inv-toggle ${w.active ? "is-on" : ""}" data-wf-toggle="${escapeHtml(String(w.id))}" data-wf-active="${w.active ? "1" : "0"}" title="切换激活">${w.active ? "激活" : "未激活"}</button>
+              </td>
               <td class="small">${escapeHtml(w.triggerType || "-")}</td>
               <td class="small">
                 ${(w.sendTargets || []).map((t) => `<span class="badge ${t === "knchat" ? "inv-badge-knchat" : t === "tv" ? "inv-badge-tv" : ""}">${escapeHtml(t)}</span>`).join(" ") || `<span class="muted small">-</span>`}
               </td>
               <td class="small">${w.webhookUrl ? `<span class="muted" title="${escapeHtml(w.webhookUrl)}">${escapeHtml(w.webhookUrl.replace(/^https?:\/\/[^/]+/, ""))}</span>` : `<span class="muted small">-</span>`}</td>
               <td class="num small">${escapeHtml(w.nodeCount ?? 0)}</td>
+              <td><span class="muted small">（在 n8n 编辑）</span></td>
             </tr>
           `).join("")}
         </tbody>
@@ -1207,9 +1213,267 @@ function renderInvN8nTable(workflows) {
   `;
 }
 
-/** 通知全景交互绑定（暂为占位，后续可加行展开/筛选）。 */
+/** 通知全景交互绑定：通知规则启停/编辑、关联告警规则查看、n8n 工作流启停。 */
 function bindInventoryEvents(root, body) {
-  // 预留：后续在此绑定筛选/展开等交互
+  // 通知规则启停
+  body.querySelectorAll("[data-nr-toggle]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const nrId = btn.dataset.nrToggle;
+      const enable = btn.dataset.nrEnable !== "1";
+      btn.disabled = true;
+      try {
+        await apiPost(`/api/alerts/notify-rules/${nrId}`, { enable });
+        await reloadInventoryTab(root, body);
+      } catch (error) {
+        btn.disabled = false;
+        showToast("切换失败", [error.message], "warn");
+      }
+    });
+  });
+
+  // 通知规则编辑
+  body.querySelectorAll("[data-nr-edit]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const nrId = btn.dataset.nrEdit;
+      const kind = btn.dataset.nrKind;
+      const channel = btn.dataset.nrChannel;
+      btn.disabled = true;
+      try {
+        const fresh = await fetchNotifyRuleInfo(nrId);
+        openNotifyRuleEditModal(fresh, kind || channel, () => reloadInventoryTab(root, body));
+      } catch (error) {
+        showToast("打开编辑失败", [error.message], "warn");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // 关联告警规则 -> 打开告警规则编辑弹窗
+  body.querySelectorAll("[data-alert-id]").forEach((link) => {
+    link.addEventListener("click", async () => {
+      const id = link.dataset.alertId;
+      const groupId = link.dataset.alertGroup;
+      link.style.pointerEvents = "none";
+      try {
+        let detail = null;
+        try {
+          detail = await apiGet(`/api/alerts/rules/detail?id=${encodeURIComponent(id)}`);
+        } catch { /* fallback below */ }
+        if (!detail) {
+          // 尝试用 groupId 从列表兜底（detail 失败时）
+          const rules = groupId ? await apiGet(`/api/alerts/rules?busiGroup=${groupId}`).catch(() => []) : [];
+          detail = (Array.isArray(rules) ? rules : []).find((r) => String(r.id) === String(id)) || null;
+        }
+        if (detail) {
+          openRuleEditModal(detail, () => reloadInventoryTab(root, body));
+        } else {
+          showToast("未找到该告警规则详情", [`规则 #${id}`], "warn");
+        }
+      } catch (error) {
+        showToast("打开告警规则失败", [error.message], "warn");
+      } finally {
+        link.style.pointerEvents = "";
+      }
+    });
+  });
+
+  // n8n 工作流启停
+  body.querySelectorAll("[data-wf-toggle]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.wfToggle;
+      const active = btn.dataset.wfActive === "1" ? false : true;
+      btn.disabled = true;
+      try {
+        await apiPost("/api/alerts/n8n/workflows/toggle", { id, active });
+        await reloadInventoryTab(root, body);
+      } catch (error) {
+        btn.disabled = false;
+        showToast("切换失败", [error.message], "warn");
+      }
+    });
+  });
+}
+
+/** 刷新通知全景 tab。 */
+async function reloadInventoryTab(root, body) {
+  const refreshTime = root.querySelector("#ac-refresh-time");
+  const data = await apiGet("/api/alerts/inventory").catch((error) => ({ error: error.message }));
+  if (refreshTime) refreshTime.textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN")}`;
+  body.innerHTML = renderInventory(data);
+  bindInventoryEvents(root, body);
+}
+
+/** 拉取单条通知规则信息（用于编辑弹窗回填）。 */
+async function fetchNotifyRuleInfo(nrId) {
+  const detail = await apiGet(`/api/alerts/notify-rules/${encodeURIComponent(nrId)}/detail`);
+  if (!detail) throw new Error(`通知规则 #${nrId} 不存在`);
+  return detail;
+}
+
+/** 通知规则编辑弹窗（复用联系人行编辑逻辑，独立于告警规则弹窗）。 */
+function openNotifyRuleEditModal(rule, reload) {
+  const overlay = document.createElement("div");
+  overlay.id = "ac-nr-modal";
+  overlay.className = "ac-modal-overlay";
+  const ident = rule.channelIdent || (rule.kind === "phone" ? "ali-voice" : rule.kind === "dingtalk" ? "dingtalk" : "");
+  const isVoice = ident === "ali-voice" || ident === "ivr" || ident === "phone" || ident === "voice";
+  const isDing = ident === "dingtalk" || ident === "dingtalk_robot";
+  const isEmail = ident === "email";
+  const receivers = (rule.receivers || []).map((u) => u.username).join(",");
+  const phone = (rule.fixedPhones || [])[0] || "";
+  const bot = rule.botId || "";
+  const mentions = rule.mentions || "";
+  const email = rule.email || "";
+
+  overlay.innerHTML = `
+    <div class="ac-modal ac-rule-modal" role="dialog" aria-modal="true" aria-label="编辑通知规则">
+      <div class="ac-modal-head">
+        <div class="ac-rule-modal-title">
+          <span class="ac-rule-modal-icon">📣</span>
+          <div>
+            <strong>编辑通知规则</strong>
+            <span class="ac-rule-modal-sub">${escapeHtml(rule.name || `通知规则 #${rule.nrId}`)} · ${escapeHtml(rule.channelName || rule.channelIdent || "")}</span>
+          </div>
+        </div>
+        <button class="ac-modal-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="ac-modal-body">
+        <div class="ac-rule-form">
+          <section class="ac-rule-card">
+            <header class="ac-rule-card-head"><span>接收人配置</span><span class="muted small">保存后即时生效</span></header>
+            <div class="ac-nr-form" data-ident="${escapeHtml(ident)}" data-nrid="${escapeHtml(String(rule.nrId))}">
+              ${isVoice ? `
+                <label>电话联系人（每一行一位，可添加多个）</label>
+                <div class="ac-rn-contact-list">
+                  <div class="ac-rn-contact-row">
+                    <input type="text" class="ac-search-input ac-rn-contact-name" value="${escapeHtml(receivers)}" placeholder="接收人用户名">
+                    <input type="text" class="ac-search-input ac-rn-contact-phone" value="${escapeHtml(phone)}" placeholder="电话（输入用户名自动带出）">
+                    <button type="button" class="small ghost ac-rn-contact-del" title="删除该行">✕</button>
+                  </div>
+                </div>
+                <button type="button" class="small ghost ac-rn-contact-add">＋ 添加联系人</button>
+                <div class="muted small ac-rn-tip">保存后按所选用户逐个拨打（取用户表登记的电话），如需指定其它号码可直接改对应行的电话。</div>
+              ` : isDing ? `
+                <label>@接收人（邮箱，逗号分隔）
+                  <input type="text" class="ac-search-input" id="ac-nr-mentions" value="${escapeHtml(mentions)}" placeholder="zhangsan@kn.group, lisi@kn.group">
+                </label>
+                <label>机器人 ID（botId）
+                  <input type="text" class="ac-search-input" id="ac-nr-bot" value="${escapeHtml(bot)}" placeholder="钉钉机器人 UUID">
+                </label>
+              ` : isEmail ? `
+                <label>接收邮箱
+                  <input type="text" class="ac-search-input" id="ac-nr-email" value="${escapeHtml(email)}">
+                </label>
+              ` : `
+                <label>接收人（用户名，逗号分隔）
+                  <input type="text" class="ac-search-input" id="ac-nr-rcv" value="${escapeHtml(receivers)}">
+                </label>
+              `}
+            </div>
+          </section>
+          <section class="ac-rule-card ac-rule-danger">
+            <header class="ac-rule-card-head"><span>启停</span><span class="muted small">停用后不再发送该通知</span></header>
+            <label class="ac-rule-toggle-line">
+              <input type="checkbox" id="ac-nr-enable" ${rule.enable ? "checked" : ""}>
+              <span>启用此通知规则</span>
+            </label>
+          </section>
+        </div>
+      </div>
+      <div class="ac-rule-form-actions">
+        <span class="muted small ac-rule-save-tip">⚠️ 通知规则可能被多个告警规则共用，修改会影响所有关联规则。</span>
+        <div class="ac-rule-form-btns">
+          <button class="small ac-rule-cancel">取消</button>
+          <button class="primary small" id="ac-nr-save">保存</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.classList.add("show");
+  const close = () => { overlay.classList.remove("show"); setTimeout(() => overlay.remove(), 180); };
+  overlay.querySelector(".ac-modal-close").addEventListener("click", close);
+  overlay.querySelector(".ac-rule-cancel").addEventListener("click", close);
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  document.addEventListener("keydown", function onEsc(event) {
+    if (event.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+  });
+
+  // 用户列表（用户名 -> 电话自动带出）
+  apiGet("/api/alerts/notify-users").then((u) => {
+    const users = Array.isArray(u) ? u : [];
+    const userByUsername = new Map(users.map((x) => [x.username, x]));
+    overlay.querySelectorAll(".ac-rn-contact-row").forEach((row) => bindRowEvents(row, userByUsername));
+  }).catch(() => {});
+  overlay.querySelector(".ac-rn-contact-add")?.addEventListener("click", () => {
+    const list = overlay.querySelector(".ac-rn-contact-list");
+    const row = document.createElement("div");
+    row.className = "ac-rn-contact-row";
+    row.innerHTML = `
+      <input type="text" class="ac-search-input ac-rn-contact-name" placeholder="接收人用户名">
+      <input type="text" class="ac-search-input ac-rn-contact-phone" placeholder="电话（输入用户名自动带出）">
+      <button type="button" class="small ghost ac-rn-contact-del" title="删除该行">✕</button>
+    `;
+    list.appendChild(row);
+    // 新行同样绑定自动带出（异步拉取用户表）
+    apiGet("/api/alerts/notify-users").then((u) => {
+      const users = Array.isArray(u) ? u : [];
+      bindRowEvents(row, new Map(users.map((x) => [x.username, x])));
+    }).catch(() => {});
+  });
+
+  overlay.querySelector("#ac-nr-save").addEventListener("click", async () => {
+    const saveBtn = overlay.querySelector("#ac-nr-save");
+    saveBtn.disabled = true;
+    const form = overlay.querySelector(".ac-nr-form");
+    const nrId = form.dataset.nrid;
+    const ident2 = form.dataset.ident;
+    const isVoice2 = ident2 === "ali-voice" || ident2 === "ivr" || ident2 === "phone" || ident2 === "voice";
+    const isDing2 = ident2 === "dingtalk" || ident2 === "dingtalk_robot";
+    const isEmail2 = ident2 === "email";
+    try {
+      const payload = {};
+      // 接收人
+      if (isVoice2) {
+        const receiversArr = [];
+        const newUsers = [];
+        const fixedPhones = [];
+        form.querySelectorAll(".ac-rn-contact-row").forEach((row) => {
+          const name = row.querySelector(".ac-rn-contact-name")?.value.trim();
+          const ph = row.querySelector(".ac-rn-contact-phone")?.value.trim();
+          if (!name && !ph) return;
+          if (name && userByUsername.has(name)) { receiversArr.push(name); if (ph) fixedPhones.push(ph); }
+          else if (name) newUsers.push({ username: name, phone: ph || "", nickname: name });
+          else if (ph) fixedPhones.push(ph);
+        });
+        if (receiversArr.length) payload.receivers = receiversArr;
+        if (newUsers.length) payload.newUsers = newUsers;
+        const params = {};
+        if (fixedPhones.length) params.Mobile = fixedPhones[0];
+        if (Object.keys(params).length) payload.params = params;
+      } else if (isDing2) {
+        const params = {};
+        const mentionsVal = overlay.querySelector("#ac-nr-mentions")?.value.trim();
+        const botVal = overlay.querySelector("#ac-nr-bot")?.value.trim();
+        if (mentionsVal) params.mentions = mentionsVal;
+        if (botVal) params.botId = botVal;
+        if (Object.keys(params).length) payload.params = params;
+      } else if (isEmail2) {
+        const emailVal = overlay.querySelector("#ac-nr-email")?.value.trim();
+        if (emailVal) payload.params = { email: emailVal };
+      }
+      // 启停
+      payload.enable = overlay.querySelector("#ac-nr-enable").checked;
+      await apiPut(`/api/alerts/notify-rules/${nrId}`, payload);
+      showToast("已保存通知规则", ["接收人/启停已更新。"], "success");
+      close();
+      if (typeof reload === "function") await reload();
+    } catch (error) {
+      saveBtn.disabled = false;
+      showToast("保存失败", [error.message], "warn");
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
