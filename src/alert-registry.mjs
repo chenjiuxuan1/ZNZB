@@ -233,21 +233,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
 
   async function list() {
     const { alerts } = await load();
-    // 对关联 n8n 工作流的条目，用 n8n 真实 active 状态覆盖（mc_* 与工作流 E4B4... 共享状态）
-    const n8nCache = {};
-    const enriched = [];
-    for (const entry of alerts) {
-      const wfId = entry.n8nWorkflowId;
-      if (wfId) {
-        if (!(wfId in n8nCache)) {
-          n8nCache[wfId] = await getN8nWorkflowActive(wfId);
-        }
-        enriched.push({ ...entry, n8nActive: n8nCache[wfId], enabled: n8nCache[wfId] !== null ? Boolean(n8nCache[wfId]) : entry.enabled });
-      } else {
-        enriched.push({ ...entry, n8nActive: null });
-      }
-    }
-    return enriched;
+    // 多国校验条目（mc_*）为单独控制：状态 = 自身 enabled（该国是否参与校验），n8n 工作流保持 active。
+    return alerts.map((entry) => ({ ...entry, n8nActive: null }));
   }
 
   async function get(id) {
@@ -326,17 +313,11 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     }
     const prev = alerts[index];
     const merged = normalizeEntry({ ...prev, ...input, id, updatedAt: new Date().toISOString() });
-    let n8nSync = null;
-    // 启停状态变化 + 有关联 n8n 工作流（mc_* 多国校验）：同步 n8n 工作流 active（开关定时任务）
-    if (prev.n8nWorkflowId && typeof input.enabled === "boolean" && input.enabled !== prev.enabled) {
-      n8nSync = await setN8nWorkflowActive(prev.n8nWorkflowId, Boolean(input.enabled));
-      if (!n8nSync.ok) {
-        throw Object.assign(new Error(`同步 n8n 工作流失败：${n8nSync.error}`), { statusCode: 502 });
-      }
-    }
+    // 多国校验条目（mc_*）的启停 = 单独控制该国是否参与校验；n8n 工作流保持 active，每次运行时读取启用国家列表。
+    // 不做整工作流 active 同步。
     alerts[index] = merged;
     await save(alerts);
-    return { ...merged, n8nSync, n8nActive: n8nSync ? n8nSync.active : null };
+    return { ...merged, n8nSync: null, n8nActive: null };
   }
 
   async function remove(id) {
@@ -394,16 +375,9 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   async function setEnabled(id, enabled) {
     const entry = await get(id);
     const want = Boolean(enabled);
-    let n8nSync = null;
-    // 有关联 n8n 工作流（mc_* 多国校验）的条目：启停 = 开关工作流定时任务
-    if (entry && entry.n8nWorkflowId) {
-      n8nSync = await setN8nWorkflowActive(entry.n8nWorkflowId, want);
-      if (!n8nSync.ok) {
-        throw Object.assign(new Error(`同步 n8n 工作流失败：${n8nSync.error}`), { statusCode: 502 });
-      }
-    }
+    // 多国校验条目（mc_*）启停 = 单独控制该国参与校验（配置层面），不整工作流 active 同步。
     const updated = await update(id, { enabled: want });
-    return { ...updated, n8nSync, n8nActive: n8nSync ? n8nSync.active : null };
+    return { ...updated, n8nSync: null, n8nActive: null };
   }
 
   /** 测试执行：按条目的 runVia/command 跑 dry-run，返回 stdout/stderr/exitCode。 */
@@ -577,6 +551,20 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   }
 
   /**
+   * 获取各国多国校验启用状态（n8n 工作流运行时读取，只校验启用的国家）。
+   * 来源：告警注册表中 mc_* 条目的 enabled。
+   */
+  async function getMcEnabledCountries() {
+    const { alerts } = await load();
+    const map = {};
+    for (const code of MC_COUNTRIES) {
+      const entry = alerts.find((item) => item.id === `mc_${code}` || item.id === `mc_${code.toUpperCase()}`);
+      map[code] = entry ? entry.enabled !== false : true;
+    }
+    return { countries: map };
+  }
+
+  /**
    * 电话通知入口（n8n 调用）。当前为占位实现：校验目标国家已开启电话通知且达到阈值，
    * 记录日志返回 ok；实际拨打通道（夜莺 ali-voice 等）后续接入。
    * body: { countries: [{code, label, contacts}], checkedAt }
@@ -716,6 +704,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     getMcNotify,
     setMcNotify,
     getMcStrikes,
+    getMcEnabledCountries,
     callMcPhone,
   };
 }
