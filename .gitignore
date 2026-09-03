@@ -37,3 +37,4 @@ n8n-batch-ready-fixed.json
 .gstack/
 config/alert-registry.json
 config/multi-country-check-results.json
+config/mc-schedule.json

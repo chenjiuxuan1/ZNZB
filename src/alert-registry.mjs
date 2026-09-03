@@ -37,6 +37,10 @@ const EXAMPLE_CONFIG_FILE = "config/alert-registry.example.json";
 const MULTI_COUNTRY_RESULTS_FILE = "config/multi-country-check-results.json";
 const DEFAULT_MULTI_COUNTRY_RESULTS = { runs: [] };
 const MULTI_COUNTRY_RESULTS_KEEP = 200;
+const MC_SCHEDULE_FILE = "config/mc-schedule.json";
+const DEFAULT_MC_SCHEDULE = { minute: 55 };
+const MC_WORKFLOW_ID = "E4B4wNzcUG0ow6BL"; // 多国一致性校验告警
+const MC_SCHEDULE_TRIGGER_NODE = "每小时定时触发";
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
@@ -402,6 +406,100 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return { ok: true, kept: runs.length, limit: MULTI_COUNTRY_RESULTS_KEEP, run };
   }
 
+  // ---- 多国校验定时（页面可调整，写入 n8n 工作流 ScheduleTrigger） ----
+
+  async function schedulePath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_SCHEDULE_FILE);
+  }
+
+  async function loadSchedule() {
+    const file = await schedulePath();
+    const data = await readJsonFile(file, DEFAULT_MC_SCHEDULE);
+    const minute = Number(data.minute);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      return DEFAULT_MC_SCHEDULE;
+    }
+    return { minute };
+  }
+
+  /** 读取当前多国校验定时（分钟）。 */
+  async function getMcSchedule() {
+    return loadSchedule();
+  }
+
+  /** 把 cron 写入 n8n 工作流的 ScheduleTrigger 节点（typeVersion 1.2, rule.interval[0].expression）。 */
+  async function applyMcScheduleToN8n(minute) {
+    const base = process.env.N8N_BASE_URL || "";
+    const apiKey = process.env.N8N_API_KEY || "";
+    if (!base || !apiKey) {
+      return { ok: false, error: "生产平台未配置 N8N_BASE_URL / N8N_API_KEY，无法更新 n8n 定时" };
+    }
+    const cron = `${minute} * * * *`;
+    try {
+      // 1) 读取当前工作流
+      const getResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
+        headers: { "X-N8N-API-KEY": apiKey },
+      });
+      if (!getResp.ok) {
+        return { ok: false, error: `读取 n8n 工作流失败（HTTP ${getResp.status}）` };
+      }
+      const wf = await getResp.json();
+      let found = false;
+      for (const n of wf.nodes || []) {
+        if (n.name === MC_SCHEDULE_TRIGGER_NODE && n.type === "n8n-nodes-base.scheduleTrigger") {
+          if (!n.parameters.rule || !Array.isArray(n.parameters.rule.interval)) {
+            n.parameters.rule = { interval: [{ field: "cronExpression", expression: cron }] };
+          } else {
+            n.parameters.rule.interval[0] = { field: "cronExpression", expression: cron };
+          }
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return { ok: false, error: `n8n 工作流中未找到定时触发节点「${MC_SCHEDULE_TRIGGER_NODE}」` };
+      }
+      // 2) PUT 工作流
+      const putPayload = {
+        name: wf.name,
+        nodes: wf.nodes,
+        connections: wf.connections,
+        settings: { executionOrder: "v1" },
+      };
+      const putResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
+        method: "PUT",
+        headers: { "X-N8N-API-KEY": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify(putPayload),
+      });
+      if (!putResp.ok) {
+        return { ok: false, error: `更新 n8n 工作流失败（HTTP ${putResp.status}）` };
+      }
+      // 3) 保持激活
+      const active = Boolean(wf.active);
+      if (active) {
+        await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}/activate`, {
+          method: "POST",
+          headers: { "X-N8N-API-KEY": apiKey },
+        });
+      }
+      return { ok: true, minute, cron, active };
+    } catch (error) {
+      return { ok: false, error: String(error && error.message || error) };
+    }
+  }
+
+  /** 设置多国校验定时（分钟），保存配置并同步到 n8n。minute: 0-59。 */
+  async function setMcSchedule({ minute } = {}) {
+    const m = Number(minute);
+    if (!Number.isInteger(m) || m < 0 || m > 59) {
+      throw Object.assign(new Error("定时分钟必须是 0-59 的整数"), { statusCode: 400 });
+    }
+    await writeJsonFileAtomic(await schedulePath(), { minute: m });
+    const sync = await applyMcScheduleToN8n(m);
+    return { ok: sync.ok, minute: m, sync };
+  }
+
   return {
     list,
     get,
@@ -418,5 +516,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     resolveEnv,
     listCheckResults,
     appendCheckResult,
+    getMcSchedule,
+    setMcSchedule,
   };
 }

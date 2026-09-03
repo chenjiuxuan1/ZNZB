@@ -31,7 +31,14 @@ export function renderAlertRegistry(root) {
     </section>
     <section class="panel">
       <div class="panel-title">多国一致性校验 · 最近 200 次结果</div>
-      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。</div>
+      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。定时默认每小时 55 分，可在下方调整。</div>
+      <div class="mc-schedule">
+        <span class="mc-schedule-label">⏰ 定时校验：每小时</span>
+        <input type="number" id="mc-schedule-minute" min="0" max="59" value="55" class="mc-schedule-input" />
+        <span class="mc-schedule-label">分</span>
+        <button class="mc-page-btn" id="mc-schedule-save">保存</button>
+        <span class="mc-schedule-status" id="mc-schedule-status"></span>
+      </div>
       <div class="mc-toolbar">
         <label class="mc-filter-check"><input type="checkbox" id="mc-only-alert" /> 只看异常</label>
         <select id="mc-country-filter"><option value="">全部国家</option></select>
@@ -85,6 +92,41 @@ async function loadMcResults(root) {
     countrySel.value = mcState.country;
   }
   renderMcResults(root);
+  loadMcSchedule(root);
+}
+
+/** 加载并绑定多国校验定时设置（默认每小时 55 分，页面可改）。 */
+async function loadMcSchedule(root) {
+  const input = root.querySelector("#mc-schedule-minute");
+  const saveBtn = root.querySelector("#mc-schedule-save");
+  const status = root.querySelector("#mc-schedule-status");
+  if (!input || !saveBtn) return;
+  try {
+    const s = await apiGet("/api/multi-country/schedule");
+    if (s && Number.isInteger(s.minute)) input.value = s.minute;
+  } catch (e) {
+    if (status) status.textContent = "读取定时配置失败";
+  }
+  if (status) status.textContent = "";
+  saveBtn.onclick = async () => {
+    const minute = Number(input.value);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      if (status) { status.textContent = "请输入 0-59 的整数分钟"; status.className = "mc-schedule-status error"; }
+      return;
+    }
+    if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+    try {
+      const res = await apiPut("/api/multi-country/schedule", { minute });
+      if (res && res.ok) {
+        if (status) { status.textContent = `✅ 已保存：每小时 ${res.minute} 分校验`; status.className = "mc-schedule-status ok"; }
+      } else {
+        const err = res && res.sync && res.sync.error ? res.sync.error : "保存失败";
+        if (status) { status.textContent = `❌ ${err}`; status.className = "mc-schedule-status error"; }
+      }
+    } catch (e) {
+      if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+    }
+  };
 }
 
 /** 渲染当前筛选 + 分页下的多国校验结果。 */
