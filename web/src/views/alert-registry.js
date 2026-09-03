@@ -176,12 +176,13 @@ async function loadMcNotify(root) {
         next[code] = { contacts, phone, group, strikeThreshold: threshold };
         nextOwners[code] = ownerList;
       }
-      const nextChatId = Number(body.querySelector(".mc-group-chatid")?.value);
-      if (!Number.isFinite(nextChatId)) {
-        if (status) { status.textContent = "❌ chat id 必须是数字"; status.className = "mc-schedule-status error"; }
+      const rawChatId = (body.querySelector(".mc-group-chatid")?.value || "").trim();
+      if (!rawChatId || !/^-?\d+$/.test(rawChatId)) {
+        if (status) { status.textContent = "❌ chat id 必须是数字且不能为空"; status.className = "mc-schedule-status error"; }
         mcNotifyState.saving = false;
         return;
       }
+      const nextChatId = Number(rawChatId);
       try {
         const [nres, gres] = await Promise.all([
           apiPut("/api/multi-country/notify", { countries: next }),
