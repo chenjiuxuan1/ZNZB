@@ -215,6 +215,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     const raw = await readJsonFile(file, { alerts: [] });
     const alerts = ensureArray(raw.alerts || raw).map(normalizeEntry).map((entry) => ({
       ...entry,
+      // 多国校验条目统一关联 n8n 工作流（页面启停 = 开关工作流定时任务）
+      n8nWorkflowId: entry.n8nWorkflowId || (entry.id.startsWith("mc_") ? MC_WORKFLOW_ID : ""),
       repoDir: resolveEnv(entry.repoDir),
     }));
     return {
@@ -231,7 +233,21 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
 
   async function list() {
     const { alerts } = await load();
-    return alerts;
+    // 对关联 n8n 工作流的条目，用 n8n 真实 active 状态覆盖（mc_* 与工作流 E4B4... 共享状态）
+    const n8nCache = {};
+    const enriched = [];
+    for (const entry of alerts) {
+      const wfId = entry.n8nWorkflowId;
+      if (wfId) {
+        if (!(wfId in n8nCache)) {
+          n8nCache[wfId] = await getN8nWorkflowActive(wfId);
+        }
+        enriched.push({ ...entry, n8nActive: n8nCache[wfId], enabled: n8nCache[wfId] !== null ? Boolean(n8nCache[wfId]) : entry.enabled });
+      } else {
+        enriched.push({ ...entry, n8nActive: null });
+      }
+    }
+    return enriched;
   }
 
   async function get(id) {
@@ -308,10 +324,19 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     if (index === -1) {
       throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
     }
-    const merged = normalizeEntry({ ...alerts[index], ...input, id, updatedAt: new Date().toISOString() });
+    const prev = alerts[index];
+    const merged = normalizeEntry({ ...prev, ...input, id, updatedAt: new Date().toISOString() });
+    let n8nSync = null;
+    // 启停状态变化 + 有关联 n8n 工作流（mc_* 多国校验）：同步 n8n 工作流 active（开关定时任务）
+    if (prev.n8nWorkflowId && typeof input.enabled === "boolean" && input.enabled !== prev.enabled) {
+      n8nSync = await setN8nWorkflowActive(prev.n8nWorkflowId, Boolean(input.enabled));
+      if (!n8nSync.ok) {
+        throw Object.assign(new Error(`同步 n8n 工作流失败：${n8nSync.error}`), { statusCode: 502 });
+      }
+    }
     alerts[index] = merged;
     await save(alerts);
-    return merged;
+    return { ...merged, n8nSync, n8nActive: n8nSync ? n8nSync.active : null };
   }
 
   async function remove(id) {
@@ -324,8 +349,61 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return { ok: true, id };
   }
 
+  /** 查询 n8n 工作流当前 active 状态；失败返回 null（不覆盖本地 enabled）。 */
+  async function getN8nWorkflowActive(workflowId) {
+    const base = process.env.N8N_BASE_URL || "";
+    const apiKey = process.env.N8N_API_KEY || "";
+    if (!workflowId || !base || !apiKey) return null;
+    try {
+      const resp = await fetchCompatible(`${base}/api/v1/workflows/${workflowId}`, {
+        headers: { "X-N8N-API-KEY": apiKey },
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return Boolean(data && data.active);
+    } catch (e) {
+      console.log(`查询 n8n 工作流 ${workflowId} 状态失败:`, String(e && (e.message || e)).slice(0, 200));
+      return null;
+    }
+  }
+
+  /** 设置 n8n 工作流 active/deactive；返回 { ok, active }。 */
+  async function setN8nWorkflowActive(workflowId, active) {
+    const base = process.env.N8N_BASE_URL || "";
+    const apiKey = process.env.N8N_API_KEY || "";
+    if (!workflowId || !base || !apiKey) {
+      return { ok: false, error: "未配置 N8N_BASE_URL / N8N_API_KEY" };
+    }
+    try {
+      const url = active ? "activate" : "deactivate";
+      const resp = await fetchCompatible(`${base}/api/v1/workflows/${workflowId}/${url}`, {
+        method: "POST",
+        headers: { "X-N8N-API-KEY": apiKey, "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (!resp.ok) {
+        return { ok: false, error: `n8n 工作流 ${active ? "激活" : "停用"}失败（HTTP ${resp.status}）` };
+      }
+      const data = await resp.json();
+      return { ok: true, active: Boolean(data && data.active) };
+    } catch (e) {
+      return { ok: false, error: String(e && (e.message || e)).slice(0, 300) };
+    }
+  }
+
   async function setEnabled(id, enabled) {
-    return update(id, { enabled: Boolean(enabled) });
+    const entry = await get(id);
+    const want = Boolean(enabled);
+    let n8nSync = null;
+    // 有关联 n8n 工作流（mc_* 多国校验）的条目：启停 = 开关工作流定时任务
+    if (entry && entry.n8nWorkflowId) {
+      n8nSync = await setN8nWorkflowActive(entry.n8nWorkflowId, want);
+      if (!n8nSync.ok) {
+        throw Object.assign(new Error(`同步 n8n 工作流失败：${n8nSync.error}`), { statusCode: 502 });
+      }
+    }
+    const updated = await update(id, { enabled: want });
+    return { ...updated, n8nSync, n8nActive: n8nSync ? n8nSync.active : null };
   }
 
   /** 测试执行：按条目的 runVia/command 跑 dry-run，返回 stdout/stderr/exitCode。 */
