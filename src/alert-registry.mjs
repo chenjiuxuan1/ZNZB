@@ -41,6 +41,20 @@ const MC_SCHEDULE_FILE = "config/mc-schedule.json";
 const DEFAULT_MC_SCHEDULE = { minute: 55 };
 const MC_WORKFLOW_ID = "E4B4wNzcUG0ow6BL"; // 多国一致性校验告警
 const MC_SCHEDULE_TRIGGER_NODE = "每小时定时触发";
+// 多国校验 · 电话通知配置（国家 -> 联系人 + 通知开关 + 电话阈值）
+const MC_NOTIFY_FILE = "config/mc-notify.json";
+const MC_STRIKE_FILE = "config/mc-strike.json";
+const MC_COUNTRIES = ["cn", "id", "mx", "th", "ph", "pk"];
+const DEFAULT_MC_NOTIFY = {
+  countries: {
+    cn: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    id: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    mx: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    th: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    ph: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    pk: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+  },
+};
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
@@ -403,7 +417,110 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     };
     const runs = [run, ...(data.runs || [])].slice(0, MULTI_COUNTRY_RESULTS_KEEP);
     await writeJsonFileAtomic(await resultsPath(), { runs });
-    return { ok: true, kept: runs.length, limit: MULTI_COUNTRY_RESULTS_KEEP, run };
+    // 维护每国连续异常计数（异常 +1，无异常归零），达到阈值且开启电话时标记 phoneNeeded
+    const notify = await loadMcNotify();
+    const strike = await loadMcStrike();
+    const counts = { ...strike.counts };
+    for (const code of MC_COUNTRIES) {
+      const c = run.countries.find((x) => (x.code || "").toLowerCase() === code);
+      const hasMismatch = Boolean(c && Array.isArray(c.mismatches) && c.mismatches.length > 0);
+      counts[code] = hasMismatch ? (counts[code] || 0) + 1 : 0;
+    }
+    await writeJsonFileAtomic(await strikePath(), { counts });
+    const phoneNeeded = MC_COUNTRIES.filter((code) => {
+      const cfg = notify.countries[code] || {};
+      return cfg.phone !== false && counts[code] >= (cfg.strikeThreshold || 6);
+    });
+    return { ok: true, kept: runs.length, limit: MULTI_COUNTRY_RESULTS_KEEP, run, phoneNeeded, strikes: counts };
+  }
+
+  // ---- 多国校验 · 电话通知配置（页面可调） ----
+
+  async function notifyPath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_NOTIFY_FILE);
+  }
+
+  async function strikePath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_STRIKE_FILE);
+  }
+
+  async function loadMcNotify() {
+    const file = await notifyPath();
+    const data = await readJsonFile(file, {});
+    // 合并默认结构，确保 6 国都存在
+    const countries = {};
+    for (const code of MC_COUNTRIES) {
+      const c = (data.countries || {})[code] || {};
+      countries[code] = {
+        contacts: Array.isArray(c.contacts) ? c.contacts.map(String) : [],
+        phone: c.phone !== false,
+        group: c.group !== false,
+        strikeThreshold: Number.isInteger(c.strikeThreshold) ? c.strikeThreshold : 6,
+      };
+    }
+    return { countries };
+  }
+
+  async function loadMcStrike() {
+    const file = await strikePath();
+    const data = await readJsonFile(file, {});
+    return { counts: data.counts || {} };
+  }
+
+  /** 读取多国校验电话通知配置。 */
+  async function getMcNotify() {
+    return loadMcNotify();
+  }
+
+  /** 保存多国校验电话通知配置。cfg: { countries: { code: {contacts, phone, group, strikeThreshold} } } */
+  async function setMcNotify(cfg = {}) {
+    const current = await loadMcNotify();
+    const countries = current.countries;
+    const next = cfg.countries || {};
+    for (const code of MC_COUNTRIES) {
+      const n = next[code] || {};
+      if (!(code in next)) continue;
+      countries[code] = {
+        contacts: Array.isArray(n.contacts) ? n.contacts.map(String).slice(0, 20) : [],
+        phone: n.phone !== false,
+        group: n.group !== false,
+        strikeThreshold: Number.isInteger(Number(n.strikeThreshold)) ? Math.max(1, Math.min(99, Number(n.strikeThreshold))) : 6,
+      };
+    }
+    await writeJsonFileAtomic(await notifyPath(), { countries });
+    return { ok: true, countries };
+  }
+
+  /** 获取当前连续异常计数。 */
+  async function getMcStrikes() {
+    return loadMcStrike();
+  }
+
+  /**
+   * 电话通知入口（n8n 调用）。当前为占位实现：校验目标国家已开启电话通知且达到阈值，
+   * 记录日志返回 ok；实际拨打通道（夜莺 ali-voice 等）后续接入。
+   * body: { countries: [{code, label, contacts}], checkedAt }
+   */
+  async function callMcPhone(body = {}) {
+    const targets = Array.isArray(body.countries) ? body.countries : [];
+    const notify = await loadMcNotify();
+    const resolved = targets
+      .map((t) => {
+        const code = String(t.code || "").toLowerCase();
+        const cfg = notify.countries[code] || {};
+        return {
+          code,
+          label: t.label || code,
+          contacts: Array.isArray(t.contacts) && t.contacts.length > 0 ? t.contacts : cfg.contacts,
+          threshold: cfg.strikeThreshold || 6,
+        };
+      })
+      .filter((t) => MC_COUNTRIES.includes(t.code));
+    console.log(`[mc-phone] ${new Date().toISOString()} 电话通知请求:`, JSON.stringify(resolved));
+    // TODO: 实际电话拨打通道（夜莺 ali-voice / 自定义语音 API）待接入
+    return { ok: true, mode: "placeholder", targets: resolved, note: "电话拨打通道待接入（夜莺 ali-voice）" };
   }
 
   // ---- 多国校验定时（页面可调整，写入 n8n 工作流 ScheduleTrigger） ----
@@ -518,5 +635,9 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     appendCheckResult,
     getMcSchedule,
     setMcSchedule,
+    getMcNotify,
+    setMcNotify,
+    getMcStrikes,
+    callMcPhone,
   };
 }
