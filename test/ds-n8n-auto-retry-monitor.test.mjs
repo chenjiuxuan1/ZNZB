@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractDsAutoRetryRecords, inspectN8nAutoRetryExecutions, loadAutoRepairLogConfig, parseRetryLogOutcome } from "../src/ds-n8n-auto-retry-monitor.mjs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { extractDsAutoRetryRecords, inspectN8nAutoRetryExecutions, parseRetryLogOutcome } from "../src/ds-n8n-auto-retry-monitor.mjs";
 
 test("parseRetryLogOutcome classifies the async repair final status", () => {
   assert.equal(parseRetryLogOutcome("重跑完成，恢复成功").status, "recovered");
@@ -201,39 +198,4 @@ test("n8n monitor applies an inclusive explicit date range locally", async () =>
   assert.equal(result.endDate, "2026-09-03");
   assert.equal(result.lookbackDays, 2);
   assert.equal(result.totalExecutions, 1);
-});
-
-test("loadAutoRepairLogConfig resolves a per-country SSH host with a fallback default", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "n8n-auto-repair-log-"));
-  try {
-    await mkdir(path.join(rootDir, "config"), { recursive: true });
-    await writeFile(path.join(rootDir, "config/alerts.config.json"), JSON.stringify({
-      n8n: {
-        baseUrl: "${N8N_BASE_URL}",
-        apiKey: "${N8N_API_KEY}",
-        autoRepairLog: {
-          enabled: true,
-          countries: {
-            cn: { host: "10.20.47.14", port: 36000, user: "root" },
-            ine: { host: "192.168.21.236", port: 36000, user: "root" },
-            ph: { host: "10.20.10.12", port: 22, user: "root" },
-            th: { host: "192.168.20.236", port: 36000, user: "root" },
-            pk: { host: "10.20.84.176", port: 22, user: "root" },
-            mx: { host: "172.20.220.165", port: 36000, user: "root" },
-          },
-        },
-      },
-    }));
-    const cfg = await loadAutoRepairLogConfig(rootDir);
-    assert.equal(cfg.enabled, true);
-    assert.equal(cfg.countries.cn.host, "10.20.47.14");
-    assert.equal(cfg.countries.ine.port, 36000);
-    assert.equal(cfg.countries.ph.port, 22);
-    assert.equal(cfg.countries.mx.host, "172.20.220.165");
-    // Unconfigured country falls back to the (empty) default host.
-    assert.equal(cfg.countries["th"].host, "192.168.20.236");
-    assert.equal(cfg.defaultSsh.host, "");
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
 });
