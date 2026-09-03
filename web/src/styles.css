@@ -7816,7 +7816,7 @@ button.small[disabled] {
 .inv-dot.other { background: #94a3b8; }
 
 .table-wrap { overflow-x: auto; }
-.ac-inv-table { width: 100%; min-width: 640px; }
+.ac-inv-table { width: 100%; min-width: 640px; table-layout: fixed; }
 .ac-inv-table th { font-size: 12px; white-space: nowrap; }
 .ac-inv-table td { vertical-align: top; padding: 9px 10px; }
 .ac-inv-table tbody tr.is-disabled { opacity: 0.55; }
@@ -7831,6 +7831,14 @@ button.small[disabled] {
 .inv-phone { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
 .inv-alert-names { max-width: 280px; line-height: 1.6; word-break: break-all; }
 .inv-alert-names .muted { white-space: nowrap; }
+.inv-ding-cell { max-width: 240px; min-width: 120px; }
+.inv-ding-cell code { word-break: break-all; }
+.inv-ding-mentions {
+  margin-top: 3px; font-size: 12px; color: #64748b;
+  max-width: 240px; word-break: break-all; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .inv-alert-link { color: #2563eb; text-decoration: none; border-bottom: 1px dashed #93c5fd; cursor: pointer; }
 .inv-alert-link:hover { color: #1d4ed8; border-bottom-style: solid; }
 .inv-cat-block { margin: 10px 0 16px; }
