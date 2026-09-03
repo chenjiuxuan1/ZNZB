@@ -8927,3 +8927,35 @@ select.ar-field {
   gap: 8px;
   margin-top: 6px;
 }
+
+/* ---- 多国校验 · 定时设置 ---- */
+.mc-schedule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+.mc-schedule-label {
+  font-size: 13px;
+  color: #344054;
+}
+.mc-schedule-input {
+  width: 64px;
+  padding: 5px 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+  color: #344054;
+}
+.mc-schedule-status {
+  font-size: 12px;
+  color: #667085;
+}
+.mc-schedule-status.ok { color: #067647; }
+.mc-schedule-status.error { color: #b42318; }
