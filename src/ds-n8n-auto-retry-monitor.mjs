@@ -302,27 +302,52 @@ async function loadN8nClient(rootDir, supplied) {
 }
 
 /**
- * Load the SSH connection used to read the auto-repair assistant's remote retry
- * log. Configure via config/alerts.config.json -> n8n.autoRepairLog, e.g.
- * { "enabled": true, "ssh": { "host": "...", "port": 36000, "user": "root",
- *   "identityFile": "" }, "timeoutMs": 15000 } or the DS_AUTO_REPAIR_SSH_* env.
+ * Load the SSH connection(s) used to read the auto-repair assistant's remote
+ * retry log. Configure via config/alerts.config.json -> n8n.autoRepairLog.
+ * Each country may have its own SSH target, e.g.
+ * { "enabled": true,
+ *   "countries": {
+ *     "cn":  { "host": "10.20.47.14",    "port": 36000, "user": "root" },
+ *     "ine": { "host": "192.168.21.236", "port": 36000, "user": "root" },
+ *     "ph":  { "host": "10.20.10.12",    "port": 22,    "user": "root" },
+ *     "th":  { "host": "192.168.20.236", "port": 36000, "user": "root" },
+ *     "pk":  { "host": "10.20.84.176",   "port": 22,    "user": "root" },
+ *     "mx":  { "host": "172.20.220.165", "port": 36000, "user": "root" }
+ *   },
+ *   "timeoutMs": 15000, "tailLines": 200 }
+ * A top-level "ssh" (or DS_AUTO_REPAIR_SSH_*) entry is used as the fallback for
+ * any country without a dedicated host.
  */
-async function loadAutoRepairLogConfig(rootDir) {
+export async function loadAutoRepairLogConfig(rootDir) {
   const raw = await readJsonFile(path.join(rootDir, "config/alerts.config.json"), {});
   const section = (raw && raw.n8n && raw.n8n.autoRepairLog) || {};
   const ssh = section.ssh || {};
-  const host = process.env.DS_AUTO_REPAIR_SSH_HOST || resolveEnv(ssh.host) || "";
-  const user = process.env.DS_AUTO_REPAIR_SSH_USER || resolveEnv(ssh.user) || "root";
-  const port = Number(process.env.DS_AUTO_REPAIR_SSH_PORT || ssh.port || 22);
-  const identityFile = process.env.DS_AUTO_REPAIR_SSH_IDENTITY || resolveEnv(ssh.identityFile || ssh.keyFile || "");
-  const enabled = section.enabled !== false && Boolean(host);
+  const defaultOptions = ["StrictHostKeyChecking=no", "ConnectTimeout=10"];
+  const defaultSsh = {
+    host: process.env.DS_AUTO_REPAIR_SSH_HOST || resolveEnv(ssh.host) || "",
+    user: process.env.DS_AUTO_REPAIR_SSH_USER || resolveEnv(ssh.user) || "root",
+    port: Number(process.env.DS_AUTO_REPAIR_SSH_PORT || ssh.port || 22),
+    identityFile: process.env.DS_AUTO_REPAIR_SSH_IDENTITY || resolveEnv(ssh.identityFile || ssh.keyFile || ""),
+    options: Array.isArray(ssh.options) ? ssh.options.map((item) => String(item)) : defaultOptions,
+  };
+  const countries = {};
+  for (const [code, cfg] of Object.entries(section.countries || {})) {
+    const normalized = String(code).trim().toLowerCase();
+    if (!normalized) continue;
+    countries[normalized] = {
+      host: resolveEnv(cfg.host) || "",
+      user: resolveEnv(cfg.user) || "root",
+      port: Number(cfg.port || 22),
+      identityFile: resolveEnv(cfg.identityFile || cfg.keyFile || ""),
+      options: Array.isArray(cfg.options) ? cfg.options.map((item) => String(item)) : defaultOptions,
+    };
+  }
+  const hasCountryHost = Object.values(countries).some((entry) => entry.host);
+  const enabled = section.enabled !== false && (Boolean(defaultSsh.host) || hasCountryHost);
   return {
     enabled,
-    host,
-    user,
-    port,
-    identityFile,
-    options: Array.isArray(ssh.options) ? ssh.options.map((item) => String(item)) : ["StrictHostKeyChecking=no", "ConnectTimeout=10"],
+    defaultSsh,
+    countries,
     timeoutMs: Number(section.timeoutMs || 15_000),
     tailLines: Number(section.tailLines || 200),
   };
@@ -555,7 +580,11 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
     if (!repairLogConfig.enabled) {
       return { ...item, retryLogReadStatus: "not_configured" };
     }
-    const read = await readRemoteLogViaSsh({ ...repairLogConfig, logPath: item.n8nLogPath });
+    const ssh = repairLogConfig.countries[item.country] || repairLogConfig.defaultSsh;
+    if (!ssh?.host) {
+      return { ...item, retryLogReadStatus: "not_configured", retryLogError: `国家 ${item.country} 未配置远端日志 SSH` };
+    }
+    const read = await readRemoteLogViaSsh({ ...ssh, logPath: item.n8nLogPath, timeoutMs: repairLogConfig.timeoutMs, tailLines: repairLogConfig.tailLines });
     if (!read.ok) {
       return { ...item, retryLogReadStatus: "failed", retryLogError: read.error };
     }
