@@ -8723,3 +8723,60 @@ select.ar-field {
 .mc-badge-green { background: #dcfce7; color: #15803d; }
 .mc-badge-red { background: #fee2e2; color: #b91c1c; }
 .mc-badge-gray { background: #f1f5f9; color: #475569; }
+
+/* ---- 多国校验 · 校验语句与差异明细 ---- */
+.mc-detail {
+  margin-top: 8px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #fafafa;
+  padding: 6px 10px;
+}
+.mc-detail summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+  padding: 2px 0;
+  user-select: none;
+}
+.mc-sql-title {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.mc-sql {
+  margin: 4px 0 8px;
+  padding: 8px;
+  background: #0f172a;
+  color: #d1d5db;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.mc-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.mc-detail-table th, .mc-detail-table td {
+  border: 1px solid #e4e7ec;
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.mc-detail-table th {
+  background: #f2f4f7;
+  color: #475569;
+  font-weight: 600;
+}
+.mc-detail-table td {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #344054;
+}
