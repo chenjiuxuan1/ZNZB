@@ -1173,12 +1173,12 @@ function renderInvTable(rules, kind) {
                     ${escapeHtml(u.nickname || u.username)}
                     ${u.phone ? `<span class="muted small">${escapeHtml(u.phone)}</span>` : ""}
                   </span>` : `
-                  <span class="inv-user inv-user-missing" title="该 user_id 已不在夜莺用户表（可能已删除/失效），需在编辑中移除或改填有效用户">
-                    ⚠️ ${escapeHtml(u.username || `用户 id=${u.id}`)}${u.phone ? ` · ${escapeHtml(u.phone)}` : ""}
+                  <span class="inv-user inv-user-missing" title="通知规则引用了该用户 ID，但该用户已不在夜莺用户表（可能已被删除）。告警将无法拨打到该人，建议点「编辑」移除或替换为有效接收人。">
+                    ⚠️ 已失效用户 #${escapeHtml(String(u.id ?? u.username).replace(/^用户/, ""))}${u.phone ? ` · ${escapeHtml(u.phone)}` : ""}
                   </span>`}
                 `).join("") : `<span class="muted small">未指定用户</span>`}
               </td>
-              ${kind === "phone" ? `<td class="small">${r.fixedPhones?.length ? r.fixedPhones.map((p) => `<span class="inv-phone">${escapeHtml(p)}</span>`).join(" ") : `<span class="muted small">-</span>`}</td>` : ""}
+              ${kind === "phone" ? `<td class="inv-phones-cell">${r.fixedPhones?.length ? `<div class="inv-phones">${r.fixedPhones.map((p) => `<span class="inv-phone">${escapeHtml(p)}</span>`).join("")}</div>` : `<span class="muted small">-</span>`}</td>` : ""}
               ${kind === "dingtalk" ? `<td class="inv-ding-cell">${r.botId ? `<span class="muted small">机器人 <code>${escapeHtml(String(r.botId).slice(0, 10))}…</code></span>` : `<span class="muted small">-</span>`}${r.mentions ? `<div class="inv-ding-mentions" title="${escapeHtml(r.mentions)}">@ ${escapeHtml(r.mentions)}</div>` : ""}</td>` : ""}
               <td class="small">
                 <span class="badge ${r.alertRuleCount ? "" : "warn"}">${escapeHtml(r.alertRuleCount ?? 0)}</span>
