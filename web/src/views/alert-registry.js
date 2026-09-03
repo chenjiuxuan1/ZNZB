@@ -73,6 +73,28 @@ async function loadMcResults(root) {
       return `<span class="${cls}">${escapeHtml(c.label || c.code || "")}${detail}</span>`;
     }).join(" ");
     const alertMark = run.hasAlert ? ` <span class="mc-badge mc-badge-red">异常</span>` : ` <span class="mc-badge mc-badge-green">正常</span>`;
+    const countries = run.countries || [];
+    const detailPanels = countries.map((c, ci) => {
+      const m = c.mismatches || [];
+      const dets = c.details || [];
+      const sql = c.sql || c.detailSql || "";
+      if (!m.length && !sql) return "";
+      const mismatchRows = m.map((x) => `<tr><td>${escapeHtml(x.check_item)}</td><td>${escapeHtml(x.mismatch_cnt)}</td><td></td><td></td><td></td></tr>`).join("");
+      const detailRows = dets.map((d) => `<tr><td>${escapeHtml(d.check_item)}</td><td>${escapeHtml(d.asset_item_no)}</td><td>${escapeHtml(d.user_id)}</td><td>${escapeHtml(d.src_value)}</td><td>${escapeHtml(d.dest_value)}</td></tr>`).join("");
+      return `
+        <details class="mc-detail">
+          <summary>📄 ${escapeHtml(c.label || c.code || "")} · 校验语句与差异明细</summary>
+          ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）</div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
+          <table class="mc-detail-table">
+            <thead><tr><th>检查项</th><th>资产号</th><th>用户ID</th><th>源值(资产侧)</th><th>目标值(汇总侧)</th></tr></thead>
+            <tbody>
+              ${mismatchRows}
+              ${detailRows}
+            </tbody>
+          </table>
+        </details>
+      `;
+    }).join("");
     return `
       <div class="mc-run ${idx === 0 ? "mc-run-latest" : ""}">
         <div class="mc-run-head">
@@ -81,6 +103,7 @@ async function loadMcResults(root) {
           ${alertMark}
         </div>
         <div class="mc-run-countries">${summary || `<span class="mc-badge mc-badge-gray">无国家数据</span>`}</div>
+        ${detailPanels}
       </div>
     `;
   }).join("");
