@@ -67,6 +67,7 @@ const RETRYABLE_FAILURE_PATTERNS = [
   /\bexecutor lost\b|\bworker (?:lost|unavailable|disconnected)\b|\bnode lost\b/i,
   /\bno available worker\b|\bworker.+(?:offline|down)\b/i,
   /\bconnection (?:reset|refused|closed|timed out)\b|\bsocket hang up\b|\bbroken pipe\b|\bnetwork (?:error|unreachable)\b/i,
+  /\beofexception\b|\bcan not read response from server\b|\bconnection was unexpectedly lost\b|\bresponse from server\b/i,
   /\btemporary(?:ily)? unavailable\b|\bservice unavailable\b|\btoo many requests\b/i,
   /\bresource (?:limit|quota|shortage|insufficient|unavailable)\b|资源(?:不足|超限|紧张)/i,
   /\btimeout\b|\btimed out\b|超时/i,
@@ -458,12 +459,34 @@ export function extractDsFailureReason(log, fallback = "") {
     return "任务日志只返回了程序调用栈，未解析到明确业务失败原因";
   }
   const candidate = candidates[0]?.line || String(fallback || "").trim();
-  if (!candidate) return "任务日志未返回明确失败原因";
+  if (!candidate) {
+    // Distinguish "the gateway returned no log" from "a log exists but no
+    // parseable reason". Long-running SHELL/Flink jobs often put the real error
+    // in the last lines, so fall back to scanning the log tail.
+    if (!rawLog.trim()) {
+      return "DS 网关未返回任务日志内容，无法解析失败原因";
+    }
+    const tailError = extractTailErrorLine(rawLog);
+    return tailError ? `${tailError}（日志尾部疑似报错，请结合完整任务日志核对）` : "任务日志未返回明确失败原因";
+  }
   if (stackFrame(candidate)) return "任务日志只返回了程序调用栈，未解析到明确业务失败原因";
   return candidate
     .replace(/^.*?Caused by\s*:\s*/i, "")
     .replace(/^.*?\bERROR\b\s*[-:：]?\s*/i, "")
     .trim().slice(0, 1000) || candidate.slice(0, 1000);
+}
+
+function extractTailErrorLine(log) {
+  const lines = String(log || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const tail = lines.slice(-50);
+  const errors = tail.filter((line) => (
+    !/^\s*(?:at\s+[\w$<>./]+\(|\.\.\.\s+\d+\s+more)/i.test(line)
+    && /(?:Exception|Error|ERROR|FAILED|SQL执行失败|拒绝访问|拒绝连接|EOFException|Lost connection|Connection refused|Killed|Cannot|Unable|abort)/i.test(line)
+  ));
+  if (!errors.length) return "";
+  const specific = errors.find((line) => /(?:EOFException|SQLException|Exception|ConnectException|SocketException|Lost connection|Connection refused)/i.test(line))
+    || errors[errors.length - 1];
+  return specific.trim().slice(0, 300);
 }
 
 export function classifyOriginalScheduledFailures(instances = [], { projectName = "", projectCode = "", now = new Date() } = {}) {
@@ -958,6 +981,7 @@ export function classifyDsFailureReason(reason = "") {
     /resource (?:queue|pool).+(?:full|insufficient|unavailable)/,
     /no available worker/, /worker.+(?:unavailable|offline|down|lost)/,
     /connection (?:reset|refused|timed? out|closed)/, /network (?:error|unreachable)/,
+    /eofexception/, /can not read response from server/, /connection was unexpectedly lost/, /response from server/,
     /temporary (?:failure|unavailable)/, /transient/, /socket hang up/, /broken pipe/,
     /remote host/, /no associated load channel/,
   ];
