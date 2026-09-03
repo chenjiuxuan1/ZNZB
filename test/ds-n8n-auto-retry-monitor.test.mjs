@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractDsAutoRetryRecords, inspectN8nAutoRetryExecutions, parseRetryLogOutcome } from "../src/ds-n8n-auto-retry-monitor.mjs";
+import {
+  extractDsAutoRetryRecords,
+  inspectN8nAutoRetryExecutions,
+  parseRetryLogOutcome,
+  resolveAutoRepairLogPath,
+} from "../src/ds-n8n-auto-retry-monitor.mjs";
 
 test("parseRetryLogOutcome classifies the async repair final status", () => {
   assert.equal(parseRetryLogOutcome("重跑完成，恢复成功").status, "recovered");
@@ -11,6 +16,22 @@ test("parseRetryLogOutcome classifies the async repair final status", () => {
   assert.equal(parseRetryLogOutcome("仍在运行，尚未完成").status, "running");
   assert.equal(parseRetryLogOutcome("").status, "unknown");
   assert.equal(parseRetryLogOutcome("no clear marker").status, "unknown");
+});
+
+test("resolveAutoRepairLogPath reconstructs unresolved legacy n8n paths", () => {
+  assert.equal(
+    resolveAutoRepairLogPath({
+      country: "ine",
+      n8nRequestId: "ine-ds-alert-1788357218021",
+      n8nLogPath: "/${country.key}_ds_failed_auto_retry_${requestId}.log",
+    }),
+    "/root/Global-Intelligent-Alarm-Repair-Assistant/auto_repair_records/ds_failed_auto_retry_logs/ine_ds_failed_auto_retry_ine-ds-alert-1788357218021.log",
+  );
+  assert.equal(
+    resolveAutoRepairLogPath({ country: "ph", n8nRequestId: "req-1", n8nLogPath: "/root/concrete.log" }),
+    "/root/concrete.log",
+  );
+  assert.equal(resolveAutoRepairLogPath({ country: "ine", n8nRequestId: "bad/request" }), "");
 });
 
 
