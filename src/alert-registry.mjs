@@ -60,16 +60,17 @@ const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
 
 // 多国校验 · 发送群配置（群 chat id + 各国家负责人 @ 清单，有报警时在通知末尾 @ 对应负责人）
+// 负责人默认留空，由用户在页面「通知配置」里自行填写。
 const MC_GROUP_FILE = "config/mc-group.json";
 const DEFAULT_MC_GROUP = {
   chatId: -1073807215,
   owners: {
-    cn: ["owenzhang@kn.group", "rockyzong@kn.group", "adamyu@kn.group"],
-    id: ["gretchenhe@kn.group", "riverzhai@kn.group", "pengshanxiu@kn.group", "hongbotong@kn.group", "hawkinshe.j@kn.group"],
-    mx: ["kuiwu@kn.group", "enzodeng@kn.group"],
-    th: ["qilonghuang@kn.group"],
-    ph: ["simontang@kn.group", "jiangchuanchen@kn.group"],
-    pk: ["adamyu@kn.group", "moonmu@kn.group"],
+    cn: [],
+    id: [],
+    mx: [],
+    th: [],
+    ph: [],
+    pk: [],
   },
 };
 
