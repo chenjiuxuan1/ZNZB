@@ -372,6 +372,9 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/alerts/overview") {
     return sendJson(response, 200, await alertCenter.getMonitorOverview());
   }
+  if (method === "GET" && url.pathname === "/api/alerts/inventory") {
+    return sendJson(response, 200, await alertCenter.getAlertsInventory());
+  }
   if (method === "GET" && url.pathname === "/api/alerts/active") {
     const params = Object.fromEntries(url.searchParams.entries());
     return sendJson(response, 200, await alertCenter.getActiveAlerts({
