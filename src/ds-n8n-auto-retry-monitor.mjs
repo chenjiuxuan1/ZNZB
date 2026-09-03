@@ -1,7 +1,7 @@
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { N8nClient } from "./n8n-client.mjs";
-import { resolveN8nDsFailureEvidence } from "./ds-failure-log-monitor.mjs";
+import { postDsFailureAction, resolveN8nDsFailureEvidence } from "./ds-failure-log-monitor.mjs";
+import { loadDsSchedulerConfig } from "./ds-scheduler-monitor.mjs";
 import { deepMapStrings, loadEnvFile, readJsonFile } from "./utils.mjs";
 
 const COUNTRIES = ["cn", "ine", "ph", "th", "pk", "mx"];
@@ -302,87 +302,40 @@ async function loadN8nClient(rootDir, supplied) {
 }
 
 /**
- * Load the SSH connection(s) used to read the auto-repair assistant's remote
- * retry log. Configure via config/alerts.config.json -> n8n.autoRepairLog.
- * Each country may have its own SSH target, e.g.
- * { "enabled": true,
- *   "countries": {
- *     "cn":  { "host": "10.20.47.14",    "port": 36000, "user": "root" },
- *     "ine": { "host": "192.168.21.236", "port": 36000, "user": "root" },
- *     "ph":  { "host": "10.20.10.12",    "port": 22,    "user": "root" },
- *     "th":  { "host": "192.168.20.236", "port": 36000, "user": "root" },
- *     "pk":  { "host": "10.20.84.176",   "port": 22,    "user": "root" },
- *     "mx":  { "host": "172.20.220.165", "port": 36000, "user": "root" }
- *   },
- *   "timeoutMs": 15000, "tailLines": 200 }
- * A top-level "ssh" (or DS_AUTO_REPAIR_SSH_*) entry is used as the fallback for
- * any country without a dedicated host.
+ * Read the tail of an auto-repair retry log through the existing DS scheduler
+ * gateway (the ds-scheduler-router n8n webhook), which already routes each
+ * country to its jump host over SSH. This keeps all SSH connectivity inside the
+ * gateway so ZNZB needs no per-country SSH config — it only reuses the DS
+ * webhook URL + per-country token it already holds. Requires a
+ * "get_auto_repair_log" gateway action (payload { log_path }) that runs
+ * `tail -n N <log_path>` on the country jump host.
  */
-export async function loadAutoRepairLogConfig(rootDir) {
-  const raw = await readJsonFile(path.join(rootDir, "config/alerts.config.json"), {});
-  const section = (raw && raw.n8n && raw.n8n.autoRepairLog) || {};
-  const ssh = section.ssh || {};
-  const defaultOptions = ["StrictHostKeyChecking=no", "ConnectTimeout=10"];
-  const defaultSsh = {
-    host: process.env.DS_AUTO_REPAIR_SSH_HOST || resolveEnv(ssh.host) || "",
-    user: process.env.DS_AUTO_REPAIR_SSH_USER || resolveEnv(ssh.user) || "root",
-    port: Number(process.env.DS_AUTO_REPAIR_SSH_PORT || ssh.port || 22),
-    identityFile: process.env.DS_AUTO_REPAIR_SSH_IDENTITY || resolveEnv(ssh.identityFile || ssh.keyFile || ""),
-    options: Array.isArray(ssh.options) ? ssh.options.map((item) => String(item)) : defaultOptions,
-  };
-  const countries = {};
-  for (const [code, cfg] of Object.entries(section.countries || {})) {
-    const normalized = String(code).trim().toLowerCase();
-    if (!normalized) continue;
-    countries[normalized] = {
-      host: resolveEnv(cfg.host) || "",
-      user: resolveEnv(cfg.user) || "root",
-      port: Number(cfg.port || 22),
-      identityFile: resolveEnv(cfg.identityFile || cfg.keyFile || ""),
-      options: Array.isArray(cfg.options) ? cfg.options.map((item) => String(item)) : defaultOptions,
-    };
+async function readAutoRepairLogViaGateway(rootDir, country, logPath) {
+  const config = await loadDsSchedulerConfig(rootDir);
+  const countryConfig = config.countries?.[country] || {};
+  const token = String(countryConfig.token || "").trim();
+  const webhookUrl = String(config.n8nWebhookUrl || "").trim();
+  if (!webhookUrl || !token) {
+    return { ok: false, error: "该国家 DS 网关未配置，无法读取重跑日志" };
   }
-  const hasCountryHost = Object.values(countries).some((entry) => entry.host);
-  const enabled = section.enabled !== false && (Boolean(defaultSsh.host) || hasCountryHost);
-  return {
-    enabled,
-    defaultSsh,
-    countries,
-    timeoutMs: Number(section.timeoutMs || 15_000),
-    tailLines: Number(section.tailLines || 200),
-  };
-}
-
-/** Read the tail of a remote log over SSH. Returns { ok, content, error }. */
-function readRemoteLogViaSsh({ host, user, port, identityFile, options, timeoutMs = 15_000, tailLines = 200, logPath }) {
-  return new Promise((resolve) => {
-    if (!host || !logPath) return resolve({ ok: false, error: "未配置远端日志读取（缺少 SSH 主机或日志路径）" });
-    const safePath = String(logPath).replace(/^~\/?/, "").replace(/'/g, "'\\''");
-    const args = [];
-    if (port) args.push("-p", String(port));
-    if (identityFile) args.push("-i", identityFile);
-    for (const option of options || []) args.push("-o", option);
-    args.push(`${user ? `${user}@` : ""}${host}`);
-    args.push(`tail -n ${Math.max(10, Number(tailLines) || 200)} '${safePath}'`);
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const child = spawn("ssh", args, { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
-    const timer = setTimeout(() => { child.kill("SIGTERM"); }, timeoutMs);
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(result);
-    };
-    child.on("error", (error) => finish({ ok: false, error: error.message }));
-    child.on("close", (code) => {
-      if (code !== 0) return finish({ ok: false, error: stderr.trim() || `SSH 退出码 ${code}` });
-      finish({ ok: true, content: stdout });
+  try {
+    const response = await postDsFailureAction({
+      webhookUrl,
+      country,
+      token,
+      action: "get_auto_repair_log",
+      payload: { log_path: logPath },
     });
-  });
+    const data = (response && typeof response === "object" ? response.data : undefined)
+      || (response && typeof response === "object" ? response : {});
+    const content = String(data.log || data.log_content || data.content || "").trim();
+    if (!content) {
+      return { ok: false, error: String(data.error?.message || data.error || "网关未返回重跑日志内容") };
+    }
+    return { ok: true, content };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
 }
 
 /**
@@ -572,19 +525,11 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   // items carrying a log path are read; missing/unknown outcomes stay unknown
   // and read failures are surfaced separately instead of masquerading as
   // "pending confirmation".
-  const repairLogConfig = await loadAutoRepairLogConfig(rootDir);
   const finalItems = await mapWithConcurrency(deduped, 4, async (item) => {
     if (!item.n8nLogPath) {
-      return { ...item, retryLogReadStatus: repairLogConfig.enabled ? "skipped" : "not_configured" };
+      return { ...item, retryLogReadStatus: "skipped" };
     }
-    if (!repairLogConfig.enabled) {
-      return { ...item, retryLogReadStatus: "not_configured" };
-    }
-    const ssh = repairLogConfig.countries[item.country] || repairLogConfig.defaultSsh;
-    if (!ssh?.host) {
-      return { ...item, retryLogReadStatus: "not_configured", retryLogError: `国家 ${item.country} 未配置远端日志 SSH` };
-    }
-    const read = await readRemoteLogViaSsh({ ...ssh, logPath: item.n8nLogPath, timeoutMs: repairLogConfig.timeoutMs, tailLines: repairLogConfig.tailLines });
+    const read = await readAutoRepairLogViaGateway(rootDir, item.country, item.n8nLogPath);
     if (!read.ok) {
       return { ...item, retryLogReadStatus: "failed", retryLogError: read.error };
     }
