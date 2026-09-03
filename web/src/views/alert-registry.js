@@ -44,6 +44,10 @@ export function renderAlertRegistry(root) {
         <select id="mc-country-filter"><option value="">全部国家</option></select>
         <div class="mc-pager" id="mc-pager"></div>
       </div>
+      <details class="mc-notify" id="mc-notify-panel">
+        <summary>📞 电话通知配置（同国连续 N 次异常未处理，自动打电话给对应联系人）</summary>
+        <div class="mc-notify-body" id="mc-notify-body"></div>
+      </details>
       <div id="mc-results"></div>
     </section>
   `;
@@ -94,9 +98,82 @@ async function loadMcResults(root) {
   }
   renderMcResults(root);
   loadMcSchedule(root);
+  loadMcNotify(root);
 }
 
-/** 加载并绑定多国校验定时设置（默认每小时 55 分，页面可改）。 */
+/** 多国校验 · 电话通知配置状态。 */
+const mcNotifyState = { countries: {}, saving: false };
+
+/** 加载并绑定多国校验电话通知配置（每国联系人 + 电话/群消息开关 + 电话阈值）。 */
+async function loadMcNotify(root) {
+  const body = root.querySelector("#mc-notify-body");
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载通知配置…</div>`;
+  let cfg;
+  try {
+    cfg = await apiGet("/api/multi-country/notify");
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  const countries = (cfg && cfg.countries) || {};
+  mcNotifyState.countries = countries;
+  const countryNames = { cn: "中国", id: "印尼", mx: "墨西哥", th: "泰国", ph: "菲律宾", pk: "巴基斯坦" };
+  const order = ["cn", "id", "mx", "th", "ph", "pk"];
+  const rows = order
+    .filter((code) => countries[code])
+    .map((code) => {
+      const c = countries[code];
+      return `
+        <div class="mc-notify-row" data-code="${code}">
+          <span class="mc-notify-country">${escapeHtml(countryNames[code] || code)}</span>
+          <input type="text" class="mc-notify-contacts" data-code="${code}" value="${escapeHtml((c.contacts || []).join(","))}" placeholder="手机号/夜莺用户名，多个用逗号分隔" />
+          <label class="mc-notify-toggle"><input type="checkbox" data-code="${code}" data-field="phone" ${c.phone !== false ? "checked" : ""} /> 电话</label>
+          <label class="mc-notify-toggle"><input type="checkbox" data-code="${code}" data-field="group" ${c.group !== false ? "checked" : ""} /> 群消息</label>
+          <label class="mc-notify-threshold">连续 <input type="number" class="mc-notify-num" data-code="${code}" data-field="strikeThreshold" min="1" max="99" value="${c.strikeThreshold || 6}" /> 次打</label>
+        </div>
+      `;
+    })
+    .join("");
+  body.innerHTML = `
+    <div class="mc-notify-rows">${rows}</div>
+    <div class="mc-notify-actions">
+      <button class="mc-page-btn" id="mc-notify-save">保存通知配置</button>
+      <span class="mc-schedule-status" id="mc-notify-status"></span>
+    </div>`;
+  const saveBtn = root.querySelector("#mc-notify-save");
+  const status = root.querySelector("#mc-notify-status");
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      if (mcNotifyState.saving) return;
+      mcNotifyState.saving = true;
+      if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+      const next = {};
+      for (const code of order) {
+        if (!countries[code]) continue;
+        const row = body.querySelector(`.mc-notify-row[data-code="${code}"]`);
+        if (!row) continue;
+        const contacts = (row.querySelector(".mc-notify-contacts")?.value || "").split(",").map((s) => s.trim()).filter(Boolean);
+        const phone = row.querySelector('input[data-field="phone"]')?.checked ?? countries[code].phone !== false;
+        const group = row.querySelector('input[data-field="group"]')?.checked ?? countries[code].group !== false;
+        const threshold = Number(row.querySelector('input[data-field="strikeThreshold"]')?.value) || 6;
+        next[code] = { contacts, phone, group, strikeThreshold: threshold };
+      }
+      try {
+        const res = await apiPut("/api/multi-country/notify", { countries: next });
+        if (res && res.ok) {
+          mcNotifyState.countries = res.countries || next;
+          if (status) { status.textContent = "✅ 已保存通知配置"; status.className = "mc-schedule-status ok"; }
+        } else {
+          if (status) { status.textContent = "❌ 保存失败"; status.className = "mc-schedule-status error"; }
+        }
+      } catch (e) {
+        if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+      }
+      mcNotifyState.saving = false;
+    };
+  }
+}
 async function loadMcSchedule(root) {
   const input = root.querySelector("#mc-schedule-minute");
   const saveBtn = root.querySelector("#mc-schedule-save");

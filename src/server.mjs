@@ -534,6 +534,20 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.setMcSchedule(body || {}));
   }
+  if (method === "GET" && url.pathname === "/api/multi-country/notify") {
+    return sendJson(response, 200, await alertRegistry.getMcNotify());
+  }
+  if (method === "PUT" && url.pathname === "/api/multi-country/notify") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.setMcNotify(body || {}));
+  }
+  if (method === "GET" && url.pathname === "/api/multi-country/strikes") {
+    return sendJson(response, 200, await alertRegistry.getMcStrikes());
+  }
+  if (method === "POST" && url.pathname === "/api/multi-country/phone") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.callMcPhone(body || {}));
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 

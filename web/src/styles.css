@@ -9100,3 +9100,99 @@ select.ar-field {
   color: #067647;
   background: #ecfdf3;
 }
+
+/* ---- 多国校验 · 电话通知配置面板 ---- */
+.mc-notify {
+  margin-bottom: 10px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.mc-notify > summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+.mc-notify > summary:hover { color: #1d4ed8; }
+.mc-notify > summary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+.mc-notify[open] > summary { border-bottom: 1px solid #eef1f5; }
+.mc-notify-body { padding: 10px 12px; }
+.mc-notify-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mc-notify-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #eef1f5;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+.mc-notify-country {
+  width: 64px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+}
+.mc-notify-contacts {
+  flex: 1;
+  min-width: 200px;
+  padding: 5px 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #344054;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mc-notify-contacts:focus-visible {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.15);
+}
+.mc-notify-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #475467;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mc-notify-toggle input { accent-color: #2563eb; }
+.mc-notify-threshold {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #475467;
+  white-space: nowrap;
+}
+.mc-notify-num {
+  width: 44px;
+  padding: 4px 6px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+  color: #344054;
+  font-variant-numeric: tabular-nums;
+}
+.mc-notify-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
