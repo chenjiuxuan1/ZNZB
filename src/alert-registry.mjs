@@ -37,6 +37,24 @@ const EXAMPLE_CONFIG_FILE = "config/alert-registry.example.json";
 const MULTI_COUNTRY_RESULTS_FILE = "config/multi-country-check-results.json";
 const DEFAULT_MULTI_COUNTRY_RESULTS = { runs: [] };
 const MULTI_COUNTRY_RESULTS_KEEP = 200;
+const MC_SCHEDULE_FILE = "config/mc-schedule.json";
+const DEFAULT_MC_SCHEDULE = { minute: 55 };
+const MC_WORKFLOW_ID = "E4B4wNzcUG0ow6BL"; // 多国一致性校验告警
+const MC_SCHEDULE_TRIGGER_NODE = "每小时定时触发";
+// 多国校验 · 电话通知配置（国家 -> 联系人 + 通知开关 + 电话阈值）
+const MC_NOTIFY_FILE = "config/mc-notify.json";
+const MC_STRIKE_FILE = "config/mc-strike.json";
+const MC_COUNTRIES = ["cn", "id", "mx", "th", "ph", "pk"];
+const DEFAULT_MC_NOTIFY = {
+  countries: {
+    cn: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    id: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    mx: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    th: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    ph: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+    pk: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
+  },
+};
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
@@ -197,6 +215,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     const raw = await readJsonFile(file, { alerts: [] });
     const alerts = ensureArray(raw.alerts || raw).map(normalizeEntry).map((entry) => ({
       ...entry,
+      // 多国校验条目统一关联 n8n 工作流（页面启停 = 开关工作流定时任务）
+      n8nWorkflowId: entry.n8nWorkflowId || (entry.id.startsWith("mc_") ? MC_WORKFLOW_ID : ""),
       repoDir: resolveEnv(entry.repoDir),
     }));
     return {
@@ -213,7 +233,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
 
   async function list() {
     const { alerts } = await load();
-    return alerts;
+    // 多国校验条目（mc_*）为单独控制：状态 = 自身 enabled（该国是否参与校验），n8n 工作流保持 active。
+    return alerts.map((entry) => ({ ...entry, n8nActive: null }));
   }
 
   async function get(id) {
@@ -290,10 +311,13 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     if (index === -1) {
       throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
     }
-    const merged = normalizeEntry({ ...alerts[index], ...input, id, updatedAt: new Date().toISOString() });
+    const prev = alerts[index];
+    const merged = normalizeEntry({ ...prev, ...input, id, updatedAt: new Date().toISOString() });
+    // 多国校验条目（mc_*）的启停 = 单独控制该国是否参与校验；n8n 工作流保持 active，每次运行时读取启用国家列表。
+    // 不做整工作流 active 同步。
     alerts[index] = merged;
     await save(alerts);
-    return merged;
+    return { ...merged, n8nSync: null, n8nActive: null };
   }
 
   async function remove(id) {
@@ -306,8 +330,54 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return { ok: true, id };
   }
 
+  /** 查询 n8n 工作流当前 active 状态；失败返回 null（不覆盖本地 enabled）。 */
+  async function getN8nWorkflowActive(workflowId) {
+    const base = process.env.N8N_BASE_URL || "";
+    const apiKey = process.env.N8N_API_KEY || "";
+    if (!workflowId || !base || !apiKey) return null;
+    try {
+      const resp = await fetchCompatible(`${base}/api/v1/workflows/${workflowId}`, {
+        headers: { "X-N8N-API-KEY": apiKey },
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return Boolean(data && data.active);
+    } catch (e) {
+      console.log(`查询 n8n 工作流 ${workflowId} 状态失败:`, String(e && (e.message || e)).slice(0, 200));
+      return null;
+    }
+  }
+
+  /** 设置 n8n 工作流 active/deactive；返回 { ok, active }。 */
+  async function setN8nWorkflowActive(workflowId, active) {
+    const base = process.env.N8N_BASE_URL || "";
+    const apiKey = process.env.N8N_API_KEY || "";
+    if (!workflowId || !base || !apiKey) {
+      return { ok: false, error: "未配置 N8N_BASE_URL / N8N_API_KEY" };
+    }
+    try {
+      const url = active ? "activate" : "deactivate";
+      const resp = await fetchCompatible(`${base}/api/v1/workflows/${workflowId}/${url}`, {
+        method: "POST",
+        headers: { "X-N8N-API-KEY": apiKey, "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (!resp.ok) {
+        return { ok: false, error: `n8n 工作流 ${active ? "激活" : "停用"}失败（HTTP ${resp.status}）` };
+      }
+      const data = await resp.json();
+      return { ok: true, active: Boolean(data && data.active) };
+    } catch (e) {
+      return { ok: false, error: String(e && (e.message || e)).slice(0, 300) };
+    }
+  }
+
   async function setEnabled(id, enabled) {
-    return update(id, { enabled: Boolean(enabled) });
+    const entry = await get(id);
+    const want = Boolean(enabled);
+    // 多国校验条目（mc_*）启停 = 单独控制该国参与校验（配置层面），不整工作流 active 同步。
+    const updated = await update(id, { enabled: want });
+    return { ...updated, n8nSync: null, n8nActive: null };
   }
 
   /** 测试执行：按条目的 runVia/command 跑 dry-run，返回 stdout/stderr/exitCode。 */
@@ -399,7 +469,218 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     };
     const runs = [run, ...(data.runs || [])].slice(0, MULTI_COUNTRY_RESULTS_KEEP);
     await writeJsonFileAtomic(await resultsPath(), { runs });
-    return { ok: true, kept: runs.length, limit: MULTI_COUNTRY_RESULTS_KEEP, run };
+    // 维护每国连续异常计数（异常 +1，无异常归零），达到阈值且开启电话时标记 phoneNeeded
+    const notify = await loadMcNotify();
+    const strike = await loadMcStrike();
+    const counts = { ...strike.counts };
+    for (const code of MC_COUNTRIES) {
+      const c = run.countries.find((x) => (x.code || "").toLowerCase() === code);
+      const hasMismatch = Boolean(c && Array.isArray(c.mismatches) && c.mismatches.length > 0);
+      counts[code] = hasMismatch ? (counts[code] || 0) + 1 : 0;
+    }
+    await writeJsonFileAtomic(await strikePath(), { counts });
+    const phoneNeeded = MC_COUNTRIES.filter((code) => {
+      const cfg = notify.countries[code] || {};
+      return cfg.phone !== false && counts[code] >= (cfg.strikeThreshold || 6);
+    });
+    return { ok: true, kept: runs.length, limit: MULTI_COUNTRY_RESULTS_KEEP, run, phoneNeeded, strikes: counts };
+  }
+
+  // ---- 多国校验 · 电话通知配置（页面可调） ----
+
+  async function notifyPath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_NOTIFY_FILE);
+  }
+
+  async function strikePath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_STRIKE_FILE);
+  }
+
+  async function loadMcNotify() {
+    const file = await notifyPath();
+    const data = await readJsonFile(file, {});
+    // 合并默认结构，确保 6 国都存在
+    const countries = {};
+    for (const code of MC_COUNTRIES) {
+      const c = (data.countries || {})[code] || {};
+      countries[code] = {
+        contacts: Array.isArray(c.contacts) ? c.contacts.map(String) : [],
+        phone: c.phone !== false,
+        group: c.group !== false,
+        strikeThreshold: Number.isInteger(c.strikeThreshold) ? c.strikeThreshold : 6,
+      };
+    }
+    return { countries };
+  }
+
+  async function loadMcStrike() {
+    const file = await strikePath();
+    const data = await readJsonFile(file, {});
+    return { counts: data.counts || {} };
+  }
+
+  /** 读取多国校验电话通知配置。 */
+  async function getMcNotify() {
+    return loadMcNotify();
+  }
+
+  /** 保存多国校验电话通知配置。cfg: { countries: { code: {contacts, phone, group, strikeThreshold} } } */
+  async function setMcNotify(cfg = {}) {
+    const current = await loadMcNotify();
+    const countries = current.countries;
+    const next = cfg.countries || {};
+    for (const code of MC_COUNTRIES) {
+      const n = next[code] || {};
+      if (!(code in next)) continue;
+      countries[code] = {
+        contacts: Array.isArray(n.contacts) ? n.contacts.map(String).slice(0, 20) : [],
+        phone: n.phone !== false,
+        group: n.group !== false,
+        strikeThreshold: Number.isInteger(Number(n.strikeThreshold)) ? Math.max(1, Math.min(99, Number(n.strikeThreshold))) : 6,
+      };
+    }
+    await writeJsonFileAtomic(await notifyPath(), { countries });
+    return { ok: true, countries };
+  }
+
+  /** 获取当前连续异常计数。 */
+  async function getMcStrikes() {
+    return loadMcStrike();
+  }
+
+  /**
+   * 获取各国多国校验启用状态（n8n 工作流运行时读取，只校验启用的国家）。
+   * 来源：告警注册表中 mc_* 条目的 enabled。
+   */
+  async function getMcEnabledCountries() {
+    const { alerts } = await load();
+    const map = {};
+    for (const code of MC_COUNTRIES) {
+      const entry = alerts.find((item) => item.id === `mc_${code}` || item.id === `mc_${code.toUpperCase()}`);
+      map[code] = entry ? entry.enabled !== false : true;
+    }
+    return { countries: map };
+  }
+
+  /**
+   * 电话通知入口（n8n 调用）。当前为占位实现：校验目标国家已开启电话通知且达到阈值，
+   * 记录日志返回 ok；实际拨打通道（夜莺 ali-voice 等）后续接入。
+   * body: { countries: [{code, label, contacts}], checkedAt }
+   */
+  async function callMcPhone(body = {}) {
+    const targets = Array.isArray(body.countries) ? body.countries : [];
+    const notify = await loadMcNotify();
+    const resolved = targets
+      .map((t) => {
+        const code = String(t.code || "").toLowerCase();
+        const cfg = notify.countries[code] || {};
+        return {
+          code,
+          label: t.label || code,
+          contacts: Array.isArray(t.contacts) && t.contacts.length > 0 ? t.contacts : cfg.contacts,
+          threshold: cfg.strikeThreshold || 6,
+        };
+      })
+      .filter((t) => MC_COUNTRIES.includes(t.code));
+    console.log(`[mc-phone] ${new Date().toISOString()} 电话通知请求:`, JSON.stringify(resolved));
+    // TODO: 实际电话拨打通道（夜莺 ali-voice / 自定义语音 API）待接入
+    return { ok: true, mode: "placeholder", targets: resolved, note: "电话拨打通道待接入（夜莺 ali-voice）" };
+  }
+
+  // ---- 多国校验定时（页面可调整，写入 n8n 工作流 ScheduleTrigger） ----
+
+  async function schedulePath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_SCHEDULE_FILE);
+  }
+
+  async function loadSchedule() {
+    const file = await schedulePath();
+    const data = await readJsonFile(file, DEFAULT_MC_SCHEDULE);
+    const minute = Number(data.minute);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      return DEFAULT_MC_SCHEDULE;
+    }
+    return { minute };
+  }
+
+  /** 读取当前多国校验定时（分钟）。 */
+  async function getMcSchedule() {
+    return loadSchedule();
+  }
+
+  /** 把 cron 写入 n8n 工作流的 ScheduleTrigger 节点（typeVersion 1.2, rule.interval[0].expression）。 */
+  async function applyMcScheduleToN8n(minute) {
+    const base = process.env.N8N_BASE_URL || "";
+    const apiKey = process.env.N8N_API_KEY || "";
+    if (!base || !apiKey) {
+      return { ok: false, error: "生产平台未配置 N8N_BASE_URL / N8N_API_KEY，无法更新 n8n 定时" };
+    }
+    const cron = `${minute} * * * *`;
+    try {
+      // 1) 读取当前工作流
+      const getResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
+        headers: { "X-N8N-API-KEY": apiKey },
+      });
+      if (!getResp.ok) {
+        return { ok: false, error: `读取 n8n 工作流失败（HTTP ${getResp.status}）` };
+      }
+      const wf = await getResp.json();
+      let found = false;
+      for (const n of wf.nodes || []) {
+        if (n.name === MC_SCHEDULE_TRIGGER_NODE && n.type === "n8n-nodes-base.scheduleTrigger") {
+          if (!n.parameters.rule || !Array.isArray(n.parameters.rule.interval)) {
+            n.parameters.rule = { interval: [{ field: "cronExpression", expression: cron }] };
+          } else {
+            n.parameters.rule.interval[0] = { field: "cronExpression", expression: cron };
+          }
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return { ok: false, error: `n8n 工作流中未找到定时触发节点「${MC_SCHEDULE_TRIGGER_NODE}」` };
+      }
+      // 2) PUT 工作流
+      const putPayload = {
+        name: wf.name,
+        nodes: wf.nodes,
+        connections: wf.connections,
+        settings: { executionOrder: "v1" },
+      };
+      const putResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
+        method: "PUT",
+        headers: { "X-N8N-API-KEY": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify(putPayload),
+      });
+      if (!putResp.ok) {
+        return { ok: false, error: `更新 n8n 工作流失败（HTTP ${putResp.status}）` };
+      }
+      // 3) 保持激活
+      const active = Boolean(wf.active);
+      if (active) {
+        await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}/activate`, {
+          method: "POST",
+          headers: { "X-N8N-API-KEY": apiKey },
+        });
+      }
+      return { ok: true, minute, cron, active };
+    } catch (error) {
+      return { ok: false, error: String(error && error.message || error) };
+    }
+  }
+
+  /** 设置多国校验定时（分钟），保存配置并同步到 n8n。minute: 0-59。 */
+  async function setMcSchedule({ minute } = {}) {
+    const m = Number(minute);
+    if (!Number.isInteger(m) || m < 0 || m > 59) {
+      throw Object.assign(new Error("定时分钟必须是 0-59 的整数"), { statusCode: 400 });
+    }
+    await writeJsonFileAtomic(await schedulePath(), { minute: m });
+    const sync = await applyMcScheduleToN8n(m);
+    return { ok: sync.ok, minute: m, sync };
   }
 
   return {
@@ -418,5 +699,12 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     resolveEnv,
     listCheckResults,
     appendCheckResult,
+    getMcSchedule,
+    setMcSchedule,
+    getMcNotify,
+    setMcNotify,
+    getMcStrikes,
+    getMcEnabledCountries,
+    callMcPhone,
   };
 }
