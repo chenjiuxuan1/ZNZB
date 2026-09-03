@@ -20,7 +20,6 @@
 }
 
 .ds-failure-page-tabs { margin-bottom: 14px; }
-.ds-scheduled-filter-grid { grid-template-columns: minmax(240px, .8fr) minmax(150px, .45fr) minmax(360px, 2fr) !important; }
 .ds-scheduled-owner-panel { margin-bottom: 14px; }
 .ds-scheduled-owner-grid {
   display: grid;
@@ -261,7 +260,12 @@ button.ds-retry-action {
 
 .ds-failure-toolbar .ds-scheduled-filter-grid {
   align-items: end;
-  grid-template-columns: minmax(220px, .8fr) minmax(420px, 1.25fr) minmax(320px, 2fr);
+  grid-template-columns: minmax(240px, 1fr) minmax(430px, 1.2fr) minmax(240px, .7fr);
+}
+
+.ds-failure-toolbar .ds-scheduled-filter-grid > label:last-child {
+  justify-self: start;
+  max-width: 420px;
 }
 
 .ds-failure-retry-control .ds-failure-filter-grid {
