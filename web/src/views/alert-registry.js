@@ -30,8 +30,13 @@ export function renderAlertRegistry(root) {
       <div id="ar-test-output"></div>
     </section>
     <section class="panel">
-      <div class="panel-title">多国一致性校验 · 最近 7 次结果</div>
-      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每次校验后回写；有异常（mismatch_cnt &gt; 0）的国家会标红。</div>
+      <div class="panel-title">多国一致性校验 · 最近 200 次结果</div>
+      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。</div>
+      <div class="mc-toolbar">
+        <label class="mc-filter-check"><input type="checkbox" id="mc-only-alert" /> 只看异常</label>
+        <select id="mc-country-filter"><option value="">全部国家</option></select>
+        <div class="mc-pager" id="mc-pager"></div>
+      </div>
       <div id="mc-results"></div>
     </section>
   `;
@@ -46,7 +51,10 @@ export function renderAlertRegistry(root) {
   loadMcResults(root);
 }
 
-/** 加载最近 7 次多国一致性校验结果。 */
+// 多国校验结果页状态（筛选 + 分页）
+const mcState = { country: "", onlyAlert: false, page: 1, pageSize: 10, runs: [] };
+
+/** 加载多国一致性校验结果（筛选 + 分页）。 */
 async function loadMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
@@ -57,24 +65,61 @@ async function loadMcResults(root) {
     el.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
     return;
   }
-  if (!Array.isArray(runs) || !runs.length) {
-    el.innerHTML = `<div class="notice">暂无校验记录。运行「多国一致性校验告警」后会自动回写最近 7 次结果。</div>`;
+  mcState.runs = Array.isArray(runs) ? runs : [];
+  // 绑定筛选控件事件
+  const onlyAlert = root.querySelector("#mc-only-alert");
+  if (onlyAlert) {
+    onlyAlert.checked = mcState.onlyAlert;
+    onlyAlert.onchange = () => { mcState.onlyAlert = onlyAlert.checked; mcState.page = 1; renderMcResults(root); };
+  }
+  const countrySel2 = root.querySelector("#mc-country-filter");
+  if (countrySel2) {
+    countrySel2.onchange = () => { mcState.country = countrySel2.value; mcState.page = 1; renderMcResults(root); };
+  }
+  // 更新国家筛选下拉（去重 + 按出现顺序）
+  const countrySel = root.querySelector("#mc-country-filter");
+  const countrySet = new Set();
+  mcState.runs.forEach((run) => (run.countries || []).forEach((c) => { if ((c.mismatches || []).length > 0) countrySet.add(c.label || c.code || ""); }));
+  if (countrySel) {
+    countrySel.innerHTML = `<option value="">全部国家</option>` + [...countrySet].map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+    countrySel.value = mcState.country;
+  }
+  renderMcResults(root);
+}
+
+/** 渲染当前筛选 + 分页下的多国校验结果。 */
+function renderMcResults(root) {
+  const el = root.querySelector("#mc-results");
+  if (!el) return;
+  if (!mcState.runs.length) {
+    el.innerHTML = `<div class="notice">暂无校验记录。运行「多国一致性校验告警」后会自动回写。</div>`;
+    renderMcPager(root, 0);
     return;
   }
-  el.innerHTML = runs.map((run, idx) => {
+  // 筛选：只看异常 + 按国家
+  const filtered = mcState.runs.filter((run) => {
+    const abnormalCountries = (run.countries || []).filter((c) => (c.mismatches || []).length > 0);
+    if (mcState.onlyAlert && abnormalCountries.length === 0) return false;
+    if (mcState.country && !abnormalCountries.some((c) => (c.label || c.code || "") === mcState.country)) return false;
+    return true;
+  });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / mcState.pageSize));
+  if (mcState.page > totalPages) mcState.page = totalPages;
+  const start = (mcState.page - 1) * mcState.pageSize;
+  const pageRuns = filtered.slice(start, start + mcState.pageSize);
+  el.innerHTML = pageRuns.map((run, idx) => {
     const ts = formatTs(run.checkedAt);
-    const summary = (run.countries || []).map((c) => {
+    // 只显示有异常的国家
+    const abnormal = (run.countries || []).filter((c) => (c.mismatches || []).length > 0);
+    const summary = abnormal.map((c) => {
       const m = c.mismatches || [];
-      const has = m.length > 0;
-      const cls = has ? "mc-badge mc-badge-red" : "mc-badge mc-badge-green";
-      const detail = has
+      const detail = m.length
         ? ` (${m.map((x) => `${x.check_item}=${x.mismatch_cnt}`).join(", ")})`
         : "";
-      return `<span class="${cls}">${escapeHtml(c.label || c.code || "")}${detail}</span>`;
+      return `<span class="mc-badge mc-badge-red">${escapeHtml(c.label || c.code || "")}${detail}</span>`;
     }).join(" ");
     const alertMark = run.hasAlert ? ` <span class="mc-badge mc-badge-red">异常</span>` : ` <span class="mc-badge mc-badge-green">正常</span>`;
-    const countries = run.countries || [];
-    const detailPanels = countries.map((c, ci) => {
+    const detailPanels = abnormal.map((c) => {
       const m = c.mismatches || [];
       const dets = c.details || [];
       const sql = c.sql || c.detailSql || "";
@@ -89,7 +134,7 @@ async function loadMcResults(root) {
           ${summaryHtml}
           ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）</div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
           ${dets.length ? `
-          <div class="mc-sql-title">差异明细（每条最多展示 ${escapeHtml(dets.length)} 条）</div>
+          <div class="mc-sql-title">差异明细</div>
           <table class="mc-detail-table">
             <thead><tr><th>检查项</th><th>资产号</th><th>用户ID</th><th>源值</th><th>目标值</th></tr></thead>
             <tbody>${detailRows}</tbody>
@@ -98,17 +143,47 @@ async function loadMcResults(root) {
       `;
     }).join("");
     return `
-      <div class="mc-run ${idx === 0 ? "mc-run-latest" : ""}">
+      <div class="mc-run ${(start + idx) === 0 ? "mc-run-latest" : ""}">
         <div class="mc-run-head">
-          <span class="mc-run-id">#${run.id ? String(run.id).slice(0, 8) : idx + 1}</span>
+          <span class="mc-run-id">#${run.id ? String(run.id).slice(0, 8) : start + idx + 1}</span>
           <span class="mc-run-ts">${ts}</span>
           ${alertMark}
         </div>
-        <div class="mc-run-countries">${summary || `<span class="mc-badge mc-badge-gray">无国家数据</span>`}</div>
+        <div class="mc-run-countries">${summary || `<span class="mc-badge mc-badge-gray">无异常国家</span>`}</div>
         ${detailPanels}
       </div>
     `;
   }).join("");
+  renderMcPager(root, totalPages);
+  renderMcEmpty(filtered.length);
+}
+
+/** 渲染分页控件。 */
+function renderMcPager(root, totalPages) {
+  const pager = root.querySelector("#mc-pager");
+  if (!pager) return;
+  if (totalPages <= 1) { pager.innerHTML = ""; return; }
+  pager.innerHTML = `
+    <button class="mc-page-btn" data-page="${mcState.page - 1}" ${mcState.page <= 1 ? "disabled" : ""}>‹ 上一页</button>
+    <span class="mc-page-info">${mcState.page} / ${totalPages}</span>
+    <button class="mc-page-btn" data-page="${mcState.page + 1}" ${mcState.page >= totalPages ? "disabled" : ""}>下一页 ›</button>
+  `;
+  pager.querySelectorAll(".mc-page-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const p = Number(btn.dataset.page);
+      if (p >= 1 && p <= totalPages) {
+        mcState.page = p;
+        renderMcResults(root);
+      }
+    });
+  });
+}
+
+function renderMcEmpty(filteredCount) {
+  const el = document.querySelector("#mc-results");
+  if (el && filteredCount === 0 && mcState.runs.length) {
+    el.innerHTML = `<div class="notice">没有符合当前筛选条件的记录。</div>`;
+  }
 }
 
 function formatTs(value) {
