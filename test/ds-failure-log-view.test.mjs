@@ -71,6 +71,7 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /aria-expanded=/);
   assert.match(styles, /\.ds-country-collapse-toggle/);
   assert.match(styles, /\.ds-failure-toolbar \.ds-scheduled-filter-grid \{[\s\S]*minmax\(430px, 1\.2fr\)/);
+  assert.match(styles, /\.ds-failure-toolbar \.ds-failure-filter-grid \{[\s\S]*minmax\(360px, 1\.25fr\)/);
   assert.match(styles, /\.ds-failure-toolbar \.ds-scheduled-filter-grid > label:last-child \{[\s\S]*max-width: 420px/);
   assert.doesNotMatch(styles, /\.ds-scheduled-filter-grid \{[^}]*minmax\(150px, \.45fr\)[^}]*!important/);
   assert.doesNotMatch(source, /\?date=/);

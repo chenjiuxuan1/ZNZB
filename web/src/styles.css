@@ -255,7 +255,8 @@ button.ds-retry-action {
 }
 
 .ds-failure-toolbar .ds-failure-filter-grid {
-  grid-template-columns: minmax(220px, 1.1fr) minmax(140px, .55fr) minmax(150px, .65fr) minmax(170px, .75fr) minmax(250px, 1.35fr);
+  align-items: end;
+  grid-template-columns: minmax(220px, .9fr) minmax(360px, 1.25fr) minmax(150px, .55fr) minmax(170px, .65fr) minmax(240px, 1fr);
 }
 
 .ds-failure-toolbar .ds-scheduled-filter-grid {
