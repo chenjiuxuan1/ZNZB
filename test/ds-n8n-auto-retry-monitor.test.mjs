@@ -1,6 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractDsAutoRetryRecords, inspectN8nAutoRetryExecutions } from "../src/ds-n8n-auto-retry-monitor.mjs";
+import { extractDsAutoRetryRecords, inspectN8nAutoRetryExecutions, parseRetryLogOutcome } from "../src/ds-n8n-auto-retry-monitor.mjs";
+
+test("parseRetryLogOutcome classifies the async repair final status", () => {
+  assert.equal(parseRetryLogOutcome("重跑完成，恢复成功").status, "recovered");
+  assert.equal(parseRetryLogOutcome("已恢复").status, "recovered");
+  assert.equal(parseRetryLogOutcome("三次重跑全部失败").status, "failed");
+  assert.equal(parseRetryLogOutcome("重跑后仍失败").status, "failed");
+  assert.equal(parseRetryLogOutcome("任务正在重跑中").status, "running");
+  assert.equal(parseRetryLogOutcome("仍在运行，尚未完成").status, "running");
+  assert.equal(parseRetryLogOutcome("").status, "unknown");
+  assert.equal(parseRetryLogOutcome("no clear marker").status, "unknown");
+});
+
 
 function fakeDetail(status = "success") {
   const record = {
