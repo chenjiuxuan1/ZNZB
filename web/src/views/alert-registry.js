@@ -31,27 +31,12 @@ export function renderAlertRegistry(root) {
     </section>
     <section class="panel">
       <div class="panel-title">多国一致性校验 · 最近 200 次结果</div>
-      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。定时默认每小时 55 分，可在下方调整。<strong>提示：</strong>每个告警条目的「⚙ 能力」面板都可单独配置通知 / 电话语音 / 定时 / 历史；此处是多国校验的专项结果视图。</div>
+      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。<strong>提示：</strong>多国校验条目的通知 / 电话语音 / 定时 / 历史，点对应行（mc_cn 等）的「⚙ 能力」即可配置；此处仅是多国校验的专项结果视图。</div>
       <div class="mc-controls">
-        <span class="mc-schedule-label mc-controls-title">⏰ 定时</span>
-        <span class="mc-schedule-label">每小时</span>
-        <input type="number" id="mc-schedule-minute" min="0" max="59" value="55" class="mc-schedule-input" />
-        <span class="mc-schedule-label">分</span>
-        <button class="mc-page-btn" id="mc-schedule-save">保存</button>
-        <span class="mc-schedule-status" id="mc-schedule-status"></span>
-        <span class="mc-controls-divider"></span>
         <label class="mc-filter-check"><input type="checkbox" id="mc-only-alert" /> 只看异常</label>
         <select id="mc-country-filter"><option value="">全部国家</option></select>
         <div class="mc-pager" id="mc-pager"></div>
       </div>
-      <details class="mc-notify" id="mc-notify-panel" open>
-        <summary>📢 通知配置（发送群 chat id + 各国家 @负责人 / 电话联系人，有报警时末尾 @ 负责人、达阈值自动打电话）</summary>
-        <div class="mc-notify-body" id="mc-notify-body"></div>
-      </details>
-      <details class="mc-notify" id="mc-voice-panel">
-        <summary>📞 电话语音配置（阿里云语音模板与播报内容，模板变量说明见面板内）</summary>
-        <div class="mc-notify-body" id="mc-voice-body"></div>
-      </details>
       <div id="mc-results"></div>
     </section>
   `;
@@ -101,9 +86,6 @@ async function loadMcResults(root) {
     countrySel.value = mcState.country;
   }
   renderMcResults(root);
-  loadMcSchedule(root);
-  loadMcNotify(root);
-  loadMcVoice(root);
 }
 
 /** 多国校验 · 电话通知配置状态。 */
@@ -630,7 +612,7 @@ async function loadList(root) {
     button.addEventListener("click", () => runTest(root, button.dataset.arTest));
   });
   listEl.querySelectorAll("[data-ar-notify]").forEach((button) => {
-    button.addEventListener("click", () => openEntryPanel(root, button.dataset.arNotify));
+    button.addEventListener("click", () => toggleEntryPanel(root, button.dataset.arNotify));
   });
 }
 
@@ -648,7 +630,7 @@ function renderRow(item) {
   }[item.trigger] || item.trigger || "手动";
   const srcClass = item.sourceType === "nightingale" ? "ar-badge-purple" : item.sourceType === "custom" ? "ar-badge-gray" : "ar-badge-blue";
   return `
-    <tr>
+    <tr class="ar-row-main" data-row-id="${escapeHtml(item.id)}">
       <td class="ar-name-cell">
         <div class="ar-name" title="${escapeHtml(item.note || "")}">${escapeHtml(item.name)}</div>
         <div class="ar-id" title="${escapeHtml(item.id)}">${escapeHtml(item.id)}</div>
@@ -663,10 +645,30 @@ function renderRow(item) {
       <td class="ar-ops-col">
         <div class="ar-ops">
           <button class="ar-btn ar-btn-test" data-ar-test="${escapeHtml(item.id)}">▶ 测试</button>
-          <button class="ar-btn ar-btn-notify" data-ar-notify="${escapeHtml(item.id)}" title="通知配置 / 电话语音 / 定时 / 历史">⚙ 能力</button>
+          <button class="ar-btn ar-btn-notify" data-ar-notify="${escapeHtml(item.id)}" title="展开通知/电话/定时/历史配置">⚙ 能力</button>
           <button class="ar-btn" data-ar-edit="${escapeHtml(item.id)}">编辑</button>
           <button class="ar-btn" data-ar-toggle="${escapeHtml(item.id)}">${item.enabled ? "停用" : "启用"}</button>
           <button class="ar-btn ar-btn-danger" data-ar-delete="${escapeHtml(item.id)}">删除</button>
+        </div>
+      </td>
+    </tr>
+    <tr class="ar-expand-row" data-expand-id="${escapeHtml(item.id)}" style="display:none">
+      <td colspan="7" class="ar-expand-cell">
+        <div class="mc-notify" open>
+          <summary>📢 通知配置（发送群 + @负责人 + 电话联系人，达阈值自动打电话）</summary>
+          <div class="mc-notify-body" data-ep-body="notify"></div>
+        </div>
+        <div class="mc-notify">
+          <summary>📞 电话语音配置（播报模板 + 测试拨打）</summary>
+          <div class="mc-notify-body" data-ep-body="voice"></div>
+        </div>
+        <div class="mc-notify">
+          <summary>⏰ 定时配置（每小时第 N 分钟触发）</summary>
+          <div class="mc-notify-body" data-ep-body="schedule"></div>
+        </div>
+        <div class="mc-notify">
+          <summary>📜 历史记录（最近执行结果）</summary>
+          <div class="mc-notify-body" data-ep-body="history"></div>
         </div>
       </td>
     </tr>
@@ -729,53 +731,30 @@ function renderOutputBlock(label, text) {
 
 const entryPanelState = { id: "", saving: false };
 
-function openEntryPanel(root, id) {
+function toggleEntryPanel(root, id) {
   if (entryPanelState.saving) return;
   entryPanelState.id = id;
-  const overlay = document.createElement("div");
-  overlay.className = "ar-modal-overlay";
-  overlay.id = "ar-entry-panel";
-  overlay.innerHTML = `
-    <div class="ar-modal ar-modal-wide">
-      <div class="ar-modal-header">
-        <div>
-          <h2 class="page-title">⚙ 告警能力配置</h2>
-          <p class="page-note" id="ar-ep-name">${escapeHtml(id)}</p>
-        </div>
-        <button class="ar-modal-close" id="ar-ep-close" title="关闭">×</button>
-      </div>
-      <div class="ar-modal-body">
-        <div class="mc-notify" id="ar-ep-notify" open>
-          <summary>📢 通知配置（发送群 + @负责人 + 电话联系人，达阈值自动打电话）</summary>
-          <div class="mc-notify-body" id="ar-ep-notify-body"></div>
-        </div>
-        <div class="mc-notify" id="ar-ep-voice">
-          <summary>📞 电话语音配置（播报模板 + 测试拨打）</summary>
-          <div class="mc-notify-body" id="ar-ep-voice-body"></div>
-        </div>
-        <div class="mc-notify" id="ar-ep-schedule">
-          <summary>⏰ 定时配置（每小时第 N 分钟触发）</summary>
-          <div class="mc-notify-body" id="ar-ep-schedule-body"></div>
-        </div>
-        <div class="mc-notify" id="ar-ep-history">
-          <summary>📜 历史记录（最近执行结果）</summary>
-          <div class="mc-notify-body" id="ar-ep-history-body"></div>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-  overlay.querySelector("#ar-ep-close").addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  const row = root.querySelector(`.ar-expand-row[data-expand-id="${CSS.escape(id)}"]`);
+  if (!row) return;
+  const isOpen = row.style.display !== "none";
+  if (isOpen) {
+    row.style.display = "none";
+    const btn = root.querySelector(`[data-ar-notify="${CSS.escape(id)}"]`);
+    if (btn) btn.textContent = "⚙ 能力";
+    return;
+  }
+  row.style.display = "";
+  const btn = root.querySelector(`[data-ar-notify="${CSS.escape(id)}"]`);
+  if (btn) btn.textContent = "✕ 收起";
   // 并行加载四个区块
-  loadEntryNotifyPanel(root, id);
-  loadEntryVoicePanel(root, id);
-  loadEntrySchedulePanel(root, id);
-  loadEntryHistoryPanel(root, id);
+  loadEntryNotifyPanel(row, id);
+  loadEntryVoicePanel(row, id);
+  loadEntrySchedulePanel(row, id);
+  loadEntryHistoryPanel(row, id);
 }
 
-async function loadEntryNotifyPanel(root, id) {
-  const body = root.querySelector("#ar-ep-notify-body");
+async function loadEntryNotifyPanel(container, id) {
+  const body = container.querySelector('[data-ep-body="notify"]');
   if (!body) return;
   body.innerHTML = `<div class="mc-loading">⏳ 正在加载通知配置…</div>`;
   let cfg;
@@ -852,8 +831,8 @@ async function loadEntryNotifyPanel(root, id) {
   };
 }
 
-async function loadEntryVoicePanel(root, id) {
-  const body = root.querySelector("#ar-ep-voice-body");
+async function loadEntryVoicePanel(container, id) {
+  const body = container.querySelector('[data-ep-body="voice"]');
   if (!body) return;
   body.innerHTML = `<div class="mc-loading">⏳ 正在加载电话语音配置…</div>`;
   let cfg;
@@ -950,8 +929,8 @@ async function loadEntryVoicePanel(root, id) {
   };
 }
 
-async function loadEntrySchedulePanel(root, id) {
-  const body = root.querySelector("#ar-ep-schedule-body");
+async function loadEntrySchedulePanel(container, id) {
+  const body = container.querySelector('[data-ep-body="schedule"]');
   if (!body) return;
   body.innerHTML = `<div class="mc-loading">⏳ 正在加载定时配置…</div>`;
   let cfg;
@@ -998,8 +977,8 @@ async function loadEntrySchedulePanel(root, id) {
   };
 }
 
-async function loadEntryHistoryPanel(root, id) {
-  const body = root.querySelector("#ar-ep-history-body");
+async function loadEntryHistoryPanel(container, id) {
+  const body = container.querySelector('[data-ep-body="history"]');
   if (!body) return;
   body.innerHTML = `<div class="mc-loading">⏳ 正在加载历史记录…</div>`;
   let runs;
