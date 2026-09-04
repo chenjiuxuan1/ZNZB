@@ -9506,6 +9506,20 @@ select.ar-field {
 }
 
 @media (max-width: 600px) {
+  .alert-lifecycle-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .alert-lifecycle-header .header-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .alert-lifecycle-header #ac-refresh-time {
+    white-space: nowrap;
+  }
+
   .alert-lifecycle-nav {
     display: grid;
     grid-template-columns: 1fr;

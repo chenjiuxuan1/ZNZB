@@ -109,7 +109,7 @@ export function renderAlertCenter(root) {
   // 原型布局只属于总览，避免布局参数污染其他生命周期工作区。
   const variant = section === "overview" ? readVariantParam() : "";
   root.innerHTML = `
-    <div class="page-header">
+    <div class="page-header alert-lifecycle-header">
       <div>
         <h1 class="page-title">告警中心</h1>
         <p class="page-note">按生命周期处理风险、事件、规则、通知与运维操作；现有能力在迁移期间全部保留。</p>
