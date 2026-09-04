@@ -74,6 +74,19 @@ const DEFAULT_MC_GROUP = {
   },
 };
 
+// 多国校验 · 电话语音配置（阿里云语音 dyvmsapi SingleCallByTts）
+// 电话语音配置：accessKeyId/accessKeySecret 请通过 config/mc-voice.json 或 ALIBABA_VOICE_* 环境变量提供，避免入仓。
+const MC_VOICE_FILE = "config/mc-voice.json";
+const DEFAULT_MC_VOICE = {
+  enabled: true,
+  accessKeyId: "${ALIBABA_VOICE_ACCESS_KEY_ID}",
+  accessKeySecret: "${ALIBABA_VOICE_ACCESS_KEY_SECRET}",
+  calledShowNumber: "02160556003",
+  ttsCode: "TTS_160301133",
+  nameTemplate: "{{label}}多国一致性校验",
+  systemTemplate: "检测到{{n}}项数据异常，请及时处理",
+};
+
 const ENV_PATTERN = /\$\{([A-Z0-9_]+)\}/g;
 
 /** 内联环境变量占位 ${KEY}。 */
@@ -82,6 +95,62 @@ function resolveEnv(value) {
     return value;
   }
   return value.replace(ENV_PATTERN, (_, key) => process.env[key] ?? "");
+}
+
+/** 把 {{var}} 模板替换为变量值。 */
+function fillTemplate(tpl, vars) {
+  return String(tpl || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) =>
+    vars && vars[key] !== undefined ? String(vars[key]) : ""
+  );
+}
+
+/** 密钥打码显示（保留前 4 后 4）。 */
+function maskSecret(s) {
+  const str = String(s || "");
+  if (str.length <= 8) return "****";
+  return `${str.slice(0, 4)}****${str.slice(-4)}`;
+}
+
+/** 返回去空格后的非空字符串，否则空串。 */
+function nonEmpty(v) {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/**
+ * 阿里云语音通知（dyvmsapi SingleCallByTts）RPC 调用。
+ * voice: { accessKeyId, accessKeySecret, calledShowNumber, ttsCode }
+ * ttsParam: { name, system } → 模板参数，即电话播报内容
+ */
+async function callAliyunVoice(voice, calledNumber, ttsParam = {}) {
+  const { createHmac, randomBytes } = await import("node:crypto");
+  const percentEncode = (s) => encodeURIComponent(String(s)).replace(/\+/g, "%20").replace(/\*/g, "%2A").replace(/%7E/g, "~");
+  const params = {
+    Action: "SingleCallByTts",
+    Version: "2017-05-25",
+    Format: "JSON",
+    AccessKeyId: voice.accessKeyId,
+    SignatureMethod: "HMAC-SHA1",
+    SignatureNonce: randomBytes(16).toString("hex"),
+    SignatureVersion: "1.0",
+    Timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+    CalledNumber: calledNumber,
+    CalledShowNumber: voice.calledShowNumber,
+    TtsCode: voice.ttsCode,
+    TtsParam: JSON.stringify(ttsParam),
+  };
+  const keys = Object.keys(params).sort();
+  const canonical = keys.map((k) => `${percentEncode(k)}=${percentEncode(params[k])}`).join("&");
+  const stringToSign = `GET&%2F&${percentEncode(canonical)}`;
+  const sig = createHmac("sha1", `${voice.accessKeySecret}&`).update(stringToSign).digest("base64");
+  const query = `${canonical}&Signature=${percentEncode(sig)}`;
+  const url = `https://dyvmsapi.aliyuncs.com/?${query}`;
+  const resp = await fetchCompatible(url, { method: "GET", timeout: 15000 });
+  const text = await resp.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { Code: "PARSE_ERROR", Message: text.slice(0, 200) };
+  }
 }
 
 function toId(name) {
@@ -629,13 +698,13 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   }
 
   /**
-   * 电话通知入口（n8n 调用）。当前为占位实现：校验目标国家已开启电话通知且达到阈值，
-   * 记录日志返回 ok；实际拨打通道（夜莺 ali-voice 等）后续接入。
+   * 电话通知入口（n8n 调用）：对达到电话阈值的目标国家，用阿里云语音（dyvmsapi SingleCallByTts）
+   * 逐个拨打其联系人，播报内容用 TtsParam 的 name/system 参数（模板可配置，支持 {{label}}/{{code}}/{{n}}）。
    * body: { countries: [{code, label, contacts}], checkedAt }
    */
   async function callMcPhone(body = {}) {
     const targets = Array.isArray(body.countries) ? body.countries : [];
-    const notify = await loadMcNotify();
+    const [notify, voice] = await Promise.all([loadMcNotify(), loadMcVoice()]);
     const resolved = targets
       .map((t) => {
         const code = String(t.code || "").toLowerCase();
@@ -649,8 +718,102 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       })
       .filter((t) => MC_COUNTRIES.includes(t.code));
     console.log(`[mc-phone] ${new Date().toISOString()} 电话通知请求:`, JSON.stringify(resolved));
-    // TODO: 实际电话拨打通道（夜莺 ali-voice / 自定义语音 API）待接入
-    return { ok: true, mode: "placeholder", targets: resolved, note: "电话拨打通道待接入（夜莺 ali-voice）" };
+    if (resolved.length === 0) {
+      return { ok: true, mode: "ali-voice", calls: [], targets: resolved };
+    }
+    if (!voice.enabled) {
+      return { ok: true, mode: "ali-voice", calls: [], targets: resolved, note: "电话语音已停用（mc-voice.enabled=false）" };
+    }
+    const calls = [];
+    let failed = 0;
+    for (const t of resolved) {
+      const n = Math.max(1, Number.isInteger(Number(t.n)) ? Number(t.n) : 1);
+      const vars = {
+        label: t.label,
+        code: t.code,
+        country: t.label,
+        n,
+        threshold: t.threshold,
+        items: Array.isArray(t.items) ? t.items.join("、") : `${n} 项`,
+      };
+      const name = fillTemplate(voice.nameTemplate, vars);
+      const system = fillTemplate(voice.systemTemplate, vars);
+      for (const phone of t.contacts) {
+        const clean = String(phone || "").replace(/[^\d+]/g, "").trim();
+        if (!/^1\d{10}$/.test(clean) && !/^\d{6,}$/.test(clean)) {
+          calls.push({ code: t.code, phone, ok: false, error: "号码格式不合法" });
+          failed++;
+          continue;
+        }
+        try {
+          const resp = await callAliyunVoice(voice, clean, { name, system });
+          const ok = resp && (resp.Code === "OK" || resp.Code === "200");
+          calls.push({ code: t.code, phone: clean, ok, callId: resp && resp.CallId, error: ok ? null : (resp && resp.Message) });
+          if (!ok) failed++;
+        } catch (e) {
+          calls.push({ code: t.code, phone: clean, ok: false, error: String(e && e.message ? e.message : e).slice(0, 120) });
+          failed++;
+        }
+      }
+    }
+    console.log(`[mc-phone] 拨打完成 成功=${calls.length - failed}/${calls.length}`);
+    return { ok: failed === 0, mode: "ali-voice", calls, targets: resolved };
+  }
+
+  async function voicePath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_VOICE_FILE);
+  }
+
+  /** 读取电话语音配置（阿里云语音凭据 + 播报模板）。 */
+  async function loadMcVoice() {
+    const file = await voicePath();
+    const raw = await readJsonFile(file, {});
+    if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) {
+      return JSON.parse(JSON.stringify(DEFAULT_MC_VOICE));
+    }
+    return {
+      enabled: raw.enabled !== false,
+      accessKeyId: String(raw.accessKeyId || DEFAULT_MC_VOICE.accessKeyId),
+      accessKeySecret: String(raw.accessKeySecret || DEFAULT_MC_VOICE.accessKeySecret),
+      calledShowNumber: String(raw.calledShowNumber || DEFAULT_MC_VOICE.calledShowNumber),
+      ttsCode: String(raw.ttsCode || DEFAULT_MC_VOICE.ttsCode),
+      nameTemplate: String(raw.nameTemplate || DEFAULT_MC_VOICE.nameTemplate),
+      systemTemplate: String(raw.systemTemplate || DEFAULT_MC_VOICE.systemTemplate),
+    };
+  }
+
+  /** 读取电话语音配置（页面展示用，隐藏密钥中间部分）。 */
+  async function getMcVoice() {
+    const v = await loadMcVoice();
+    return {
+      enabled: v.enabled,
+      accessKeyId: v.accessKeyId,
+      accessKeyIdMasked: maskSecret(v.accessKeyId),
+      accessKeySecretMasked: maskSecret(v.accessKeySecret),
+      calledShowNumber: v.calledShowNumber,
+      ttsCode: v.ttsCode,
+      nameTemplate: v.nameTemplate,
+      systemTemplate: v.systemTemplate,
+    };
+  }
+
+  /** 保存电话语音配置（页面上传凭据/模板；不填的字段保持原值）。 */
+  async function setMcVoice(cfg = {}) {
+    const current = await loadMcVoice();
+    const next = {
+      enabled: cfg.enabled !== undefined ? cfg.enabled !== false : current.enabled,
+      accessKeyId: nonEmpty(cfg.accessKeyId) || current.accessKeyId,
+      accessKeySecret: nonEmpty(cfg.accessKeySecret) || current.accessKeySecret,
+      calledShowNumber: nonEmpty(cfg.calledShowNumber) || current.calledShowNumber,
+      ttsCode: nonEmpty(cfg.ttsCode) || current.ttsCode,
+      nameTemplate: nonEmpty(cfg.nameTemplate) || current.nameTemplate,
+      systemTemplate: nonEmpty(cfg.systemTemplate) || current.systemTemplate,
+    };
+    if (!next.ttsCode) throw Object.assign(new Error("电话语音模板 TtsCode 不能为空"), { statusCode: 400 });
+    if (!next.calledShowNumber) throw Object.assign(new Error("电话显号不能为空"), { statusCode: 400 });
+    await writeJsonFileAtomic(await voicePath(), next);
+    return { ok: true, ...(await getMcVoice()) };
   }
 
   // ---- 多国校验定时（页面可调整，写入 n8n 工作流 ScheduleTrigger） ----
@@ -771,6 +934,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     getMcEnabledCountries,
     getMcGroup,
     setMcGroup,
+    getMcVoice,
+    setMcVoice,
     callMcPhone,
   };
 }

@@ -561,6 +561,13 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.callMcPhone(body || {}));
   }
+  if (method === "GET" && url.pathname === "/api/multi-country/voice") {
+    return sendJson(response, 200, await alertRegistry.getMcVoice());
+  }
+  if (method === "PUT" && url.pathname === "/api/multi-country/voice") {
+    const body = await readBody(request);
+    return sendJson(response, 200, await alertRegistry.setMcVoice(body));
+  }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
 
