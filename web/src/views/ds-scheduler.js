@@ -1,5 +1,6 @@
 import { apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
+import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-banner.js";
 
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
@@ -24,7 +25,7 @@ export function summarizeDsCountryCheck(country = {}) {
 }
 
 export function renderDsScheduler(root) {
-  root.innerHTML = `<section class="panel"><p class="muted">正在加载 DS 调度配置…</p></section>`;
+  root.innerHTML = `${renderLegacyMigrationBanner("rules")}<section class="panel"><p class="muted">正在加载 DS 调度配置…</p></section>`;
   load(root);
 }
 
@@ -57,6 +58,7 @@ function paint(root) {
         ${stat("检查失败", result?.failedCountries ?? "—")}
       </div>
     </div>
+    ${renderLegacyMigrationBanner("rules")}
     ${renderStatus()}
     <section class="panel ds-config-section">
       <div class="detail-header compact-header">
