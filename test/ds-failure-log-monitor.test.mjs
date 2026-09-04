@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyDsFailureReason, classifyDsFailureType, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, inspectOriginalScheduledFailures, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays, normalizeN8nProjectScope } from "../src/ds-failure-log-monitor.mjs";
+import { classifyDsFailureReason, classifyDsFailureType, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, inspectOriginalScheduledFailures, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays, normalizeN8nProjectScope, resolveN8nDsFailureEvidence } from "../src/ds-failure-log-monitor.mjs";
 
 test("lookback days accepts manual ranges and applies safe limits", () => {
   assert.equal(normalizeLookbackDays("7", 1), 7);
@@ -17,6 +17,72 @@ test("n8n project scope normalizes names and codes per country", () => {
     ph: ["1584", "ignored"],
   });
   assert.deepEqual(normalizeN8nProjectScope({ cn: "DW_DWB, DW_DM" }), { cn: ["dw_dwb", "dw_dm"] });
+});
+
+test("n8n evidence verifies the DS instance and reads its failed task directly", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-n8n-direct-evidence-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { ine: { token: "test-token", dsUiUrl: "https://ds.example/dolphinscheduler/ui" } },
+  }));
+  const originalFetch = globalThis.fetch;
+  const actions = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    actions.push(request.action);
+    const responses = {
+      get_instance: { id: 4250521, workflowDefinitionCode: "wf-1", state: "SUCCESS" },
+      list_task_instances: { totalList: [{ id: "task-i", workflowInstanceId: 4250521, taskCode: "task-1", name: "ods_orders", taskType: "SQL", state: "FAILURE" }] },
+      get_task_log: { log: "ERROR query failed\nCaused by: Unknown table ods.orders" },
+    };
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data: responses[request.action] || {} }); } };
+  };
+  try {
+    const result = await resolveN8nDsFailureEvidence(rootDir, {
+      country: "ine",
+      failure: { projectCode: "12739141488160", workflowCode: "wf-1", instanceId: "4250521" },
+    });
+    assert.deepEqual(actions, ["get_instance", "list_task_instances", "get_task_log"]);
+    assert.equal(result.taskLookupStatus, "resolved");
+    assert.equal(result.taskName, "ods_orders");
+    assert.equal(result.dsInstanceState, "SUCCESS");
+    assert.equal(result.repairStatus, "recovered");
+    assert.equal(result.repairOutcomeSource, "ds_instance_api");
+    assert.equal(result.dsInstanceUrl, "https://ds.example/dolphinscheduler/ui/projects/12739141488160/workflow/instances/4250521");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("n8n evidence does not expose an unverified DS instance link", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "ds-n8n-missing-instance-"));
+  await fs.mkdir(path.join(rootDir, "config"), { recursive: true });
+  await fs.writeFile(path.join(rootDir, "config/ds-scheduler.config.json"), JSON.stringify({
+    n8nWebhookUrl: "https://gateway.example/ds",
+    countries: { ine: { token: "test-token", dsUiUrl: "https://ds.example/dolphinscheduler/ui" } },
+  }));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    if (request.action === "get_instance") {
+      return { ok: true, status: 200, async text() { return JSON.stringify({ success: false, error: { message: "workflow instance does not exist" } }); } };
+    }
+    return { ok: true, status: 200, async text() { return JSON.stringify({ success: true, data: { totalList: [] } }); } };
+  };
+  try {
+    const result = await resolveN8nDsFailureEvidence(rootDir, {
+      country: "ine",
+      failure: { projectCode: "12739141488160", instanceId: "4250521" },
+    });
+    assert.equal(result.taskLookupStatus, "instance_not_found");
+    assert.equal(result.dsInstanceUrl, "");
+    assert.match(result.taskLookupError, /工作流实例不存在或当前账号无权访问/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
 });
 
 test("original scheduled failure view excludes manual and retry instances", () => {
