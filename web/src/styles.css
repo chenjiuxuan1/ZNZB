@@ -9053,14 +9053,16 @@ select.ar-field {
 .mc-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin-bottom: 10px;
   padding: 8px 12px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  overflow-x: auto;
-  white-space: nowrap;
+}
+.mc-controls select {
+  max-width: 220px;
 }
 .mc-controls-title {
   font-weight: 600;
