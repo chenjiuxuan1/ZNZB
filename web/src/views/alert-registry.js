@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
+import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-banner.js";
 
 /**
  * 告警注册表：动态配置 / 新增 / 测试 n8n 与夜莺等告警条目。
@@ -22,6 +23,7 @@ export function renderAlertRegistry(root) {
         <button id="ar-new">+ 新增告警</button>
       </div>
     </div>
+    ${renderLegacyMigrationBanner("rules")}
     <section class="panel">
       <div id="ar-list"></div>
     </section>

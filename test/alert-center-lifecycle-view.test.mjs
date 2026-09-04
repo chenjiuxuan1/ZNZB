@@ -12,6 +12,7 @@ import {
   renderLifecycleBridge,
   renderLifecycleNavigation,
 } from "../web/src/views/alert-center/lifecycle-nav.js";
+import { renderLegacyMigrationBanner } from "../web/src/views/alert-center/legacy-migration-banner.js";
 
 test("alert center exposes five lifecycle sections", () => {
   assert.deepEqual(ALERT_LIFECYCLE_SECTIONS.map((item) => item.id), [
@@ -56,4 +57,22 @@ test("lifecycle workspace preserves existing alert loaders", () => {
     assert.match(viewSource, new RegExp(`function ${loader}\\(`));
   }
   assert.match(styles, /\.alert-lifecycle-nav/);
+});
+
+test("legacy alert pages point to their lifecycle destination", () => {
+  const destinations = {
+    "alert-registry": "rules",
+    rules: "rules",
+    sandbox: "operations",
+    "notify-preview": "notifications",
+    "ds-scheduler": "rules",
+    "ds-failure-logs": "events",
+  };
+
+  for (const [view, section] of Object.entries(destinations)) {
+    const source = fs.readFileSync(new URL(`../web/src/views/${view}.js`, import.meta.url), "utf8");
+    assert.match(source, new RegExp(`renderLegacyMigrationBanner\\(\\"${section}\\"\\)`));
+    assert.match(renderLegacyMigrationBanner(section), new RegExp(`href="#/alerts/${section}"`));
+  }
+  assert.equal(renderLegacyMigrationBanner("unknown"), "");
 });

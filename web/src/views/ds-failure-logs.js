@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
+import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-banner.js";
 
 const COUNTRY_OPTIONS = [
   { code: "cn", name: "中国", flag: "🇨🇳" },
@@ -565,6 +566,7 @@ function paint(root) {
         ${stat("修复中 / 待修复", hasResult ? `${result.repairingCount || 0} / ${result.unresolvedCount || 0}` : "—")}
       </div>
     </div>
+    ${renderLegacyMigrationBanner("events")}
     <div class="workspace-tabs ds-failure-page-tabs" role="tablist">
       <button class="${model.activeTab === "today" ? "active" : ""}" data-ds-failure-tab="today"><small>01</small><strong>当天失败任务</strong><span>查询当天全部失败实例</span></button>
       <button class="${model.activeTab === "retry" ? "active" : ""}" data-ds-failure-tab="retry"><small>02</small><strong>定时失败任务重跑</strong><span>手动测试、定时重跑与历史</span></button>
