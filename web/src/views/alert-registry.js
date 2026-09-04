@@ -32,9 +32,18 @@ export function renderAlertRegistry(root) {
       <div id="ar-test-output"></div>
     </section>
     <section class="panel">
-      <div class="panel-title">全部告警历史日志 · 最近 200 次</div>
-      <div class="panel-note">聚合展示所有告警条目的执行记录（含定时校验、测试触发），按时间倒序；可按条目筛选。<strong>提示：</strong>每个条目的通知 / 电话语音 / 定时 / 历史，点对应行的「⚙ 能力」即可配置。</div>
+      <div class="panel-title">全部告警历史日志</div>
+      <div class="panel-note">聚合展示所有告警条目的执行记录（含定时校验、测试触发），按时间倒序；可按时间范围与条目筛选。<strong>提示：</strong>每个条目的通知 / 电话语音 / 定时 / 历史 / 描述，点对应行的「⚙ 能力」即可配置。</div>
       <div class="mc-controls">
+        <label class="mc-schedule-label">时间范围</label>
+        <select id="mc-days-filter">
+          <option value="1">最近 1 天</option>
+          <option value="3">最近 3 天</option>
+          <option value="7">最近 7 天</option>
+          <option value="30">最近 30 天</option>
+          <option value="0">全部</option>
+        </select>
+        <span class="mc-controls-divider"></span>
         <label class="mc-filter-check"><input type="checkbox" id="mc-only-alert" /> 只看异常</label>
         <select id="mc-entry-filter"><option value="">全部条目</option></select>
         <div class="mc-pager" id="mc-pager"></div>
@@ -54,16 +63,16 @@ export function renderAlertRegistry(root) {
 }
 
 // 全部告警历史日志状态（筛选 + 分页）
-const mcState = { entryId: "", onlyAlert: false, page: 1, pageSize: 10, runs: [] };
+const mcState = { entryId: "", onlyAlert: false, days: 1, page: 1, pageSize: 10, runs: [] };
 
-/** 加载全部告警历史日志（筛选 + 分页）。 */
+/** 加载全部告警历史日志（按时间范围取数 + 筛选 + 分页）。 */
 async function loadMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
   el.innerHTML = `<div class="mc-loading">⏳ 正在加载告警历史日志…</div>`;
   let runs;
   try {
-    runs = await apiGet("/api/alert-registry/history");
+    runs = await apiGet(`/api/alert-registry/history?days=${encodeURIComponent(mcState.days)}`);
   } catch (error) {
     el.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
     return;
@@ -74,6 +83,11 @@ async function loadMcResults(root) {
   if (onlyAlert) {
     onlyAlert.checked = mcState.onlyAlert;
     onlyAlert.onchange = () => { mcState.onlyAlert = onlyAlert.checked; mcState.page = 1; renderMcResults(root); };
+  }
+  const daysSel = root.querySelector("#mc-days-filter");
+  if (daysSel) {
+    daysSel.value = String(mcState.days);
+    daysSel.onchange = () => { mcState.days = Number(daysSel.value) || 0; mcState.page = 1; loadMcResults(root); };
   }
   const entrySel2 = root.querySelector("#mc-entry-filter");
   if (entrySel2) {
@@ -650,6 +664,10 @@ function renderRow(item) {
     <tr class="ar-expand-row" data-expand-id="${escapeHtml(item.id)}" style="display:none">
       <td colspan="7" class="ar-expand-cell">
         <div class="mc-notify" open>
+          <summary>📝 描述（备注说明，可编辑）</summary>
+          <div class="mc-notify-body" data-ep-body="description"></div>
+        </div>
+        <div class="mc-notify" open>
           <summary>📢 通知配置（发送群 + @负责人 + 电话联系人，达阈值自动打电话）</summary>
           <div class="mc-notify-body" data-ep-body="notify"></div>
         </div>
@@ -742,10 +760,59 @@ function toggleEntryPanel(root, id) {
   const btn = root.querySelector(`[data-ar-notify="${CSS.escape(id)}"]`);
   if (btn) btn.textContent = "✕ 收起";
   // 并行加载四个区块
+  loadEntryDescriptionPanel(row, id);
   loadEntryNotifyPanel(row, id);
   loadEntryVoicePanel(row, id);
   loadEntrySchedulePanel(row, id);
   loadEntryHistoryPanel(row, id);
+}
+
+async function loadEntryDescriptionPanel(container, id) {
+  const body = container.querySelector('[data-ep-body="description"]');
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载描述…</div>`;
+  let cfg;
+  try {
+    cfg = await apiGet(`/api/alert-registry/${encodeURIComponent(id)}/description`);
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  const note = (cfg && cfg.note) || "";
+  body.innerHTML = `
+    <div class="mc-notify-rows">
+      <div class="mc-notify-row">
+        <span class="mc-notify-field-label" title="告警描述 / 备注">描述</span>
+        <input type="text" class="mc-desc-input" value="${escapeHtml(note)}" placeholder="例如：每小时校验多国核心指标一致性，有异常在群内 @ 负责人" style="flex:1; min-width:220px;" />
+      </div>
+    </div>
+    <div class="mc-notify-actions">
+      <button class="mc-page-btn" id="ar-desc-save">保存描述</button>
+      <span class="mc-schedule-status" id="ar-desc-status"></span>
+    </div>`;
+  const saveBtn = body.querySelector("#ar-desc-save");
+  const status = body.querySelector("#ar-desc-status");
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      if (saveBtn.disabled) return;
+      const input = body.querySelector(".mc-desc-input");
+      saveBtn.disabled = true;
+      status.textContent = "保存中…";
+      try {
+        const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/description`, { note: input ? input.value : "" });
+        status.textContent = res && res.ok ? "✅ 已保存" : "保存失败";
+        // 同步列表里的描述 title
+        const rowEl = container.closest("tr");
+        if (rowEl) {
+          const nameEl = rowEl.parentElement && rowEl.parentElement.querySelector('.ar-name');
+          if (nameEl) nameEl.setAttribute("title", (res && res.note) || "");
+        }
+      } catch (e) {
+        status.textContent = "保存失败: " + (e.message || String(e));
+      }
+      setTimeout(() => { saveBtn.disabled = false; status.textContent = ""; }, 1500);
+    };
+  }
 }
 
 async function loadEntryNotifyPanel(container, id) {

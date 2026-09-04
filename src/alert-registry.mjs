@@ -639,13 +639,18 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   }
 
   /** 全量历史日志：聚合所有条目的执行记录（mc_* 取多国校验结果，普通条目取独立历史），按时间倒序。 */
-  async function listAllHistory({ limit = 200 } = {}) {
+  /** 全量历史日志：聚合所有条目的执行记录（mc_* 取多国校验结果，普通条目取独立历史），按时间倒序。
+   *  days：只返回最近 N 天内的记录（0 / 空 = 全部）。 */
+  async function listAllHistory({ limit = 200, days = 0 } = {}) {
     const { alerts } = await load();
+    const cutoff = days > 0 ? Date.now() - days * 24 * 60 * 60 * 1000 : 0;
     const all = [];
     await Promise.all((alerts || []).map(async (entry) => {
       try {
         const runs = await getEntryHistory(entry.id, { limit: 50 });
         for (const r of runs) {
+          const ts = Date.parse(r.checkedAt || "");
+          if (cutoff && (!Number.isFinite(ts) || ts < cutoff)) continue;
           all.push({
             entryId: entry.id,
             entryName: entry.name,
@@ -665,6 +670,23 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     const { alerts } = await load();
     // 多国校验条目（mc_*）为单独控制：状态 = 自身 enabled（该国是否参与校验），n8n 工作流保持 active。
     return alerts.map((entry) => ({ ...entry, n8nActive: null }));
+  }
+
+  /** 读取条目描述（note 字段）。 */
+  async function getEntryDescription(id) {
+    const { alerts } = await load();
+    const entry = alerts.find((item) => item.id === id);
+    return { id, note: (entry && entry.note) || "" };
+  }
+
+  /** 更新条目描述（note 字段）。 */
+  async function setEntryDescription(id, note = "") {
+    const { alerts } = await load();
+    const entry = alerts.find((item) => item.id === id);
+    if (!entry) return { ok: false, error: "条目不存在: " + id };
+    entry.note = String(note || "").trim();
+    await save(alerts);
+    return { ok: true, id, note: entry.note };
   }
 
   async function get(id) {
@@ -1472,6 +1494,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     getEntryHistory,
     appendEntryHistory,
     listAllHistory,
+    getEntryDescription,
+    setEntryDescription,
     callEntryPhone,
     isMcEntry,
   };

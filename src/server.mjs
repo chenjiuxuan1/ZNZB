@@ -494,7 +494,7 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 201, await alertRegistry.create(body));
   }
-  if (method === "PUT" && url.pathname.startsWith("/api/alert-registry/") && !url.pathname.endsWith("/test")) {
+  if (method === "PUT" && url.pathname.startsWith("/api/alert-registry/") && !url.pathname.endsWith("/test") && !/\/(description|notify|voice|schedule)$/.test(url.pathname)) {
     const id = url.pathname.split("/").pop();
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.update(id, body));
@@ -525,7 +525,17 @@ async function handleApi(request, response, url) {
   // ---- 通用条目能力（通知 / 电话语音 / 定时 / 历史） ----
   // 注意：必须在通用 PUT /api/alert-registry/{id} 之前匹配，避免 {id}/notify 被当成 id
   if (method === "GET" && url.pathname === "/api/alert-registry/history") {
-    return sendJson(response, 200, await alertRegistry.listAllHistory());
+    const days = Number(url.searchParams.get("days") || 0);
+    return sendJson(response, 200, await alertRegistry.listAllHistory({ days: Number.isFinite(days) && days > 0 ? days : 0 }));
+  }
+  if (method === "GET" && /\/api\/alert-registry\/[^/]+\/description$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    return sendJson(response, 200, await alertRegistry.getEntryDescription(id));
+  }
+  if (method === "PUT" && /\/api\/alert-registry\/[^/]+\/description$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.setEntryDescription(id, (body && body.note) || ""));
   }
   if (method === "GET" && /\/api\/alert-registry\/[^/]+\/notify$/.test(url.pathname)) {
     const id = url.pathname.split("/").slice(-2)[0];
