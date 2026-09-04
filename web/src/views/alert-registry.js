@@ -637,9 +637,9 @@ async function runTest(root, id) {
   const panel = root.querySelector("#ar-test-panel");
   const output = root.querySelector("#ar-test-output");
   panel.style.display = "";
-  output.innerHTML = `<div class="notice">正在执行测试（SSH dry-run / 本地命令），最长 90 秒…</div>`;
+  output.innerHTML = `<div class="notice">正在执行测试（SSH dry-run / 本地命令），最长 30 秒…</div>`;
   try {
-    const result = await apiPost(`/api/alert-registry/${encodeURIComponent(id)}/test`, {}, { timeoutMs: 100000 });
+    const result = await apiPost(`/api/alert-registry/${encodeURIComponent(id)}/test`, {}, { timeoutMs: 35000 });
     renderTestResult(output, result);
   } catch (error) {
     output.innerHTML = `<div class="sandbox-status error"><strong>测试失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
@@ -880,14 +880,14 @@ function openEditor(root, item) {
       return;
     }
     const output = overlay.querySelector("#ar-command-output");
-    output.innerHTML = `<div class="notice">正在执行命令，最长 90 秒…</div>`;
+    output.innerHTML = `<div class="notice">正在执行命令，最长 30 秒…</div>`;
     try {
       const result = await apiPost("/api/alert-registry/test-command", {
         runVia: overlay.querySelector("#ar-f-runVia").value,
         command: cmd,
         sshHost: overlay.querySelector("#ar-f-host").value,
         sshPort: Number(overlay.querySelector("#ar-f-port").value || 36000),
-      }, { timeoutMs: 100000 });
+      }, { timeoutMs: 35000 });
       output.innerHTML = renderCommandResult(result);
     } catch (error) {
       output.innerHTML = `<div class="sandbox-status error"><strong>命令执行失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
