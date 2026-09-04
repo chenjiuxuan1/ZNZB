@@ -41,3 +41,4 @@ config/mc-schedule.json
 config/mc-notify.json
 config/mc-strike.json
 config/mc-group.json
+config/mc-voice.json

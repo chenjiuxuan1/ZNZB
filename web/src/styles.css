@@ -9280,3 +9280,37 @@ select.ar-field {
   color: #98a2b3;
   font-weight: 500;
 }
+
+/* 多国校验 · 电话语音配置 */
+.mc-voice-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 720px;
+}
+.mc-voice-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mc-voice-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+}
+.mc-voice-input,
+.mc-voice-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #344054;
+  box-sizing: border-box;
+}
+.mc-voice-input:focus-visible,
+.mc-voice-textarea:focus-visible {
+  outline: none;
+  border-color: #2e90fa;
+  box-shadow: 0 0 0 2px rgba(46, 144, 250, 0.15);
+}

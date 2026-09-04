@@ -48,6 +48,10 @@ export function renderAlertRegistry(root) {
         <summary>📢 通知配置（发送群 chat id + 各国家 @负责人 / 电话联系人，有报警时末尾 @ 负责人、达阈值自动打电话）</summary>
         <div class="mc-notify-body" id="mc-notify-body"></div>
       </details>
+      <details class="mc-notify" id="mc-voice-panel">
+        <summary>📞 电话语音配置（阿里云 TTS 模板与播报内容；变量：{{label}} / {{code}} / {{country}} / {{n}} / {{threshold}} / {{items}}）</summary>
+        <div class="mc-notify-body" id="mc-voice-body"></div>
+      </details>
       <div id="mc-results"></div>
     </section>
   `;
@@ -99,6 +103,7 @@ async function loadMcResults(root) {
   renderMcResults(root);
   loadMcSchedule(root);
   loadMcNotify(root);
+  loadMcVoice(root);
 }
 
 /** 多国校验 · 电话通知配置状态。 */
@@ -200,6 +205,74 @@ async function loadMcNotify(root) {
         if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
       }
       mcNotifyState.saving = false;
+    };
+  }
+}
+
+/** 多国校验 · 电话语音配置状态。 */
+const mcVoiceState = { cfg: null, saving: false };
+
+/** 加载并绑定电话语音配置（阿里云 TTS 模板与播报内容）。 */
+async function loadMcVoice(root) {
+  const body = root.querySelector("#mc-voice-body");
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载语音配置…</div>`;
+  let cfg;
+  try {
+    cfg = await apiGet("/api/multi-country/voice");
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  mcVoiceState.cfg = cfg || {};
+  body.innerHTML = `
+    <div class="mc-voice-form">
+      <label class="mc-notify-toggle"><input type="checkbox" id="mc-voice-enabled" ${cfg.enabled ? "checked" : ""} /> 启用电话语音告警</label>
+      <div class="mc-voice-field">
+        <label class="mc-voice-label">语音模板 TtsCode：</label>
+        <input type="text" id="mc-voice-tts-code" class="mc-voice-input" value="${escapeHtml(cfg.ttsCode || "")}" placeholder="如 TTS_160301133" />
+        <span class="mc-group-chat-hint">阿里云语音合成模板 Code（需先在阿里云创建并审核通过）</span>
+      </div>
+      <div class="mc-voice-field">
+        <label class="mc-voice-label">标题模板 nameTemplate：</label>
+        <input type="text" id="mc-voice-name-template" class="mc-voice-input" value="${escapeHtml(cfg.nameTemplate || "")}" placeholder="如 {{label}}多国一致性校验" />
+        <span class="mc-group-chat-hint">对应电话里的 name 参数</span>
+      </div>
+      <div class="mc-voice-field">
+        <label class="mc-voice-label">正文模板 systemTemplate：</label>
+        <textarea id="mc-voice-system-template" class="mc-voice-textarea" rows="2" placeholder="如 检测到{{n}}项数据异常，请及时处理">${escapeHtml(cfg.systemTemplate || "")}</textarea>
+        <span class="mc-group-chat-hint">对应电话里的 system 参数</span>
+      </div>
+      <div class="mc-notify-actions">
+        <button class="mc-page-btn" id="mc-voice-save">保存语音配置</button>
+        <span class="mc-schedule-status" id="mc-voice-status"></span>
+      </div>
+    </div>`;
+  const saveBtn = root.querySelector("#mc-voice-save");
+  const status = root.querySelector("#mc-voice-status");
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      if (mcVoiceState.saving) return;
+      mcVoiceState.saving = true;
+      if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+      const payload = {
+        enabled: root.querySelector("#mc-voice-enabled")?.checked ?? false,
+        ttsCode: (root.querySelector("#mc-voice-tts-code")?.value || "").trim(),
+        nameTemplate: (root.querySelector("#mc-voice-name-template")?.value || "").trim(),
+        systemTemplate: (root.querySelector("#mc-voice-system-template")?.value || "").trim(),
+      };
+      try {
+        const res = await apiPut("/api/multi-country/voice", payload);
+        if (res && res.ok) {
+          mcVoiceState.cfg = res.cfg || payload;
+          if (status) { status.textContent = "✅ 已保存语音配置"; status.className = "mc-schedule-status ok"; }
+        } else {
+          if (status) { status.textContent = `❌ 保存失败：${res && res.error ? res.error : "未知错误"}`; status.className = "mc-schedule-status error"; }
+        }
+      } catch (e) {
+        if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+      }
+      mcVoiceState.saving = false;
     };
   }
 }
