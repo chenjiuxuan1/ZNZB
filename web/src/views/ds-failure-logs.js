@@ -162,7 +162,7 @@ function visibleN8nEvidenceTargets() {
     const pageCount = Math.max(1, Math.ceil(failures.length / 4));
     const page = Math.max(1, Math.min(pageCount, Number(model.scheduledCountryPages[country.country]) || 1));
     for (const failure of failures.slice((page - 1) * 4, page * 4)) {
-      if (failure.taskName || failure.taskCode || ["loading", "resolved", "not_found", "failed", "unavailable"].includes(failure.taskLookupStatus)) continue;
+      if (["loading", "resolved", "not_found", "instance_not_found", "failed", "unavailable"].includes(failure.taskLookupStatus)) continue;
       const value = { ...failure, country: country.country };
       const key = n8nEvidenceKey(value);
       if (!failure.projectCode || !failure.instanceId || seen.has(key)) continue;
@@ -188,11 +188,23 @@ async function hydrateVisibleN8nEvidence(root, evidenceRunId = model.scheduledEv
     const response = await apiPost("/api/ds-n8n-failure-watch/evidence", { failures: targets });
     if (evidenceRunId !== model.scheduledEvidenceRunId) return;
     const evidence = new Map((response.results || []).map((item) => [item.key, item]));
+    let removedMissingInstances = false;
     for (const country of model.scheduledResult?.countries || []) {
+      const visibleFailures = [];
       for (const failure of country.failures || []) {
         const patch = evidence.get(n8nEvidenceKey({ ...failure, country: country.country }));
         if (patch) Object.assign(failure, patch);
+        if (failure.taskLookupStatus === "instance_not_found") {
+          removedMissingInstances = true;
+          continue;
+        }
+        visibleFailures.push(failure);
       }
+      country.failures = visibleFailures;
+      country.checkedInstances = visibleFailures.length;
+    }
+    if (removedMissingInstances) {
+      model.scheduledResult = { ...model.scheduledResult, ...aggregateResult(model.scheduledResult?.countries || []) };
     }
   } catch (error) {
     if (evidenceRunId !== model.scheduledEvidenceRunId) return;
@@ -206,6 +218,9 @@ async function hydrateVisibleN8nEvidence(root, evidenceRunId = model.scheduledEv
     }
   }
   if (isCurrentView()) paint(root);
+  // Removing one stale record may expose the next row on the current page;
+  // hydrate that row immediately instead of waiting for another user action.
+  if (evidenceRunId === model.scheduledEvidenceRunId) void hydrateVisibleN8nEvidence(root, evidenceRunId);
 }
 
 async function saveScheduledOwners(root) {
