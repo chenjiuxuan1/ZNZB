@@ -53,11 +53,11 @@ const LEGACY_CAPABILITIES = Object.freeze({
     { id: "notification-preview", label: "通知预览", href: "/notify-preview" },
   ]),
   operations: freezeItems([
-    { id: "connection-health", label: "连接状态", href: "/alerts/operations" },
+    { id: "connection-health", label: "连接状态", href: "/alert-registry" },
     { id: "rule-sandbox", label: "规则沙盒与测试", href: "/sandbox" },
     { id: "script-preview", label: "脚本预览", href: "/alert-registry" },
     { id: "release-commit", label: "提交与发布", href: "/alert-registry" },
-    { id: "audit-log", label: "审计日志", href: "/alerts/operations" },
+    { id: "audit-log", label: "检查与发布记录", href: "/alert-registry" },
   ]),
 });
 
