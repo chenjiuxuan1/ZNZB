@@ -671,8 +671,8 @@ function renderRow(item) {
     <tr class="ar-expand-row" data-expand-id="${escapeHtml(item.id)}" style="display:none">
       <td colspan="7" class="ar-expand-cell">
         <div class="mc-notify" open>
-          <summary>📝 描述（备注说明，可编辑）</summary>
-          <div class="mc-notify-body" data-ep-body="description"></div>
+          <summary>📨 告警消息模板（群通知的具体文本与样式，可编辑）</summary>
+          <div class="mc-notify-body" data-ep-body="message"></div>
         </div>
         <div class="mc-notify" open>
           <summary>📢 通知配置（发送群 + @负责人 + 电话联系人，达阈值自动打电话）</summary>
@@ -767,53 +767,63 @@ function toggleEntryPanel(root, id) {
   const btn = root.querySelector(`[data-ar-notify="${CSS.escape(id)}"]`);
   if (btn) btn.textContent = "✕ 收起";
   // 并行加载四个区块
-  loadEntryDescriptionPanel(row, id);
+  loadEntryMessagePanel(row, id);
   loadEntryNotifyPanel(row, id);
   loadEntryVoicePanel(row, id);
   loadEntrySchedulePanel(row, id);
   loadEntryHistoryPanel(row, id);
 }
 
-async function loadEntryDescriptionPanel(container, id) {
-  const body = container.querySelector('[data-ep-body="description"]');
+async function loadEntryMessagePanel(container, id) {
+  const body = container.querySelector('[data-ep-body="message"]');
   if (!body) return;
-  body.innerHTML = `<div class="mc-loading">⏳ 正在加载描述…</div>`;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载消息模板…</div>`;
   let cfg;
   try {
-    cfg = await apiGet(`/api/alert-registry/${encodeURIComponent(id)}/description`);
+    cfg = await apiGet(`/api/alert-registry/${encodeURIComponent(id)}/message`);
   } catch (e) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
     return;
   }
-  const note = (cfg && cfg.note) || "";
+  const tpl = (cfg && cfg.template) || "";
+  const okText = (cfg && cfg.okText) || "";
+  const enabled = !cfg || cfg.enabled !== false;
   body.innerHTML = `
+    <div class="mc-msg-vars">
+      可用变量：<code>{entry}</code> 条目名 · <code>{time}</code> 时间 · <code>{country}</code> 国家 · <code>{items}</code> 异常明细 · <code>{owner}</code> @负责人 · <code>{link}</code> 平台链接
+    </div>
     <div class="mc-notify-rows">
       <div class="mc-notify-row">
-        <span class="mc-notify-field-label" title="告警描述 / 备注">描述</span>
-        <input type="text" class="mc-desc-input" value="${escapeHtml(note)}" placeholder="例如：每小时校验多国核心指标一致性，有异常在群内 @ 负责人" style="flex:1; min-width:220px;" />
+        <label class="mc-mg-label" title="有异常时发送到群的正文模板">异常消息模板</label>
+        <textarea class="mc-msg-tpl" rows="6" placeholder="🔔 {entry}\n时间：{time}\n{items}\n📋 详情见 ZNZB 告警平台：{link}\n{owner}">${escapeHtml(tpl)}</textarea>
       </div>
+      <div class="mc-notify-row">
+        <label class="mc-mg-label" title="无异常时可选的提示文案（留空 = 无异常不发消息）">无异常提示</label>
+        <input type="text" class="mc-msg-ok" value="${escapeHtml(okText)}" placeholder="留空则不发送无异常消息" />
+      </div>
+      <label class="mc-notify-toggle"><input type="checkbox" id="ar-msg-enabled" ${enabled ? "checked" : ""} /> 启用消息模板</label>
     </div>
     <div class="mc-notify-actions">
-      <button class="mc-page-btn" id="ar-desc-save">保存描述</button>
-      <span class="mc-schedule-status" id="ar-desc-status"></span>
+      <button class="mc-page-btn" id="ar-msg-save">保存消息模板</button>
+      <span class="mc-schedule-status" id="ar-msg-status"></span>
     </div>`;
-  const saveBtn = body.querySelector("#ar-desc-save");
-  const status = body.querySelector("#ar-desc-status");
+  const saveBtn = body.querySelector("#ar-msg-save");
+  const status = body.querySelector("#ar-msg-status");
   if (saveBtn) {
     saveBtn.onclick = async () => {
       if (saveBtn.disabled) return;
-      const input = body.querySelector(".mc-desc-input");
+      const tplEl = body.querySelector(".mc-msg-tpl");
+      const okEl = body.querySelector(".mc-msg-ok");
+      const enEl = body.querySelector("#ar-msg-enabled");
       saveBtn.disabled = true;
       status.textContent = "保存中…";
       try {
-        const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/description`, { note: input ? input.value : "" });
+        const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/message`, {
+          template: tplEl ? tplEl.value : "",
+          okText: okEl ? okEl.value : "",
+          enabled: enEl ? enEl.checked : true,
+        });
         status.textContent = res && res.ok ? "✅ 已保存" : "保存失败";
-        // 同步列表里的描述 title
-        const rowEl = container.closest("tr");
-        if (rowEl) {
-          const nameEl = rowEl.parentElement && rowEl.parentElement.querySelector('.ar-name');
-          if (nameEl) nameEl.setAttribute("title", (res && res.note) || "");
-        }
       } catch (e) {
         status.textContent = "保存失败: " + (e.message || String(e));
       }

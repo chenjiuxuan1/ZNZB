@@ -494,7 +494,7 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 201, await alertRegistry.create(body));
   }
-  if (method === "PUT" && url.pathname.startsWith("/api/alert-registry/") && !url.pathname.endsWith("/test") && !/\/(description|notify|voice|schedule)$/.test(url.pathname)) {
+  if (method === "PUT" && url.pathname.startsWith("/api/alert-registry/") && !url.pathname.endsWith("/test") && !/\/(description|notify|voice|schedule|message)$/.test(url.pathname)) {
     const id = url.pathname.split("/").pop();
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.update(id, body));
@@ -536,6 +536,15 @@ async function handleApi(request, response, url) {
     const id = url.pathname.split("/").slice(-2)[0];
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.setEntryDescription(id, (body && body.note) || ""));
+  }
+  if (method === "GET" && /\/api\/alert-registry\/[^/]+\/message$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    return sendJson(response, 200, await alertRegistry.getEntryMessage(id));
+  }
+  if (method === "PUT" && /\/api\/alert-registry\/[^/]+\/message$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.setEntryMessage(id, body || {}));
   }
   if (method === "GET" && /\/api\/alert-registry\/[^/]+\/notify$/.test(url.pathname)) {
     const id = url.pathname.split("/").slice(-2)[0];
@@ -624,6 +633,13 @@ async function handleApi(request, response, url) {
   if (method === "PUT" && url.pathname === "/api/multi-country/voice") {
     const body = await readBody(request);
     return sendJson(response, 200, await alertRegistry.setMcVoice(body));
+  }
+  if (method === "GET" && url.pathname === "/api/multi-country/message") {
+    return sendJson(response, 200, await alertRegistry.getMcMessage());
+  }
+  if (method === "PUT" && url.pathname === "/api/multi-country/message") {
+    const body = await readBody(request);
+    return sendJson(response, 200, await alertRegistry.setMcMessage(body));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
