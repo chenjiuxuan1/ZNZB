@@ -769,17 +769,27 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   async function loadMcVoice() {
     const file = await voicePath();
     const raw = await readJsonFile(file, {});
+    const d = JSON.parse(JSON.stringify(DEFAULT_MC_VOICE));
     if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) {
-      return JSON.parse(JSON.stringify(DEFAULT_MC_VOICE));
+      // 无配置文件 → 用默认值，但需要解析 ${ALIBABA_VOICE_*} 环境变量占位符
+      return {
+        enabled: d.enabled,
+        accessKeyId: resolveEnv(d.accessKeyId),
+        accessKeySecret: resolveEnv(d.accessKeySecret),
+        calledShowNumber: d.calledShowNumber,
+        ttsCode: d.ttsCode,
+        nameTemplate: d.nameTemplate,
+        systemTemplate: d.systemTemplate,
+      };
     }
     return {
       enabled: raw.enabled !== false,
-      accessKeyId: String(raw.accessKeyId || DEFAULT_MC_VOICE.accessKeyId),
-      accessKeySecret: String(raw.accessKeySecret || DEFAULT_MC_VOICE.accessKeySecret),
-      calledShowNumber: String(raw.calledShowNumber || DEFAULT_MC_VOICE.calledShowNumber),
-      ttsCode: String(raw.ttsCode || DEFAULT_MC_VOICE.ttsCode),
-      nameTemplate: String(raw.nameTemplate || DEFAULT_MC_VOICE.nameTemplate),
-      systemTemplate: String(raw.systemTemplate || DEFAULT_MC_VOICE.systemTemplate),
+      accessKeyId: resolveEnv(String(raw.accessKeyId || d.accessKeyId)),
+      accessKeySecret: resolveEnv(String(raw.accessKeySecret || d.accessKeySecret)),
+      calledShowNumber: String(raw.calledShowNumber || d.calledShowNumber),
+      ttsCode: String(raw.ttsCode || d.ttsCode),
+      nameTemplate: String(raw.nameTemplate || d.nameTemplate),
+      systemTemplate: String(raw.systemTemplate || d.systemTemplate),
     };
   }
 
@@ -870,12 +880,12 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       if (!found) {
         return { ok: false, error: `n8n 工作流中未找到定时触发节点「${MC_SCHEDULE_TRIGGER_NODE}」` };
       }
-      // 2) PUT 工作流
+      // 2) PUT 工作流（n8n PUT 不接受 active 字段；保留完整 settings，避免覆盖 callerPolicy 等）
       const putPayload = {
         name: wf.name,
         nodes: wf.nodes,
         connections: wf.connections,
-        settings: { executionOrder: "v1" },
+        settings: { ...(wf.settings || {}), executionOrder: "v1" },
       };
       const putResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
         method: "PUT",
