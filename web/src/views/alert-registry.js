@@ -30,11 +30,11 @@ export function renderAlertRegistry(root) {
       <div id="ar-test-output"></div>
     </section>
     <section class="panel">
-      <div class="panel-title">多国一致性校验 · 最近 200 次结果</div>
-      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。<strong>提示：</strong>多国校验条目的通知 / 电话语音 / 定时 / 历史，点对应行（mc_cn 等）的「⚙ 能力」即可配置；此处仅是多国校验的专项结果视图。</div>
+      <div class="panel-title">全部告警历史日志 · 最近 200 次</div>
+      <div class="panel-note">聚合展示所有告警条目的执行记录（含定时校验、测试触发），按时间倒序；可按条目筛选。<strong>提示：</strong>每个条目的通知 / 电话语音 / 定时 / 历史，点对应行的「⚙ 能力」即可配置。</div>
       <div class="mc-controls">
         <label class="mc-filter-check"><input type="checkbox" id="mc-only-alert" /> 只看异常</label>
-        <select id="mc-country-filter"><option value="">全部国家</option></select>
+        <select id="mc-entry-filter"><option value="">全部条目</option></select>
         <div class="mc-pager" id="mc-pager"></div>
       </div>
       <div id="mc-results"></div>
@@ -51,17 +51,17 @@ export function renderAlertRegistry(root) {
   loadMcResults(root);
 }
 
-// 多国校验结果页状态（筛选 + 分页）
-const mcState = { country: "", onlyAlert: false, page: 1, pageSize: 5, runs: [], scheduleMinute: 55 };
+// 全部告警历史日志状态（筛选 + 分页）
+const mcState = { entryId: "", onlyAlert: false, page: 1, pageSize: 10, runs: [] };
 
-/** 加载多国一致性校验结果（筛选 + 分页）。 */
+/** 加载全部告警历史日志（筛选 + 分页）。 */
 async function loadMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
-  el.innerHTML = `<div class="mc-loading">⏳ 正在加载校验结果…</div>`;
+  el.innerHTML = `<div class="mc-loading">⏳ 正在加载告警历史日志…</div>`;
   let runs;
   try {
-    runs = await apiGet("/api/multi-country/check-results");
+    runs = await apiGet("/api/alert-registry/history");
   } catch (error) {
     el.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
     return;
@@ -73,17 +73,19 @@ async function loadMcResults(root) {
     onlyAlert.checked = mcState.onlyAlert;
     onlyAlert.onchange = () => { mcState.onlyAlert = onlyAlert.checked; mcState.page = 1; renderMcResults(root); };
   }
-  const countrySel2 = root.querySelector("#mc-country-filter");
-  if (countrySel2) {
-    countrySel2.onchange = () => { mcState.country = countrySel2.value; mcState.page = 1; renderMcResults(root); };
+  const entrySel2 = root.querySelector("#mc-entry-filter");
+  if (entrySel2) {
+    entrySel2.onchange = () => { mcState.entryId = entrySel2.value; mcState.page = 1; renderMcResults(root); };
   }
-  // 更新国家筛选下拉（去重 + 按出现顺序）
-  const countrySel = root.querySelector("#mc-country-filter");
-  const countrySet = new Set();
-  mcState.runs.forEach((run) => (run.countries || []).forEach((c) => { if ((c.mismatches || []).length > 0) countrySet.add(c.label || c.code || ""); }));
-  if (countrySel) {
-    countrySel.innerHTML = `<option value="">全部国家</option>` + [...countrySet].map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-    countrySel.value = mcState.country;
+  // 更新条目筛选下拉（按 id 去重 + 出现顺序）
+  const entrySel = root.querySelector("#mc-entry-filter");
+  const entrySet = new Set();
+  mcState.runs.forEach((run) => { if (run.entryId) entrySet.add(run.entryId); });
+  if (entrySel) {
+    const names = {};
+    mcState.runs.forEach((run) => { if (run.entryId && run.entryName) names[run.entryId] = run.entryName; });
+    entrySel.innerHTML = `<option value="">全部条目</option>` + [...entrySet].map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(names[id] || id)}</option>`).join("");
+    entrySel.value = mcState.entryId;
   }
   renderMcResults(root);
 }
@@ -398,17 +400,16 @@ function renderMcResults(root) {
   if (!mcState.runs.length) {
     el.innerHTML = `<div class="mc-empty">
       <div class="mc-empty-icon">📊</div>
-      <div class="mc-empty-title">暂无多国一致性校验记录</div>
-      <div class="mc-empty-desc">「多国一致性校验告警」n8n 工作流会在每个整点的第 ${escapeHtml(mcState.scheduleMinute ?? 55)} 分自动执行，异常时会回写到这里。</div>
+      <div class="mc-empty-title">暂无告警历史记录</div>
+      <div class="mc-empty-desc">告警条目执行（定时校验 / 测试触发）后会自动记录到这里。</div>
     </div>`;
     renderMcPager(root, 0);
     return;
   }
-  // 筛选：只看异常 + 按国家
+  // 筛选：只看异常 + 按条目
   const filtered = mcState.runs.filter((run) => {
-    const abnormalCountries = (run.countries || []).filter((c) => (c.mismatches || []).length > 0);
-    if (mcState.onlyAlert && abnormalCountries.length === 0) return false;
-    if (mcState.country && !abnormalCountries.some((c) => (c.label || c.code || "") === mcState.country)) return false;
+    if (mcState.onlyAlert && !run.hasAlert) return false;
+    if (mcState.entryId && run.entryId !== mcState.entryId) return false;
     return true;
   });
   const totalPages = Math.max(1, Math.ceil(filtered.length / mcState.pageSize));
@@ -417,8 +418,9 @@ function renderMcResults(root) {
   const pageRuns = filtered.slice(start, start + mcState.pageSize);
   el.innerHTML = pageRuns.map((run, idx) => {
     const ts = formatTs(run.checkedAt);
-    // 只显示有异常的国家
-    const abnormal = (run.countries || []).filter((c) => (c.mismatches || []).length > 0);
+    const hasCountries = Array.isArray(run.countries) && run.countries.length > 0;
+    // mc 类记录：异常国家徽章
+    const abnormal = hasCountries ? (run.countries || []).filter((c) => (c.mismatches || []).length > 0) : [];
     const summary = abnormal.map((c) => {
       const m = c.mismatches || [];
       const detail = m.length
@@ -426,7 +428,15 @@ function renderMcResults(root) {
         : "";
       return `<span class="mc-badge mc-badge-red">${escapeHtml(c.label || c.code || "")}${detail}</span>`;
     }).join(" ");
-    const alertMark = run.hasAlert ? ` <span class="mc-badge mc-badge-red">异常</span>` : ` <span class="mc-badge mc-badge-green">正常</span>`;
+    const stateMark = run.hasError
+      ? `<span class="mc-badge mc-badge-red">错误</span>`
+      : run.hasAlert
+        ? `<span class="mc-badge mc-badge-red">异常</span>`
+        : `<span class="mc-badge mc-badge-green">正常</span>`;
+    const entryBadge = (run.entryName || run.entryId)
+      ? `<span class="mc-entry-badge" title="${escapeHtml(run.entryId || "")}">${escapeHtml(run.entryName || run.entryId)}</span>`
+      : "";
+    const bodyText = (run.text || run.summary || "").trim();
     const detailPanels = abnormal.map((c) => {
       const m = c.mismatches || [];
       const sql = c.sql || c.detailSql || "";
@@ -443,37 +453,21 @@ function renderMcResults(root) {
         </details>
       `;
     }).join("");
+    const summaryLine = summary || (hasCountries && !abnormal.length ? `<span class="mc-badge mc-badge-gray">无异常</span>` : "");
     return `
       <div class="mc-run ${(start + idx) === 0 ? "mc-run-latest" : ""}">
         <div class="mc-run-head">
           <span class="mc-run-id">#${run.id ? String(run.id).slice(0, 8) : start + idx + 1}</span>
           <span class="mc-run-ts">${ts}</span>
-          ${alertMark}
+          ${entryBadge}
+          ${stateMark}
         </div>
-        <div class="mc-run-countries">${summary || `<span class="mc-badge mc-badge-gray">无异常国家</span>`}</div>
+        ${summaryLine ? `<div class="mc-run-countries">${summaryLine}</div>` : ""}
+        ${bodyText ? `<div class="mc-run-summary">${escapeHtml(bodyText)}</div>` : ""}
         ${detailPanels}
       </div>
     `;
   }).join("");
-  // 明细分页按钮
-  el.querySelectorAll(".mc-detail-page-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const key = btn.dataset.key;
-      const p = Number(btn.dataset.page);
-      const tp = Math.max(1, Math.ceil(((mcState.runs.find((r) => r.id === key.split("|")[0])?.countries || []).find((c) => (c.code || c.label || "") === key.split("|")[1])?.details || []).length / MC_DETAIL_PAGE_SIZE));
-      if (key && p >= 1 && p <= tp) {
-        mcDetailPage[key] = p;
-        // 找到对应国家详情面板，局部重渲染
-        const runId = key.split("|")[0];
-        const code = key.split("|")[1];
-        const run = mcState.runs.find((r) => String(r.id).slice(0, 8) === String(runId).slice(0, 8) || r.id === runId);
-        const detailsEl = el.querySelector(`[data-mc-detail-key="${CSS.escape(key)}"]`);
-        if (detailsEl) {
-          detailsEl.innerHTML = renderMcDetailBlock({ ...(run?.countries || []).find((c) => (c.code || c.label || "") === code), runId });
-        }
-      }
-    });
-  });
   // 复制校验语句按钮（事件委托，覆盖局部重渲染）
   el.querySelectorAll(".mc-copy-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -484,7 +478,6 @@ function renderMcResults(root) {
         btn.textContent = "✅ 已复制";
         btn.classList.add("copied");
       } catch (e) {
-        // clipboard 不可用时 fallback
         const ta = document.createElement("textarea");
         ta.value = sql;
         ta.style.position = "fixed";
@@ -529,7 +522,7 @@ function renderMcEmpty(filteredCount) {
     el.innerHTML = `<div class="mc-empty">
       <div class="mc-empty-icon">🔍</div>
       <div class="mc-empty-title">没有符合当前筛选条件的记录</div>
-      <div class="mc-empty-desc">试试清除「只看异常」或更换国家筛选。</div>
+      <div class="mc-empty-desc">试试清除「只看异常」或更换条目筛选。</div>
     </div>`;
   }
 }
