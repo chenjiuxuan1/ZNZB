@@ -637,7 +637,7 @@ async function runTest(root, id) {
   const panel = root.querySelector("#ar-test-panel");
   const output = root.querySelector("#ar-test-output");
   panel.style.display = "";
-  output.innerHTML = `<div class="notice">正在执行测试（SSH dry-run / 本地命令），最长 30 秒…</div>`;
+  output.innerHTML = `<div class="notice">正在触发条目绑定的 n8n 工作流 / 执行命令测试…</div>`;
   try {
     const result = await apiPost(`/api/alert-registry/${encodeURIComponent(id)}/test`, {}, { timeoutMs: 35000 });
     renderTestResult(output, result);
@@ -647,6 +647,22 @@ async function runTest(root, id) {
 }
 
 function renderTestResult(output, result) {
+  // n8n 工作流触发模式：返回的是 triggered / message / note / error，不是 stdout/exitCode
+  if (result && result.mode === "n8n-workflow") {
+    const ok = Boolean(result.triggered);
+    const color = ok ? "success" : "error";
+    output.innerHTML = `
+      <div class="sandbox-status ${color}">
+        <strong>${ok ? "已触发 n8n 工作流" : "触发失败"}</strong>
+        <span>${escapeHtml(result.name || "")}</span>
+      </div>
+      <div class="panel-title">触发信息</div>
+      <pre class="code">${escapeHtml(result.message || result.error || "")}</pre>
+      ${result.workflowId ? `<div class="panel-title">n8n 工作流 ID</div><pre class="code">${escapeHtml(result.workflowId)}</pre>` : ""}
+      ${result.note ? `<div class="notice">${escapeHtml(result.note)}</div>` : ""}
+    `;
+    return;
+  }
   const ok = result.ok;
   const color = ok ? "success" : "error";
   output.innerHTML = `
