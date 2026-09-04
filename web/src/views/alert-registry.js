@@ -70,14 +70,21 @@ async function loadMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
   el.innerHTML = `<div class="mc-loading">⏳ 正在加载告警历史日志…</div>`;
-  let runs;
+  // 并行拉取：历史记录 + 条目列表（减少串行等待）
+  let runs = [];
+  let alertsList = null;
   try {
-    runs = await apiGet(`/api/alert-registry/history?days=${encodeURIComponent(mcState.days)}`);
+    const [r, a] = await Promise.all([
+      apiGet(`/api/alert-registry/history?days=${encodeURIComponent(mcState.days)}`),
+      apiGet("/api/alert-registry").catch(() => null),
+    ]);
+    runs = Array.isArray(r) ? r : [];
+    alertsList = Array.isArray(a) ? a : null;
   } catch (error) {
     el.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
     return;
   }
-  mcState.runs = Array.isArray(runs) ? runs : [];
+  mcState.runs = runs;
   // 绑定筛选控件事件
   const onlyAlert = root.querySelector("#mc-only-alert");
   if (onlyAlert) {
@@ -93,19 +100,16 @@ async function loadMcResults(root) {
   if (entrySel2) {
     entrySel2.onchange = () => { mcState.entryId = entrySel2.value; mcState.page = 1; renderMcResults(root); };
   }
-  // 条目筛选下拉：基于全部告警条目列表（而非仅当前历史记录），保证所有条目都可选
+  // 条目筛选下拉：优先用全部告警条目列表，失败时退回历史记录里的条目
   const entrySel = root.querySelector("#mc-entry-filter");
   if (entrySel) {
-    try {
-      const alerts = await apiGet("/api/alert-registry");
-      const list = Array.isArray(alerts) ? alerts : [];
-      entrySel.innerHTML = `<option value="">全部条目</option>` + list.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)}</option>`).join("");
-    } catch (e) {
-      // 列表拉取失败时退回：仅用历史记录里的条目
+    if (alertsList) {
+      entrySel.innerHTML = `<option value="">全部条目</option>` + alertsList.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)}</option>`).join("");
+    } else {
       const entrySet = new Set();
-      mcState.runs.forEach((run) => { if (run.entryId) entrySet.add(run.entryId); });
+      runs.forEach((run) => { if (run.entryId) entrySet.add(run.entryId); });
       const names = {};
-      mcState.runs.forEach((run) => { if (run.entryId && run.entryName) names[run.entryId] = run.entryName; });
+      runs.forEach((run) => { if (run.entryId && run.entryName) names[run.entryId] = run.entryName; });
       entrySel.innerHTML = `<option value="">全部条目</option>` + [...entrySet].map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(names[id] || id)}</option>`).join("");
     }
     entrySel.value = mcState.entryId;
