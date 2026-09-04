@@ -580,7 +580,10 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
   }
   const evidenceByInstance = new Map();
   const enriched = await mapWithConcurrency(discovered, 6, async (item) => {
-    if (!enrichDsEvidence || item.taskName || item.taskCode || !item.instanceId || !item.projectCode) return item;
+    // Always verify the exact DS instance and query its task instances. n8n
+    // payload task fields can be stale/incomplete, and remote retry-log access
+    // is independent from the DS task-instance API.
+    if (!enrichDsEvidence || !item.instanceId || !item.projectCode) return item;
     const evidenceKey = `${item.country}:${item.projectCode}:${item.instanceId}`;
     if (!evidenceByInstance.has(evidenceKey)) {
       evidenceByInstance.set(evidenceKey, Promise.resolve(dsEvidenceResolver(rootDir, { country: item.country, failure: item })));
@@ -624,9 +627,9 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
     }
     const outcome = parseRetryLogOutcome(read.content);
     const base = { ...itemWithResolvedPath, retryLogReadStatus: "ok", retryLogReason: outcome.reason };
-    if (outcome.status === "recovered") return { ...base, repairStatus: "recovered", retryResult: "recovered" };
-    if (outcome.status === "failed") return { ...base, repairStatus: "unresolved", retryResult: "failed" };
-    if (outcome.status === "running") return { ...base, repairStatus: "repairing", retryResult: "running" };
+    if (outcome.status === "recovered") return { ...base, repairStatus: "recovered", retryResult: "recovered", repairOutcomeSource: "retry_log" };
+    if (outcome.status === "failed") return { ...base, repairStatus: "unresolved", retryResult: "failed", repairOutcomeSource: "retry_log" };
+    if (outcome.status === "running") return { ...base, repairStatus: "repairing", retryResult: "running", repairOutcomeSource: "retry_log" };
     return { ...base, retryLogReason: "远端日志未解析出明确最终状态" };
   });
   let totalFailures = 0;
