@@ -31,7 +31,7 @@ export function renderAlertRegistry(root) {
     </section>
     <section class="panel">
       <div class="panel-title">多国一致性校验 · 最近 200 次结果</div>
-      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。定时默认每小时 55 分，可在下方调整。</div>
+      <div class="panel-note">由「多国一致性校验告警」n8n 工作流每小时回写；只展示有异常的国家，可按国家筛选与翻页。定时默认每小时 55 分，可在下方调整。<strong>提示：</strong>每个告警条目的「⚙ 能力」面板都可单独配置通知 / 电话语音 / 定时 / 历史；此处是多国校验的专项结果视图。</div>
       <div class="mc-controls">
         <span class="mc-schedule-label mc-controls-title">⏰ 定时</span>
         <span class="mc-schedule-label">每小时</span>
@@ -629,6 +629,9 @@ async function loadList(root) {
   listEl.querySelectorAll("[data-ar-test]").forEach((button) => {
     button.addEventListener("click", () => runTest(root, button.dataset.arTest));
   });
+  listEl.querySelectorAll("[data-ar-notify]").forEach((button) => {
+    button.addEventListener("click", () => openEntryPanel(root, button.dataset.arNotify));
+  });
 }
 
 function renderRow(item) {
@@ -660,6 +663,7 @@ function renderRow(item) {
       <td class="ar-ops-col">
         <div class="ar-ops">
           <button class="ar-btn ar-btn-test" data-ar-test="${escapeHtml(item.id)}">▶ 测试</button>
+          <button class="ar-btn ar-btn-notify" data-ar-notify="${escapeHtml(item.id)}" title="通知配置 / 电话语音 / 定时 / 历史">⚙ 能力</button>
           <button class="ar-btn" data-ar-edit="${escapeHtml(item.id)}">编辑</button>
           <button class="ar-btn" data-ar-toggle="${escapeHtml(item.id)}">${item.enabled ? "停用" : "启用"}</button>
           <button class="ar-btn ar-btn-danger" data-ar-delete="${escapeHtml(item.id)}">删除</button>
@@ -717,6 +721,315 @@ function renderOutputBlock(label, text) {
     <div class="panel-title">${escapeHtml(label)}</div>
     <pre class="code">${escapeHtml(text)}</pre>
   `;
+}
+
+// ================= 通用条目能力面板（通知 / 电话语音 / 定时 / 历史） =================
+// 每个告警条目（含新增的）都可配置：通知（群 chatId / @负责人 / 电话联系人 / 开关 / 阈值）、
+// 电话语音（模板 + 测试拨打）、定时（cron 分钟）、历史记录（最近执行结果）。
+
+const entryPanelState = { id: "", saving: false };
+
+function openEntryPanel(root, id) {
+  if (entryPanelState.saving) return;
+  entryPanelState.id = id;
+  const overlay = document.createElement("div");
+  overlay.className = "ar-modal-overlay";
+  overlay.id = "ar-entry-panel";
+  overlay.innerHTML = `
+    <div class="ar-modal ar-modal-wide">
+      <div class="ar-modal-header">
+        <div>
+          <h2 class="page-title">⚙ 告警能力配置</h2>
+          <p class="page-note" id="ar-ep-name">${escapeHtml(id)}</p>
+        </div>
+        <button class="ar-modal-close" id="ar-ep-close" title="关闭">×</button>
+      </div>
+      <div class="ar-modal-body">
+        <div class="mc-notify" id="ar-ep-notify" open>
+          <summary>📢 通知配置（发送群 + @负责人 + 电话联系人，达阈值自动打电话）</summary>
+          <div class="mc-notify-body" id="ar-ep-notify-body"></div>
+        </div>
+        <div class="mc-notify" id="ar-ep-voice">
+          <summary>📞 电话语音配置（播报模板 + 测试拨打）</summary>
+          <div class="mc-notify-body" id="ar-ep-voice-body"></div>
+        </div>
+        <div class="mc-notify" id="ar-ep-schedule">
+          <summary>⏰ 定时配置（每小时第 N 分钟触发）</summary>
+          <div class="mc-notify-body" id="ar-ep-schedule-body"></div>
+        </div>
+        <div class="mc-notify" id="ar-ep-history">
+          <summary>📜 历史记录（最近执行结果）</summary>
+          <div class="mc-notify-body" id="ar-ep-history-body"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#ar-ep-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  // 并行加载四个区块
+  loadEntryNotifyPanel(root, id);
+  loadEntryVoicePanel(root, id);
+  loadEntrySchedulePanel(root, id);
+  loadEntryHistoryPanel(root, id);
+}
+
+async function loadEntryNotifyPanel(root, id) {
+  const body = root.querySelector("#ar-ep-notify-body");
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载通知配置…</div>`;
+  let cfg;
+  try {
+    cfg = await apiGet(`/api/alert-registry/${encodeURIComponent(id)}/notify`);
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  const chatId = cfg && cfg.chatId != null ? cfg.chatId : "";
+  const owners = (cfg && cfg.owners) || [];
+  const contacts = (cfg && cfg.contacts) || [];
+  const phone = !cfg || cfg.phone !== false;
+  const group = !cfg || cfg.group !== false;
+  const threshold = (cfg && cfg.strikeThreshold) || 6;
+  body.innerHTML = `
+    <div class="mc-group-chat">
+      <label class="mc-group-chat-label">告警发送群 chat id：</label>
+      <input type="text" class="mc-group-chatid" value="${escapeHtml(String(chatId))}" placeholder="如 -1073807215（负数表示群）" />
+      <span class="mc-group-chat-hint">留空则不发送群消息；修改后告警将发送到该群。</span>
+    </div>
+    <div class="mc-notify-row">
+      <span class="mc-notify-field-label">@负责人</span>
+      <input type="text" class="mc-notify-owners" value="${escapeHtml(owners.join(","))}" placeholder="KN 用户名，多个用逗号分隔" style="flex:1" />
+    </div>
+    <div class="mc-notify-row">
+      <span class="mc-notify-field-label">电话联系人</span>
+      <input type="text" class="mc-notify-contacts" value="${escapeHtml(contacts.join(","))}" placeholder="手机号，多个用逗号分隔" style="flex:1" />
+    </div>
+    <div class="mc-notify-row">
+      <label class="mc-notify-toggle"><input type="checkbox" class="mc-ep-phone" ${phone ? "checked" : ""} /> 电话</label>
+      <label class="mc-notify-toggle"><input type="checkbox" class="mc-ep-group" ${group ? "checked" : ""} /> 群消息</label>
+      <label class="mc-notify-threshold">连续 <input type="number" class="mc-notify-num mc-ep-threshold" min="1" max="99" value="${threshold}" /> 次打</label>
+    </div>
+    <div class="mc-notify-actions">
+      <button class="mc-page-btn" id="ar-ep-notify-save">保存通知配置</button>
+      <span class="mc-schedule-status" id="ar-ep-notify-status"></span>
+    </div>`;
+  const saveBtn = body.querySelector("#ar-ep-notify-save");
+  const status = body.querySelector("#ar-ep-notify-status");
+  saveBtn.onclick = async () => {
+    if (entryPanelState.saving) return;
+    entryPanelState.saving = true;
+    if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+    const rawChatId = (body.querySelector(".mc-group-chatid")?.value || "").trim();
+    let nextChatId = null;
+    if (rawChatId) {
+      if (!/^-?\d+$/.test(rawChatId)) {
+        if (status) { status.textContent = "❌ chat id 必须是数字（负数表示群）"; status.className = "mc-schedule-status error"; }
+        entryPanelState.saving = false;
+        return;
+      }
+      nextChatId = Number(rawChatId);
+    }
+    const payload = {
+      chatId: nextChatId,
+      owners: (body.querySelector(".mc-notify-owners")?.value || "").split(",").map((s) => s.trim()).filter(Boolean),
+      contacts: (body.querySelector(".mc-notify-contacts")?.value || "").split(",").map((s) => s.trim()).filter(Boolean),
+      phone: body.querySelector(".mc-ep-phone")?.checked ?? true,
+      group: body.querySelector(".mc-ep-group")?.checked ?? true,
+      strikeThreshold: Number(body.querySelector(".mc-ep-threshold")?.value) || 6,
+    };
+    try {
+      const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/notify`, payload);
+      if (res && res.ok) {
+        if (status) { status.textContent = "✅ 已保存通知配置"; status.className = "mc-schedule-status ok"; }
+      } else {
+        if (status) { status.textContent = `❌ 保存失败：${res && res.error ? res.error : "未知错误"}`; status.className = "mc-schedule-status error"; }
+      }
+    } catch (e) {
+      if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+    }
+    entryPanelState.saving = false;
+  };
+}
+
+async function loadEntryVoicePanel(root, id) {
+  const body = root.querySelector("#ar-ep-voice-body");
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载电话语音配置…</div>`;
+  let cfg;
+  try {
+    cfg = await apiGet(`/api/alert-registry/${encodeURIComponent(id)}/voice`);
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  const enabled = !cfg || cfg.enabled !== false;
+  const ttsCode = (cfg && cfg.ttsCode) || "";
+  const nameTemplate = (cfg && cfg.nameTemplate) || "{{label}}告警";
+  const systemTemplate = (cfg && cfg.systemTemplate) || "检测到{{n}}项数据异常，请及时处理";
+  const usesGlobal = cfg && cfg.usesGlobal;
+  body.innerHTML = `
+    <div class="mc-notify-row">
+      <label class="mc-notify-toggle"><input type="checkbox" class="mc-ep-voice-enabled" ${enabled ? "checked" : ""} /> 启用电话语音</label>
+      ${usesGlobal ? `<span class="mc-group-chat-hint">（使用全局语音凭据；仅条目可单独覆盖模板）</span>` : ""}
+    </div>
+    <div class="mc-notify-row">
+      <span class="mc-notify-field-label">语音模板 TtsCode</span>
+      <input type="text" class="mc-notify-owners" value="${escapeHtml(ttsCode)}" placeholder="需先在阿里云创建并审核通过" style="flex:1" />
+    </div>
+    <div class="mc-notify-row">
+      <span class="mc-notify-field-label">标题模板</span>
+      <input type="text" class="mc-notify-owners" value="${escapeHtml(nameTemplate)}" placeholder="对应 name 参数" style="flex:1" />
+    </div>
+    <div class="mc-notify-row">
+      <span class="mc-notify-field-label">正文模板</span>
+      <input type="text" class="mc-notify-owners" value="${escapeHtml(systemTemplate)}" placeholder="对应 system 参数" style="flex:1" />
+    </div>
+    <div class="mc-notify-row">
+      <span class="mc-notify-field-label" style="align-self:flex-start">模板变量</span>
+      <span class="mc-group-chat-hint" style="flex:1">在模板里写 {{变量名}}：{{label}} 告警/国家名、{{country}} 国家、{{n}} 异常项数、{{threshold}} 阈值、{{items}} 明细</span>
+    </div>
+    <div class="mc-notify-actions">
+      <button class="mc-page-btn" id="ar-ep-voice-save">保存语音配置</button>
+      <span class="mc-schedule-status" id="ar-ep-voice-status"></span>
+    </div>
+    <div class="mc-notify-actions">
+      <span class="mc-notify-field-label">测试拨打</span>
+      <input type="text" class="mc-notify-owners" id="ar-ep-voice-number" placeholder="输入手机号，如 15330470175" style="flex:1" />
+      <button class="mc-page-btn" id="ar-ep-voice-test">📞 拨打测试电话</button>
+      <span class="mc-schedule-status" id="ar-ep-voice-test-status"></span>
+    </div>`;
+  const saveBtn = body.querySelector("#ar-ep-voice-save");
+  const status = body.querySelector("#ar-ep-voice-status");
+  saveBtn.onclick = async () => {
+    if (entryPanelState.saving) return;
+    entryPanelState.saving = true;
+    if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+    const payload = {
+      voice: {
+        enabled: body.querySelector(".mc-ep-voice-enabled")?.checked ?? true,
+        ttsCode: (body.querySelectorAll(".mc-notify-owners")[0]?.value || "").trim(),
+        nameTemplate: (body.querySelectorAll(".mc-notify-owners")[1]?.value || "").trim(),
+        systemTemplate: (body.querySelectorAll(".mc-notify-owners")[2]?.value || "").trim(),
+      },
+    };
+    try {
+      const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/voice`, payload);
+      if (res && res.ok) {
+        if (status) { status.textContent = "✅ 已保存语音配置"; status.className = "mc-schedule-status ok"; }
+      } else {
+        if (status) { status.textContent = `❌ 保存失败：${res && res.error ? res.error : "未知错误"}`; status.className = "mc-schedule-status error"; }
+      }
+    } catch (e) {
+      if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+    }
+    entryPanelState.saving = false;
+  };
+  const testBtn = body.querySelector("#ar-ep-voice-test");
+  const testStatus = body.querySelector("#ar-ep-voice-test-status");
+  testBtn.onclick = async () => {
+    if (entryPanelState.saving) return;
+    const number = (body.querySelector("#ar-ep-voice-number")?.value || "").trim();
+    if (!number) {
+      if (testStatus) { testStatus.textContent = "请先输入测试手机号"; testStatus.className = "mc-schedule-status error"; }
+      return;
+    }
+    entryPanelState.saving = true;
+    if (testStatus) { testStatus.textContent = "正在发起测试电话…"; testStatus.className = "mc-schedule-status"; }
+    try {
+      const res = await apiPost(`/api/alert-registry/${encodeURIComponent(id)}/phone`, { mode: "test", testNumber: number, country: "测试", n: 1 }, { timeoutMs: 30000 });
+      if (res && res.ok) {
+        if (testStatus) { testStatus.textContent = `✅ 测试电话已发起（${res.phone}）${res.callId ? " CallId:" + res.callId : ""}`; testStatus.className = "mc-schedule-status ok"; }
+      } else {
+        if (testStatus) { testStatus.textContent = `❌ ${res && (res.error || res.note) ? (res.error || res.note) : "拨打失败"}`; testStatus.className = "mc-schedule-status error"; }
+      }
+    } catch (e) {
+      if (testStatus) { testStatus.textContent = `❌ ${e.message || String(e)}`; testStatus.className = "mc-schedule-status error"; }
+    }
+    entryPanelState.saving = false;
+  };
+}
+
+async function loadEntrySchedulePanel(root, id) {
+  const body = root.querySelector("#ar-ep-schedule-body");
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载定时配置…</div>`;
+  let cfg;
+  try {
+    cfg = await apiGet(`/api/alert-registry/${encodeURIComponent(id)}/schedule`);
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  const minute = cfg && cfg.minute != null ? cfg.minute : 55;
+  body.innerHTML = `
+    <div class="mc-notify-row">
+      <span class="mc-notify-field-label">每小时</span>
+      <input type="number" class="mc-notify-num" id="ar-ep-schedule-minute" min="0" max="59" value="${escapeHtml(String(minute))}" />
+      <span class="mc-notify-field-label">分触发</span>
+      <span class="mc-group-chat-hint">${escapeHtml((cfg && cfg.cron) || "未设置定时")}</span>
+    </div>
+    <div class="mc-notify-actions">
+      <button class="mc-page-btn" id="ar-ep-schedule-save">保存定时</button>
+      <span class="mc-schedule-status" id="ar-ep-schedule-status"></span>
+    </div>`;
+  const saveBtn = body.querySelector("#ar-ep-schedule-save");
+  const status = body.querySelector("#ar-ep-schedule-status");
+  saveBtn.onclick = async () => {
+    if (entryPanelState.saving) return;
+    const minute = Number(body.querySelector("#ar-ep-schedule-minute")?.value);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      if (status) { status.textContent = "请输入 0-59 的整数分钟"; status.className = "mc-schedule-status error"; }
+      return;
+    }
+    entryPanelState.saving = true;
+    if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
+    try {
+      const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/schedule`, { minute });
+      if (res && res.ok) {
+        if (status) { status.textContent = "✅ 已保存定时"; status.className = "mc-schedule-status ok"; }
+      } else {
+        if (status) { status.textContent = `❌ 保存失败：${res && res.error ? res.error : "未知错误"}`; status.className = "mc-schedule-status error"; }
+      }
+    } catch (e) {
+      if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+    }
+    entryPanelState.saving = false;
+  };
+}
+
+async function loadEntryHistoryPanel(root, id) {
+  const body = root.querySelector("#ar-ep-history-body");
+  if (!body) return;
+  body.innerHTML = `<div class="mc-loading">⏳ 正在加载历史记录…</div>`;
+  let runs;
+  try {
+    runs = await apiGet(`/api/alert-registry/${encodeURIComponent(id)}/history`);
+  } catch (e) {
+    body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
+    return;
+  }
+  const list = Array.isArray(runs) ? runs : [];
+  if (!list.length) {
+    body.innerHTML = `<div class="notice">暂无历史记录。触发条目测试或定时校验后会自动记录。</div>`;
+    return;
+  }
+  body.innerHTML = list.map((run) => {
+    const countryText = Array.isArray(run.countries)
+      ? run.countries.map((c) => `${escapeHtml(c.label || c.code || "")}${Array.isArray(c.mismatches) && c.mismatches.length ? ` (${escapeHtml(c.mismatches.map((m) => m.check_item || "").join("/"))}=${c.mismatches.length})` : ""}`).join("、")
+      : "";
+    const cls = run.hasError ? "error" : run.hasAlert ? "" : "ok";
+    const label = run.hasError ? "错误" : run.hasAlert ? "异常" : "正常";
+    return `
+      <div class="mc-run-card mc-run-${cls}">
+        <div class="mc-run-head">
+          <span class="mc-run-badge">${label}</span>
+          <span class="mc-run-time">${escapeHtml(String(run.checkedAt || ""))}</span>
+          <span class="mc-run-source">${escapeHtml(run.source || "")}</span>
+        </div>
+        <div class="mc-run-summary">${escapeHtml(run.text || run.summary || countryText || "-")}</div>
+      </div>`;
+  }).join("");
 }
 
 // SQL 块 → 中文标签（模板占位符键名保持英文，标签用中文）

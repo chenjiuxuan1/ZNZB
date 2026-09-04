@@ -45,6 +45,10 @@ const MC_SCHEDULE_TRIGGER_NODE = "每小时定时触发";
 const MC_NOTIFY_FILE = "config/mc-notify.json";
 const MC_STRIKE_FILE = "config/mc-strike.json";
 const MC_COUNTRIES = ["cn", "id", "mx", "th", "ph", "pk"];
+// 通用条目能力：每条目自己的历史记录（config/alerts-history/<id>.json），最近 N 次
+const ENTRY_HISTORY_DIR = "config/alerts-history";
+const ENTRY_HISTORY_KEEP = 200;
+const DEFAULT_ENTRY_HISTORY = { runs: [] };
 const DEFAULT_MC_NOTIFY = {
   countries: {
     cn: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
@@ -116,6 +120,14 @@ function nonEmpty(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
+/** 从 cron 表达式提取分钟（如 "55 * * * *" → 55；步进/范围表达式返回 null）。 */
+function parseCronMinute(cron) {
+  const m = /^(\d{1,2})\s+\*\s+\*\s+\*\s+\*$/.exec(String(cron || "").trim());
+  if (!m) return null;
+  const v = Number(m[1]);
+  return Number.isInteger(v) && v >= 0 && v <= 59 ? v : null;
+}
+
 /**
  * 阿里云语音通知（dyvmsapi SingleCallByTts）RPC 调用。
  * voice: { accessKeyId, accessKeySecret, calledShowNumber, ttsCode }
@@ -185,6 +197,30 @@ function normalizeEntry(entry, index = 0) {
     mentions: String(raw.mentions || ""),
     enabled: raw.enabled !== false,
     note: String(raw.note || ""),
+    // 通用通知配置（每个条目自己的群 / @负责人 / 电话联系人 / 开关 / 阈值）
+    notify: raw.notify && typeof raw.notify === "object"
+      ? {
+          chatId: raw.notify.chatId != null ? Number(raw.notify.chatId) : null,
+          owners: Array.isArray(raw.notify.owners) ? raw.notify.owners.map(String) : [],
+          contacts: Array.isArray(raw.notify.contacts) ? raw.notify.contacts.map(String) : [],
+          phone: raw.notify.phone !== false,
+          group: raw.notify.group !== false,
+          strikeThreshold: Number.isInteger(raw.notify.strikeThreshold) ? raw.notify.strikeThreshold : 6,
+        }
+      : null,
+    // 通用电话语音配置（null = 用全局默认语音配置）
+    voice: raw.voice && typeof raw.voice === "object"
+      ? {
+          enabled: raw.voice.enabled !== false,
+          ttsCode: String(raw.voice.ttsCode || ""),
+          nameTemplate: String(raw.voice.nameTemplate || ""),
+          systemTemplate: String(raw.voice.systemTemplate || ""),
+        }
+      : null,
+    // 通用定时配置（trigger=schedule 时有效；cron 表达式）
+    schedule: raw.schedule && typeof raw.schedule === "object" && String(raw.schedule.cron || "").trim()
+      ? { cron: String(raw.schedule.cron).trim() }
+      : null,
     // 校验语句 / 脚本模板相关
     templateName: String(raw.templateName || ""),
     sqlBlocks: raw.sqlBlocks && typeof raw.sqlBlocks === "object"
@@ -366,6 +402,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       ...entry,
       // 多国校验条目统一关联 n8n 工作流（页面启停 = 开关工作流定时任务）
       n8nWorkflowId: entry.n8nWorkflowId || (entry.id.startsWith("mc_") ? MC_WORKFLOW_ID : ""),
+      // 多国校验条目由共享 n8n 工作流定时触发（cron 55 * * * *），触发方式应为「定时」
+      trigger: entry.id.startsWith("mc_") ? "schedule" : entry.trigger,
       repoDir: resolveEnv(entry.repoDir),
     }));
     return {
@@ -376,8 +414,228 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
 
   async function save(alerts) {
     const file = await registryPath();
-    await writeJsonFileAtomic(file, { alerts });
-    return alerts;
+    // 多国校验条目触发方式统一为「定时」（共享 n8n 工作流定时触发），防止页面编辑覆盖成 manual
+    const normalized = alerts.map((entry) => ({
+      ...entry,
+      trigger: String(entry.id || "").startsWith("mc_") ? "schedule" : entry.trigger,
+    }));
+    await writeJsonFileAtomic(file, { alerts: normalized });
+    return normalized;
+  }
+
+  // ================= 通用条目能力（通知 / 语音 / 定时 / 历史） =================
+  // 每个条目一份独立配置与历史：config/alerts/<id>.json
+  //   { notify: {chatId, owners[], contacts[], phone, group, strikeThreshold},
+  //     voice: {enabled, ttsCode, nameTemplate, systemTemplate} | null,
+  //     schedule: {cron} | null,
+  //     strikes: {countryCode: count},
+  //     history: {runs: [...]} }
+  // mc_* 条目向后兼容：notify→mc-notify.json+mc-group.json，voice→mc-voice.json，
+  // schedule→mc-schedule.json，history→multi-country-check-results.json（按国家过滤）。
+
+  async function entryDataPath(id) {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    const safe = toId(id || "entry");
+    return resolve(path.join("config", "alerts", `${safe}.json`));
+  }
+
+  async function loadEntryData(id) {
+    const file = await entryDataPath(id);
+    return readJsonFile(file, {});
+  }
+
+  async function saveEntryData(id, data) {
+    const file = await entryDataPath(id);
+    await writeJsonFileAtomic(file, data);
+    return data;
+  }
+
+  const isMcEntry = (id) => String(id || "").startsWith("mc_") || String(id || "").startsWith("mc-");
+
+  /** 读取条目通知配置。普通条目用内嵌 notify + 独立文件；mc_* 用 mc-notify.json + mc-group.json（按国家）。 */
+  async function getEntryNotify(id) {
+    const entry = await get(id).catch(() => null);
+    if (isMcEntry(id)) {
+      const [notify, group] = await Promise.all([loadMcNotify(), loadMcGroup()]);
+      const code = String(id).replace(/^mc_?/, "").toLowerCase();
+      const c = notify.countries[code] || {};
+      return {
+        chatId: group.chatId != null ? group.chatId : null,
+        owners: Array.isArray(group.owners[code]) ? group.owners[code].map(String) : [],
+        contacts: Array.isArray(c.contacts) ? c.contacts.map(String) : [],
+        phone: c.phone !== false,
+        group: c.group !== false,
+        strikeThreshold: Number.isInteger(c.strikeThreshold) ? c.strikeThreshold : 6,
+      };
+    }
+    const data = await loadEntryData(id);
+    const n = data.notify || (entry && entry.notify) || {};
+    return {
+      chatId: n.chatId != null ? Number(n.chatId) : null,
+      owners: Array.isArray(n.owners) ? n.owners.map(String) : [],
+      contacts: Array.isArray(n.contacts) ? n.contacts.map(String) : [],
+      phone: n.phone !== false,
+      group: n.group !== false,
+      strikeThreshold: Number.isInteger(n.strikeThreshold) ? n.strikeThreshold : 6,
+    };
+  }
+
+  /** 保存条目通知配置。 */
+  async function setEntryNotify(id, cfg = {}) {
+    if (isMcEntry(id)) {
+      const code = String(id).replace(/^mc_?/, "").toLowerCase();
+      const [notify, group] = await Promise.all([loadMcNotify(), loadMcGroup()]);
+      const n = cfg.notify || cfg || {};
+      notify.countries[code] = {
+        contacts: Array.isArray(n.contacts) ? n.contacts.map(String).slice(0, 20) : [],
+        phone: n.phone !== false,
+        group: n.group !== false,
+        strikeThreshold: Number.isInteger(Number(n.strikeThreshold)) ? Math.max(1, Math.min(99, Number(n.strikeThreshold))) : 6,
+      };
+      await writeJsonFileAtomic(await notifyPath(), notify);
+      if (n.chatId != null) {
+        group.chatId = Number(n.chatId);
+      }
+      if (Array.isArray(n.owners)) {
+        group.owners[code] = n.owners.map(String).slice(0, 20);
+      }
+      await writeJsonFileAtomic(await groupPath(), group);
+      return getEntryNotify(id);
+    }
+    const data = await loadEntryData(id);
+    const cur = await getEntryNotify(id);
+    data.notify = {
+      chatId: cfg.chatId != null ? Number(cfg.chatId) : cur.chatId,
+      owners: Array.isArray(cfg.owners) ? cfg.owners.map(String).slice(0, 20) : cur.owners,
+      contacts: Array.isArray(cfg.contacts) ? cfg.contacts.map(String).slice(0, 20) : cur.contacts,
+      phone: cfg.phone !== undefined ? cfg.phone !== false : cur.phone,
+      group: cfg.group !== undefined ? cfg.group !== false : cur.group,
+      strikeThreshold: Number.isInteger(Number(cfg.strikeThreshold)) ? Math.max(1, Math.min(99, Number(cfg.strikeThreshold))) : cur.strikeThreshold,
+    };
+    await saveEntryData(id, data);
+    return getEntryNotify(id);
+  }
+
+  /** 读取条目电话语音配置（未配置时用全局 mc-voice.json）。 */
+  async function getEntryVoice(id) {
+    if (isMcEntry(id)) {
+      return loadMcVoice();
+    }
+    const data = await loadEntryData(id);
+    const v = data.voice;
+    if (!v || !v.ttsCode) {
+      // 无独立配置 → 用全局语音配置
+      const global = await loadMcVoice();
+      return {
+        enabled: global.enabled,
+        accessKeyId: global.accessKeyId,
+        accessKeySecret: global.accessKeySecret,
+        calledShowNumber: global.calledShowNumber,
+        ttsCode: global.ttsCode,
+        nameTemplate: v && v.nameTemplate ? v.nameTemplate : global.nameTemplate,
+        systemTemplate: v && v.systemTemplate ? v.systemTemplate : global.systemTemplate,
+        usesGlobal: true,
+      };
+    }
+    const global = await loadMcVoice();
+    return {
+      enabled: v.enabled !== false,
+      accessKeyId: global.accessKeyId,
+      accessKeySecret: global.accessKeySecret,
+      calledShowNumber: global.calledShowNumber,
+      ttsCode: v.ttsCode,
+      nameTemplate: v.nameTemplate || global.nameTemplate,
+      systemTemplate: v.systemTemplate || global.systemTemplate,
+    };
+  }
+
+  /** 保存条目电话语音配置（只保存模板相关；凭据/显号永远用全局）。 */
+  async function setEntryVoice(id, cfg = {}) {
+    if (isMcEntry(id)) {
+      return setMcVoice(cfg);
+    }
+    const data = await loadEntryData(id);
+    const cur = await getEntryVoice(id);
+    const v = cfg.voice || cfg || {};
+    data.voice = {
+      enabled: v.enabled !== undefined ? v.enabled !== false : cur.enabled,
+      ttsCode: nonEmpty(v.ttsCode) || cur.ttsCode,
+      nameTemplate: nonEmpty(v.nameTemplate) || cur.nameTemplate,
+      systemTemplate: nonEmpty(v.systemTemplate) || cur.systemTemplate,
+    };
+    await saveEntryData(id, data);
+    return getEntryVoice(id);
+  }
+
+  /** 读取条目定时配置。普通条目从内嵌 schedule + 独立文件；mc_* 用 mc-schedule.json。 */
+  async function getEntrySchedule(id) {
+    if (isMcEntry(id)) {
+      const s = await loadSchedule();
+      return { minute: s.minute, cron: `${s.minute} * * * *` };
+    }
+    const data = await loadEntryData(id);
+    const s = data.schedule;
+    if (s && s.cron) return { minute: parseCronMinute(s.cron), cron: s.cron };
+    const entry = await get(id).catch(() => null);
+    if (entry && entry.schedule && entry.schedule.cron) return { minute: parseCronMinute(entry.schedule.cron), cron: entry.schedule.cron };
+    return { minute: null, cron: null };
+  }
+
+  /** 保存条目定时配置（普通条目仅本地；mc_* 同步 n8n）。cfg: { minute } 或 { cron }。 */
+  async function setEntrySchedule(id, cfg = {}) {
+    if (isMcEntry(id)) {
+      const minute = Number(cfg.minute != null ? cfg.minute : (cfg.cron ? parseCronMinute(cfg.cron) : NaN));
+      if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+        throw Object.assign(new Error("定时分钟必须是 0-59 的整数"), { statusCode: 400 });
+      }
+      const sync = await applyMcScheduleToN8n(minute);
+      return { ok: sync.ok, minute, cron: `${minute} * * * *`, sync };
+    }
+    const minute = Number(cfg.minute != null ? cfg.minute : (cfg.cron ? parseCronMinute(cfg.cron) : NaN));
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      throw Object.assign(new Error("定时分钟必须是 0-59 的整数"), { statusCode: 400 });
+    }
+    const data = await loadEntryData(id);
+    data.schedule = { cron: `${minute} * * * *` };
+    await saveEntryData(id, data);
+    return { ok: true, minute, cron: `${minute} * * * *` };
+  }
+
+  /** 读取条目执行历史（最新在前）。mc_* 从多国校验结果里过滤该国；普通条目读独立文件。 */
+  async function getEntryHistory(id, { limit = 50 } = {}) {
+    if (isMcEntry(id)) {
+      const code = String(id).replace(/^mc_?/, "").toLowerCase();
+      const all = await listCheckResults();
+      const runs = all.filter((r) =>
+        Array.isArray(r.countries) && r.countries.some((c) => String(c.code || "").toLowerCase() === code)
+      ).slice(0, limit);
+      return runs;
+    }
+    const data = await loadEntryData(id);
+    return Array.isArray(data.history && data.history.runs) ? data.history.runs.slice(0, limit) : [];
+  }
+
+  /** 追加条目执行历史（最新在前，保留最近 N 次）。普通条目独立文件；mc_* 走多国校验结果。 */
+  async function appendEntryHistory(id, result = {}) {
+    if (isMcEntry(id)) {
+      return appendCheckResult(result);
+    }
+    const data = await loadEntryData(id);
+    const history = data.history || { runs: [] };
+    const run = {
+      id: result.id || randomUUID(),
+      checkedAt: result.checkedAt || new Date().toISOString(),
+      source: result.source || "entry",
+      hasAlert: Boolean(result.hasAlert),
+      hasError: Boolean(result.hasError),
+      text: result.text || "",
+      summary: result.summary || null,
+      detail: result.detail || null,
+    };
+    history.runs = [run, ...(history.runs || [])].slice(0, ENTRY_HISTORY_KEEP);
+    data.history = history;
+    await saveEntryData(id, data);
+    return { ok: true, run, kept: history.runs.length, limit: ENTRY_HISTORY_KEEP };
   }
 
   async function list() {
@@ -545,7 +803,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
         entryName: entry.name,
         ...(mcMatch ? { country: mcMatch[1] } : {}),
       };
-      return {
+      const result = {
         id,
         name: entry.name,
         mode: "n8n-workflow",
@@ -556,6 +814,16 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
           timeoutMs,
         })),
       };
+      // 非多国条目：把本次触发记录进条目历史（mc_* 的结果由 n8n 工作流回写 check-results）
+      if (!isMcEntry(id)) {
+        await appendEntryHistory(id, {
+          source: "test",
+          hasAlert: false,
+          hasError: !result.ok || !result.triggered,
+          text: result.message || result.error || (result.ok ? "已触发 n8n 工作流" : "触发失败"),
+        }).catch(() => {});
+      }
+      return result;
     }
     if (!entry.command) {
       throw Object.assign(new Error(`告警条目 ${entry.name} 未配置 command 且未绑定 n8n 工作流`), { statusCode: 400 });
@@ -566,6 +834,16 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       sshPort: entry.sshPort,
       timeoutMs,
     });
+    // 命令执行结果记录进条目历史
+    if (!isMcEntry(id)) {
+      await appendEntryHistory(id, {
+        source: "test",
+        hasAlert: false,
+        hasError: !result.ok,
+        text: result.ok ? "命令 dry-run 通过" : `命令执行失败（exit ${result.exitCode}）`,
+        detail: { stdout: String(result.stdout || "").slice(0, 2000), stderr: String(result.stderr || "").slice(0, 2000) },
+      }).catch(() => {});
+    }
     return { ...result, id, name: entry.name, mode: "command" };
   }
 
@@ -908,6 +1186,65 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return { ok: failed === 0, mode: "ali-voice", calls, targets: resolved };
   }
 
+  /**
+   * 通用条目电话入口：mc_* 走多国电话（按国家联系人）；普通条目按自身 notify.contacts 逐个拨打。
+   * body: { mode:"test", testNumber?, n?, items?, country? } 或 { targets? }
+   */
+  async function callEntryPhone(id, body = {}) {
+    if (isMcEntry(id)) {
+      return callMcPhone(body || {});
+    }
+    // 测试拨号
+    if (body && body.mode === "test") {
+      return callMcPhoneTest(body, { loadMcVoice, callAliyunVoice });
+    }
+    const entry = await get(id);
+    if (!entry) {
+      throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
+    }
+    const [notify, voice] = await Promise.all([getEntryNotify(id), getEntryVoice(id)]);
+    const contacts = Array.isArray(body.contacts) && body.contacts.length > 0
+      ? body.contacts
+      : notify.contacts;
+    if (!Array.isArray(contacts) || contacts.length === 0) {
+      return { ok: true, mode: "ali-voice", calls: [], targets: [], note: "该条目未配置电话联系人，不拨打" };
+    }
+    if (!voice.enabled) {
+      return { ok: true, mode: "ali-voice", calls: [], targets: [], note: "电话语音已停用，不拨打" };
+    }
+    const n = Math.max(1, Number(body.n) || 1);
+    const vars = {
+      label: entry.name || id,
+      code: String(entry.country || "").toLowerCase() || id,
+      country: entry.name || id,
+      n,
+      threshold: notify.strikeThreshold || 6,
+      items: Array.isArray(body.items) ? body.items.join("、") : `${n} 项`,
+    };
+    const name = fillTemplate(voice.nameTemplate, vars);
+    const system = fillTemplate(voice.systemTemplate, vars);
+    const calls = [];
+    let failed = 0;
+    for (const phone of contacts) {
+      const clean = String(phone || "").replace(/[^\d+]/g, "").trim();
+      if (!/^1\d{10}$/.test(clean) && !/^\d{6,}$/.test(clean)) {
+        calls.push({ phone, ok: false, error: "号码格式不合法" });
+        failed++;
+        continue;
+      }
+      try {
+        const resp = await callAliyunVoice(voice, clean, { name, system });
+        const ok = resp && (resp.Code === "OK" || resp.Code === "200");
+        calls.push({ phone: clean, ok, callId: resp && resp.CallId, error: ok ? null : (resp && resp.Message) });
+        if (!ok) failed++;
+      } catch (e) {
+        calls.push({ phone: clean, ok: false, error: String(e && e.message ? e.message : e).slice(0, 120) });
+        failed++;
+      }
+    }
+    return { ok: failed === 0, mode: "ali-voice", calls, targets: [{ id, contacts }], entryId: id };
+  }
+
   async function voicePath() {
     await loadEnvFile(path.join(rootDir, ".env"));
     return resolve(MC_VOICE_FILE);
@@ -1102,5 +1439,16 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     getMcVoice,
     setMcVoice,
     callMcPhone,
+    // 通用条目能力
+    getEntryNotify,
+    setEntryNotify,
+    getEntryVoice,
+    setEntryVoice,
+    getEntrySchedule,
+    setEntrySchedule,
+    getEntryHistory,
+    appendEntryHistory,
+    callEntryPhone,
+    isMcEntry,
   };
 }
