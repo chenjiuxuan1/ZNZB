@@ -91,6 +91,17 @@ const DEFAULT_MC_VOICE = {
   systemTemplate: "检测到{{n}}项数据异常，请及时处理",
 };
 
+// 多国校验 · 群消息文本模板（发送到 KN 群的告警内容，支持 {entry} {time} {country} {items} {owner} {link} 变量）
+const MC_MESSAGE_FILE = "config/mc-message.json";
+const DEFAULT_MC_MESSAGE = {
+  enabled: true,
+  // 无异常时的提示（发到群用；空 = 不发送无异常消息）
+  okText: "",
+  // 有异常时的正文模板
+  template:
+    "🔔 {entry}\n时间：{time}\n{items}\n📋 详情见 ZNZB 告警平台：{link}\n{owner}",
+};
+
 const ENV_PATTERN = /\$\{([A-Z0-9_]+)\}/g;
 
 /** 内联环境变量占位 ${KEY}。 */
@@ -1323,6 +1334,79 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     };
   }
 
+  // ================= 多国校验 · 群消息文本模板 =================
+  async function messagePath() {
+    await loadEnvFile(path.join(rootDir, ".env"));
+    return resolve(MC_MESSAGE_FILE);
+  }
+
+  /** 读取多国校验群消息文本模板（全局共享，mc_* 条目共用）。 */
+  async function loadMcMessage() {
+    const file = await messagePath();
+    const raw = await readJsonFile(file, {});
+    const d = JSON.parse(JSON.stringify(DEFAULT_MC_MESSAGE));
+    return {
+      enabled: raw && raw.enabled !== undefined ? raw.enabled !== false : d.enabled,
+      okText: String((raw && raw.okText) ?? d.okText ?? ""),
+      template: String((raw && raw.template) ?? d.template ?? ""),
+    };
+  }
+
+  /** 页面展示用（无需脱敏）。 */
+  async function getMcMessage() {
+    const m = await loadMcMessage();
+    return {
+      enabled: m.enabled,
+      okText: m.okText,
+      template: m.template,
+    };
+  }
+
+  /** 保存多国校验群消息模板（不填的字段保持原值）。 */
+  async function setMcMessage(cfg = {}) {
+    const current = await loadMcMessage();
+    const next = {
+      enabled: cfg.enabled !== undefined ? cfg.enabled !== false : current.enabled,
+      okText: cfg.okText !== undefined ? String(cfg.okText || "") : current.okText,
+      template: cfg.template !== undefined ? String(cfg.template || "") : current.template,
+    };
+    await writeJsonFileAtomic(await messagePath(), next);
+    return { ok: true, ...next };
+  }
+
+  /** 读取条目群消息文本模板：mc_* 用全局模板；普通条目用自身配置（未配置 → 全局默认）。 */
+  async function getEntryMessage(id) {
+    if (isMcEntry(id)) {
+      return loadMcMessage();
+    }
+    const data = await loadEntryData(id);
+    const msg = (data && data.message) || null;
+    const global = await loadMcMessage();
+    return {
+      enabled: msg && msg.enabled !== undefined ? msg.enabled !== false : global.enabled,
+      okText: (msg && msg.okText !== undefined ? String(msg.okText) : "") || global.okText,
+      template: (msg && msg.template ? String(msg.template) : "") || global.template,
+      usesGlobal: !msg,
+    };
+  }
+
+  /** 保存条目群消息文本模板：mc_* 写全局；普通条目写自身配置。 */
+  async function setEntryMessage(id, cfg = {}) {
+    if (isMcEntry(id)) {
+      return setMcMessage(cfg);
+    }
+    const data = await loadEntryData(id);
+    const cur = await getEntryMessage(id);
+    const next = {
+      enabled: cfg.enabled !== undefined ? cfg.enabled !== false : cur.enabled,
+      okText: cfg.okText !== undefined ? String(cfg.okText || "") : cur.okText,
+      template: cfg.template !== undefined ? String(cfg.template || "") : cur.template,
+    };
+    data.message = next;
+    await saveEntryData(id, data);
+    return { ok: true, ...next };
+  }
+
   /** 读取电话语音配置（页面展示用，隐藏密钥中间部分）。 */
   async function getMcVoice() {
     const v = await loadMcVoice();
@@ -1496,6 +1580,10 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     listAllHistory,
     getEntryDescription,
     setEntryDescription,
+    getEntryMessage,
+    setEntryMessage,
+    getMcMessage,
+    setMcMessage,
     callEntryPhone,
     isMcEntry,
   };
