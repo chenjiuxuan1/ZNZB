@@ -9316,3 +9316,173 @@ select.ar-field {
   margin-top: 4px;
   color: #0c4a6e;
 }
+/* 告警中心：按生命周期组织的一级工作区导航。 */
+.alert-lifecycle-nav {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.alert-lifecycle-nav__item {
+  display: flex;
+  min-height: 64px;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  color: var(--text, #172033);
+  text-decoration: none;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dfe4ec);
+  border-radius: 10px;
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.alert-lifecycle-nav__item:hover {
+  border-color: #8aa5d6;
+  transform: translateY(-1px);
+}
+
+.alert-lifecycle-nav__item:focus-visible,
+.alert-lifecycle-bridge__links a:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.alert-lifecycle-nav__item.is-active {
+  color: #153d83;
+  background: #eef4ff;
+  border-color: #6d91d4;
+}
+
+.alert-lifecycle-nav__step {
+  display: inline-grid;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: #526174;
+  background: #edf0f5;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.alert-lifecycle-nav__item.is-active .alert-lifecycle-nav__step {
+  color: #fff;
+  background: #2563eb;
+}
+
+.alert-lifecycle-nav__item strong,
+.alert-lifecycle-nav__item small {
+  display: block;
+}
+
+.alert-lifecycle-nav__item small {
+  margin-top: 4px;
+  color: #657286;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.alert-lifecycle-bridge {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 20px;
+  margin-bottom: 18px;
+  padding: 16px;
+  background: #f7f9fc;
+  border: 1px solid #e1e6ef;
+  border-radius: 10px;
+}
+
+.alert-lifecycle-bridge h2 {
+  margin: 4px 0 6px;
+  font-size: 16px;
+}
+
+.alert-lifecycle-bridge p {
+  margin: 0;
+  color: #657286;
+  line-height: 1.5;
+}
+
+.alert-lifecycle-bridge__eyebrow {
+  color: #315b9f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.alert-lifecycle-bridge__links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.alert-lifecycle-bridge__links a {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  color: #244d91;
+  text-decoration: none;
+  background: #fff;
+  border: 1px solid #dbe3f0;
+  border-radius: 8px;
+}
+
+.alert-lifecycle-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: #657286;
+}
+
+.alert-lifecycle-empty strong {
+  color: #172033;
+}
+
+@media (max-width: 900px) {
+  .alert-lifecycle-nav {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scroll-snap-type: x proximity;
+  }
+
+  .alert-lifecycle-nav__item {
+    flex: 0 0 210px;
+    scroll-snap-align: start;
+  }
+
+  .alert-lifecycle-bridge {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .alert-lifecycle-nav {
+    display: grid;
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .alert-lifecycle-nav__item {
+    min-height: 52px;
+  }
+
+  .alert-lifecycle-nav__item small {
+    display: none;
+  }
+
+  .alert-lifecycle-bridge__links {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert-lifecycle-nav__item {
+    transition: none;
+  }
+}
