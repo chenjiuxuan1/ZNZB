@@ -55,7 +55,7 @@ const DEFAULT_MC_NOTIFY = {
     pk: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
   },
 };
-const DEFAULT_TEST_TIMEOUT_MS = 90_000;
+const DEFAULT_TEST_TIMEOUT_MS = 25_000;
 const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
 
