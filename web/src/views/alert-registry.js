@@ -272,6 +272,12 @@ async function loadMcVoice(root) {
     <div class="mc-notify-actions">
       <button class="mc-page-btn" id="mc-voice-save">保存语音配置</button>
       <span class="mc-schedule-status" id="mc-voice-status"></span>
+    </div>
+    <div class="mc-notify-actions">
+      <span class="mc-notify-field-label mc-voice-label-col">测试拨打</span>
+      <input type="text" id="mc-voice-test-number" class="mc-notify-owners" placeholder="输入手机号，如 15330470175" />
+      <button class="mc-page-btn" id="mc-voice-test-call">📞 拨打测试电话</button>
+      <span class="mc-schedule-status" id="mc-voice-test-status"></span>
     </div>`;
   const saveBtn = root.querySelector("#mc-voice-save");
   const status = root.querySelector("#mc-voice-status");
@@ -298,6 +304,36 @@ async function loadMcVoice(root) {
         }
       } catch (e) {
         if (status) { status.textContent = `❌ ${e.message || String(e)}`; status.className = "mc-schedule-status error"; }
+      }
+      mcVoiceState.saving = false;
+    };
+  }
+  const testCallBtn = root.querySelector("#mc-voice-test-call");
+  const testStatus = root.querySelector("#mc-voice-test-status");
+  if (testCallBtn) {
+    testCallBtn.onclick = async () => {
+      if (mcVoiceState.saving) return;
+      const number = (root.querySelector("#mc-voice-test-number")?.value || "").trim();
+      if (!number) {
+        if (testStatus) { testStatus.textContent = "请先输入测试手机号"; testStatus.className = "mc-schedule-status error"; }
+        return;
+      }
+      mcVoiceState.saving = true;
+      if (testStatus) { testStatus.textContent = "正在发起测试电话…"; testStatus.className = "mc-schedule-status"; }
+      try {
+        const res = await apiPost("/api/multi-country/phone", {
+          mode: "test",
+          testNumber: number,
+          country: "测试国家",
+          n: 1,
+        }, { timeoutMs: 30000 });
+        if (res && res.ok) {
+          if (testStatus) { testStatus.textContent = `✅ 测试电话已发起（${res.phone}）${res.callId ? " CallId:" + res.callId : ""}`; testStatus.className = "mc-schedule-status ok"; }
+        } else {
+          if (testStatus) { testStatus.textContent = `❌ ${res && (res.error || res.note) ? (res.error || res.note) : "拨打失败"}`; testStatus.className = "mc-schedule-status error"; }
+        }
+      } catch (e) {
+        if (testStatus) { testStatus.textContent = `❌ ${e.message || String(e)}`; testStatus.className = "mc-schedule-status error"; }
       }
       mcVoiceState.saving = false;
     };

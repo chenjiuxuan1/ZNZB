@@ -537,6 +537,14 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     }
     // 优先走 n8n 工作流触发：条目绑定了 workflow 或属于多国校验（mc_* 共享 E4B4wNzcUG0ow6BL）
     if (entry.n8nWorkflowId || (entry.webhookPath && entry.trigger === "webhook")) {
+      // mc_* 条目：id 形如 mc_cn / mc_id → 推导 country 传给 n8n 工作流，只校验该国家
+      const mcMatch = /^mc_([a-z]{2})$/.exec(id || "");
+      const payload = {
+        source: "test",
+        entryId: id,
+        entryName: entry.name,
+        ...(mcMatch ? { country: mcMatch[1] } : {}),
+      };
       return {
         id,
         name: entry.name,
@@ -544,7 +552,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
         ...(await triggerN8nWorkflow({
           workflowId: entry.n8nWorkflowId,
           webhookPath: entry.webhookPath,
-          payload: { source: "test", entryId: id, entryName: entry.name },
+          payload,
           timeoutMs,
         })),
       };
@@ -777,11 +785,68 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   }
 
   /**
+   * 测试拨号：用当前电话语音配置（阿里云凭据 + 模板）给指定号码打一个测试电话。
+   * body: { mode:"test", testNumber:"153...", country?, n? }
+   * 不落库、不查通知配置，纯粹验证语音通道可用。
+   */
+  async function callMcPhoneTest(body = {}, { loadMcNotify, loadMcVoice, callAliyunVoice }) {
+    const voice = await loadMcVoice();
+    const number = String(body.testNumber || "").replace(/[^\d+]/g, "").trim();
+    if (!/^1\d{10}$/.test(number) && !/^\d{6,}$/.test(number)) {
+      return { ok: false, mode: "ali-voice", error: "测试号码格式不合法（需 11 位手机号或 6 位以上号码）" };
+    }
+    if (!voice.enabled) {
+      return { ok: false, mode: "ali-voice", error: "电话语音已停用（mc-voice.enabled=false），请先启用" };
+    }
+    const label = String(body.country || "测试国家");
+    const vars = {
+      label,
+      code: String(body.country || "test").toLowerCase().slice(0, 2),
+      country: label,
+      n: Math.max(1, Number(body.n) || 1),
+      threshold: 6,
+      items: "测试异常明细 1 条",
+    };
+    const name = fillTemplate(voice.nameTemplate, vars);
+    const system = fillTemplate(voice.systemTemplate, vars);
+    const t0 = Date.now();
+    try {
+      const resp = await callAliyunVoice(voice, number, { name, system });
+      const ok = resp && (resp.Code === "OK" || resp.Code === "200");
+      return {
+        ok,
+        mode: "ali-voice",
+        phone: number,
+        callId: resp && resp.CallId,
+        error: ok ? null : (resp && resp.Message) || "阿里云语音返回失败",
+        resp: resp ? { Code: resp.Code, Message: resp.Message } : null,
+        name,
+        system,
+        elapsedMs: Date.now() - t0,
+        note: ok ? "测试电话已发起，请留意接听" : "拨号失败，请检查 AccessKeyId/AccessKeySecret/TtsCode",
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        mode: "ali-voice",
+        phone: number,
+        error: String(e && e.message ? e.message : e).slice(0, 200),
+        elapsedMs: Date.now() - t0,
+        note: "拨号异常，请检查凭据与网络",
+      };
+    }
+  }
+
+  /**
    * 电话通知入口（n8n 调用）：对达到电话阈值的目标国家，用阿里云语音（dyvmsapi SingleCallByTts）
    * 逐个拨打其联系人，播报内容用 TtsParam 的 name/system 参数（模板可配置，支持 {{label}}/{{code}}/{{n}}）。
    * body: { countries: [{code, label, contacts}], checkedAt }
    */
   async function callMcPhone(body = {}) {
+    // 测试拨号模式：给指定号码打测试电话，验证阿里云语音凭据/模板/ttsCode 可用
+    if (body && body.mode === "test") {
+      return callMcPhoneTest(body, { loadMcNotify, loadMcVoice, callAliyunVoice });
+    }
     const targets = Array.isArray(body.countries) ? body.countries : [];
     const [notify, voice] = await Promise.all([loadMcNotify(), loadMcVoice()]);
     const resolved = targets
