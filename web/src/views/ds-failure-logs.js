@@ -1269,12 +1269,21 @@ function renderFailure(item, filters = null) {
     ${filters?.historical && item.n8nDecision ? `<div class="ds-failure-recovery"><strong>n8n 处理规则</strong><span>${escapeHtml(item.n8nDecision)}</span></div>` : ""}
     ${item.taskScript ? `<details class="ds-failure-sql"><summary>${scriptLabel} · ${escapeHtml(taskLabel)}</summary><pre>${escapeHtml(item.taskScript)}</pre></details>` : `<div class="ds-failure-sql-missing"><strong>${scriptLabel}</strong><span>${item.taskConfigError ? `任务配置读取失败：${escapeHtml(item.taskConfigError)}` : "DS 未返回该任务的 SQL 或执行脚本"}</span></div>`}
     ${filters?.n8n ? `<div class="ds-failure-recovery"><strong>n8n 执行日志</strong><span>执行 ${escapeHtml(item.n8nExecutionId || "-")} · 节点 ${escapeHtml(item.n8nLastNode || "-")} · ${escapeHtml(item.n8nTriggerStatus || "-")}${item.n8nRequestId ? ` · 请求 ${escapeHtml(item.n8nRequestId)}` : ""}${item.n8nLogPath ? ` · 远端日志 ${escapeHtml(item.n8nLogPath)}` : ""}</span></div>` : filters?.historical ? `<div class="ds-failure-recovery"><strong>后续重跑结果</strong><span>${escapeHtml(retryResult)} · 重跑 ${retryCount} 次${item.recoveryInstanceId ? ` · 最新重跑实例 ${escapeHtml(item.recoveryInstanceId)} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}` : ""}</span></div>` : item.repairStatus !== "unresolved" ? `<div class="ds-failure-recovery"><strong>${displayStatus === "recovered" ? "查询结果" : "后续状态"}</strong><span>后续实例 ${escapeHtml(item.recoveryInstanceId || "-")} · ${escapeHtml(item.recoveryState || "-")} · ${formatTime(item.recoveryTime)}</span></div>` : ""}
+    ${filters?.n8n && item.dsInstanceState ? `<div class="ds-failure-recovery"><strong>DS 实例核验</strong><span>已通过 DS 实例接口确认，当前状态：${escapeHtml(item.dsInstanceState)}</span></div>` : ""}
+    ${filters?.n8n && item.retryLogReadStatus === "failed" ? `<p class="field-error">n8n 结果日志读取失败：${escapeHtml(item.retryLogError || "未返回具体原因")}；已改用 DS 实例及任务实例接口核验。</p>` : ""}
     ${filters?.n8n && item.taskLookupError ? `<p class="field-error">DS 失败任务补充查询：${escapeHtml(item.taskLookupError)}</p>` : ""}
     ${item.logError ? `<p class="field-error">任务日志读取补充信息：${escapeHtml(item.logError)}</p>` : ""}
   </article>`;
 }
 
 function n8nRepairDisplayStatus(item = {}) {
+  // A concrete DS API result is a valid fallback when the auxiliary n8n
+  // remote log has expired or cannot be read.
+  if (item.repairOutcomeSource === "ds_instance_api") {
+    if (item.retryResult === "recovered" || item.repairStatus === "recovered") return "n8n_recovered";
+    if (["failed", "timeout_needs_owner"].includes(item.retryResult) || item.repairStatus === "unresolved") return "n8n_unresolved";
+    if (item.retryResult === "running" || item.repairStatus === "repairing") return "n8n_repairing";
+  }
   if (item.retryLogReadStatus === "failed") return "n8n_log_failed";
   if (item.retryLogReadStatus === "not_configured") return "n8n_log_not_configured";
   if (item.retryResult === "recovered" || item.repairStatus === "recovered") return "n8n_recovered";

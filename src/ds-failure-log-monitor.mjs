@@ -896,26 +896,48 @@ export async function resolveN8nDsFailureEvidence(rootDir, { country, failure = 
   const countryConfig = config.countries?.[countryCode] || {};
   const token = String(countryConfig.token || "").trim();
   const webhookUrl = String(config.n8nWebhookUrl || "").trim();
-  const dsInstanceUrl = buildDsInstanceUrl(
-    countryCode,
-    failure.projectCode,
-    failure.instanceId,
-    countryConfig.dsUiUrl || countryConfig.ds_ui_url || "",
-  );
   if (!failure.instanceId || !failure.projectCode) {
     return {
-      dsInstanceUrl,
+      dsInstanceUrl: "",
       taskLookupStatus: "unavailable",
       taskLookupError: "n8n 告警载荷缺少项目编号或工作流实例 ID，无法查询 DS 失败任务",
     };
   }
   if (!webhookUrl || !token) {
     return {
-      dsInstanceUrl,
+      dsInstanceUrl: "",
       taskLookupStatus: "unavailable",
       taskLookupError: !token ? "该国家 DS Token 未配置，无法补充查询失败任务" : "DS 查询网关未配置，无法补充查询失败任务",
     };
   }
+  let instanceLookupError = "";
+  let instanceData = {};
+  try {
+    instanceData = objectData(await postAction(webhookUrl, countryCode, token, "get_instance", {
+      project_code: failure.projectCode,
+      instance_id: failure.instanceId,
+    }, { timeoutMs, retries: 0 }));
+  } catch (error) {
+    instanceLookupError = error.message;
+  }
+  const verifiedInstanceId = instanceId(instanceData);
+  const instanceState = stateOf(instanceData);
+  const instanceVerified = Boolean(verifiedInstanceId || instanceState || workflowCode(instanceData));
+  const dsInstanceUrl = instanceVerified
+    ? buildDsInstanceUrl(
+      countryCode,
+      failure.projectCode,
+      verifiedInstanceId || failure.instanceId,
+      countryConfig.dsUiUrl || countryConfig.ds_ui_url || "",
+    )
+    : "";
+  const dsOutcome = SUCCESS_STATES.has(instanceState)
+    ? { repairStatus: "recovered", retryResult: "recovered" }
+    : RUNNING_STATES.has(instanceState)
+      ? { repairStatus: "repairing", retryResult: "running" }
+      : FAILED_STATES.has(instanceState)
+        ? { repairStatus: "unresolved", retryResult: "failed" }
+        : {};
   try {
     const resolved = await resolveFailureTask(failure, {
       webhookUrl,
@@ -928,14 +950,26 @@ export async function resolveN8nDsFailureEvidence(rootDir, { country, failure = 
     if (!resolved) {
       return {
         dsInstanceUrl,
-        taskLookupStatus: "not_found",
-        taskLookupError: "DS 工作流实例未返回失败或停止的任务节点",
+        instanceLookupStatus: instanceVerified ? "resolved" : "failed",
+        instanceLookupError,
+        dsInstanceState: instanceState,
+        repairOutcomeSource: Object.keys(dsOutcome).length ? "ds_instance_api" : "",
+        ...dsOutcome,
+        taskLookupStatus: instanceVerified ? "not_found" : "instance_not_found",
+        taskLookupError: instanceVerified
+          ? "DS 工作流实例未返回失败或停止的任务节点"
+          : `DS 工作流实例不存在或当前账号无权访问${instanceLookupError ? `：${instanceLookupError}` : ""}`,
       };
     }
     const log = resolved.logData?.log || resolved.logData?.task_log || resolved.logData?.content || "";
     const failureReason = extractDsFailureReason(log, "");
     return {
       dsInstanceUrl,
+      instanceLookupStatus: instanceVerified ? "resolved" : "failed",
+      instanceLookupError,
+      dsInstanceState: instanceState,
+      repairOutcomeSource: Object.keys(dsOutcome).length ? "ds_instance_api" : "",
+      ...dsOutcome,
       taskLookupStatus: "resolved",
       taskLookupError: "",
       resolvedWorkflowCode: resolved.workflowCode || failure.workflowCode || "",
@@ -954,6 +988,11 @@ export async function resolveN8nDsFailureEvidence(rootDir, { country, failure = 
   } catch (error) {
     return {
       dsInstanceUrl,
+      instanceLookupStatus: instanceVerified ? "resolved" : "failed",
+      instanceLookupError,
+      dsInstanceState: instanceState,
+      repairOutcomeSource: Object.keys(dsOutcome).length ? "ds_instance_api" : "",
+      ...dsOutcome,
       taskLookupStatus: "failed",
       taskLookupError: error.message,
     };
