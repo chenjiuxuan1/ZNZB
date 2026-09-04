@@ -640,11 +640,15 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     };
     const runs = [run, ...(data.runs || [])].slice(0, MULTI_COUNTRY_RESULTS_KEEP);
     await writeJsonFileAtomic(await resultsPath(), { runs });
-    // 维护每国连续异常计数（异常 +1，无异常归零），达到阈值且开启电话时标记 phoneNeeded
+    // 维护每国连续异常计数（异常 +1，无异常归零），达到阈值且开启电话时标记 phoneNeeded。
+    // 注意：只更新本次结果中实际校验过的国家（定时为全部启用国家；单国测试只含 1 国），
+    // 未参与本次校验的国家计数保持不变 —— 否则单国测试会把其他国家的计数误清零。
     const notify = await loadMcNotify();
     const strike = await loadMcStrike();
     const counts = { ...strike.counts };
+    const checkedCodes = new Set((run.countries || []).map((x) => String(x.code || "").toLowerCase()));
     for (const code of MC_COUNTRIES) {
+      if (!checkedCodes.has(code)) continue;
       const c = run.countries.find((x) => (x.code || "").toLowerCase() === code);
       const hasMismatch = Boolean(c && Array.isArray(c.mismatches) && c.mismatches.length > 0);
       counts[code] = hasMismatch ? (counts[code] || 0) + 1 : 0;
@@ -789,7 +793,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
    * body: { mode:"test", testNumber:"153...", country?, n? }
    * 不落库、不查通知配置，纯粹验证语音通道可用。
    */
-  async function callMcPhoneTest(body = {}, { loadMcNotify, loadMcVoice, callAliyunVoice }) {
+  async function callMcPhoneTest(body = {}, { loadMcVoice, callAliyunVoice }) {
     const voice = await loadMcVoice();
     const number = String(body.testNumber || "").replace(/[^\d+]/g, "").trim();
     if (!/^1\d{10}$/.test(number) && !/^\d{6,}$/.test(number)) {
@@ -1024,12 +1028,19 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       if (!found) {
         return { ok: false, error: `n8n 工作流中未找到定时触发节点「${MC_SCHEDULE_TRIGGER_NODE}」` };
       }
-      // 2) PUT 工作流（n8n PUT 不接受 active 字段；保留完整 settings，避免覆盖 callerPolicy 等）
+      // 2) PUT 工作流（n8n PUT 不接受 active 字段；settings 只保留 n8n 接受的字段，
+      //    不能全量合并 GET 返回的 settings —— 其中 binaryMode 等字段会让 n8n 返回 HTTP 400）
+      const srcSettings = wf.settings || {};
+      const putSettings = {
+        executionOrder: srcSettings.executionOrder === "v2" ? "v2" : "v1",
+        callerPolicy: srcSettings.callerPolicy || "workflowsFromSameOwner",
+        availableInMCP: Boolean(srcSettings.availableInMCP),
+      };
       const putPayload = {
         name: wf.name,
         nodes: wf.nodes,
         connections: wf.connections,
-        settings: { ...(wf.settings || {}), executionOrder: "v1" },
+        settings: putSettings,
       };
       const putResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
         method: "PUT",
