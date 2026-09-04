@@ -6,6 +6,7 @@ import {
   lifecycleSectionForPath,
   legacyCapabilitiesForSection,
 } from "../web/src/views/alert-center/lifecycle-model.js";
+import { findRouteForPath } from "../web/src/state.js";
 
 test("alert center exposes five lifecycle sections", () => {
   assert.deepEqual(ALERT_LIFECYCLE_SECTIONS.map((item) => item.id), [
@@ -25,4 +26,11 @@ test("legacy capabilities have one primary lifecycle owner", () => {
     legacyCapabilitiesForSection(section.id).map((item) => [item.id, section.id]),
   );
   assert.equal(new Set(owners.map(([id]) => id)).size, owners.length);
+});
+
+test("alert child routes resolve to the alert sidebar entry", () => {
+  const routes = [{ path: "/dashboard" }, { path: "/alerts", matchPrefix: true }];
+  assert.equal(findRouteForPath(routes, "/alerts/events").path, "/alerts");
+  assert.equal(findRouteForPath(routes, "/alerts/notifications").path, "/alerts");
+  assert.equal(findRouteForPath(routes, "/missing").path, "/dashboard");
 });
