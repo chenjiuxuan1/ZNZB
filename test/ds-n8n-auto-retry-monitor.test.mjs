@@ -191,6 +191,48 @@ test("n8n monitor deduplicates DS task evidence queries for repeated executions 
   assert.equal(evidenceCalls, 1);
 });
 
+test("n8n monitor hides records whose exact DS workflow instance does not exist", async () => {
+  const client = {
+    async listWorkflows() { return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口" }] }; },
+    async listExecutions() { return { data: [{ id: "n8n-missing-instance", workflowId: "wf-1", status: "success", startedAt: "2026-08-30T00:25:01.000Z" }] }; },
+    async getExecution() { return fakeDetail(); },
+  };
+  const result = await inspectN8nAutoRetryExecutions("/tmp/znzb-missing-ds-instance", {
+    now: new Date("2026-08-30T12:00:00Z"),
+    countries: ["ph"],
+    n8nClient: client,
+    dsEvidenceResolver: async () => ({
+      instanceLookupStatus: "failed",
+      taskLookupStatus: "instance_not_found",
+      taskLookupError: "DS 工作流实例不存在或当前账号无权访问",
+    }),
+    bypassCache: true,
+  });
+  assert.equal(result.totalExecutions, 1);
+  assert.equal(result.totalFailures, 0);
+  assert.equal(result.countries[0].failures.length, 0);
+});
+
+test("n8n monitor keeps genuine DS lookup errors visible", async () => {
+  const client = {
+    async listWorkflows() { return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口" }] }; },
+    async listExecutions() { return { data: [{ id: "n8n-gateway-error", workflowId: "wf-1", status: "success", startedAt: "2026-08-30T00:25:01.000Z" }] }; },
+    async getExecution() { return fakeDetail(); },
+  };
+  const result = await inspectN8nAutoRetryExecutions("/tmp/znzb-ds-lookup-error", {
+    now: new Date("2026-08-30T12:00:00Z"),
+    countries: ["ph"],
+    n8nClient: client,
+    dsEvidenceResolver: async () => ({
+      taskLookupStatus: "failed",
+      taskLookupError: "DS 网关请求超时",
+    }),
+    bypassCache: true,
+  });
+  assert.equal(result.totalFailures, 1);
+  assert.equal(result.countries[0].failures[0].taskLookupStatus, "failed");
+});
+
 test("START_PROCESS is visible as scan-only and never marked as a retry", async () => {
   const client = {
     async listWorkflows() { return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口" }] }; },

@@ -607,12 +607,17 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
     if (!existing || itemAt >= existingAt) latestByInstance.set(key, item);
   }
   const deduped = [...latestByInstance.values()];
+  // Do not show stale/mismatched n8n alerts when DS confirms that the exact
+  // project + workflow-instance pair does not exist and its task-instance
+  // query is also empty. Keep genuine lookup failures (timeouts, token errors,
+  // gateway errors) visible so operational problems are not silently hidden.
+  const verifiedItems = deduped.filter((item) => item.taskLookupStatus !== "instance_not_found");
   // Correlate the async repair result back to each original DS instance by
   // reading the remote retry log (n8nLogPath) the n8n execution recorded. Only
   // items carrying a log path are read; missing/unknown outcomes stay unknown
   // and read failures are surfaced separately instead of masquerading as
   // "pending confirmation".
-  const finalItems = await mapWithConcurrency(deduped, 4, async (item) => {
+  const finalItems = await mapWithConcurrency(verifiedItems, 4, async (item) => {
     const recordedLogPath = String(item.n8nLogPath || "").trim();
     const logPath = resolveAutoRepairLogPath(item);
     if (!logPath) {
