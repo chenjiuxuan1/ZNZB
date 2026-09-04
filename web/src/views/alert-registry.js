@@ -232,6 +232,16 @@ async function loadMcVoice(root) {
         <label class="mc-notify-toggle"><input type="checkbox" id="mc-voice-enabled" ${cfg.enabled ? "checked" : ""} /> 启用电话语音告警（关闭后不再自动拨打电话）</label>
       </div>
       <div class="mc-notify-row">
+        <span class="mc-notify-field-label mc-voice-label-col">AccessKeyId</span>
+        <input type="text" id="mc-voice-ak" class="mc-notify-owners" value="${escapeHtml(cfg.accessKeyId || "")}" placeholder="如 LTAI..." />
+        <span class="mc-group-chat-hint">阿里云 AccessKeyId（当前已配置：${escapeHtml(cfg.accessKeyIdMasked || "未配置")}；留空保持原值）</span>
+      </div>
+      <div class="mc-notify-row">
+        <span class="mc-notify-field-label mc-voice-label-col">AccessKeySecret</span>
+        <input type="password" id="mc-voice-sk" class="mc-notify-owners" value="" placeholder="填新值时显示" autocomplete="off" />
+        <span class="mc-group-chat-hint">阿里云 AccessKeySecret（当前已配置：${escapeHtml(cfg.accessKeySecretMasked || "未配置")}；留空保持原值）</span>
+      </div>
+      <div class="mc-notify-row">
         <span class="mc-notify-field-label mc-voice-label-col">语音模板 TtsCode</span>
         <input type="text" id="mc-voice-tts-code" class="mc-notify-owners" value="${escapeHtml(cfg.ttsCode || "")}" placeholder="如 TTS_160301133" />
         <span class="mc-group-chat-hint">阿里云语音合成模板 Code（需先在阿里云创建并审核通过）</span>
@@ -272,6 +282,8 @@ async function loadMcVoice(root) {
       if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
       const payload = {
         enabled: root.querySelector("#mc-voice-enabled")?.checked ?? false,
+        accessKeyId: (root.querySelector("#mc-voice-ak")?.value || "").trim(),
+        accessKeySecret: (root.querySelector("#mc-voice-sk")?.value || "").trim(),
         ttsCode: (root.querySelector("#mc-voice-tts-code")?.value || "").trim(),
         nameTemplate: (root.querySelector("#mc-voice-name-template")?.value || "").trim(),
         systemTemplate: (root.querySelector("#mc-voice-system-template")?.value || "").trim(),
