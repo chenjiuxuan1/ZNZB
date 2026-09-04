@@ -1,6 +1,7 @@
 import { apiPost } from "../api.js";
 import { state } from "../state.js";
 import { escapeHtml, json, ruleTypeLabel } from "../view-utils.js";
+import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-banner.js";
 
 const ANOMALY_TYPES = [
   "requiredDatePresent",
@@ -26,6 +27,7 @@ export function renderNotifyPreview(root) {
         <button class="primary" id="build-preview">生成预览</button>
       </div>
     </div>
+    ${renderLegacyMigrationBanner("notifications")}
     ${draft.sourceLabel ? `<div class="notice"><strong>${escapeHtml(draft.sourceLabel)}</strong><span>已把最近一次规则试跑结果转换为通知预览草稿。你可以继续编辑左侧明细，再生成 TV 文案或测试发送。</span></div>` : ""}
     <div class="notify-layout">
       <section class="panel">
