@@ -522,6 +522,50 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await alertRegistry.applyScript(id, body || {}));
   }
 
+  // ---- 通用条目能力（通知 / 电话语音 / 定时 / 历史） ----
+  // 注意：必须在通用 PUT /api/alert-registry/{id} 之前匹配，避免 {id}/notify 被当成 id
+  if (method === "GET" && /\/api\/alert-registry\/[^/]+\/notify$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    return sendJson(response, 200, await alertRegistry.getEntryNotify(id));
+  }
+  if (method === "PUT" && /\/api\/alert-registry\/[^/]+\/notify$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.setEntryNotify(id, body || {}));
+  }
+  if (method === "GET" && /\/api\/alert-registry\/[^/]+\/voice$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    return sendJson(response, 200, await alertRegistry.getEntryVoice(id));
+  }
+  if (method === "PUT" && /\/api\/alert-registry\/[^/]+\/voice$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.setEntryVoice(id, body || {}));
+  }
+  if (method === "GET" && /\/api\/alert-registry\/[^/]+\/schedule$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    return sendJson(response, 200, await alertRegistry.getEntrySchedule(id));
+  }
+  if (method === "PUT" && /\/api\/alert-registry\/[^/]+\/schedule$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.setEntrySchedule(id, body || {}));
+  }
+  if (method === "GET" && /\/api\/alert-registry\/[^/]+\/history$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    return sendJson(response, 200, await alertRegistry.getEntryHistory(id));
+  }
+  if (method === "POST" && /\/api\/alert-registry\/[^/]+\/history$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 201, await alertRegistry.appendEntryHistory(id, body || {}));
+  }
+  if (method === "POST" && /\/api\/alert-registry\/[^/]+\/phone$/.test(url.pathname)) {
+    const id = url.pathname.split("/").slice(-2)[0];
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.callEntryPhone(id, body || {}));
+  }
+
   // ---- 多国一致性校验结果（最近 7 次） ----
   if (method === "GET" && url.pathname === "/api/multi-country/check-results") {
     return sendJson(response, 200, await alertRegistry.listCheckResults());
