@@ -9342,6 +9342,17 @@ select.ar-field {
   font-size: 12px;
   color: #344054;
 }
+.mc-desc-input {
+  padding: 6px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #344054;
+}
+.mc-desc-input:focus-visible {
+  outline: none;
+  border-color: #2e90fa;
+}
 .mc-group-owners:focus-visible,
 .mc-notify-owners:focus-visible {
   outline: none;
