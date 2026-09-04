@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   ALERT_LIFECYCLE_SECTIONS,
   normalizeAlertLifecycleSection,
@@ -7,6 +8,10 @@ import {
   legacyCapabilitiesForSection,
 } from "../web/src/views/alert-center/lifecycle-model.js";
 import { findRouteForPath } from "../web/src/state.js";
+import {
+  renderLifecycleBridge,
+  renderLifecycleNavigation,
+} from "../web/src/views/alert-center/lifecycle-nav.js";
 
 test("alert center exposes five lifecycle sections", () => {
   assert.deepEqual(ALERT_LIFECYCLE_SECTIONS.map((item) => item.id), [
@@ -33,4 +38,22 @@ test("alert child routes resolve to the alert sidebar entry", () => {
   assert.equal(findRouteForPath(routes, "/alerts/events").path, "/alerts");
   assert.equal(findRouteForPath(routes, "/alerts/notifications").path, "/alerts");
   assert.equal(findRouteForPath(routes, "/missing").path, "/dashboard");
+});
+
+test("lifecycle workspace preserves existing alert loaders", () => {
+  const navigation = renderLifecycleNavigation("events");
+  const bridge = renderLifecycleBridge("operations");
+  const viewSource = fs.readFileSync(new URL("../web/src/views/alert-center.js", import.meta.url), "utf8");
+  const styles = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
+
+  assert.match(navigation, /alert-lifecycle-nav/);
+  assert.equal((navigation.match(/href="#\/alerts\//g) || []).length, 5);
+  assert.match(navigation, /aria-current="page"/);
+  assert.match(bridge, /运维/);
+  assert.match(viewSource, /renderLifecycleNavigation/);
+  assert.match(viewSource, /renderLifecycleBridge/);
+  for (const loader of ["loadDashboard", "loadHistoryTab", "loadConfigTab", "loadInventoryTab"]) {
+    assert.match(viewSource, new RegExp(`function ${loader}\\(`));
+  }
+  assert.match(styles, /\.alert-lifecycle-nav/);
 });
