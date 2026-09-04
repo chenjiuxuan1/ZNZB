@@ -652,13 +652,30 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   /** 全量历史日志：聚合所有条目的执行记录（mc_* 取多国校验结果，普通条目取独立历史），按时间倒序。 */
   /** 全量历史日志：聚合所有条目的执行记录（mc_* 取多国校验结果，普通条目取独立历史），按时间倒序。
    *  days：只返回最近 N 天内的记录（0 / 空 = 全部）。 */
+  // listAllHistory 轻量缓存（3 秒 TTL）：避免页面频繁刷新/筛选时重复读大文件
+  let historyCache = null;
   async function listAllHistory({ limit = 200, days = 0 } = {}) {
+    const now = Date.now();
+    if (historyCache && historyCache.days === days && now - historyCache.at < 3000) {
+      return historyCache.data;
+    }
     const { alerts } = await load();
-    const cutoff = days > 0 ? Date.now() - days * 24 * 60 * 60 * 1000 : 0;
+    const cutoff = days > 0 ? now - days * 24 * 60 * 60 * 1000 : 0;
+    // 一次性读取多国校验结果，mc_* 条目在内存中按国家分发（避免每个 mc 条目重复读大文件）
+    let mcRuns = [];
+    try { mcRuns = await listCheckResults(); } catch (e) { mcRuns = []; }
     const all = [];
     await Promise.all((alerts || []).map(async (entry) => {
       try {
-        const runs = await getEntryHistory(entry.id, { limit: 50 });
+        let runs;
+        if (isMcEntry(entry.id)) {
+          const code = String(entry.id).replace(/^mc_?/, "").toLowerCase();
+          runs = mcRuns.filter((r) =>
+            Array.isArray(r.countries) && r.countries.some((c) => String(c.code || "").toLowerCase() === code)
+          ).slice(0, 50);
+        } else {
+          runs = await getEntryHistory(entry.id, { limit: 50 });
+        }
         for (const r of runs) {
           const ts = Date.parse(r.checkedAt || "");
           if (cutoff && (!Number.isFinite(ts) || ts < cutoff)) continue;
@@ -674,7 +691,9 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       }
     }));
     all.sort((a, b) => String(b.checkedAt || "").localeCompare(String(a.checkedAt || "")));
-    return all.slice(0, limit);
+    const result = all.slice(0, limit);
+    historyCache = { days, at: now, data: result };
+    return result;
   }
 
   async function list() {
