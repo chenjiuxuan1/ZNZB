@@ -217,6 +217,18 @@ test("DS failure reason extracts an explicit stop explanation from task logs", (
   );
 });
 
+test("DS failure reason recognizes an INFO-only forced termination sequence", () => {
+  const log = `
+2026-09-04 12:30:05.514 INFO  - Begin killing task instance, processId: 27070
+2026-09-04 12:30:16.312 INFO  - Sending 15 to process group: 27072 27088
+2026-09-04 12:30:16.344 INFO  - process has killed, exitStatusCode:143, processExitValue:143
+2026-09-04 12:30:16.399 INFO  - Successfully killed process tree by SIGTERM, processId: 27070`;
+  assert.equal(
+    extractDsFailureReason(log),
+    "任务执行期间被 DS 强制终止（进程收到 SIGTERM，退出码 143）",
+  );
+});
+
 test("DS failure reason explains an invalid StarRocks datasource and JDBC driver conflict", () => {
   const log = `
 Initialize sql task parameter { "type" : "STARROCKS", "datasource" : 29 }
@@ -426,7 +438,10 @@ test("DS failure log queries today's instances before reading failed task logs",
     const result = await inspectDsFailureLogs(rootDir, { now: new Date("2026-08-14T09:00:00+08:00"), countries: ["cn"] });
     assert.deepEqual(actions.map((item) => item.action), ["list_instances", "list_task_instances", "get_task_log", "extract_task_runtime_config"]);
     const taskQuery = actions.find((item) => item.action === "list_task_instances");
+    const taskLogQuery = actions.find((item) => item.action === "get_task_log");
     assert.equal(taskQuery.payload.state_type, "FAILURE");
+    assert.equal(taskLogQuery.payload.skip_line_num, 0);
+    assert.equal(taskLogQuery.payload.limit, 5000);
     assert.equal(actions[0].payload.state_type, "");
     assert.equal(actions[0].payload.start_time, "2026-08-14 00:00:00");
     assert.equal(actions[0].payload.end_time, "2026-08-14 23:59:59");
