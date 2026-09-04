@@ -199,8 +199,7 @@ function normalizeEntry(entry, index = 0) {
 }
 
 /** 通过 n8n 的 SSH 测试 webhook 在目标机执行命令，返回 { stdout, stderr, exitCode, ok }。 */
-async function runViaN8n(command, { sshHost, sshPort, timeoutMs } = {}) {
-  const base = process.env.N8N_BASE_URL || "";
+async function runViaN8n(command, { sshHost, sshPort, timeoutMs } = {}) {  const base = process.env.N8N_BASE_URL || "";
   const webhookPath = process.env.N8N_SSH_TEST_WEBHOOK || "alert-registry-ssh-test";
   if (!base) {
     return {
@@ -238,6 +237,72 @@ async function runViaN8n(command, { sshHost, sshPort, timeoutMs } = {}) {
       stderr: aborted ? `SSH 测试超时（${timeoutMs || DEFAULT_TEST_TIMEOUT_MS}ms）` : String(error && error.message || error),
       exitCode: -1,
       ok: false,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 通过 n8n webhook 触发条目绑定的工作流（推荐通道：n8n 内部配好了访问目标机的凭据，
+ * 平台直连各国网段常不可达）。返回 { ok, triggered, workflowId, webhookPath, message, note }。
+ */
+async function triggerN8nWorkflow({ workflowId, webhookPath, payload = {}, timeoutMs } = {}) {
+  const base = process.env.N8N_BASE_URL || "";
+  if (!base) {
+    return { ok: false, triggered: false, error: "未配置 N8N_BASE_URL，无法调用 n8n 工作流" };
+  }
+  // 未显式给 webhookPath 时，尝试按 workflowId 解析（目前只有多国校验工作流有对应 webhook）
+  let path = webhookPath;
+  if (!path && workflowId === MC_WORKFLOW_ID) {
+    path = "znzb-mc-verify-v4";
+  }
+  if (!path) {
+    return {
+      ok: false,
+      triggered: false,
+      error: `条目未配置 webhookPath，且 n8n 工作流 ${workflowId || "?"} 无已知 webhook，无法触发测试`,
+    };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs || DEFAULT_TEST_TIMEOUT_MS);
+  try {
+    const resp = await fetchCompatible(`${base}/webhook/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return {
+        ok: false,
+        triggered: false,
+        workflowId,
+        webhookPath: path,
+        error: `n8n 工作流触发失败（HTTP ${resp.status}）：${String(data.message || "")}`,
+      };
+    }
+    // n8n webhook 通常异步返回 "Workflow was started"
+    const started = Boolean(data.message) || resp.ok;
+    return {
+      ok: started,
+      triggered: started,
+      workflowId,
+      webhookPath: path,
+      message: String(data.message || "已触发"),
+      note: "已通过 n8n 触发对应工作流执行；校验结果会由工作流回写平台（多国校验看「校验结果」，其他条目看 n8n 执行历史）",
+    };
+  } catch (error) {
+    const aborted = error && error.name === "AbortError";
+    return {
+      ok: false,
+      triggered: false,
+      workflowId,
+      webhookPath: path,
+      error: aborted
+        ? `n8n 工作流触发超时（${timeoutMs || DEFAULT_TEST_TIMEOUT_MS}ms）`
+        : String(error && error.message || error),
     };
   } finally {
     clearTimeout(timer);
@@ -464,14 +529,28 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return { ...updated, n8nSync: null, n8nActive: null };
   }
 
-  /** 测试执行：按条目的 runVia/command 跑 dry-run，返回 stdout/stderr/exitCode。 */
+  /** 测试执行：优先触发条目绑定的 n8n 工作流（推荐通道）；无 n8n 绑定时退回 command dry-run。 */
   async function runTest(id, { timeoutMs } = {}) {
     const entry = await get(id);
     if (!entry) {
       throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
     }
+    // 优先走 n8n 工作流触发：条目绑定了 workflow 或属于多国校验（mc_* 共享 E4B4wNzcUG0ow6BL）
+    if (entry.n8nWorkflowId || (entry.webhookPath && entry.trigger === "webhook")) {
+      return {
+        id,
+        name: entry.name,
+        mode: "n8n-workflow",
+        ...(await triggerN8nWorkflow({
+          workflowId: entry.n8nWorkflowId,
+          webhookPath: entry.webhookPath,
+          payload: { source: "test", entryId: id, entryName: entry.name },
+          timeoutMs,
+        })),
+      };
+    }
     if (!entry.command) {
-      throw Object.assign(new Error(`告警条目 ${entry.name} 未配置 command`), { statusCode: 400 });
+      throw Object.assign(new Error(`告警条目 ${entry.name} 未配置 command 且未绑定 n8n 工作流`), { statusCode: 400 });
     }
     const command = resolveEnv(entry.command);
     const result = await runCommandSync(entry.runVia || "local", command, {
@@ -479,7 +558,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       sshPort: entry.sshPort,
       timeoutMs,
     });
-    return { ...result, id, name: entry.name };
+    return { ...result, id, name: entry.name, mode: "command" };
   }
 
   /** 任意命令测试：不落库，直接跑，用于新增条目前验证。 */
