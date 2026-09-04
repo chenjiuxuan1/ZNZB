@@ -10,6 +10,7 @@ import {
   ruleScope,
   ruleTypeLabel,
 } from "../view-utils.js";
+import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-banner.js";
 
 export function renderRules(root, { reload }) {
   const config = state.rulesConfig || { rules: [] };
@@ -26,6 +27,7 @@ export function renderRules(root, { reload }) {
       </div>
       <button class="primary" id="save-rules">保存高级 JSON</button>
     </div>
+    ${renderLegacyMigrationBanner("rules")}
     <div class="notice">
       <strong>作用范围</strong>
       <span>未写 countryCode/countryCodes 的规则默认适用于全部国家；写了 exclude 的规则会排除指定国家或卡片；写了 countryCode/countryCodes 的规则只对这些国家生效。</span>
