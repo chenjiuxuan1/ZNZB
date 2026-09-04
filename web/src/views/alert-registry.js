@@ -93,14 +93,21 @@ async function loadMcResults(root) {
   if (entrySel2) {
     entrySel2.onchange = () => { mcState.entryId = entrySel2.value; mcState.page = 1; renderMcResults(root); };
   }
-  // 更新条目筛选下拉（按 id 去重 + 出现顺序）
+  // 条目筛选下拉：基于全部告警条目列表（而非仅当前历史记录），保证所有条目都可选
   const entrySel = root.querySelector("#mc-entry-filter");
-  const entrySet = new Set();
-  mcState.runs.forEach((run) => { if (run.entryId) entrySet.add(run.entryId); });
   if (entrySel) {
-    const names = {};
-    mcState.runs.forEach((run) => { if (run.entryId && run.entryName) names[run.entryId] = run.entryName; });
-    entrySel.innerHTML = `<option value="">全部条目</option>` + [...entrySet].map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(names[id] || id)}</option>`).join("");
+    try {
+      const alerts = await apiGet("/api/alert-registry");
+      const list = Array.isArray(alerts) ? alerts : [];
+      entrySel.innerHTML = `<option value="">全部条目</option>` + list.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)}</option>`).join("");
+    } catch (e) {
+      // 列表拉取失败时退回：仅用历史记录里的条目
+      const entrySet = new Set();
+      mcState.runs.forEach((run) => { if (run.entryId) entrySet.add(run.entryId); });
+      const names = {};
+      mcState.runs.forEach((run) => { if (run.entryId && run.entryName) names[run.entryId] = run.entryName; });
+      entrySel.innerHTML = `<option value="">全部条目</option>` + [...entrySet].map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(names[id] || id)}</option>`).join("");
+    }
     entrySel.value = mcState.entryId;
   }
   renderMcResults(root);
