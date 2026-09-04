@@ -1,5 +1,7 @@
 import { apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
+import { lifecycleSectionForPath } from "./alert-center/lifecycle-model.js";
+import { renderLifecycleBridge, renderLifecycleNavigation } from "./alert-center/lifecycle-nav.js";
 
 // 业务组 -> 告警列表 缓存（点击卡片查看明细时读取；不用 data 属性存 JSON，避免转义损坏）
 let acGroupData = new Map();
@@ -103,47 +105,42 @@ function showToast(title, lines = [], type = "success") {
 }
 
 export function renderAlertCenter(root) {
-  // UI 原型：?variant=A|B|C 切换不同布局（prototype skill 子形状A，浮动底部切换条）
-  const variant = readVariantParam();
+  const section = readLifecycleSection();
+  // 原型布局只属于总览，避免布局参数污染其他生命周期工作区。
+  const variant = section === "overview" ? readVariantParam() : "";
   root.innerHTML = `
-    <div class="page-header">
+    <div class="page-header alert-lifecycle-header">
       <div>
         <h1 class="page-title">告警中心</h1>
-        <p class="page-note">实时查看夜莺与 n8n 告警状态，并可配置告警规则与工作流。点"刷新"拉取最新。</p>
+        <p class="page-note">按生命周期处理风险、事件、规则、通知与运维操作；现有能力在迁移期间全部保留。</p>
       </div>
       <div class="header-actions">
         <span id="ac-refresh-time" class="muted"></span>
         <button class="primary" id="ac-refresh">刷新数据</button>
       </div>
     </div>
-    <div class="ac-tabs">
-      <button class="ac-tab active" data-ac-tab="dashboard">实时看板</button>
-      <button class="ac-tab" data-ac-tab="history">告警日志</button>
-      <button class="ac-tab" data-ac-tab="config">配置管理</button>
-      <button class="ac-tab" data-ac-tab="inventory">通知全景</button>
-    </div>
+    ${renderLifecycleNavigation(section)}
     <section class="panel ac-panel">
+      ${renderLifecycleBridge(section)}
       <div id="ac-body"></div>
     </section>
     ${variant ? renderVariantSwitcher(variant) : ""}
   `;
 
   root.querySelector("#ac-refresh").addEventListener("click", () => {
-    const tab = root.querySelector(".ac-tab.active")?.dataset.acTab || "dashboard";
-    loadTab(root, tab);
-  });
-
-  root.querySelectorAll(".ac-tab").forEach((button) => {
-    button.addEventListener("click", () => {
-      root.querySelectorAll(".ac-tab").forEach((b) => b.classList.remove("active"));
-      button.classList.add("active");
-      loadTab(root, button.dataset.acTab);
-    });
+    loadLifecycleSection(root, section);
   });
 
   if (variant) bindVariantSwitcher(root);
 
-  loadTab(root, "dashboard");
+  loadLifecycleSection(root, section);
+}
+
+function readLifecycleSection() {
+  const hashPath = (globalThis.window?.location?.hash || "#/alerts")
+    .replace(/^#/, "")
+    .split("?", 1)[0];
+  return lifecycleSectionForPath(hashPath);
 }
 
 /** 从 hash 解析 ?variant= 参数（#/alerts?variant=A）。 */
@@ -197,19 +194,27 @@ function bindVariantSwitcher(root) {
 // Tab 调度
 // ---------------------------------------------------------------------------
 
-async function loadTab(root, tab) {
+async function loadLifecycleSection(root, section) {
   const body = root.querySelector("#ac-body");
   const refreshTime = root.querySelector("#ac-refresh-time");
   body.innerHTML = `<div class="notice">正在加载…</div>`;
   try {
-    if (tab === "dashboard") {
+    if (section === "overview") {
       await loadDashboard(root, body, refreshTime);
-    } else if (tab === "history") {
+    } else if (section === "events") {
       await loadHistoryTab(root, body, refreshTime);
-    } else if (tab === "config") {
+    } else if (section === "rules") {
       await loadConfigTab(root, body, refreshTime);
-    } else if (tab === "inventory") {
+    } else if (section === "notifications") {
       await loadInventoryTab(root, body, refreshTime);
+    } else {
+      body.innerHTML = `
+        <div class="alert-lifecycle-empty">
+          <strong>选择一项运维能力继续</strong>
+          <p>连接检查、规则试跑、脚本预览及发布仍在原工作台执行，上方入口已集中呈现。</p>
+        </div>
+      `;
+      if (refreshTime) refreshTime.textContent = "运维入口已就绪";
     }
   } catch (error) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;

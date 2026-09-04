@@ -9,6 +9,7 @@ import {
   ruleScope,
   ruleTypeLabel,
 } from "../view-utils.js";
+import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-banner.js";
 
 export function renderSandbox(root) {
   const dashboards = getDashboards();
@@ -40,6 +41,7 @@ export function renderSandbox(root) {
         <button class="primary" id="run-live-sandbox" ${canRun ? "" : "disabled"}>真实只读试跑（访问 Metabase）</button>
       </div>
     </div>
+    ${renderLegacyMigrationBanner("operations")}
     <div class="notice">
       <strong>两种试跑</strong>
       <span>两种试跑都会执行当前选择的规则，只判断“是否会生成告警消息”。这里不保存巡检结果，不修改看板，不发送 TV/webhook。</span>

@@ -1,5 +1,5 @@
 import { apiGet } from "./api.js";
-import { parseHashRoute, setRoute, state } from "./state.js";
+import { findRouteForPath, parseHashRoute, setRoute, state } from "./state.js";
 
 // 记录当前已渲染的路由，避免 loadInitialData 多次 render 重建 DOM 造成整页闪烁。
 let renderedRoute = null;
@@ -17,12 +17,12 @@ import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
 import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260828-workspace-v1";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
 import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260902-n8n-repair-status-v7";
-import { renderAlertCenter } from "./views/alert-center.js?v=20260831-config43";
+import { renderAlertCenter } from "./views/alert-center.js?v=20260904-alert-lifecycle-v1";
 import { renderAlertRegistry } from "./views/alert-registry.js?v=20260901-alert-registry";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
-  { path: "/alerts", label: "告警中心", short: "警", render: renderAlertCenter },
+  { path: "/alerts", label: "告警中心", short: "警", render: renderAlertCenter, matchPrefix: true },
   { path: "/alert-registry", label: "告警注册", short: "登", render: renderAlertRegistry },
   { path: "/countries", label: "国家配置", short: "国", render: renderCountries },
   { path: "/inventory", label: "看板与卡片", short: "板", render: renderInventory },
@@ -51,7 +51,7 @@ function routeRenderKey(route) {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
     .join("&");
-  return query ? `${route.path}?${query}` : route.path;
+  return query ? `${state.route}?${query}` : state.route;
 }
 
 // Render the shell first. Inventory and history files can be large, and waiting for
@@ -138,7 +138,7 @@ function applyBatchSchedule(batchSchedule) {
 }
 
 export function render() {
-  const route = routes.find((item) => item.path === state.route) || routes[0];
+  const route = findRouteForPath(routes, state.route);
   const routeKey = routeRenderKey(route);
   // 路由未变且 shell 已挂载：不重建 DOM（避免 loadInitialData 多次 render 导致整页闪烁），
   // 但同一路由的查询参数可能代表详情页，必须让 hash 导航重新渲染。
