@@ -173,7 +173,9 @@ export function createDsAutoRetryManager({
 
   async function notifyRetryFailure(country, failure, key, runId, outcome) {
     const attempts = Number(statuses.get(key)?.attempts || 0);
-    const notificationKey = `${runId || "unknown-run"}:${key}:${outcome.type}`;
+    // Dedupe by instance + outcome (not by runId) so the same unrecoverable
+    // failure is not re-notified every scheduled round.
+    const notificationKey = `${key}:${outcome.type}`;
     const taskDetail = failureTaskDetail(failure);
     const notificationMessage = buildRetryFailureMessage(country, failure, attempts, outcome);
     const schedule = await ownerConfigLoader(rootDir);
@@ -251,6 +253,9 @@ export function createDsAutoRetryManager({
     const taskDetail = failureTaskDetail(failure);
     let attempts = Number(statuses.get(key)?.attempts || 0);
     let submittedThisRun = false;
+    // Once an instance is marked stopRetry (e.g. DS refuses to recover a STOP
+    // instance), do not retry it again on any later round.
+    if (statuses.get(key)?.stopRetry) return;
     const runLog = (level, event, detail = {}) => appendLog(level, event, { runId, ...detail });
     try {
       while (true) {
@@ -379,9 +384,19 @@ export function createDsAutoRetryManager({
           });
           submittedThisRun = true;
         } catch (error) {
-          setStatus(key, { autoRetryStatus: "retry_wait", attempts, lastError: error.message });
-          runLog("error", "retry_failed", { key, country, attempts, ...taskDetail, message: error.message });
-          await notifyRetryFailure(country, failure, key, runId, { type: "submit_failed", errorMessage: error.message });
+          const retryErrorMessage = String(error?.message || error || "");
+          // A STOP instance that DS refuses to recover can never be auto-retried.
+          // Stop retrying it (and don't re-notify every round) instead of failing
+          // repeatedly on an unrecoverable instance.
+          if (STOP_STATES.has(state) && /(?:can not be recovered|cannot be recovered|unable to recover|stop.*recover|recover.*stop)/i.test(retryErrorMessage)) {
+            const stopReason = `DS 无法恢复该 STOP 实例（${retryErrorMessage.slice(0, 180)}），已停止自动重跑，需人工处理`;
+            setStatus(key, { autoRetryStatus: "safety_stopped", stopReason, attempts, stopRetry: true, recoveryState: state });
+            runLog("warn", "safety_stopped", { key, country, attempts, state, ...taskDetail, message: stopReason });
+            return;
+          }
+          setStatus(key, { autoRetryStatus: "retry_wait", attempts, lastError: retryErrorMessage });
+          runLog("error", "retry_failed", { key, country, attempts, ...taskDetail, message: retryErrorMessage });
+          await notifyRetryFailure(country, failure, key, runId, { type: "submit_failed", errorMessage: retryErrorMessage });
           return;
         }
         await sleep(retryDelayMs);
