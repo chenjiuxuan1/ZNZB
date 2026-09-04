@@ -638,6 +638,29 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return { ok: true, run, kept: history.runs.length, limit: ENTRY_HISTORY_KEEP };
   }
 
+  /** 全量历史日志：聚合所有条目的执行记录（mc_* 取多国校验结果，普通条目取独立历史），按时间倒序。 */
+  async function listAllHistory({ limit = 200 } = {}) {
+    const { alerts } = await load();
+    const all = [];
+    await Promise.all((alerts || []).map(async (entry) => {
+      try {
+        const runs = await getEntryHistory(entry.id, { limit: 50 });
+        for (const r of runs) {
+          all.push({
+            entryId: entry.id,
+            entryName: entry.name,
+            country: String(entry.country || ""),
+            ...r,
+          });
+        }
+      } catch (e) {
+        console.log(`[history] 读取条目 ${entry.id} 历史失败:`, String(e && e.message || e).slice(0, 150));
+      }
+    }));
+    all.sort((a, b) => String(b.checkedAt || "").localeCompare(String(a.checkedAt || "")));
+    return all.slice(0, limit);
+  }
+
   async function list() {
     const { alerts } = await load();
     // 多国校验条目（mc_*）为单独控制：状态 = 自身 enabled（该国是否参与校验），n8n 工作流保持 active。
@@ -1448,6 +1471,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     setEntrySchedule,
     getEntryHistory,
     appendEntryHistory,
+    listAllHistory,
     callEntryPhone,
     isMcEntry,
   };

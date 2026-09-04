@@ -8880,6 +8880,23 @@ select.ar-field {
   word-break: break-all;
 }
 
+/* ---- 全部告警历史日志 · 条目徽章 ---- */
+.mc-entry-badge {
+  display: inline-block;
+  background: #f0f4ff;
+  color: #344054;
+  border: 1px solid #d6e0ff;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 /* ---- 通用条目能力面板 · 宽弹窗 ---- */
 .ar-modal-wide { width: 780px; max-width: 94vw; }
 .ar-modal-wide .ar-modal-body { max-height: 72vh; overflow-y: auto; }
