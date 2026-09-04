@@ -23,13 +23,30 @@ function nodeFetch(url, options = {}) {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
       response.on("end", () => {
-        settled = true;
-        resolve(new FetchCompatibleResponse({
-          body: Buffer.concat(chunks),
-          headers: response.headers,
-          status: response.statusCode || 0,
-          statusText: response.statusMessage || "",
-        }));
+        if (!settled) {
+          settled = true;
+          resolve(new FetchCompatibleResponse({
+            body: Buffer.concat(chunks),
+            headers: response.headers,
+            status: response.statusCode || 0,
+            statusText: response.statusMessage || "",
+          }));
+        }
+      });
+      // Node <18 无全局 fetch 时走本实现。若远端已返回响应头但 body 挂起，
+      // request.destroy() 触发的是 response 的 aborted/error 事件而非 request error，
+      // 必须在此 reject，否则 Promise 永远 pending（表现为请求"永不超时"）。
+      response.on("aborted", () => {
+        if (!settled) {
+          settled = true;
+          reject(abortError());
+        }
+      });
+      response.on("error", (error) => {
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
       });
     });
 
