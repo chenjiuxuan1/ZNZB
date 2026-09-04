@@ -5,6 +5,7 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const INSTANCE_PAGE_SIZE = 100;
 const MAX_INSTANCE_PAGES = 50;
 const TASK_PAGE_SIZE = 100;
+const TASK_LOG_LINE_LIMIT = 5_000;
 const MAX_TASK_PAGES = 50;
 const PROJECT_QUERY_CONCURRENCY = 4;
 const FAILURE_ENRICH_CONCURRENCY = 3;
@@ -433,6 +434,13 @@ export function extractDsFailureReason(log, fallback = "") {
   if (/Connection refused/i.test(rawLog)) {
     return "目标服务拒绝连接：服务可能未启动、地址或端口配置错误，或网络策略未放行";
   }
+  // DolphinScheduler records externally stopped tasks as INFO-level process
+  // cleanup messages rather than an ERROR/Exception. Normalize the kill
+  // sequence so STOP instances do not fall through to the generic
+  // "任务日志未返回明确失败原因" message.
+  if (/(?:Begin killing task instance|Successfully killed process tree|Process tree for task:.*is killed or already finished|exitStatusCode\s*:\s*143|processExitValue\s*:\s*143|Sending\s+15\s+to process group)/i.test(rawLog)) {
+    return "任务执行期间被 DS 强制终止（进程收到 SIGTERM，退出码 143）";
+  }
   // Surface the underlying permission/authentication failure even when it is
   // wrapped by a generic writer error (e.g. DataX "Failed to flush data to
   // StarRocks" caused by a 401 "Access denied for user@host"). Otherwise the
@@ -786,6 +794,8 @@ async function resolveFailureTask(failure, context, options = {}) {
       logData = await postAction(context.webhookUrl, context.country, context.token, "get_task_log", {
         project_code: failure.projectCode,
         task_instance_id: taskInstanceId,
+        skip_line_num: 0,
+        limit: TASK_LOG_LINE_LIMIT,
       }, context.requestOptions);
     } catch {
       if (!isSameInstanceRecovery(failure) || FAILED_STATES.has(stateOf(task))) return base;
@@ -829,6 +839,8 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
       const logData = await postAction(webhookUrl, country, token, "get_task_log", {
         project_code: failure.projectCode,
         task_instance_id: failure.taskInstanceId,
+        skip_line_num: 0,
+        limit: TASK_LOG_LINE_LIMIT,
       });
       const runtime = await loadTaskRuntime(failure, {
         taskName: failure.taskName,
