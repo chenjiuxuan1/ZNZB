@@ -9281,36 +9281,38 @@ select.ar-field {
   font-weight: 500;
 }
 
-/* 多国校验 · 电话语音配置 */
-.mc-voice-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 720px;
+/* 多国校验 · 电话语音配置（复用通知配置行卡片样式） */
+.mc-voice-label-col {
+  flex: 0 0 190px;
+  text-align: left;
 }
-.mc-voice-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.mc-voice-vars {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.7;
 }
-.mc-voice-label {
-  font-size: 13px;
+.mc-voice-vars-title {
   font-weight: 600;
-  color: #344054;
+  color: #0c4a6e;
+  margin-bottom: 4px;
 }
-.mc-voice-input,
-.mc-voice-textarea {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid #d0d5dd;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #344054;
-  box-sizing: border-box;
+.mc-voice-vars-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-.mc-voice-input:focus-visible,
-.mc-voice-textarea:focus-visible {
-  outline: none;
-  border-color: #2e90fa;
-  box-shadow: 0 0 0 2px rgba(46, 144, 250, 0.15);
+.mc-voice-vars-grid code {
+  background: #e8f1fb;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #1d4ed8;
+}
+.mc-voice-vars-example {
+  margin-top: 4px;
+  color: #0c4a6e;
 }

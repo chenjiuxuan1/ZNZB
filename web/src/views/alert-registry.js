@@ -49,7 +49,7 @@ export function renderAlertRegistry(root) {
         <div class="mc-notify-body" id="mc-notify-body"></div>
       </details>
       <details class="mc-notify" id="mc-voice-panel">
-        <summary>📞 电话语音配置（阿里云 TTS 模板与播报内容；变量：{{label}} / {{code}} / {{country}} / {{n}} / {{threshold}} / {{items}}）</summary>
+        <summary>📞 电话语音配置（阿里云语音模板与播报内容，模板变量说明见面板内）</summary>
         <div class="mc-notify-body" id="mc-voice-body"></div>
       </details>
       <div id="mc-results"></div>
@@ -226,27 +226,42 @@ async function loadMcVoice(root) {
   }
   mcVoiceState.cfg = cfg || {};
   body.innerHTML = `
-    <div class="mc-voice-form">
-      <label class="mc-notify-toggle"><input type="checkbox" id="mc-voice-enabled" ${cfg.enabled ? "checked" : ""} /> 启用电话语音告警</label>
-      <div class="mc-voice-field">
-        <label class="mc-voice-label">语音模板 TtsCode：</label>
-        <input type="text" id="mc-voice-tts-code" class="mc-voice-input" value="${escapeHtml(cfg.ttsCode || "")}" placeholder="如 TTS_160301133" />
+    <div class="mc-notify-rows">
+      <div class="mc-notify-row">
+        <span class="mc-notify-field-label mc-voice-label-col">启用开关</span>
+        <label class="mc-notify-toggle"><input type="checkbox" id="mc-voice-enabled" ${cfg.enabled ? "checked" : ""} /> 启用电话语音告警（关闭后不再自动拨打电话）</label>
+      </div>
+      <div class="mc-notify-row">
+        <span class="mc-notify-field-label mc-voice-label-col">语音模板 TtsCode</span>
+        <input type="text" id="mc-voice-tts-code" class="mc-notify-owners" value="${escapeHtml(cfg.ttsCode || "")}" placeholder="如 TTS_160301133" />
         <span class="mc-group-chat-hint">阿里云语音合成模板 Code（需先在阿里云创建并审核通过）</span>
       </div>
-      <div class="mc-voice-field">
-        <label class="mc-voice-label">标题模板 nameTemplate：</label>
-        <input type="text" id="mc-voice-name-template" class="mc-voice-input" value="${escapeHtml(cfg.nameTemplate || "")}" placeholder="如 {{label}}多国一致性校验" />
-        <span class="mc-group-chat-hint">对应电话里的 name 参数</span>
+      <div class="mc-notify-row">
+        <span class="mc-notify-field-label mc-voice-label-col">标题模板 nameTemplate</span>
+        <input type="text" id="mc-voice-name-template" class="mc-notify-owners" value="${escapeHtml(cfg.nameTemplate || "")}" placeholder="如 {{label}}多国一致性校验" />
+        <span class="mc-group-chat-hint">对应电话里的 name 参数（播报标题）</span>
       </div>
-      <div class="mc-voice-field">
-        <label class="mc-voice-label">正文模板 systemTemplate：</label>
-        <textarea id="mc-voice-system-template" class="mc-voice-textarea" rows="2" placeholder="如 检测到{{n}}项数据异常，请及时处理">${escapeHtml(cfg.systemTemplate || "")}</textarea>
-        <span class="mc-group-chat-hint">对应电话里的 system 参数</span>
+      <div class="mc-notify-row">
+        <span class="mc-notify-field-label mc-voice-label-col">正文模板 systemTemplate</span>
+        <textarea id="mc-voice-system-template" class="mc-notify-owners" rows="1" placeholder="如 检测到{{n}}项数据异常，请及时处理">${escapeHtml(cfg.systemTemplate || "")}</textarea>
+        <span class="mc-group-chat-hint">对应电话里的 system 参数（播报正文）</span>
       </div>
-      <div class="mc-notify-actions">
-        <button class="mc-page-btn" id="mc-voice-save">保存语音配置</button>
-        <span class="mc-schedule-status" id="mc-voice-status"></span>
+    </div>
+    <div class="mc-voice-vars">
+      <div class="mc-voice-vars-title">📖 模板变量说明（在模板里写 {{变量名}}，打电话时会自动替换成实际值）</div>
+      <div class="mc-voice-vars-grid">
+        <span><code>{{label}}</code> 国家名称（如 中国、印尼、菲律宾）</span>
+        <span><code>{{code}}</code> 国家代码（如 cn、id、ph）</span>
+        <span><code>{{country}}</code> 国家名称（同 {{label}}）</span>
+        <span><code>{{n}}</code> 本次检测到的异常项数量（数字）</span>
+        <span><code>{{threshold}}</code> 设置的连续告警阈值次数（默认 6）</span>
+        <span><code>{{items}}</code> 异常明细（多项用顿号分隔）</span>
       </div>
+      <div class="mc-voice-vars-example">示例：正文「检测{{country}}到{{n}}项数据异常」会播报成「检测菲律宾到3项数据异常」。</div>
+    </div>
+    <div class="mc-notify-actions">
+      <button class="mc-page-btn" id="mc-voice-save">保存语音配置</button>
+      <span class="mc-schedule-status" id="mc-voice-status"></span>
     </div>`;
   const saveBtn = root.querySelector("#mc-voice-save");
   const status = root.querySelector("#mc-voice-status");
