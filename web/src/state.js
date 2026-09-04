@@ -85,13 +85,19 @@ export function setRoute(route) {
   window.location.hash = route;
 }
 
-export function parseHashRoute(hash = window.location.hash) {
+export function parseHashRoute(hash = globalThis.window?.location?.hash || "") {
   const raw = String(hash || "").replace(/^#/, "") || "/dashboard";
   const [path, queryString = ""] = raw.split("?");
   return {
     path: path || "/dashboard",
     query: Object.fromEntries(new URLSearchParams(queryString).entries()),
   };
+}
+
+export function findRouteForPath(routes, path) {
+  return routes.find((item) => item.path === path)
+    || routes.find((item) => item.matchPrefix && path.startsWith(`${item.path}/`))
+    || routes[0];
 }
 
 export function getDashboards(options = {}) {
