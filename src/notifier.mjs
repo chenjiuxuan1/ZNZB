@@ -127,6 +127,7 @@ async function resolveKnBotEmailChatIds({ apiBaseUrl, botToken, emails }) {
 
   const url = `${apiBaseUrl}/bot${botToken}/resolveUserId`;
   const chatIds = [];
+  const failed = [];
   for (const email of normalizedEmails) {
     const form = new URLSearchParams();
     form.set("email", email);
@@ -142,11 +143,15 @@ async function resolveKnBotEmailChatIds({ apiBaseUrl, botToken, emails }) {
       responseJson = {};
     }
     if (!response.ok || responseJson.ok === false || !responseJson.result?.user_id) {
-      throw new Error(
-        `KN Chat Bot resolveUserId failed for ${email} (${response.status} ${response.statusText}): ${responseText.slice(0, 240)}`,
-      );
+      // 单个邮箱解析失败不阻断整个通知：跳过该邮箱并记录，避免一个失效联系人让整个巡检任务挂掉。
+      failed.push(email);
+      continue;
     }
     chatIds.push(String(responseJson.result.user_id));
+  }
+
+  if (failed.length > 0) {
+    console.log(`[notifier] KN resolveUserId 失败，已跳过 ${failed.length} 个邮箱: ${failed.join(", ")}`);
   }
 
   return chatIds;
