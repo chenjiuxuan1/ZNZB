@@ -26,3 +26,10 @@ test("styles include desktop grid and narrow fallback", async () => {
   assert.match(css, /\.mc-form-row\s*\{/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
+
+test("history markup escapes identifiers and fallback timestamps", async () => {
+  const source = await fs.readFile(viewUrl, "utf8");
+  assert.match(source, /escapeHtml\(String\(c\.code \|\| ""\)\)/);
+  assert.match(source, /escapeHtml\(run\.id \? String\(run\.id\)\.slice\(0, 8\) : String\(start \+ idx \+ 1\)\)/);
+  assert.match(source, /escapeHtml\(ts\)/);
+});

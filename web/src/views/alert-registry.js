@@ -493,7 +493,7 @@ function renderMcResults(root) {
         <details class="mc-detail">
           <summary>📄 ${escapeHtml(c.label || c.code || "")} · 校验语句与差异明细</summary>
           ${summaryHtml}
-          ${sql ? `<div class="mc-sql-title">校验语句（${c.code || ""}）<button class="mc-copy-btn" data-copy-sql="${escapeHtml(sql)}" title="复制校验语句">📋 复制</button></div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
+          ${sql ? `<div class="mc-sql-title">校验语句（${escapeHtml(String(c.code || ""))}）<button class="mc-copy-btn" data-copy-sql="${escapeHtml(sql)}" title="复制校验语句">📋 复制</button></div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
           ${renderMcDetailBlock({ ...c, runId: run.id })}
         </details>
       `;
@@ -502,8 +502,8 @@ function renderMcResults(root) {
     return `
       <div class="mc-run ${(start + idx) === 0 ? "mc-run-latest" : ""}">
         <div class="mc-run-head">
-          <span class="mc-run-id">#${run.id ? String(run.id).slice(0, 8) : start + idx + 1}</span>
-          <span class="mc-run-ts">${ts}</span>
+          <span class="mc-run-id">#${escapeHtml(run.id ? String(run.id).slice(0, 8) : String(start + idx + 1))}</span>
+          <span class="mc-run-ts">${escapeHtml(ts)}</span>
           ${entryBadge}
           ${stateMark}
         </div>
