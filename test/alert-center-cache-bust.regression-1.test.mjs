@@ -6,7 +6,7 @@ import fs from "node:fs";
 // Found by /qa on 2026-09-04.
 // Report: .gstack/qa-reports/qa-report-localhost-2026-09-04.md
 test("alert lifecycle assets use the current release cache key", () => {
-  const releaseKey = "20260904-alert-lifecycle-v1";
+  const releaseKey = "20260907-alert-operations-v2";
   const app = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
   const index = fs.readFileSync(new URL("../web/index.html", import.meta.url), "utf8");
 
