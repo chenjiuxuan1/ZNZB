@@ -13,6 +13,12 @@ import {
   renderLifecycleNavigation,
 } from "../web/src/views/alert-center/lifecycle-nav.js";
 import { renderLegacyMigrationBanner } from "../web/src/views/alert-center/legacy-migration-banner.js";
+import {
+  canPublishEntry,
+  filterScriptCapableEntries,
+  renderHealthSources,
+  renderOperationsShell,
+} from "../web/src/views/alert-center/operations.js";
 
 test("alert center exposes five lifecycle sections", () => {
   assert.deepEqual(ALERT_LIFECYCLE_SECTIONS.map((item) => item.id), [
@@ -45,6 +51,38 @@ test("rules workspace exposes a focusable n8n workflow section", () => {
   const source = fs.readFileSync(new URL("../web/src/views/alert-center.js", import.meta.url), "utf8");
   assert.match(source, /id="ac-n8n-workflows"/);
   assert.match(source, /focusLifecycleTarget\(body, readLifecycleFocus\(\)\)/);
+});
+
+test("operations workspace owns health test release and audit regions", () => {
+  const html = renderOperationsShell();
+  for (const title of ["连接状态", "测试与验证", "脚本与发布", "运维记录"]) {
+    assert.match(html, new RegExp(title));
+  }
+  const source = fs.readFileSync(new URL("../web/src/views/alert-center/operations.js", import.meta.url), "utf8");
+  for (const endpoint of [
+    "/api/alerts/health",
+    "/api/alert-registry",
+    "/api/alert-registry/history",
+    "/api/alert-registry/script-audit",
+  ]) {
+    assert.ok(source.includes(endpoint));
+  }
+  assert.doesNotMatch(source, /apiPut\(/);
+  assert.match(source, /confirm\(/);
+});
+
+test("operations health states and publish guard remain source-specific", () => {
+  const health = renderHealthSources({ nightingale: "ok", n8n: "error: timeout" });
+  assert.match(health, /Nightingale[^]*连接正常/);
+  assert.match(health, /n8n[^]*timeout/);
+
+  const entries = filterScriptCapableEntries([
+    { id: "script", templateName: "alert.py.tpl" },
+    { id: "plain", command: "echo ok" },
+  ]);
+  assert.deepEqual(entries.map((entry) => entry.id), ["script"]);
+  assert.equal(canPublishEntry("script", ""), false);
+  assert.equal(canPublishEntry("script", "script"), true);
 });
 
 test("alert child routes resolve to the alert sidebar entry", () => {

@@ -2,6 +2,7 @@ import { apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 import { lifecycleSectionForPath } from "./alert-center/lifecycle-model.js";
 import { renderLifecycleBridge, renderLifecycleNavigation } from "./alert-center/lifecycle-nav.js";
+import { loadOperationsWorkspace } from "./alert-center/operations.js";
 
 // 业务组 -> 告警列表 缓存（点击卡片查看明细时读取；不用 data 属性存 JSON，避免转义损坏）
 let acGroupData = new Map();
@@ -226,14 +227,9 @@ async function loadLifecycleSection(root, section) {
       focusLifecycleTarget(body, readLifecycleFocus());
     } else if (section === "notifications") {
       await loadInventoryTab(root, body, refreshTime);
-    } else {
-      body.innerHTML = `
-        <div class="alert-lifecycle-empty">
-          <strong>选择一项运维能力继续</strong>
-          <p>连接检查、规则试跑、脚本预览及发布仍在原工作台执行，上方入口已集中呈现。</p>
-        </div>
-      `;
-      if (refreshTime) refreshTime.textContent = "运维入口已就绪";
+    } else if (section === "operations") {
+      await loadOperationsWorkspace(root, body, refreshTime);
+      focusLifecycleTarget(body, readLifecycleFocus());
     }
   } catch (error) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(error.message || String(error))}</span></div>`;
