@@ -129,6 +129,23 @@ function maskSecret(s) {
   return `${str.slice(0, 4)}****${str.slice(-4)}`;
 }
 
+/** 生成可安全返回给页面的电话语音配置，不暴露任何可用于签名的原始凭据。 */
+function toPublicVoiceConfig(voice = {}) {
+  const accessKeyId = resolveEnv(voice.accessKeyId);
+  const accessKeySecret = resolveEnv(voice.accessKeySecret);
+  return {
+    enabled: voice.enabled !== false,
+    accessKeyIdMasked: maskSecret(accessKeyId),
+    accessKeySecretMasked: maskSecret(accessKeySecret),
+    calledShowNumberMasked: maskSecret(voice.calledShowNumber),
+    credentialsConfigured: Boolean(accessKeyId && accessKeySecret),
+    ttsCode: String(voice.ttsCode || ""),
+    nameTemplate: String(voice.nameTemplate || ""),
+    systemTemplate: String(voice.systemTemplate || ""),
+    usesGlobal: Boolean(voice.usesGlobal),
+  };
+}
+
 /** 返回去空格后的非空字符串，否则空串。 */
 function nonEmpty(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -607,8 +624,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return getEntryNotify(id);
   }
 
-  /** 读取条目电话语音配置（未配置时用全局 mc-voice.json）。 */
-  async function getEntryVoice(id) {
+  /** 读取条目电话语音内部配置（含拨号所需凭据，不可直接作为 API 响应）。 */
+  async function loadEntryVoice(id) {
     if (isMcEntry(id)) {
       return loadMcVoice();
     }
@@ -640,13 +657,18 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     };
   }
 
+  /** 读取条目电话语音公开配置（未配置时用全局 mc-voice.json）。 */
+  async function getEntryVoice(id) {
+    return toPublicVoiceConfig(await loadEntryVoice(id));
+  }
+
   /** 保存条目电话语音配置（只保存模板相关；凭据/显号永远用全局）。 */
   async function setEntryVoice(id, cfg = {}) {
     if (isMcEntry(id)) {
       return setMcVoice(cfg);
     }
     const data = await loadEntryData(id);
-    const cur = await getEntryVoice(id);
+    const cur = await loadEntryVoice(id);
     const v = cfg.voice || cfg || {};
     data.voice = {
       enabled: v.enabled !== undefined ? v.enabled !== false : cur.enabled,
@@ -655,7 +677,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       systemTemplate: nonEmpty(v.systemTemplate) || cur.systemTemplate,
     };
     await saveEntryData(id, data);
-    return getEntryVoice(id);
+    return { ok: true, ...(await getEntryVoice(id)) };
   }
 
   /** 读取条目定时配置。普通条目从内嵌 schedule + 独立文件；mc_* 用 mc-schedule.json。 */
@@ -1425,7 +1447,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     if (!entry) {
       throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
     }
-    const [notify, voice] = await Promise.all([getEntryNotify(id), getEntryVoice(id)]);
+    const [notify, voice] = await Promise.all([getEntryNotify(id), loadEntryVoice(id)]);
     const contacts = Array.isArray(body.contacts) && body.contacts.length > 0
       ? body.contacts
       : notify.contacts;
@@ -1576,17 +1598,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
 
   /** 读取电话语音配置（页面展示用，隐藏密钥中间部分）。 */
   async function getMcVoice() {
-    const v = await loadMcVoice();
-    return {
-      enabled: v.enabled,
-      accessKeyId: v.accessKeyId,
-      accessKeyIdMasked: maskSecret(v.accessKeyId),
-      accessKeySecretMasked: maskSecret(v.accessKeySecret),
-      calledShowNumber: v.calledShowNumber,
-      ttsCode: v.ttsCode,
-      nameTemplate: v.nameTemplate,
-      systemTemplate: v.systemTemplate,
-    };
+    return toPublicVoiceConfig(await loadMcVoice());
   }
 
   /** 保存电话语音配置（页面上传凭据/模板；不填的字段保持原值）。 */
