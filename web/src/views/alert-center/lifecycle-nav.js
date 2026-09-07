@@ -27,13 +27,14 @@ export function renderLifecycleBridge(currentSection) {
   const section = ALERT_LIFECYCLE_SECTIONS.find((item) => item.id === current);
   const capabilities = legacyCapabilitiesForSection(current);
   if (current === "overview") return "";
+  const nativeWorkspace = current === "operations";
 
   return `
     <aside class="alert-lifecycle-bridge" aria-labelledby="alert-lifecycle-bridge-title">
       <div>
         <span class="alert-lifecycle-bridge__eyebrow">${section.label}工作区</span>
-        <h2 id="alert-lifecycle-bridge-title">现有能力已按生命周期归位</h2>
-        <p>${section.description}。第一阶段继续复用成熟页面和生产接口。</p>
+        <h2 id="alert-lifecycle-bridge-title">${nativeWorkspace ? "运维能力已在当前页面归位" : "现有能力已按生命周期归位"}</h2>
+        <p>${section.description}。${nativeWorkspace ? "连接、发布和审计原位完成；专项测试保留成熟工作台。" : "第一阶段继续复用成熟页面和生产接口。"}</p>
       </div>
       <div class="alert-lifecycle-bridge__links" aria-label="${section.label}相关能力">
         ${capabilities.map((item) => `
