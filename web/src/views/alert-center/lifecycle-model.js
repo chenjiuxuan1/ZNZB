@@ -44,7 +44,7 @@ const LEGACY_CAPABILITIES = Object.freeze({
   ]),
   rules: freezeItems([
     { id: "nightingale-rules", label: "夜莺规则", href: "/alerts/rules" },
-    { id: "n8n-alert-flows", label: "n8n 告警链路", href: "/rules" },
+    { id: "n8n-alert-flows", label: "n8n 告警链路", href: "/alerts/rules?focus=n8n-workflows" },
     { id: "custom-alert-registry", label: "自定义告警条目", href: "/alert-registry" },
     { id: "ds-schedules", label: "DS 监控调度", href: "/ds-scheduler" },
   ]),
