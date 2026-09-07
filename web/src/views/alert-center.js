@@ -143,6 +143,24 @@ function readLifecycleSection() {
   return lifecycleSectionForPath(hashPath);
 }
 
+function readLifecycleFocus() {
+  const hash = globalThis.window?.location?.hash || "";
+  const queryIndex = hash.indexOf("?");
+  if (queryIndex === -1) return "";
+  const focus = new URLSearchParams(hash.slice(queryIndex + 1)).get("focus") || "";
+  return /^[a-z0-9-]+$/.test(focus) ? focus : "";
+}
+
+function focusLifecycleTarget(body, focus) {
+  if (!focus) return;
+  const target = body.querySelector(`#ac-${focus}`);
+  if (!target) return;
+  target.classList.add("is-focused");
+  target.setAttribute("tabindex", "-1");
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  target.focus({ preventScroll: true });
+}
+
 /** 从 hash 解析 ?variant= 参数（#/alerts?variant=A）。 */
 function readVariantParam() {
   const hash = window.location.hash || "";
@@ -205,6 +223,7 @@ async function loadLifecycleSection(root, section) {
       await loadHistoryTab(root, body, refreshTime);
     } else if (section === "rules") {
       await loadConfigTab(root, body, refreshTime);
+      focusLifecycleTarget(body, readLifecycleFocus());
     } else if (section === "notifications") {
       await loadInventoryTab(root, body, refreshTime);
     } else {
@@ -1605,7 +1624,7 @@ function renderConfigTab(groups, config) {
         <div id="ac-ds-pager"></div>
       </section>
 
-      <section class="sub-panel">
+      <section class="sub-panel" id="ac-n8n-workflows">
         <div class="detail-header compact-header">
           <div>
             <h2 class="panel-title">n8n 工作流</h2>

@@ -34,6 +34,19 @@ test("legacy capabilities have one primary lifecycle owner", () => {
   assert.equal(new Set(owners.map(([id]) => id)).size, owners.length);
 });
 
+test("n8n lifecycle capability focuses the n8n rules workspace", () => {
+  const item = legacyCapabilitiesForSection("rules")
+    .find((candidate) => candidate.id === "n8n-alert-flows");
+  assert.equal(item.href, "/alerts/rules?focus=n8n-workflows");
+  assert.doesNotMatch(renderLifecycleBridge("rules"), /href="#\/rules"[^>]*>n8n 告警链路/);
+});
+
+test("rules workspace exposes a focusable n8n workflow section", () => {
+  const source = fs.readFileSync(new URL("../web/src/views/alert-center.js", import.meta.url), "utf8");
+  assert.match(source, /id="ac-n8n-workflows"/);
+  assert.match(source, /focusLifecycleTarget\(body, readLifecycleFocus\(\)\)/);
+});
+
 test("alert child routes resolve to the alert sidebar entry", () => {
   const routes = [{ path: "/dashboard" }, { path: "/alerts", matchPrefix: true }];
   assert.equal(findRouteForPath(routes, "/alerts/events").path, "/alerts");
