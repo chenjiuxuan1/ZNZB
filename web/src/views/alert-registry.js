@@ -262,8 +262,8 @@ async function loadMcVoice(root) {
       </div>
       <div class="mc-notify-row">
         <span class="mc-notify-field-label mc-voice-label-col">AccessKeyId</span>
-        <input type="text" id="mc-voice-ak" class="mc-notify-owners" value="${escapeHtml(cfg.accessKeyId || "")}" placeholder="如 LTAI..." />
-        <span class="mc-group-chat-hint">阿里云 AccessKeyId（当前已配置：${escapeHtml(cfg.accessKeyIdMasked || "未配置")}；留空保持原值）</span>
+        <input type="text" id="mc-voice-ak" class="mc-notify-owners" value="" placeholder="输入新的 AccessKeyId" autocomplete="off" />
+        <span class="mc-group-chat-hint">阿里云 AccessKeyId（当前：${escapeHtml(cfg.accessKeyIdMasked || "未配置")}；出于安全考虑不回填原值）</span>
       </div>
       <div class="mc-notify-row">
         <span class="mc-notify-field-label mc-voice-label-col">AccessKeySecret</span>

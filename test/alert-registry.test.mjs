@@ -12,6 +12,26 @@ test("runtime script audit file is excluded from source control", async () => {
   assert.match(gitignore, /^config\/alert-script-audit\.json$/m);
 });
 
+test("voice configuration responses never expose raw cloud credentials", async (t) => {
+  const { registry, dir } = await tmpRegistry(t);
+  await fs.mkdir(path.join(dir, "config"), { recursive: true });
+  await fs.writeFile(path.join(dir, "config", "mc-voice.json"), JSON.stringify({
+    enabled: true,
+    accessKeyId: "LTAI-raw-access-key",
+    accessKeySecret: "raw-super-secret-value",
+    calledShowNumber: "02160556003",
+    ttsCode: "TTS_TEST",
+  }));
+
+  for (const voice of [await registry.getMcVoice(), await registry.getEntryVoice("mc_cn")]) {
+    assert.equal("accessKeySecret" in voice, false);
+    assert.equal("accessKeyId" in voice, false);
+    assert.match(voice.accessKeyIdMasked, /\*\*\*\*/);
+    assert.match(voice.accessKeySecretMasked, /\*\*\*\*/);
+    assert.doesNotMatch(JSON.stringify(voice), /raw-super-secret-value|LTAI-raw-access-key/);
+  }
+});
+
 async function tmpRegistry(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "alert-registry-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
