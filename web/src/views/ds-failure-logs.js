@@ -21,7 +21,7 @@ const STATUS_LABELS = {
   retry_wait: { label: "等待继续重跑", className: "warn" },
   sql_code_error: { label: "SQL错误，需人工修改", className: "danger" },
   permission_error: { label: "权限不足，需人工处理", className: "danger" },
-  suspected_empty_run: { label: "疑似空跑", className: "warn" },
+  suspected_empty_run: { label: "疑似空跑", className: "danger" },
   manual_review: { label: "待人工确认", className: "danger" },
   safety_stopped: { label: "已停止重跑", className: "danger" },
   sql_error: { label: "SQL错误，需人工修改", className: "danger" },
@@ -977,7 +977,7 @@ function buildRetryTaskRows(run) {
     const outcome = logs.find((item) => ["recovered", "retry_not_recovered", "retry_failed", "excluded", "skipped", "safety_stopped", "empty_run_confirmed", "manual_review", "retry_already_running"].includes(item.event));
     const suspectedEmptyRun = logs.some(isSuspectedEmptyRunLog);
     const status = outcome?.event === "recovered" ? "success"
-      : ["retry_not_recovered", "retry_failed"].includes(outcome?.event) ? "failed"
+      : suspectedEmptyRun || ["retry_not_recovered", "retry_failed"].includes(outcome?.event) ? "failed"
         : ["excluded", "skipped", "safety_stopped", "empty_run_confirmed", "manual_review"].includes(outcome?.event) ? "stopped" : "running";
     const result = suspectedEmptyRun
       ? "疑似空跑"
