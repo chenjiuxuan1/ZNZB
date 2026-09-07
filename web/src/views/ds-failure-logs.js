@@ -70,8 +70,8 @@ let model = {
   scheduledLoading: false,
   scheduledCountries: [],
   scheduledKeyword: "",
-  scheduledStartDate: defaultDateRange(7).startDate,
-  scheduledEndDate: defaultDateRange(7).endDate,
+  scheduledStartDate: defaultDateRange(1).startDate,
+  scheduledEndDate: defaultDateRange(1).endDate,
   scheduledCountryPages: {},
   scheduledCollapsedCountries: {},
   scheduledEvidenceRunId: 0,
@@ -110,7 +110,7 @@ async function refreshScheduledConfig(root) {
 
 async function loadScheduledFailures(root) {
   if (model.scheduledLoading) return;
-  const range = readDateRange(root, "ds-scheduled", defaultDateRange(7));
+  const range = readDateRange(root, "ds-scheduled", defaultDateRange(1));
   if (!range.valid) {
     model.scheduledMessage = range.error;
     paint(root);
@@ -974,11 +974,14 @@ function buildRetryTaskRows(run) {
   }
   const rows = [...groups.values()].map((logs) => {
     const detail = logs[0];
-    const outcome = logs.find((item) => ["recovered", "retry_not_recovered", "retry_failed", "excluded", "skipped", "safety_stopped", "manual_review", "retry_already_running"].includes(item.event));
+    const outcome = logs.find((item) => ["recovered", "retry_not_recovered", "retry_failed", "excluded", "skipped", "safety_stopped", "empty_run_confirmed", "manual_review", "retry_already_running"].includes(item.event));
+    const suspectedEmptyRun = logs.some(isSuspectedEmptyRunLog);
     const status = outcome?.event === "recovered" ? "success"
       : ["retry_not_recovered", "retry_failed"].includes(outcome?.event) ? "failed"
-        : ["excluded", "skipped", "safety_stopped", "manual_review"].includes(outcome?.event) ? "stopped" : "running";
-    const result = ({ recovered: "重跑后已修复", retry_not_recovered: "重跑后未修复", retry_failed: "重跑提交失败", excluded: "项目配置为不重跑", skipped: "不满足重跑条件", safety_stopped: "安全停止", manual_review: "需人工确认", retry_already_running: "任务已在运行" }[outcome?.event] || "结果待确认");
+        : ["excluded", "skipped", "safety_stopped", "empty_run_confirmed", "manual_review"].includes(outcome?.event) ? "stopped" : "running";
+    const result = suspectedEmptyRun
+      ? "疑似空跑"
+      : ({ recovered: "重跑后已修复", retry_not_recovered: "重跑后未修复", retry_failed: "重跑提交失败", excluded: "项目配置为不重跑", skipped: "不满足重跑条件", safety_stopped: "安全停止", manual_review: "需人工确认", retry_already_running: "任务已在运行" }[outcome?.event] || "结果待确认");
     return { country: detail.country, detail: outcome || detail, retryCount: logs.filter((item) => item.event === "retry_submitted").length, status, result };
   });
   const selectedCountries = run.selectedCountries?.length ? run.selectedCountries : COUNTRY_OPTIONS.map((item) => item.code);
@@ -1039,11 +1042,17 @@ function formatRetryMessage(message) {
 
 function renderRetryTaskIdentity(item = {}, withLink = false) {
   if (!item.key) return "—";
-  const task = item.taskName || item.taskCode || "未返回任务节点名称";
+  const task = isSuspectedEmptyRunLog(item) ? "工作流" : (item.taskName || item.taskCode || "未返回任务节点名称");
   const workflow = item.workflowName || item.workflowCode || "未知工作流";
   const project = item.projectName || item.projectCode || "未知项目";
   const link = withLink && item.dsInstanceUrl ? `<a href="${escapeHtml(item.dsInstanceUrl)}" target="_blank" rel="noopener">工作流实例 ↗</a>` : "";
   return `<div class="ds-retry-task-identity ds-retry-task-card"><div><strong>${escapeHtml(task)}</strong>${link}</div><small>项目：${escapeHtml(project)} · 工作流：${escapeHtml(workflow)} · 实例：${escapeHtml(item.instanceId || "-")}</small></div>`;
+}
+
+function isSuspectedEmptyRunLog(item = {}) {
+  return item.failureType === "suspected_empty_run"
+    || item.event === "empty_run_confirmed"
+    || (!String(item.taskName || "").trim() && !String(item.taskCode || "").trim());
 }
 
 function retryLogBadge(level) {
@@ -1083,6 +1092,7 @@ function retryLogEvent(event) {
     instance_check_failed: "实例检查失败",
     workflow_check_failed: "工作流检查失败",
     empty_run_timeout: "疑似空跑超时",
+    empty_run_confirmed: "疑似空跑",
     owner_notification_sent: "负责人告警已发送",
     owner_notification_failed: "负责人告警发送失败",
     owner_notification_skipped: "未配置负责人",

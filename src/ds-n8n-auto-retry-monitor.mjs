@@ -240,6 +240,38 @@ function withinDateRange(value, range) {
   return time >= start && time < endExclusive;
 }
 
+async function listExecutionsInDateRange(client, workflowId, range, pageSize) {
+  const executions = [];
+  const seenCursors = new Set();
+  const rangeStart = Date.parse(`${range.startDate}T00:00:00+08:00`);
+  let cursor;
+
+  while (true) {
+    const payload = await client.listExecutions({
+      workflowId,
+      limit: pageSize,
+      ...(cursor ? { cursor } : {}),
+    });
+    const page = Array.isArray(payload?.data) ? payload.data : [];
+    executions.push(...page.filter((execution) => withinDateRange(executionTime(execution), range)));
+
+    // n8n returns executions newest first. Once this page reaches records
+    // older than the requested start date, every following page is outside
+    // the selected range and does not need to be fetched.
+    const datedTimes = page
+      .map((execution) => Date.parse(executionTime(execution) || ""))
+      .filter(Number.isFinite);
+    if (datedTimes.some((time) => time < rangeStart)) break;
+
+    const nextCursor = String(payload?.nextCursor || "").trim();
+    if (!nextCursor || seenCursors.has(nextCursor)) break;
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  return executions;
+}
+
 function normalizedStatus(execution, detail) {
   const status = String(detail?.status || execution?.status || "").toLowerCase();
   if (["error", "failed", "failure", "crashed"].includes(status)) return "n8n_failed";
@@ -545,14 +577,9 @@ export async function inspectN8nAutoRetryExecutions(rootDir, {
 
   // n8n's public GET /executions endpoint currently rejects the documented
   // startedAfter/startedBefore query parameters (HTTP 400: Unknown query
-  // parameter). Query the workflow's latest executions and apply the lookback
-  // window locally instead, which keeps the monitor compatible with both the
-  // affected and older n8n versions.
-  const executionPayload = await client.listExecutions({
-    workflowId: workflow.id,
-    limit: Math.min(limit, 250),
-  });
-  const executions = (executionPayload?.data || []).filter((execution) => withinDateRange(executionTime(execution), range));
+  // parameter). Page backwards through the workflow executions until the
+  // requested start date is covered, then apply the date window locally.
+  const executions = await listExecutionsInDateRange(client, workflow.id, range, Math.min(limit, 250));
   const details = await mapWithConcurrency(executions, 8, async (execution) => {
     try {
       return { execution, detail: await client.getExecution(execution.id, { includeData: true }) };

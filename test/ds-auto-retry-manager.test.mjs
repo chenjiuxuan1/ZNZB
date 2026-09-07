@@ -68,6 +68,25 @@ test("does not start retry loop for permission errors", async () => {
   assert.equal([...manager.statuses.values()][0].autoRetryStatus, "permission_error");
 });
 
+test("confirmed empty-run logs preserve the suspected-empty-run classification", async () => {
+  const manager = createDsAutoRetryManager({
+    rootDir: "/unused",
+    inspectFn: async () => resultWith({
+      startTime: "2026-08-18 08:00:00",
+      ...classifyDsFailureType({ failureMessage: "business validation failed" }),
+    }),
+    configLoader: async () => ({ n8nWebhookUrl: "", countries: {} }),
+    now: () => fixedNow,
+  });
+
+  manager.enable({ intervalMinutes: 30 });
+  await manager.scan();
+
+  const log = manager.logs.find((item) => item.event === "empty_run_confirmed");
+  assert.equal(log.failureType, "suspected_empty_run");
+  assert.equal(log.taskName, "");
+});
+
 test("keeps retryable failures running until the instance succeeds", async () => {
   const actions = [];
   const retryPayloads = [];

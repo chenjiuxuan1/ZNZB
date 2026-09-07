@@ -756,6 +756,7 @@ function failureTaskDetail(failure = {}) {
     workflowName: String(failure.workflowName || ""),
     taskCode: String(failure.taskCode || ""),
     taskName: String(failure.taskName || ""),
+    failureType: String(failure.failureType || ""),
     instanceId: String(failure.instanceId || ""),
     dsInstanceUrl: String(failure.dsInstanceUrl || ""),
     failureReason: String(failure.failureMessage || failure.retryDecision || "任务日志未返回明确失败原因"),
