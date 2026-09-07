@@ -38,7 +38,7 @@ const MULTI_COUNTRY_RESULTS_FILE = "config/multi-country-check-results.json";
 const DEFAULT_MULTI_COUNTRY_RESULTS = { runs: [] };
 const MULTI_COUNTRY_RESULTS_KEEP = 200;
 const MC_SCHEDULE_FILE = "config/mc-schedule.json";
-const DEFAULT_MC_SCHEDULE = { minute: 55 };
+const DEFAULT_MC_SCHEDULE = { cron: "55 */4 * * *" }; // 默认每 4 小时第 55 分
 const MC_WORKFLOW_ID = "E4B4wNzcUG0ow6BL"; // 多国一致性校验告警
 const MC_SCHEDULE_TRIGGER_NODE = "每小时定时触发";
 // 多国校验 · 电话通知配置（国家 -> 联系人 + 通知开关 + 电话阈值）
@@ -167,6 +167,23 @@ function parseCronMinute(cron) {
   if (!m) return null;
   const v = Number(m[1]);
   return Number.isInteger(v) && v >= 0 && v <= 59 ? v : null;
+}
+
+/** 校验标准 5 段 cron 表达式（分 时 日 月 周；支持星号与步进）。 */
+function isValidCron(cron) {
+  const parts = String(cron || "").trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+  const max = [59, 23, 31, 12, 7];
+  return parts.every((p, i) => {
+    if (p === "*") return true;
+    const m = /^\*\/(\d{1,2})$/.exec(p);
+    if (m) {
+      const n = Number(m[1]);
+      return Number.isInteger(n) && n >= 1 && n <= max[i];
+    }
+    const v = Number(p);
+    return Number.isInteger(v) && v >= 0 && v <= max[i];
+  });
 }
 
 /**
@@ -645,7 +662,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   async function getEntrySchedule(id) {
     if (isMcEntry(id)) {
       const s = await loadSchedule();
-      return { minute: s.minute, cron: `${s.minute} * * * *` };
+      return { cron: s.cron, minute: parseCronMinute(s.cron) };
     }
     const data = await loadEntryData(id);
     const s = data.schedule;
@@ -658,12 +675,20 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   /** 保存条目定时配置（普通条目仅本地；mc_* 同步 n8n）。cfg: { minute } 或 { cron }。 */
   async function setEntrySchedule(id, cfg = {}) {
     if (isMcEntry(id)) {
-      const minute = Number(cfg.minute != null ? cfg.minute : (cfg.cron ? parseCronMinute(cfg.cron) : NaN));
-      if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
-        throw Object.assign(new Error("定时分钟必须是 0-59 的整数"), { statusCode: 400 });
+      const cronExpr = String(cfg.cron || "").trim();
+      if (!cronExpr && cfg.minute != null) {
+        const m = Number(cfg.minute);
+        if (!Number.isInteger(m) || m < 0 || m > 59) {
+          throw Object.assign(new Error("定时分钟必须是 0-59 的整数"), { statusCode: 400 });
+        }
+        return setMcSchedule({ cron: m + " * * * *" });
       }
-      const sync = await applyMcScheduleToN8n(minute);
-      return { ok: sync.ok, minute, cron: `${minute} * * * *`, sync };
+      if (!isValidCron(cronExpr)) {
+        throw Object.assign(new Error("cron 表达式无效，如：55 */4 * * *（每4小时第55分）"), { statusCode: 400 });
+      }
+      const sync = await applyMcScheduleToN8n(cronExpr);
+      await writeJsonFileAtomic(await schedulePath(), { cron: cronExpr });
+      return { ok: sync.ok, cron: cronExpr, minute: parseCronMinute(cronExpr), sync };
     }
     const minute = Number(cfg.minute != null ? cfg.minute : (cfg.cron ? parseCronMinute(cfg.cron) : NaN));
     if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
@@ -1592,26 +1617,30 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   async function loadSchedule() {
     const file = await schedulePath();
     const data = await readJsonFile(file, DEFAULT_MC_SCHEDULE);
-    const minute = Number(data.minute);
-    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
-      return DEFAULT_MC_SCHEDULE;
+    const cron = String(data.cron || "").trim();
+    if (/^\d{1,2} (\*|\*\/\d{1,2}|\d{1,2})( \*| \*\/\d{1,2}| \d{1,2}){4}$/.test(cron)) {
+      return { cron };
     }
-    return { minute };
+    const minute = Number(data.minute);
+    if (Number.isInteger(minute) && minute >= 0 && minute <= 59) {
+      return { cron: `${minute} * * * *` };
+    }
+    return DEFAULT_MC_SCHEDULE;
   }
 
-  /** 读取当前多国校验定时（分钟）。 */
+  /** 读取当前多国校验定时（cron 表达式）。 */
   async function getMcSchedule() {
     return loadSchedule();
   }
 
   /** 把 cron 写入 n8n 工作流的 ScheduleTrigger 节点（typeVersion 1.2, rule.interval[0].expression）。 */
-  async function applyMcScheduleToN8n(minute) {
+  async function applyMcScheduleToN8n(cron) {
     const base = process.env.N8N_BASE_URL || "";
     const apiKey = process.env.N8N_API_KEY || "";
     if (!base || !apiKey) {
       return { ok: false, error: "生产平台未配置 N8N_BASE_URL / N8N_API_KEY，无法更新 n8n 定时" };
     }
-    const cron = `${minute} * * * *`;
+    const cronExpr = String(cron || "").trim();
     try {
       // 1) 读取当前工作流
       const getResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
@@ -1625,9 +1654,9 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       for (const n of wf.nodes || []) {
         if (n.name === MC_SCHEDULE_TRIGGER_NODE && n.type === "n8n-nodes-base.scheduleTrigger") {
           if (!n.parameters.rule || !Array.isArray(n.parameters.rule.interval)) {
-            n.parameters.rule = { interval: [{ field: "cronExpression", expression: cron }] };
+            n.parameters.rule = { interval: [{ field: "cronExpression", expression: cronExpr }] };
           } else {
-            n.parameters.rule.interval[0] = { field: "cronExpression", expression: cron };
+            n.parameters.rule.interval[0] = { field: "cronExpression", expression: cronExpr };
           }
           found = true;
           break;
@@ -1666,21 +1695,28 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
           headers: { "X-N8N-API-KEY": apiKey },
         });
       }
-      return { ok: true, minute, cron, active };
+      return { ok: true, cron: cronExpr, active };
     } catch (error) {
       return { ok: false, error: String(error && error.message || error) };
     }
   }
 
   /** 设置多国校验定时（分钟），保存配置并同步到 n8n。minute: 0-59。 */
-  async function setMcSchedule({ minute } = {}) {
-    const m = Number(minute);
-    if (!Number.isInteger(m) || m < 0 || m > 59) {
-      throw Object.assign(new Error("定时分钟必须是 0-59 的整数"), { statusCode: 400 });
+  async function setMcSchedule({ cron, minute } = {}) {
+    let cronExpr = String(cron || "").trim();
+    if (!cronExpr && minute != null) {
+      const m = Number(minute);
+      if (!Number.isInteger(m) || m < 0 || m > 59) {
+        throw Object.assign(new Error("定时分钟必须是 0-59 的整数"), { statusCode: 400 });
+      }
+      cronExpr = m + " * * * *";
     }
-    await writeJsonFileAtomic(await schedulePath(), { minute: m });
-    const sync = await applyMcScheduleToN8n(m);
-    return { ok: sync.ok, minute: m, sync };
+    if (!isValidCron(cronExpr)) {
+      throw Object.assign(new Error("cron 表达式无效，如：55 */4 * * *（每4小时第55分）"), { statusCode: 400 });
+    }
+    await writeJsonFileAtomic(await schedulePath(), { cron: cronExpr });
+    const sync = await applyMcScheduleToN8n(cronExpr);
+    return { ok: sync.ok, cron: cronExpr, minute: parseCronMinute(cronExpr), sync };
   }
 
   return {
