@@ -149,6 +149,8 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /renderRetryLogDetail/);
   assert.match(source, /function isSuspectedEmptyRunLog/);
   assert.match(source, /suspectedEmptyRun\s*\? "疑似空跑"/);
+  assert.match(source, /suspected_empty_run: \{ label: "疑似空跑", className: "danger" \}/);
+  assert.match(source, /suspectedEmptyRun \|\| \["retry_not_recovered", "retry_failed"\]/);
   assert.match(source, /isSuspectedEmptyRunLog\(item\) \? "工作流"/);
   assert.match(source, /empty_run_confirmed: "疑似空跑"/);
   assert.match(source, /function formatRetryMessage/);
