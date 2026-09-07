@@ -1097,6 +1097,10 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
    */
   async function appendCheckResult(result = {}) {
     const data = await loadResults();
+    // broadcast: 本轮需要播报群/计电话 strike 的国家（两轮制下 = 持续异常且修复未成功的国家）。
+    // repairTriggered: 本轮首次发现异常、已触发智能修复、暂不播报的国家。
+    const broadcast = new Set((result.broadcast || []).map((x) => String(x).toLowerCase()));
+    const repairTriggered = new Set((result.repairTriggered || []).map((x) => String(x).toLowerCase()));
     const run = {
       id: result.id || randomUUID(),
       checkedAt: result.checkedAt || new Date().toISOString(),
@@ -1106,12 +1110,15 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       hasError: Boolean(result.hasError),
       text: result.text || "",
       summary: result.summary || null,
+      broadcast: [...broadcast],
+      repairTriggered: [...repairTriggered],
     };
     const runs = [run, ...(data.runs || [])].slice(0, MULTI_COUNTRY_RESULTS_KEEP);
     await writeJsonFileAtomic(await resultsPath(), { runs });
-    // 维护每国连续异常计数（异常 +1，无异常归零），达到阈值且开启电话时标记 phoneNeeded。
+    // 维护每国连续异常计数（播报 +1，无异常归零），达到阈值且开启电话时标记 phoneNeeded。
     // 注意：只更新本次结果中实际校验过的国家（定时为全部启用国家；单国测试只含 1 国），
     // 未参与本次校验的国家计数保持不变 —— 否则单国测试会把其他国家的计数误清零。
+    // 两轮制：仅 broadcast 国家计入 strike（未播报的首次异常不计数，避免电话被提前触发）。
     const notify = await loadMcNotify();
     const strike = await loadMcStrike();
     const counts = { ...strike.counts };
@@ -1120,7 +1127,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       if (!checkedCodes.has(code)) continue;
       const c = run.countries.find((x) => (x.code || "").toLowerCase() === code);
       const hasMismatch = Boolean(c && Array.isArray(c.mismatches) && c.mismatches.length > 0);
-      counts[code] = hasMismatch ? (counts[code] || 0) + 1 : 0;
+      counts[code] = hasMismatch && broadcast.has(code) ? (counts[code] || 0) + 1 : 0;
     }
     await writeJsonFileAtomic(await strikePath(), { counts });
     const phoneNeeded = MC_COUNTRIES.filter((code) => {
