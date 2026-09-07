@@ -10249,6 +10249,33 @@ select.ar-field {
 }
 
 @media (max-width: 760px) {
+  .layout:has(.ar-console-header) .sidebar {
+    height: auto;
+    overflow: visible;
+    padding: 10px 12px 9px;
+    position: sticky;
+    top: 0;
+    width: auto;
+  }
+  .layout:has(.ar-console-header) .brand-block { margin-bottom: 8px; }
+  .layout:has(.ar-console-header) .brand-mark { height: 32px; width: 32px; }
+  .layout:has(.ar-console-header) .brand { font-size: 16px; }
+  .layout:has(.ar-console-header) .brand-subtitle { font-size: 11px; margin-bottom: 0; }
+  .layout:has(.ar-console-header) .nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .layout:has(.ar-console-header) .nav::-webkit-scrollbar { display: none; }
+  .layout:has(.ar-console-header) .nav button {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 6px 9px;
+    width: auto;
+  }
+  .layout:has(.ar-console-header) .main { padding: 12px; }
   .ar-console-header {
     align-items: stretch;
     flex-direction: column;
