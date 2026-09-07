@@ -2,12 +2,26 @@ import { apiDelete, apiGet, apiPost, apiPut } from "../api.js";
 import { escapeHtml } from "../view-utils.js";
 
 const COUNTRY_LABELS = { cn: "中国", ine: "印尼", ph: "菲律宾", th: "泰国", pk: "巴基斯坦", mx: "墨西哥" };
-const SOURCE_LABELS = { "codex-skill": "Codex Skill", n8n: "n8n", "duty-platform": "值班平台" };
+const SOURCE_LABELS = { "codex-skill": "DS Skill", skill: "DS Skill", api: "DS API", n8n: "n8n", "duty-platform": "值班平台" };
 const COUNTRY_ORDER = ["cn", "ine", "ph", "th", "pk", "mx"];
 let model = { report: null, config: null, status: null, loading: false, days: 30, globalRange: null, access: null, accessStatus: null };
 
 function countryLabel(code) {
   return COUNTRY_LABELS[code] || code || "-";
+}
+
+/** 把审计来源归类为 skill（DS Skill）或 api（直连网关 API），供页面明确标注。 */
+function sourceKind(source) {
+  const text = String(source || "").trim().toLowerCase();
+  if (!text || text === "unknown") return "unknown";
+  if (text === "codex-skill" || text === "skill") return "skill";
+  return "api";
+}
+
+function sourceKindLabel(kind) {
+  if (kind === "skill") return "Skill";
+  if (kind === "api") return "API";
+  return "未知";
 }
 
 const ACTION_LABELS = {
@@ -181,7 +195,7 @@ function paint(root) {
         <div class="dsu-hero-copy">
           <span class="dsu-eyebrow">DolphinScheduler · 网关治理</span>
           <h1 class="page-title">DS 网关使用统计</h1>
-          <p class="page-note">查看各国调用、Token 使用与风险操作，并统一管理用户权限和限额。</p>
+          <p class="page-note">查看各国调用、Token 使用与风险操作，明确区分调用来源（DS Skill / 直连 API），并统一管理用户权限和限额。</p>
           <div class="dsu-hero-meta">
             ${report ? sourceBadge(report) : sourceBadge({ source: "empty" })}
             ${report?.generatedAt ? `<span>更新于 ${escapeHtml(new Date(report.generatedAt).toLocaleString("zh-CN"))}</span>` : `<span>等待加载统计数据</span>`}
@@ -211,6 +225,17 @@ function paint(root) {
 }
 
 function renderHeroStats(report) {
+  const su = (report && report.sourceUsage) || {};
+  const skillN = Number(su.skill || 0);
+  const apiN = Number(su.api || 0);
+  const unknownN = Number(su.unknown || 0);
+  const sourceSplit = report
+    ? `<div class="dsu-source-split" aria-label="调用来源分布">
+        <span class="chip chip-ok">Skill ${skillN}</span>
+        <span class="chip chip-warn">API ${apiN}</span>
+        ${unknownN ? `<span class="chip">未知 ${unknownN}</span>` : ""}
+      </div>`
+    : "";
   return `
     <div class="hero-stats dsu-overview-stats" aria-label="网关使用统计概览">
       <article><span>统计天数</span><strong>${report?.dayCount ?? "—"}</strong></article>
@@ -219,6 +244,7 @@ function renderHeroStats(report) {
       <article><span>成功率</span><strong>${report ? `${report.totalSuccessRate ?? 0}%` : "—"}</strong></article>
       <article><span>风险操作</span><strong>${report?.totalRiskActions ?? "—"}</strong></article>
     </div>
+    ${sourceSplit}
   `;
 }
 
@@ -308,15 +334,21 @@ function renderDailyOverview(report) {
       if (!umap) { umap = new Map(); byCountry.set(c.country, umap); }
       for (const op of (d.operators || [])) {
         const name = op.user || "已离职";
-        umap.set(name, (umap.get(name) || 0) + op.requests);
+        const entry = umap.get(name) || { requests: 0, sources: new Set() };
+        entry.requests += op.requests;
+        for (const s of (op.sources || [])) entry.sources.add(s);
+        umap.set(name, entry);
       }
     }
   }
   if (!byCountry.size) return "";
   const rows = [...byCountry.entries()]
-    .sort((a, b) => { const sa=[...a[1].values()].reduce((x,y)=>x+y,0); const sb=[...b[1].values()].reduce((x,y)=>x+y,0); return sb-sa; })
+    .sort((a, b) => { const sa=[...a[1].values()].reduce((x,y)=>x+y.requests,0); const sb=[...b[1].values()].reduce((x,y)=>x+y.requests,0); return sb-sa; })
     .map(([country, umap]) => {
-      const users = [...umap.entries()].map(([name, req]) => `${escapeHtml(name)}×${req}`).join("、");
+      const users = [...umap.entries()].map(([name, entry]) => {
+        const srcs = [...new Set([...entry.sources].map((s) => sourceKind(s)))].map((kind) => `<span class="chip ${kind === "skill" ? "chip-ok" : kind === "api" ? "chip-warn" : ""}" style="padding:0 5px;font-size:10px">${sourceKindLabel(kind)}</span>`).join(" ");
+        return `${escapeHtml(name)}×${entry.requests}${srcs ? ` ${srcs}` : ""}`;
+      }).join("、");
       return `<tr>
         <td><b>${escapeHtml(countryLabel(country))}</b></td>
         <td class="dsu-daily-users">${users || "—"}</td>
@@ -327,7 +359,7 @@ function renderDailyOverview(report) {
       <div class="detail-header compact-header">
         <div>
           <h2 class="panel-title">国家使用概览</h2>
-          <p class="muted">按国家合并（使用人 × 次数）</p>
+          <p class="muted">按国家合并（使用人 × 次数，标注调用来源 Skill / API）</p>
         </div>
       </div>
       <div class="dsu-daily-body">
@@ -422,7 +454,7 @@ function aggregateCountry(c, range) {
     riskActions += d.riskActions;
     noToken += (d.noToken || 0);
     for (const op of (d.operators || [])) {
-      const agg = operators.get(op.token) || { token: op.token, user: op.user || "", requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
+      const agg = operators.get(op.token) || { token: op.token, user: op.user || "", requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set(), sources: new Set() };
       agg.requests += op.requests;
       agg.success += op.success;
       agg.failed += op.failed;
@@ -430,10 +462,19 @@ function aggregateCountry(c, range) {
       agg.durationTotalMs += (op.avgDurationMs || 0) * op.requests;
       for (const [a, n] of Object.entries(op.actions || {})) agg.actions.set(a, (agg.actions.get(a) || 0) + n);
       for (const t of (op.tools || [])) agg.tools.add(t);
+      for (const s of (op.sources || [])) agg.sources.add(s);
       operators.set(op.token, agg);
     }
     for (const [a, n] of Object.entries(d.actions || {})) actions.set(a, (actions.get(a) || 0) + n);
     for (const t of (d.tokens || [])) tokens.add(t);
+  }
+  // 国家/时间窗内按来源归类统计（纳入 noToken 请求，与后端 sourceUsage 口径一致）
+  const sourceUsage = { skill: 0, api: 0, unknown: 0 };
+  for (const d of daily) {
+    const su = d.sourceUsage || {};
+    sourceUsage.skill += Number(su.skill || 0);
+    sourceUsage.api += Number(su.api || 0);
+    sourceUsage.unknown += Number(su.unknown || 0);
   }
   const opList = [...operators.values()].map((op) => ({
     token: op.token,
@@ -446,6 +487,7 @@ function aggregateCountry(c, range) {
     avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
     actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
     tools: [...op.tools].sort(),
+    sources: [...op.sources].sort(),
   })).sort((a, b) => b.requests - a.requests);
   return {
     country: c.country,
@@ -459,6 +501,7 @@ function aggregateCountry(c, range) {
     operators: opList,
     tokens: [...tokens].sort(),
     actions: Object.fromEntries([...actions.entries()].sort((a, b) => b[1] - a[1])),
+    sourceUsage,
     daily,
   };
 }
@@ -475,6 +518,7 @@ function renderCountry(c) {
           <span class="chip">${data.requests} 次</span>
           <span class="chip">${data.uniqueOperators} 人</span>
           <span class="chip ${rateClass(data.successRate)}">成功率 ${data.successRate}%</span>
+          ${renderSourceSplit(data.sourceUsage)}
           ${data.riskActions ? `<span class="chip chip-danger">风险 ${data.riskActions}</span>` : ""}
         </span>
       </summary>
@@ -491,6 +535,7 @@ function renderCountry(c) {
             ${kpi("统计天数", data.daily.length)}
           </div>
         </div>
+        ${renderSourceUsageRow(data.sourceUsage)}
         ${data.tokens && data.tokens.length ? `
         <div class="dsu-tokens-row">
           <span class="dsu-filter-label">使用 Token</span>
@@ -500,7 +545,7 @@ function renderCountry(c) {
         <div class="dsu-table-wrap">
           <table class="ds-table dsu-operator-table">
             <thead>
-              <tr><th>Token（用户名）</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>平均耗时</th><th>主要动作</th></tr>
+              <tr><th>Token（用户名）</th><th>来源</th><th>调用次数</th><th>成功/失败</th><th>成功率</th><th>风险操作</th><th>平均耗时</th><th>主要动作</th></tr>
             </thead>
             <tbody>
               ${data.operators.filter((op) => op.token && op.token !== "-").map((op) => renderCountryOperatorRow(op)).join("")}
@@ -509,6 +554,32 @@ function renderCountry(c) {
         </div>
       </div>
     </details>
+  `;
+}
+
+function renderSourceSplit(sourceUsage) {
+  const su = sourceUsage || {};
+  const skillN = Number(su.skill || 0);
+  const apiN = Number(su.api || 0);
+  if (!skillN && !apiN) return "";
+  return `<span class="chip chip-ok">Skill ${skillN}</span><span class="chip chip-warn">API ${apiN}</span>`;
+}
+
+function renderSourceUsageRow(sourceUsage) {
+  const su = sourceUsage || {};
+  const skillN = Number(su.skill || 0);
+  const apiN = Number(su.api || 0);
+  const unknownN = Number(su.unknown || 0);
+  if (!skillN && !apiN && !unknownN) return "";
+  return `
+    <div class="dsu-source-row">
+      <span class="dsu-filter-label">调用来源</span>
+      <span class="dsu-source-tags">
+        <span class="chip chip-ok">Skill ${skillN}</span>
+        <span class="chip chip-warn">API ${apiN}</span>
+        ${unknownN ? `<span class="chip">未知 ${unknownN}</span>` : ""}
+      </span>
+    </div>
   `;
 }
 
@@ -571,9 +642,13 @@ function renderCountryOperatorRow(op) {
   const user = (op.user || "").trim();
   const tokenLabel = hasToken ? op.token : "未使用Token";
   const nameTag = hasToken ? (user ? `（${escapeHtml(user)}）` : "（已离职）") : "";
+  const sourceBadges = (op.sources && op.sources.length
+    ? [...new Set(op.sources.map((s) => sourceKind(s)))].map((kind) => `<span class="chip ${kind === "skill" ? "chip-ok" : kind === "api" ? "chip-warn" : ""}">${sourceKindLabel(kind)}</span>`).join(" ")
+    : `<span class="chip">—</span>`);
   return `
     <tr>
       <td><code class="dsu-token-tag">${escapeHtml(tokenLabel)}</code>${nameTag}</td>
+      <td>${sourceBadges}</td>
       <td>${op.requests}</td>
       <td>${op.success} / ${op.failed}</td>
       <td><span class="chip ${rateClass(op.successRate)}">${op.successRate}%</span></td>
@@ -818,6 +893,9 @@ function renderUserRow(user, roles, roleLabels) {
   const limitHtml = limitInputs(user.limits || {}, `u-${encodeURIComponent(user.username)}-`);
   const tokens = (user.tokens || []).slice(0, 4).map((t) => `<code class="dsu-token-tag" title="${escapeHtml(t)}">${escapeHtml(t.length > 12 ? `${t.slice(0, 6)}…${t.slice(-4)}` : t)}</code>`).join(" ");
   const tokenMore = (user.tokens || []).length > 4 ? `<span class="muted">等 ${user.tokens.length} 个</span>` : "";
+  const sourceBadges = (user.sources || []).length
+    ? [...new Set((user.sources || []).map((s) => sourceKind(s)))].map((kind) => `<span class="chip ${kind === "skill" ? "chip-ok" : kind === "api" ? "chip-warn" : ""}">${sourceKindLabel(kind)}</span>`).join(" ")
+    : "";
   const allActions = Object.keys(ACTION_LABELS);
   const selectedDenied = new Set(user.deniedActions || []);
   const actionChips = allActions.map((a) => `<span class="dsu-denied-chip ${selectedDenied.has(a) ? "active" : ""}" data-action="${escapeHtml(a)}" title="${escapeHtml(actionLabel(a))}">${escapeHtml(a)}</span>`).join("");
@@ -829,6 +907,7 @@ function renderUserRow(user, roles, roleLabels) {
         ${delBadge}${status}
         <span class="chip">${(user.tokens || []).length} Token</span>
         <span class="chip">${user.requests} 次</span>
+        ${sourceBadges ? `<span class="dsu-user-source-badges">${sourceBadges}</span>` : ""}
         <span class="dsu-user-summary-actions">
           <button class="small ${user.enabled ? "danger" : "secondary"}" data-action="block">${user.enabled ? "封锁" : "解封"}</button>
           <button class="small quiet-danger" data-action="remove" ${user.configured ? "" : "disabled"}>移除配置</button>

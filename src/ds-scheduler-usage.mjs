@@ -35,6 +35,25 @@ export function tokenUser(token, tokenUserMap) {
   return TOKEN_USER_MAP[key] || "";
 }
 
+/**
+ * Classify a request source into a display kind: "skill" (DS skill / codex-skill)
+ * vs "api" (direct DS gateway API calls and everything else). Used by the usage
+ * page to clearly mark how each record reached the DS gateway.
+ */
+export function sourceKind(source) {
+  const text = String(source || "").trim().toLowerCase();
+  if (!text || text === "unknown") return "unknown";
+  if (text === "codex-skill" || text === "skill") return "skill";
+  return "api";
+}
+
+/** Short human label for a request source kind. */
+export function sourceKindLabel(kind) {
+  if (kind === "skill") return "Skill";
+  if (kind === "api") return "API";
+  return "未知";
+}
+
 export const DEFAULT_TOKEN_SQL =
   "SELECT u.user_name, a.token FROM t_ds_access_token a JOIN t_ds_user u ON u.id = a.user_id WHERE a.token IS NOT NULL AND a.token <> ''";
 
@@ -261,6 +280,13 @@ export function buildDailyUsage(rows = [], options = {}) {
   let totalSuccess = 0;
   let totalFailed = 0;
   let totalRiskActions = 0;
+  const sourceUsage = { skill: 0, api: 0, unknown: 0 };
+  for (const row of normalized) {
+    if (!row.date) continue;
+    const kind = sourceKind(row.source);
+    if (sourceUsage[kind] == null) sourceUsage[kind] = 0;
+    sourceUsage[kind] += 1;
+  }
 
   const sortedDates = [...byDate.keys()].sort();
   for (const date of sortedDates) {
@@ -321,6 +347,7 @@ export function buildDailyUsage(rows = [], options = {}) {
     uniqueCountries: allCountries.size,
     uniqueActions: allActions.size,
     uniqueSources: allSources.size,
+    sourceUsage,
     countryUsage: buildCountryUsage(normalized, { tokenUserMap: (options && options.tokenUserMap) || null }),
     days,
   };
@@ -339,10 +366,14 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
     const date = row.date;
     if (!date) continue;
     const country = row.country || "unknown";
-    if (!byCountry.has(country)) byCountry.set(country, { daily: new Map() });
+    if (!byCountry.has(country)) byCountry.set(country, { daily: new Map(), sourceUsage: { skill: 0, api: 0, unknown: 0 } });
     const c = byCountry.get(country);
-    if (!c.daily.has(date)) c.daily.set(date, { date, requests: 0, success: 0, failed: 0, riskActions: 0, operators: new Map(), actions: new Map(), tokens: new Set(), noToken: 0 });
+    const kind = sourceKind(row.source);
+    if (c.sourceUsage[kind] == null) c.sourceUsage[kind] = 0;
+    c.sourceUsage[kind] += 1;
+    if (!c.daily.has(date)) c.daily.set(date, { date, requests: 0, success: 0, failed: 0, riskActions: 0, operators: new Map(), actions: new Map(), tokens: new Set(), noToken: 0, sourceUsage: { skill: 0, api: 0, unknown: 0 } });
     const d = c.daily.get(date);
+    d.sourceUsage[kind] = (d.sourceUsage[kind] || 0) + 1;
     d.requests += 1;
     if (row.success) d.success += 1;
     else d.failed += 1;
@@ -351,13 +382,14 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
     if (!rawToken) {
       d.noToken += 1;
     } else {
-      const op = d.operators.get(rawToken) || { token: rawToken, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
+      const op = d.operators.get(rawToken) || { token: rawToken, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set(), sources: new Set() };
       op.requests += 1;
       if (row.success) op.success += 1;
       else op.failed += 1;
       if (row.riskLevel === "high" || row.riskLevel === "medium") op.riskActions += 1;
       op.durationTotalMs += row.durationMs;
       if (row.operator) op.tools.add(row.operator);
+      if (row.source) op.sources.add(row.source);
       plus(op.actions, row.action || "unknown");
       d.operators.set(rawToken, op);
       if (!d.tokens) d.tokens = new Set();
@@ -388,9 +420,11 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
         avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
         actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
         tools: [...op.tools].sort(),
+        sources: [...op.sources].sort(),
       })).sort((a, b) => b.requests - a.requests),
       actions: Object.fromEntries([...d.actions.entries()].sort((a, b) => b[1] - a[1])),
       tokens: d.tokens ? [...d.tokens].sort() : [],
+      sourceUsage: d.sourceUsage || { skill: 0, api: 0, unknown: 0 },
     }));
 
     let requests = 0, success = 0, failed = 0, riskActions = 0, noToken = 0;
@@ -399,7 +433,7 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
     for (const d of daily) {
       for (const op of d.operators) {
         const key = op.token;
-        const agg = operatorsMap.get(key) || { token: key, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set() };
+        const agg = operatorsMap.get(key) || { token: key, requests: 0, success: 0, failed: 0, riskActions: 0, durationTotalMs: 0, actions: new Map(), tools: new Set(), sources: new Set() };
         agg.requests += op.requests;
         agg.success += op.success;
         agg.failed += op.failed;
@@ -407,6 +441,7 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
         agg.durationTotalMs += op.avgDurationMs * op.requests;
         for (const [a, n] of Object.entries(op.actions || {})) plus(agg.actions, a, n);
         for (const t of (op.tools || [])) agg.tools.add(t);
+        for (const s of (op.sources || [])) agg.sources.add(s);
         operatorsMap.set(key, agg);
       }
     }
@@ -421,6 +456,7 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
       avgDurationMs: op.requests ? Math.round(op.durationTotalMs / op.requests) : 0,
       actions: Object.fromEntries([...op.actions.entries()].sort((a, b) => b[1] - a[1])),
       tools: [...op.tools].sort(),
+      sources: [...op.sources].sort(),
     })).sort((a, b) => b.requests - a.requests);
 
     const actions = new Map();
@@ -442,6 +478,7 @@ export function buildCountryUsage(normalizedRows = [], options = {}) {
       operators,
       tokens: [...tokens].sort(),
       actions: Object.fromEntries([...actions.entries()].sort((a, b) => b[1] - a[1])),
+      sourceUsage: c.sourceUsage || { skill: 0, api: 0, unknown: 0 },
       daily,
     });
   }
