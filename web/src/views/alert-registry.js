@@ -1023,27 +1023,99 @@ async function loadEntrySchedulePanel(container, id) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
     return;
   }
+  // 解析现有 cron 到筛选器状态
   const cron0 = (cfg && cfg.cron) || "55 */4 * * *";
+  const parts0 = String(cron0).trim().split(/\s+/);
+  let mode = "interval", interval = 4, hour = 8, dow = 1, minute = 55;
+  if (parts0.length === 5) {
+    const [mm, hh, dd, mo, dw] = parts0;
+    if (/^\d{1,2}$/.test(mm) && /^\*$/.test(dd) && /^\*$/.test(mo)) {
+      minute = Number(mm);
+      const stepH = /^\*\/(\d{1,2})$/.exec(hh);
+      if (stepH) { mode = "interval"; interval = Number(stepH[1]); }
+      else if (/^\*$/.test(hh)) { mode = "hourly"; }
+      else if (/^\d{1,2}$/.test(hh)) {
+        if (/^\*$/.test(dw)) { mode = "daily"; hour = Number(hh); }
+        else if (/^\d{1,2}$/.test(dw)) { mode = "weekly"; hour = Number(hh); dow = Number(dw); }
+        else mode = "custom";
+      } else mode = "custom";
+    }
+  }
+  const minuteOpts = Array.from({length: 60}, (_, i) => `<option value="${i}"${i === minute ? " selected" : ""}>${String(i).padStart(2, "0")}</option>`).join("");
+  const hourOpts = Array.from({length: 24}, (_, i) => `<option value="${i}"${i === hour ? " selected" : ""}>${String(i).padStart(2, "0")}</option>`).join("");
+  const modeLabel = {hourly: "每小时", interval: "每 N 小时", daily: "每天", weekly: "每周", custom: "自定义"}[mode] || "每 N 小时";
   body.innerHTML = `
-    <div class="mc-notify-row">
+    <div class="mc-notify-row" style="flex-wrap:wrap;gap:6px;align-items:center">
+      <span class="mc-notify-field-label">触发频率</span>
+      <select id="ar-ep-schedule-mode" class="mc-notify-num" style="width:130px">
+        <option value="interval"${mode === "interval" ? " selected" : ""}>每 N 小时</option>
+        <option value="daily"${mode === "daily" ? " selected" : ""}>每天</option>
+        <option value="weekly"${mode === "weekly" ? " selected" : ""}>每周</option>
+        <option value="hourly"${mode === "hourly" ? " selected" : ""}>每小时</option>
+        <option value="custom"${mode === "custom" ? " selected" : ""}>自定义 cron</option>
+      </select>
+      <span id="ar-ep-schedule-interval-wrap" style="display:${mode === "interval" ? "inline-flex" : "none"};gap:4px;align-items:center">
+        <span class="mc-notify-field-label">每</span>
+        <input type="number" id="ar-ep-schedule-interval" class="mc-notify-num" min="1" max="23" style="width:60px" value="${interval}" />
+        <span class="mc-notify-field-label">小时</span>
+      </span>
+      <span id="ar-ep-schedule-hour-wrap" style="display:${mode === "daily" || mode === "weekly" ? "inline-flex" : "none"};gap:4px;align-items:center">
+        <span class="mc-notify-field-label">在</span>
+        <select id="ar-ep-schedule-hour" class="mc-notify-num">${hourOpts}</select>
+        <span class="mc-notify-field-label">点</span>
+      </span>
+      <span id="ar-ep-schedule-dow-wrap" style="display:${mode === "weekly" ? "inline-flex" : "none"};gap:4px;align-items:center">
+        <span class="mc-notify-field-label">星期</span>
+        <select id="ar-ep-schedule-dow" class="mc-notify-num">${["日","一","二","三","四","五","六"].map((d,i)=>`<option value="${i}"${i===dow?" selected":""}>${d}</option>`).join("")}</select>
+      </span>
+      <span class="mc-notify-field-label">分</span>
+      <select id="ar-ep-schedule-minute" class="mc-notify-num">${minuteOpts}</select>
+    </div>
+    <div class="mc-notify-row" id="ar-ep-schedule-custom-wrap" style="display:${mode === "custom" ? "inline-flex" : "none"};gap:4px;align-items:center">
       <span class="mc-notify-field-label">cron 表达式</span>
-      <input type="text" class="mc-notify-num" id="ar-ep-schedule-cron" style="width:200px" value="${escapeHtml(String(cron0))}" placeholder="如 55 */4 * * *（每4小时第55分）" />
-      <span class="mc-group-chat-hint">${escapeHtml((cfg && cfg.cron) || "未设置定时")}</span>
+      <input type="text" id="ar-ep-schedule-cron" style="width:180px" value="${escapeHtml(String(cron0))}" placeholder="55 */4 * * *" />
     </div>
     <div class="mc-notify-row mc-notify-tip">
-      <span class="mc-group-chat-hint">格式：分 时 日 月 周（5 段），如 <code>55 */4 * * *</code> 表示每4小时第55分触发</span>
+      <span class="mc-group-chat-hint">当前 cron：<code id="ar-ep-schedule-preview">${escapeHtml(String(cron0))}</code>（${escapeHtml(modeLabel)}）</span>
     </div>
     <div class="mc-notify-actions">
       <button class="mc-page-btn" id="ar-ep-schedule-save">保存定时</button>
       <span class="mc-schedule-status" id="ar-ep-schedule-status"></span>
     </div>`;
+  const buildCron = () => {
+    const mm = body.querySelector("#ar-ep-schedule-minute")?.value ?? "0";
+    const m = body.querySelector("#ar-ep-schedule-mode")?.value ?? "interval";
+    if (m === "hourly") return `${mm} * * * *`;
+    if (m === "interval") {
+      const n = Math.max(1, Math.min(23, Number(body.querySelector("#ar-ep-schedule-interval")?.value) || 1));
+      return `${mm} */${n} * * *`;
+    }
+    if (m === "daily") return `${mm} ${body.querySelector("#ar-ep-schedule-hour")?.value ?? "0"} * * *`;
+    if (m === "weekly") return `${mm} ${body.querySelector("#ar-ep-schedule-hour")?.value ?? "0"} * * ${body.querySelector("#ar-ep-schedule-dow")?.value ?? "0"}`;
+    return (body.querySelector("#ar-ep-schedule-cron")?.value || "").trim();
+  };
+  const refreshPreview = () => {
+    const m = body.querySelector("#ar-ep-schedule-mode")?.value;
+    body.querySelector("#ar-ep-schedule-interval-wrap").style.display = m === "interval" ? "inline-flex" : "none";
+    body.querySelector("#ar-ep-schedule-hour-wrap").style.display = (m === "daily" || m === "weekly") ? "inline-flex" : "none";
+    body.querySelector("#ar-ep-schedule-dow-wrap").style.display = m === "weekly" ? "inline-flex" : "none";
+    body.querySelector("#ar-ep-schedule-custom-wrap").style.display = m === "custom" ? "inline-flex" : "none";
+    const pv = body.querySelector("#ar-ep-schedule-preview");
+    if (pv) pv.textContent = buildCron() || "(未设置)";
+  };
+  body.querySelector("#ar-ep-schedule-mode").addEventListener("change", refreshPreview);
+  ["#ar-ep-schedule-interval", "#ar-ep-schedule-hour", "#ar-ep-schedule-dow", "#ar-ep-schedule-minute", "#ar-ep-schedule-cron"].forEach((sel) => {
+    const el = body.querySelector(sel);
+    if (el) el.addEventListener("input", refreshPreview);
+  });
+  refreshPreview();
   const saveBtn = body.querySelector("#ar-ep-schedule-save");
   const status = body.querySelector("#ar-ep-schedule-status");
   saveBtn.onclick = async () => {
     if (entryPanelState.saving) return;
-    const cron = (body.querySelector("#ar-ep-schedule-cron")?.value || "").trim();
+    const cron = buildCron();
     if (!cron) {
-      if (status) { status.textContent = "请输入 cron 表达式"; status.className = "mc-schedule-status error"; }
+      if (status) { status.textContent = "请选择或输入触发频率"; status.className = "mc-schedule-status error"; }
       return;
     }
     entryPanelState.saving = true;
@@ -1060,6 +1132,7 @@ async function loadEntrySchedulePanel(container, id) {
     }
     entryPanelState.saving = false;
   };
+
 }
 
 async function loadEntryHistoryPanel(container, id) {
