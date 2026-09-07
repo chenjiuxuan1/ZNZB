@@ -49,6 +49,9 @@ const MC_COUNTRIES = ["cn", "id", "mx", "th", "ph", "pk"];
 const ENTRY_HISTORY_DIR = "config/alerts-history";
 const ENTRY_HISTORY_KEEP = 200;
 const DEFAULT_ENTRY_HISTORY = { runs: [] };
+const SCRIPT_AUDIT_FILE = "config/alert-script-audit.json";
+const SCRIPT_AUDIT_KEEP = 200;
+const DEFAULT_SCRIPT_AUDIT = { records: [] };
 const DEFAULT_MC_NOTIFY = {
   countries: {
     cn: { contacts: [], phone: true, group: true, strikeThreshold: 6 },
@@ -118,6 +121,33 @@ function maskSecret(s) {
 /** 返回去空格后的非空字符串，否则空串。 */
 function nonEmpty(v) {
   return typeof v === "string" ? v.trim() : "";
+}
+
+function sanitizeAuditError(value) {
+  return String(value || "")
+    .replace(/\bBearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
+    .replace(/\b(token|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=[REDACTED]")
+    .slice(0, 500);
+}
+
+function normalizeScriptAudit(record = {}) {
+  const startedAt = String(record.startedAt || new Date().toISOString());
+  return {
+    id: String(record.id || randomUUID()),
+    entryId: String(record.entryId || ""),
+    entryName: String(record.entryName || ""),
+    action: record.action === "publish" ? "publish" : "preview",
+    startedAt,
+    finishedAt: String(record.finishedAt || startedAt),
+    status: ["success", "partial", "failed"].includes(record.status) ? record.status : "failed",
+    diff: record.diff ? {
+      added: Number(record.diff.added || 0),
+      removed: Number(record.diff.removed || 0),
+    } : null,
+    git: record.git ? { ok: Boolean(record.git.ok) } : null,
+    deploy: record.deploy ? { ok: Boolean(record.deploy.ok) } : null,
+    error: sanitizeAuditError(record.error),
+  };
 }
 
 /** 从 cron 表达式提取分钟（如 "55 * * * *" → 55；步进/范围表达式返回 null）。 */
@@ -389,6 +419,7 @@ function runCommandSync(runVia, command, options = {}) {
 
 export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}) {
   const resolve = (name) => path.join(rootDir, name);
+  let scriptAuditWrite = Promise.resolve();
 
   async function registryPath() {
     await loadEnvFile(path.join(rootDir, ".env"));
@@ -421,6 +452,38 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     }));
     await writeJsonFileAtomic(file, { alerts: normalized });
     return normalized;
+  }
+
+  async function listScriptAudit({ limit = SCRIPT_AUDIT_KEEP } = {}) {
+    const data = await readJsonFile(resolve(SCRIPT_AUDIT_FILE), DEFAULT_SCRIPT_AUDIT);
+    return ensureArray(data.records)
+      .map(normalizeScriptAudit)
+      .sort((left, right) => String(right.startedAt).localeCompare(String(left.startedAt)))
+      .slice(0, Math.max(0, Number(limit) || SCRIPT_AUDIT_KEEP));
+  }
+
+  async function appendScriptAudit(record = {}) {
+    const normalized = normalizeScriptAudit(record);
+    const write = async () => {
+      const file = resolve(SCRIPT_AUDIT_FILE);
+      const data = await readJsonFile(file, DEFAULT_SCRIPT_AUDIT);
+      const records = [normalized, ...ensureArray(data.records)]
+        .map(normalizeScriptAudit)
+        .sort((left, right) => String(right.startedAt).localeCompare(String(left.startedAt)))
+        .slice(0, SCRIPT_AUDIT_KEEP);
+      await writeJsonFileAtomic(file, { records });
+      return normalized;
+    };
+    scriptAuditWrite = scriptAuditWrite.then(write, write);
+    return scriptAuditWrite;
+  }
+
+  async function recordScriptAudit(record) {
+    try {
+      await appendScriptAudit(record);
+    } catch (error) {
+      console.error("[alert-script-audit] 写入失败:", sanitizeAuditError(error?.message || error));
+    }
   }
 
   // ================= 通用条目能力（通知 / 语音 / 定时 / 历史） =================
@@ -915,7 +978,32 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     if (!entry) {
       throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
     }
-    return template.previewUpdate(entry);
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await template.previewUpdate(entry);
+      await recordScriptAudit({
+        entryId: entry.id,
+        entryName: entry.name,
+        action: "preview",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status: result.ok ? "success" : "failed",
+        diff: result.diff,
+        error: result.ok ? "" : result.note,
+      });
+      return result;
+    } catch (error) {
+      await recordScriptAudit({
+        entryId: entry.id,
+        entryName: entry.name,
+        action: "preview",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status: "failed",
+        error: error?.message || error,
+      });
+      throw error;
+    }
   }
 
   /** 全链路更新代码：渲染 → 写仓库 → git commit+push → SSH 部署目标机。 */
@@ -924,7 +1012,35 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     if (!entry) {
       throw Object.assign(new Error(`告警条目不存在：${id}`), { statusCode: 404 });
     }
-    return template.applyUpdate(entry, { commitMessage, skipGit, skipDeploy });
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await template.applyUpdate(entry, { commitMessage, skipGit, skipDeploy });
+      const stepFailed = (result.git && !result.git.ok) || (result.deploy && !result.deploy.ok);
+      const status = !result.ok ? "failed" : stepFailed ? "partial" : "success";
+      await recordScriptAudit({
+        entryId: entry.id,
+        entryName: entry.name,
+        action: "publish",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status,
+        git: result.git,
+        deploy: result.deploy,
+        error: result.ok ? "" : "脚本发布失败",
+      });
+      return result;
+    } catch (error) {
+      await recordScriptAudit({
+        entryId: entry.id,
+        entryName: entry.name,
+        action: "publish",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status: "failed",
+        error: error?.message || error,
+      });
+      throw error;
+    }
   }
 
   // ---- 多国一致性校验结果（保留最近 7 次） ----
@@ -1494,6 +1610,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     getEntryHistory,
     appendEntryHistory,
     listAllHistory,
+    listScriptAudit,
+    appendScriptAudit,
     getEntryDescription,
     setEntryDescription,
     callEntryPhone,
