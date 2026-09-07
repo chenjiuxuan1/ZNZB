@@ -225,7 +225,7 @@ export async function checkPublicDashboards({
       return !Number.isFinite(timestampMs) || timestampMs >= cutoffMs;
     });
 
-    await writeJsonFile(path.resolve(baselineCacheFile), {
+    await writeJsonFileAtomic(path.resolve(baselineCacheFile), {
       updatedAt: new Date().toISOString(),
       entries,
     });
