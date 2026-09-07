@@ -13,39 +13,57 @@ import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-ban
  */
 export function renderAlertRegistry(root) {
   root.innerHTML = `
-    <div class="page-header">
-      <div>
+    <div class="page-header ar-console-header">
+      <div class="ar-console-heading">
+        <span class="ar-console-eyebrow">ALERT OPERATIONS</span>
         <h1 class="page-title">告警注册</h1>
-        <p class="page-note">把 n8n / 夜莺等告警抽象为可配置条目，动态新增与测试。测试走 dry-run，不发送通知。</p>
+        <p class="page-note">统一管理告警条目、通知策略与运行结果。测试默认走 dry-run，不发送正式通知。</p>
       </div>
-      <div class="header-actions">
-        <button class="primary" id="ar-refresh">刷新</button>
-        <button id="ar-new">+ 新增告警</button>
+      <div class="header-actions ar-console-header-actions">
+        <button class="secondary" id="ar-refresh">刷新数据</button>
+        <button class="primary" id="ar-new">+ 新增告警</button>
       </div>
     </div>
     ${renderLegacyMigrationBanner("rules")}
-    <section class="panel">
+    <section class="panel ar-console-section ar-console-registry">
+      <div class="ar-console-section-head">
+        <div>
+          <h2>告警条目</h2>
+          <p>配置来源、触发方式、执行命令与扩展能力。</p>
+        </div>
+        <span class="ar-console-section-tag">Registry</span>
+      </div>
       <div id="ar-list"></div>
     </section>
-    <section class="panel" id="ar-test-panel" style="display:none">
-      <div class="panel-title">测试结果</div>
+    <section class="panel ar-console-section ar-console-test" id="ar-test-panel" style="display:none">
+      <div class="ar-console-section-head">
+        <div><h2>测试结果</h2><p>最近一次手动验证的执行输出。</p></div>
+        <span class="ar-console-section-tag">Dry run</span>
+      </div>
       <div id="ar-test-output"></div>
     </section>
-    <section class="panel">
-      <div class="panel-title">全部告警历史日志</div>
-      <div class="panel-note">聚合展示所有告警条目的执行记录（含定时校验、测试触发），按时间倒序；可按时间范围与条目筛选。<strong>提示：</strong>每个条目的通知 / 电话语音 / 定时 / 历史 / 描述，点对应行的「⚙ 能力」即可配置。</div>
+    <section class="panel ar-console-section ar-console-history">
+      <div class="ar-console-section-head">
+        <div>
+          <h2>全部告警历史</h2>
+          <p>聚合定时校验和测试触发记录，按时间倒序展示。</p>
+        </div>
+        <span class="ar-console-section-tag">Audit log</span>
+      </div>
+      <div class="ar-console-callout"><strong>配置入口</strong><span>每个条目的通知、电话语音、定时、历史和描述都在对应行的「能力」中。</span></div>
       <div class="mc-controls">
-        <label class="mc-schedule-label">时间范围</label>
-        <select id="mc-days-filter">
-          <option value="1">最近 1 天</option>
-          <option value="3">最近 3 天</option>
-          <option value="7">最近 7 天</option>
-          <option value="30">最近 30 天</option>
-          <option value="0">全部</option>
-        </select>
+        <label class="mc-filter-field" for="mc-days-filter"><span>时间范围</span>
+          <select id="mc-days-filter">
+            <option value="1">最近 1 天</option>
+            <option value="3">最近 3 天</option>
+            <option value="7">最近 7 天</option>
+            <option value="30">最近 30 天</option>
+            <option value="0">全部</option>
+          </select>
+        </label>
         <span class="mc-controls-divider"></span>
         <label class="mc-filter-check"><input type="checkbox" id="mc-only-alert" /> 只看异常</label>
-        <select id="mc-entry-filter"><option value="">全部条目</option></select>
+        <label class="mc-filter-field" for="mc-entry-filter"><span>告警条目</span><select id="mc-entry-filter"><option value="">全部条目</option></select></label>
         <div class="mc-pager" id="mc-pager"></div>
       </div>
       <div id="mc-results"></div>
@@ -793,23 +811,47 @@ async function loadEntryMessagePanel(container, id) {
   const okText = (cfg && cfg.okText) || "";
   const enabled = !cfg || cfg.enabled !== false;
   body.innerHTML = `
-    <div class="mc-msg-vars">
-      可用变量：<code>{entry}</code> 条目名 · <code>{time}</code> 时间 · <code>{country}</code> 国家 · <code>{items}</code> 异常明细 · <code>{owner}</code> @负责人 · <code>{link}</code> 平台链接
+    <div class="mc-msg-vars" aria-label="可用模板变量">
+      <span class="mc-msg-vars-label">可用变量</span>
+      <span class="mc-msg-var"><code>{entry}</code><span>条目名</span></span>
+      <span class="mc-msg-var"><code>{time}</code><span>时间</span></span>
+      <span class="mc-msg-var"><code>{country}</code><span>国家</span></span>
+      <span class="mc-msg-var"><code>{items}</code><span>异常明细</span></span>
+      <span class="mc-msg-var"><code>{owner}</code><span>@负责人</span></span>
+      <span class="mc-msg-var"><code>{link}</code><span>平台链接</span></span>
     </div>
-    <div class="mc-notify-rows">
-      <div class="mc-notify-row">
-        <label class="mc-mg-label" title="有异常时发送到群的正文模板">异常消息模板</label>
-        <textarea class="mc-msg-tpl" rows="6" placeholder="🔔 {entry}\n时间：{time}\n{items}\n📋 详情见 ZNZB 告警平台：{link}\n{owner}">${escapeHtml(tpl)}</textarea>
+    <div class="mc-form-stack">
+      <div class="mc-form-row mc-form-row--template">
+        <label class="mc-form-label" for="ar-msg-template">
+          <strong>异常消息模板</strong>
+          <span>检测到异常时发送</span>
+        </label>
+        <div class="mc-form-control">
+          <textarea id="ar-msg-template" class="mc-msg-tpl" rows="6" spellcheck="false" placeholder="🔔 {entry}\n时间：{time}\n{items}\n📋 详情见 ZNZB 告警平台：{link}\n{owner}">${escapeHtml(tpl)}</textarea>
+          <span class="mc-form-help">支持换行和上方变量；发送前会替换为本次告警的实际内容。</span>
+        </div>
       </div>
-      <div class="mc-notify-row">
-        <label class="mc-mg-label" title="无异常时可选的提示文案（留空 = 无异常不发消息）">无异常提示</label>
-        <input type="text" class="mc-msg-ok" value="${escapeHtml(okText)}" placeholder="留空则不发送无异常消息" />
+      <div class="mc-form-row">
+        <label class="mc-form-label" for="ar-msg-ok">
+          <strong>无异常提示</strong>
+          <span>可选的健康状态消息</span>
+        </label>
+        <div class="mc-form-control">
+          <input id="ar-msg-ok" type="text" class="mc-msg-ok" value="${escapeHtml(okText)}" placeholder="留空则不发送无异常消息" />
+          <span class="mc-form-help">建议保持简短；留空时正常结果不会产生群消息。</span>
+        </div>
       </div>
-      <label class="mc-notify-toggle"><input type="checkbox" id="ar-msg-enabled" ${enabled ? "checked" : ""} /> 启用消息模板</label>
     </div>
-    <div class="mc-notify-actions">
-      <button class="mc-page-btn" id="ar-msg-save">保存消息模板</button>
-      <span class="mc-schedule-status" id="ar-msg-status"></span>
+    <div class="mc-message-toolbar">
+      <label class="mc-switch" for="ar-msg-enabled">
+        <input type="checkbox" id="ar-msg-enabled" ${enabled ? "checked" : ""} />
+        <span class="mc-switch-track" aria-hidden="true"></span>
+        <span class="mc-switch-copy"><strong>启用消息模板</strong><small>关闭后保留内容，但不发送模板消息</small></span>
+      </label>
+      <div class="mc-message-actions">
+        <span class="mc-schedule-status" id="ar-msg-status" aria-live="polite"></span>
+        <button class="primary mc-save-button" id="ar-msg-save">保存消息模板</button>
+      </div>
     </div>`;
   const saveBtn = body.querySelector("#ar-msg-save");
   const status = body.querySelector("#ar-msg-status");
@@ -819,19 +861,29 @@ async function loadEntryMessagePanel(container, id) {
       const tplEl = body.querySelector(".mc-msg-tpl");
       const okEl = body.querySelector(".mc-msg-ok");
       const enEl = body.querySelector("#ar-msg-enabled");
+      const idleLabel = saveBtn.textContent;
       saveBtn.disabled = true;
+      saveBtn.setAttribute("aria-busy", "true");
+      saveBtn.textContent = "保存中…";
       status.textContent = "保存中…";
+      status.className = "mc-schedule-status";
       try {
         const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/message`, {
           template: tplEl ? tplEl.value : "",
           okText: okEl ? okEl.value : "",
           enabled: enEl ? enEl.checked : true,
         });
-        status.textContent = res && res.ok ? "✅ 已保存" : "保存失败";
+        const ok = Boolean(res && res.ok);
+        status.textContent = ok ? "已保存" : "保存失败";
+        status.className = `mc-schedule-status ${ok ? "ok" : "error"}`;
       } catch (e) {
         status.textContent = "保存失败: " + (e.message || String(e));
+        status.className = "mc-schedule-status error";
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.removeAttribute("aria-busy");
+        saveBtn.textContent = idleLabel;
       }
-      setTimeout(() => { saveBtn.disabled = false; status.textContent = ""; }, 1500);
     };
   }
 }
