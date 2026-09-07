@@ -12,6 +12,8 @@ import {
   saveUsageSnapshot,
   tokenUser,
   TOKEN_USER_MAP,
+  sourceKind,
+  sourceKindLabel,
 } from "../src/ds-scheduler-usage.mjs";
 
 const SAMPLE_ROWS = [
@@ -177,4 +179,38 @@ test("fetchAndAggregateUsage builds report from snapshot rows", async () => {
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
+});
+
+test("sourceKind classifies codex-skill as skill and everything else as api", () => {
+  assert.equal(sourceKind("codex-skill"), "skill");
+  assert.equal(sourceKind("skill"), "skill");
+  assert.equal(sourceKind("api"), "api");
+  assert.equal(sourceKind("n8n"), "api");
+  assert.equal(sourceKind("duty-platform"), "api");
+  assert.equal(sourceKind(""), "unknown");
+  assert.equal(sourceKind(null), "unknown");
+  assert.equal(sourceKindLabel("skill"), "Skill");
+  assert.equal(sourceKindLabel("api"), "API");
+  assert.equal(sourceKindLabel("unknown"), "未知");
+});
+
+test("buildDailyUsage reports global sourceUsage split (skill vs api)", () => {
+  const report = buildDailyUsage(SAMPLE_ROWS);
+  assert.deepEqual(report.sourceUsage, { skill: 3, api: 1, unknown: 0 });
+});
+
+test("buildCountryUsage exposes per-operator sources and per-country sourceUsage", () => {
+  const rows = [
+    { operation_time: "2026-08-20 09:00:00", operator: "张三", source_system: "codex-skill", country: "cn", action: "list_projects", success: 1, risk_level: "low", duration_ms: 120, token: "TOK-CN" },
+    { operation_time: "2026-08-20 10:00:00", operator: "张三", source_system: "api", country: "cn", action: "list_workflows", success: 1, risk_level: "low", duration_ms: 90, token: "TOK-CN" },
+    { operation_time: "2026-08-20 11:00:00", operator: "李四", source_system: "n8n", country: "cn", action: "list_workflows", success: 1, risk_level: "low", duration_ms: 50 },
+  ];
+  const countries = buildCountryUsage(rows.map(normalizeAuditRow));
+  const cn = countries.find((c) => c.country === "cn");
+  assert.equal(cn.requests, 3);
+  assert.deepEqual(cn.sourceUsage, { skill: 1, api: 2, unknown: 0 });
+  const op = cn.operators.find((o) => o.token === "TOK-CN");
+  assert.deepEqual(op.sources, ["api", "codex-skill"]);
+  const day = cn.daily[0];
+  assert.deepEqual(day.sourceUsage, { skill: 1, api: 2, unknown: 0 });
 });

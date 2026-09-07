@@ -6291,6 +6291,23 @@ body {
   white-space: nowrap;
 }
 
+/* DS 网关使用统计：调用来源（Skill / API）标注 */
+.dsu-source-split {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.dsu-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.dsu-source-tags { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.dsu-operator-table .dsu-token-tag { font-size: 10px; }
+
 /* ---- DS 网关用户权限与管控 ---- */
 .dsu-access-panel { margin-top: 16px; }
 .dsu-access-grid {

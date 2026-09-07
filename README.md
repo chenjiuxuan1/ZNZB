@@ -328,7 +328,7 @@ npm run watch
 
 ## 调度网关使用统计
 
-值班平台新增「DS网关使用统计」视图（`#/ds-scheduler-usage`），展示 n8n `ds-scheduler-router` 网关的审计记录：每天哪些人使用、调用哪些动作、成功率、风险操作与耗时。
+值班平台新增「DS网关使用统计」视图（`#/ds-scheduler-usage`），展示 n8n `ds-scheduler-router` 网关的审计记录：每天哪些人使用、调用哪些动作、成功率、风险操作与耗时，并**明确区分调用来源（DS Skill / 直连 API）**。
 
 - 数据源：`warning_rule.ds_operation_audit_log`（10.20.47.19:3306）；默认通过中国跳板机 SSH + mysql 读取，也可用独立 n8n 工作流 `n8n-ds-usage-report.json` 走 gateway 模式免 SSH 取数。
 - 配置：`config/ds-scheduler.config.json` 的 `usage` 段（支持 `ssh` / `gateway` / `snapshot` 三种数据源）。

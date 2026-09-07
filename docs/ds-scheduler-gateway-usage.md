@@ -1,6 +1,25 @@
 # 调度网关使用统计（n8n ds-scheduler-router）
 
-值班平台新增「DS网关使用统计」视图，用于展示 n8n `ds-scheduler-router` 网关的审计记录：**每天有哪些人（operator）在使用、调用了哪些动作、成功率、风险操作与耗时**。
+值班平台新增「DS网关使用统计」视图，用于展示 n8n `ds-scheduler-router` 网关的审计记录：**每天有哪些人（operator）在使用、调用了哪些动作、成功率、风险操作与耗时**，并**明确区分调用来源是 DS Skill 还是直连网关 API**。
+
+## 调用来源（source_system）与 Skill / API 区分
+
+网关审计表按请求体里的 `source` 字段记录来源（`source_system` 列）：
+
+| source 取值 | 页面标注 | 说明 |
+| --- | --- | --- |
+| `codex-skill` | **Skill** | 由 DS Skill（`ds-scheduler` 技能）调用网关时携带 |
+| `api`（未传 source 时的默认值） | **API** | 直接调用网关 API 的请求（值班平台巡检、hive 监控、证据工具、脚本、curl 等） |
+
+> 重要：网关路由工作流（`n8n-ds-scheduler-router.json`）对未显式传 `source` 的请求默认记为 `api`，
+> 因此**所有直连 DS API 的调用都会统计为「API」**，而不是被误记为 Skill。
+> 只有 DS Skill 发起的调用（显式携带 `source: "codex-skill"`）才会标注为「Skill」。
+
+页面在以下位置明确标注 Skill / API：
+
+- **总览指标**下方：`Skill N` / `API N` 统计；
+- **国家使用分布**每个国家卡片：概览 chip 与「调用来源」行展示 Skill / API 拆分；
+- **国家使用分布**的明细表：新增「来源」列，按 Token 用户标注其调用来源（Skill / API）。
 
 ## 数据来源
 
@@ -102,6 +121,7 @@ n8n 执行历史里 `request_id` 为空，无法按它匹配，因此按 **count
   "uniqueOperators": 8,
   "uniqueCountries": 6,
   "uniqueActions": 42,
+  "sourceUsage": { "skill": 60, "api": 60, "unknown": 0 },
   "days": [
     {
       "date": "2026-08-20",
@@ -135,6 +155,9 @@ n8n 执行历史里 `request_id` 为空，无法按它匹配，因此按 **count
   ]
 }
 ```
+
+> `sourceUsage`：全局 Skill / API 调用次数拆分（`skill` = `codex-skill`，其余来源归入 `api`）。
+> 每个国家卡片同样带有 `sourceUsage`，其「来源」列按 Token 用户展示 Skill / API 标注。
 
 ## 前端
 
