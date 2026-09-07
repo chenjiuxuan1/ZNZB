@@ -38,6 +38,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /4 \/ 页/);
   assert.match(source, /renderDateRangeFilter\("ds-failure"/);
   assert.match(source, /renderDateRangeFilter\("ds-scheduled"/);
+  assert.match(source, /scheduledStartDate: defaultDateRange\(1\)\.startDate/);
+  assert.match(source, /scheduledEndDate: defaultDateRange\(1\)\.endDate/);
+  assert.match(source, /readDateRange\(root, "ds-scheduled", defaultDateRange\(1\)\)/);
+  assert.match(platformApi, /getN8nFailureRestartWatch[\s\S]*?lookbackDays: filters\.days \?\? 1/);
   assert.match(source, /id="\$\{prefix\}-start-date" type="date"/);
   assert.match(source, /id="\$\{prefix\}-end-date" type="date"/);
   assert.match(source, /startDate=\$\{range\.startDate\}&endDate=\$\{range\.endDate\}/);
@@ -143,6 +147,10 @@ test("DS failure log page exposes repair states and failure reasons", async () =
   assert.match(source, /自动重跑开关未改变/);
   assert.match(source, /在所设置的重跑分钟执行第一轮，之后按所选间隔运行/);
   assert.match(source, /renderRetryLogDetail/);
+  assert.match(source, /function isSuspectedEmptyRunLog/);
+  assert.match(source, /suspectedEmptyRun\s*\? "疑似空跑"/);
+  assert.match(source, /isSuspectedEmptyRunLog\(item\) \? "工作流"/);
+  assert.match(source, /empty_run_confirmed: "疑似空跑"/);
   assert.match(source, /function formatRetryMessage/);
   assert.match(source, /timeZone: "Asia\/Shanghai"/);
   assert.match(source, /function failureReasonForDisplay/);

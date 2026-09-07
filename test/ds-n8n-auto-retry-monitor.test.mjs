@@ -138,6 +138,45 @@ test("n8n monitor reads executions and ignores the saved project scope", async (
   assert.equal(executionOptions.startedBefore, undefined);
 });
 
+test("n8n monitor paginates until it covers an older selected date range", async () => {
+  const executionCalls = [];
+  const detailCalls = [];
+  const client = {
+    async listWorkflows() {
+      return { data: [{ id: "wf-1", name: "各国-DS失败自动重跑统一入口", nodes: [] }] };
+    },
+    async listExecutions(options) {
+      executionCalls.push(options);
+      if (!options.cursor) {
+        return { data: [{ id: "newer", workflowId: "wf-1", status: "success", startedAt: "2026-09-07T00:00:00.000Z" }], nextCursor: "page-2" };
+      }
+      if (options.cursor === "page-2") {
+        return { data: [{ id: "in-range", workflowId: "wf-1", status: "success", startedAt: "2026-09-03T00:25:01.000Z" }], nextCursor: "page-3" };
+      }
+      return { data: [{ id: "older", workflowId: "wf-1", status: "success", startedAt: "2026-09-01T00:00:00.000Z" }], nextCursor: "page-4" };
+    },
+    async getExecution(id) {
+      detailCalls.push(id);
+      return fakeDetail();
+    },
+  };
+
+  const result = await inspectN8nAutoRetryExecutions("/tmp/znzb-paginated-range", {
+    countries: ["ph"],
+    startDate: "2026-09-02",
+    endDate: "2026-09-03",
+    n8nClient: client,
+    enrichDsEvidence: false,
+    limit: 2,
+    bypassCache: true,
+  });
+
+  assert.deepEqual(executionCalls.map((call) => call.cursor), [undefined, "page-2", "page-3"]);
+  assert.deepEqual(detailCalls, ["in-range"]);
+  assert.equal(result.totalExecutions, 1);
+  assert.equal(result.totalFailures, 1);
+});
+
 test("n8n monitor derives the DS repair outcome from execution notification text", async () => {
   const detail = fakeDetail();
   detail.data.resultData.runData["发送恢复通知"] = [{ data: { main: [[{ json: { message: "自动重跑已恢复成功，重跑次数：2" } }]] } }];

@@ -2739,7 +2739,7 @@ export function createPlatformApi({
       const country = String(filters.country || "").trim().toLowerCase();
       return inspectN8nAutoRetryExecutions(rootDir, {
         countries: country || undefined,
-        lookbackDays: filters.days,
+        lookbackDays: filters.days ?? 1,
         startDate: filters.startDate,
         endDate: filters.endDate,
         n8nClient: n8nAutoRetryClient,
