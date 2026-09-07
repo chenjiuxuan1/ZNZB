@@ -86,25 +86,27 @@ async function notifyKnBot(alertConfig, message) {
   const results = [];
 
   for (const chatId of chatIds) {
-    const response = await fetchWithRetry(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      }),
-    });
+    try {
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+      });
 
-    if (!response.ok) {
-      const responseText = await response.text().catch(() => "");
-      throw new Error(
-        `KN Chat Bot sendMessage failed (${response.status} ${response.statusText}): ${responseText.slice(0, 240)}`,
-      );
+      if (!response.ok) {
+        const responseText = await response.text().catch(() => "");
+        console.log(`[notifier] KN sendMessage 失败，跳过 chatId ${chatId} (${response.status} ${response.statusText}): ${responseText.slice(0, 200)}`);
+        continue;
+      }
+      results.push({ chatId, status: response.status });
+    } catch (error) {
+      console.log(`[notifier] KN sendMessage 异常，跳过 chatId ${chatId}: ${String(error.message || error).slice(0, 200)}`);
     }
-
-    results.push({ chatId, status: response.status });
   }
 
   return {
@@ -162,7 +164,20 @@ async function fetchWithRetry(url, options, retries = 3) {
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      return await fetchCompatible(url, options);
+      // 默认 10 秒超时：防止第三方 webhook 挂死导致调度器永久锁死。
+      // 若调用方已传 signal（如批量巡检中止控制器），则组合二者，任一触发即中止。
+      let fetchOptions = options;
+      if (typeof AbortSignal.timeout === "function") {
+        const timeoutSignal = AbortSignal.timeout(10_000);
+        if (options?.signal && typeof AbortSignal.any === "function") {
+          fetchOptions = { ...options, signal: AbortSignal.any([options.signal, timeoutSignal]) };
+        } else if (options?.signal) {
+          fetchOptions = { ...options, signal: options.signal };
+        } else {
+          fetchOptions = { ...options, signal: timeoutSignal };
+        }
+      }
+      return await fetchCompatible(url, fetchOptions);
     } catch (error) {
       lastError = error;
       if (attempt === retries) {

@@ -1382,7 +1382,7 @@ function openNotifyRuleEditModal(rule, reload) {
   overlay.id = "ac-nr-modal";
   overlay.className = "ac-modal-overlay";
   const ident = rule.channelIdent || (rule.kind === "phone" ? "ali-voice" : rule.kind === "dingtalk" ? "dingtalk" : "");
-  const isVoice = ident === "ali-voice" || ident === "ivr" || ident === "phone" || ident === "voice";
+  const isVoice = ident === "ali-voice" || ident === "ivr" || ident === "phone" || ident === "voice" || ident === "tx-voice";
   const isDing = ident === "dingtalk" || ident === "dingtalk_robot";
   const isEmail = ident === "email";
   const receivers = (rule.receivers || []).map((u) => u.username).join(",");
@@ -1494,7 +1494,7 @@ function openNotifyRuleEditModal(rule, reload) {
     const form = overlay.querySelector(".ac-nr-form");
     const nrId = form.dataset.nrid;
     const ident2 = form.dataset.ident;
-    const isVoice2 = ident2 === "ali-voice" || ident2 === "ivr" || ident2 === "phone" || ident2 === "voice";
+    const isVoice2 = ident2 === "ali-voice" || ident2 === "ivr" || ident2 === "phone" || ident2 === "voice" || ident2 === "tx-voice";
     const isDing2 = ident2 === "dingtalk" || ident2 === "dingtalk_robot";
     const isEmail2 = ident2 === "email";
     try {
@@ -1527,6 +1527,12 @@ function openNotifyRuleEditModal(rule, reload) {
       } else if (isEmail2) {
         const emailVal = overlay.querySelector("#ac-nr-email")?.value.trim();
         if (emailVal) payload.params = { email: emailVal };
+      } else {
+        // 其它渠道（如 tx-voice、或未识别 ident）：接收人走逗号分隔输入框
+        const rcvVal = overlay.querySelector("#ac-nr-rcv")?.value.trim();
+        if (rcvVal) {
+          payload.receivers = rcvVal.split(/[,，\s]+/).filter(Boolean);
+        }
       }
       // 启停
       payload.enable = overlay.querySelector("#ac-nr-enable").checked;
@@ -1960,7 +1966,7 @@ function bindRuleNotifyEdit(overlay, ruleId, reload) {
       const bot = btn.dataset.bot || "";
       const mentions = btn.dataset.mentions || "";
       const isDing = ident === "dingtalk" || ident === "dingtalk_robot" || ident === "ali-im";
-      const isVoice = ident === "ali-voice" || ident === "ivr" || ident === "phone" || ident === "voice";
+      const isVoice = ident === "ali-voice" || ident === "ivr" || ident === "phone" || ident === "voice" || ident === "tx-voice";
       const isEmail = ident === "email";
       // 用户列表（用于输入接收人时自动带出该用户登记的电话）
       let users = [];
@@ -2067,6 +2073,15 @@ async function saveNotifyEditForm(form, opts) {
       if (ph) fixedPhones.push(ph);
     }
   });
+  // 非语音/钉钉/邮件渠道（如 tx-voice、或未识别 ident）：接收人走逗号分隔输入框
+  if (!isVoice && !isDing && !isEmail) {
+    const rcvVal = (form.querySelector("#ac-rn-rcv")?.value || "").trim();
+    if (rcvVal) {
+      for (const name of rcvVal.split(/[,，\s]+/).filter(Boolean)) {
+        if (!receiversArr.includes(name)) receiversArr.push(name);
+      }
+    }
+  }
   const params = {};
   // 钉钉：@接收人（mentions）+ 机器人 ID
   if (isDing) {

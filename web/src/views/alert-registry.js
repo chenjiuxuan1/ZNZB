@@ -451,7 +451,7 @@ function renderMcResults(root) {
     const summary = abnormal.map((c) => {
       const m = c.mismatches || [];
       const detail = m.length
-        ? ` (${m.map((x) => `${x.check_item}=${x.mismatch_cnt}`).join(", ")})`
+        ? ` (${m.map((x) => `${escapeHtml(String(x.check_item ?? ""))}=${escapeHtml(String(x.mismatch_cnt ?? ""))}`).join(", ")})`
         : "";
       return `<span class="mc-badge mc-badge-red">${escapeHtml(c.label || c.code || "")}${detail}</span>`;
     }).join(" ");

@@ -1454,25 +1454,48 @@ export function createPlatformApi({
       if (batchScheduleRunning) {
         throw badRequest("Batch check already running", ["巡检正在运行中，请等待完成后再试。"]);
       }
-      const schedule = await this.getBatchSchedule();
-      const enabledCountryConfigs = schedule.countryConfigs.filter((item) => item.enabled);
-      if (enabledCountryConfigs.length === 0) {
-        throw badRequest("No scheduled countries", ["请先至少启用一个国家，再运行定时巡检测试。"]);
-      }
-
-      const startedAt = now.toISOString();
-      const nextRunAt = schedule.nextRunAt;
-      const historyRunId = randomUUID();
-      const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
+      // 置位必须在任何 await 之前，否则两个并发请求都可通过守卫（TOCTOU），导致两轮巡检并发跑。
       batchScheduleRunning = true;
       batchScheduleStopRequested = false;
       batchScheduleAbortController = new AbortController();
-      batchScheduleRunProgress = createBatchScheduleRunProgress({
-        id: historyRunId,
-        trigger: "manual_test",
-        startedAt,
-        countryConfigs: enabledCountryConfigs,
-      });
+      try {
+        const schedule = await this.getBatchSchedule();
+        const enabledCountryConfigs = schedule.countryConfigs.filter((item) => item.enabled);
+        if (enabledCountryConfigs.length === 0) {
+          batchScheduleRunning = false;
+          batchScheduleAbortController = null;
+          throw badRequest("No scheduled countries", ["请先至少启用一个国家，再运行定时巡检测试。"]);
+        }
+
+        const startedAt = now.toISOString();
+        const nextRunAt = schedule.nextRunAt;
+        const historyRunId = randomUUID();
+        const detailUrl = buildBatchHistoryDetailUrl(historyRunId);
+        batchScheduleRunProgress = createBatchScheduleRunProgress({
+          id: historyRunId,
+          trigger: "manual_test",
+          startedAt,
+          countryConfigs: enabledCountryConfigs,
+        });
+        return await this.runBatchScheduleBody({
+          schedule,
+          enabledCountryConfigs,
+          startedAt,
+          nextRunAt,
+          historyRunId,
+          detailUrl,
+        });
+      } catch (error) {
+        if (batchScheduleRunning) {
+          batchScheduleRunning = false;
+          batchScheduleAbortController = null;
+        }
+        throw error;
+      }
+    },
+
+    /** runBatchScheduleNow 的主体（置位已在前置完成，避免并发双跑）。 */
+    async runBatchScheduleBody({ schedule, enabledCountryConfigs, startedAt, nextRunAt, historyRunId, detailUrl }) {
       try {
         const countryRuns = await runScheduledCountryChecks(enabledCountryConfigs, (body) => this.runBatchCheck({ ...body, signal: batchScheduleAbortController.signal }), (event) => {
           batchScheduleRunProgress = updateBatchScheduleRunProgress(batchScheduleRunProgress, event);
