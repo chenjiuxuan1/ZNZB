@@ -25,6 +25,8 @@ test("styles include desktop grid and narrow fallback", async () => {
   assert.match(css, /--ar-control-height:/);
   assert.match(css, /\.mc-form-row\s*\{/);
   assert.match(css, /@media \(max-width: 760px\)/);
+  assert.match(css, /\.layout:has\(\.ar-console-header\) \.sidebar/);
+  assert.match(css, /\.layout:has\(\.ar-console-header\) \.nav/);
 });
 
 test("history markup escapes identifiers and fallback timestamps", async () => {
