@@ -3,7 +3,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyDsFailureReason, classifyDsFailureType, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, inspectDsFailureLogs, inspectOriginalScheduledFailures, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays, normalizeN8nProjectScope, resolveN8nDsFailureEvidence } from "../src/ds-failure-log-monitor.mjs";
+import { classifyDsFailureReason, classifyDsFailureType, classifyN8nFailureReason, classifyOriginalScheduledFailures, classifyWorkflowFailures, extractDsFailureReason, extractTaskScript, extractTotalLogLines, inspectDsFailureLogs, inspectOriginalScheduledFailures, normalizeCountrySelection, normalizeGatewayFailures, normalizeLookbackDays, normalizeN8nProjectScope, resolveN8nDsFailureEvidence } from "../src/ds-failure-log-monitor.mjs";
+
+test("extractTotalLogLines detects the log total from gateway responses", () => {
+  assert.equal(extractTotalLogLines({ data: { total_line_num: 12000 } }), 12000);
+  assert.equal(extractTotalLogLines({ data: { line_num: 900 } }), 900);
+  assert.equal(extractTotalLogLines({ total_lines: 42 }), 42);
+  assert.equal(extractTotalLogLines({ data: { total: 7 } }), 7);
+  assert.equal(Number.isNaN(extractTotalLogLines({ data: { log: "no count" } })), true);
+});
 
 test("lookback days accepts manual ranges and applies safe limits", () => {
   assert.equal(normalizeLookbackDays("7", 1), 7);
