@@ -96,6 +96,37 @@ test("runTest on missing id rejects with 404", async (t) => {
   await assert.rejects(() => registry.runTest("nope"), (error) => error.statusCode === 404);
 });
 
+test("script audit persists newest-first sanitized operation summaries", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  await registry.appendScriptAudit({
+    entryId: "safe",
+    entryName: "Safe",
+    action: "publish",
+    startedAt: "2026-09-04T01:00:00.000Z",
+    finishedAt: "2026-09-04T01:00:02.000Z",
+    status: "partial",
+    git: { ok: true, stdout: "TOKEN=secret" },
+    deploy: { ok: false, stderr: "password=secret" },
+    error: "Bearer sensitive-value",
+  });
+  await registry.appendScriptAudit({
+    entryId: "safe",
+    entryName: "Safe",
+    action: "preview",
+    startedAt: "2026-09-04T02:00:00.000Z",
+    status: "success",
+    diff: { added: 2, removed: 1 },
+    rendered: "secret script",
+  });
+
+  const audit = await registry.listScriptAudit();
+  assert.deepEqual(audit.map((item) => item.action), ["preview", "publish"]);
+  assert.equal(audit[0].diff.added, 2);
+  assert.deepEqual(audit[1].git, { ok: true });
+  assert.deepEqual(audit[1].deploy, { ok: false });
+  assert.doesNotMatch(JSON.stringify(audit), /TOKEN=secret|password=secret|sensitive-value|secret script/);
+});
+
 test("resolveEnv substitutes ${ENV} placeholders", async (t) => {
   const { registry } = await tmpRegistry(t);
   process.env.AR_TEST_TOKEN = "secret-abc";

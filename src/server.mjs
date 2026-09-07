@@ -528,6 +528,9 @@ async function handleApi(request, response, url) {
     const days = Number(url.searchParams.get("days") || 0);
     return sendJson(response, 200, await alertRegistry.listAllHistory({ days: Number.isFinite(days) && days > 0 ? days : 0 }));
   }
+  if (method === "GET" && url.pathname === "/api/alert-registry/script-audit") {
+    return sendJson(response, 200, await alertRegistry.listScriptAudit());
+  }
   if (method === "GET" && /\/api\/alert-registry\/[^/]+\/description$/.test(url.pathname)) {
     const id = url.pathname.split("/").slice(-2)[0];
     return sendJson(response, 200, await alertRegistry.getEntryDescription(id));

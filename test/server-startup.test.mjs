@@ -10,3 +10,9 @@ test("server starts all three patrol schedulers", async () => {
   assert.equal((startup.match(/startDsScheduler\(\);/g) || []).length, 1);
   assert.equal((startup.match(/startHiveScheduler\(\);/g) || []).length, 1);
 });
+
+test("server exposes the alert script audit read route", async () => {
+  const source = await fs.readFile(new URL("../src/server.mjs", import.meta.url), "utf8");
+  assert.match(source, /GET" && url\.pathname === "\/api\/alert-registry\/script-audit"/);
+  assert.match(source, /alertRegistry\.listScriptAudit\(\)/);
+});
