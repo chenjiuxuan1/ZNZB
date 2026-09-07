@@ -7,6 +7,11 @@ import { createAlertRegistry } from "../src/alert-registry.mjs";
 
 const exampleFile = new URL("../config/alert-registry.example.json", import.meta.url);
 
+test("runtime script audit file is excluded from source control", async () => {
+  const gitignore = await fs.readFile(new URL("../.gitignore", import.meta.url), "utf8");
+  assert.match(gitignore, /^config\/alert-script-audit\.json$/m);
+});
+
 async function tmpRegistry(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "alert-registry-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
