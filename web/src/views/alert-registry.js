@@ -1023,13 +1023,15 @@ async function loadEntrySchedulePanel(container, id) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
     return;
   }
-  const minute = cfg && cfg.minute != null ? cfg.minute : 55;
+  const cron0 = (cfg && cfg.cron) || "55 */4 * * *";
   body.innerHTML = `
     <div class="mc-notify-row">
-      <span class="mc-notify-field-label">每小时</span>
-      <input type="number" class="mc-notify-num" id="ar-ep-schedule-minute" min="0" max="59" value="${escapeHtml(String(minute))}" />
-      <span class="mc-notify-field-label">分触发</span>
+      <span class="mc-notify-field-label">cron 表达式</span>
+      <input type="text" class="mc-notify-num" id="ar-ep-schedule-cron" style="width:200px" value="${escapeHtml(String(cron0))}" placeholder="如 55 */4 * * *（每4小时第55分）" />
       <span class="mc-group-chat-hint">${escapeHtml((cfg && cfg.cron) || "未设置定时")}</span>
+    </div>
+    <div class="mc-notify-row mc-notify-tip">
+      <span class="mc-group-chat-hint">格式：分 时 日 月 周（5 段），如 <code>55 */4 * * *</code> 表示每4小时第55分触发</span>
     </div>
     <div class="mc-notify-actions">
       <button class="mc-page-btn" id="ar-ep-schedule-save">保存定时</button>
@@ -1039,15 +1041,15 @@ async function loadEntrySchedulePanel(container, id) {
   const status = body.querySelector("#ar-ep-schedule-status");
   saveBtn.onclick = async () => {
     if (entryPanelState.saving) return;
-    const minute = Number(body.querySelector("#ar-ep-schedule-minute")?.value);
-    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
-      if (status) { status.textContent = "请输入 0-59 的整数分钟"; status.className = "mc-schedule-status error"; }
+    const cron = (body.querySelector("#ar-ep-schedule-cron")?.value || "").trim();
+    if (!cron) {
+      if (status) { status.textContent = "请输入 cron 表达式"; status.className = "mc-schedule-status error"; }
       return;
     }
     entryPanelState.saving = true;
     if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
     try {
-      const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/schedule`, { minute });
+      const res = await apiPut(`/api/alert-registry/${encodeURIComponent(id)}/schedule`, { cron });
       if (res && res.ok) {
         if (status) { status.textContent = "✅ 已保存定时"; status.className = "mc-schedule-status ok"; }
       } else {
