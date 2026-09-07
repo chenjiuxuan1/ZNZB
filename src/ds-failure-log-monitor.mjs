@@ -626,6 +626,36 @@ function objectData(value = {}) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+export function extractTotalLogLines(response) {
+  const root = objectData(response);
+  const candidates = [
+    root.total_line_num, root.totalLineNum, root.total_lines, root.totalLines,
+    root.line_num, root.lineNum, root.total, root.lines,
+  ];
+  for (const value of candidates) {
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+  return Number.NaN;
+}
+
+/**
+ * Fetch a task log tail. Long-running SHELL/Flink jobs put the real error in the
+ * last lines, but get_task_log returns at most `limit` lines from `skip_line_num`.
+ * Probe the head to learn the total line count; if it exceeds the limit, fetch
+ * the tail so the actual failure reason is not truncated away.
+ */
+async function readTaskLogTail(webhookUrl, country, token, payload, { limit = TASK_LOG_LINE_LIMIT, requestOptions } = {}) {
+  const base = { ...payload };
+  const first = await postAction(webhookUrl, country, token, "get_task_log", { ...base, skip_line_num: 0, limit }, requestOptions);
+  const totalLines = extractTotalLogLines(first);
+  if (Number.isFinite(totalLines) && totalLines > limit) {
+    const skip = Math.max(0, totalLines - limit);
+    return postAction(webhookUrl, country, token, "get_task_log", { ...base, skip_line_num: skip, limit }, requestOptions);
+  }
+  return first;
+}
+
 function hasExplicitFailureEvidence(log = "") {
   return /(?:Caused by\s*:|SQLSTATE|detailMessage|errCode|does not exist|unknown (?:column|table)|permission denied|syntax error|unsupported operand|no such|\bERROR\b|\bFAILED\b|\bfailure\b|Exception)/i.test(String(log || ""));
 }
@@ -791,12 +821,10 @@ async function resolveFailureTask(failure, context, options = {}) {
     if (!taskInstanceId) continue;
     let logData = {};
     try {
-      logData = await postAction(context.webhookUrl, context.country, context.token, "get_task_log", {
+      logData = await readTaskLogTail(context.webhookUrl, context.country, context.token, {
         project_code: failure.projectCode,
         task_instance_id: taskInstanceId,
-        skip_line_num: 0,
-        limit: TASK_LOG_LINE_LIMIT,
-      }, context.requestOptions);
+      }, { requestOptions: context.requestOptions });
     } catch {
       if (!isSameInstanceRecovery(failure) || FAILED_STATES.has(stateOf(task))) return base;
       continue;
@@ -836,11 +864,9 @@ async function enrichFailure(failure, { webhookUrl, country, token }) {
   }
   try {
     if (failure.taskInstanceId) {
-      const logData = await postAction(webhookUrl, country, token, "get_task_log", {
+      const logData = await readTaskLogTail(webhookUrl, country, token, {
         project_code: failure.projectCode,
         task_instance_id: failure.taskInstanceId,
-        skip_line_num: 0,
-        limit: TASK_LOG_LINE_LIMIT,
       });
       const runtime = await loadTaskRuntime(failure, {
         taskName: failure.taskName,
