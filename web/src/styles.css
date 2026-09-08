@@ -8879,6 +8879,19 @@ select.ar-field {
   padding: 3px 7px;
 }
 
+.mc-run-phone { margin-top: 8px; }
+.mc-phone-audit {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 9px;
+}
+.mc-phone-audit-ok { background: #dcfce7; color: #166534; }
+.mc-phone-audit-error { background: #fee2e2; color: #b42318; }
+.mc-phone-audit-warn { background: #fef3c7; color: #92400e; }
+.mc-phone-audit-muted { background: #f1f5f9; color: #475569; }
+
 .mc-detail-empty {
   background: #fff7ed;
   border: 1px solid #fed7aa;

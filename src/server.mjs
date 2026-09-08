@@ -603,7 +603,7 @@ async function handleApi(request, response, url) {
   }
   if (method === "POST" && url.pathname === "/api/multi-country/check-results") {
     const body = await readBody(request, {});
-    return sendJson(response, 201, await alertRegistry.appendCheckResult(body || {}));
+    return sendJson(response, 201, await alertRegistry.ingestCheckResult(body || {}));
   }
   if (method === "GET" && url.pathname === "/api/multi-country/schedule") {
     return sendJson(response, 200, await alertRegistry.getMcSchedule());

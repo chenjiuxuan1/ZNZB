@@ -21,6 +21,7 @@ test("server exposes a country-scoped multi-country result detail route", async 
   const source = await fs.readFile(new URL("../src/server.mjs", import.meta.url), "utf8");
   assert.ok(source.includes('/^\\/api\\/multi-country\\/check-results\\/[^/]+\\/[^/]+$/.test(url.pathname)'));
   assert.match(source, /alertRegistry\.getCheckResultDetail\(runId, country\)/);
+  assert.match(source, /alertRegistry\.ingestCheckResult\(body \|\| \{\}\)/);
 });
 
 test("server exposes country-scoped multi-country SQL routes", async () => {

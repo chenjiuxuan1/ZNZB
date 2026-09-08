@@ -54,3 +54,11 @@ test("SQL editor loads and saves only the selected multi-country entry", async (
   assert.match(source, /\/api\/multi-country\/sql\/\$\{encodeURIComponent\(country\)\}/);
   assert.doesNotMatch(source, /const order = \["cn", "id", "mx", "th", "ph", "pk"\];[\s\S]{0,1800}ar-ep-sql-save/);
 });
+
+test("history shows auditable phone delivery status", async () => {
+  const source = await fs.readFile(viewUrl, "utf8");
+  assert.match(source, /phoneDeliveries/);
+  assert.match(source, /电话已拨打/);
+  assert.match(source, /电话拨打失败/);
+  assert.match(source, /电话未拨打/);
+});

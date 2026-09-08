@@ -475,6 +475,25 @@ function renderMcDetailBlock(c) {
   `;
 }
 
+function renderPhoneDelivery(run, country) {
+  const delivery = (run.phoneDeliveries || []).find((item) => item.country === country);
+  if (!delivery) {
+    return (run.broadcast || []).includes(country)
+      ? `<span class="mc-phone-audit mc-phone-audit-warn">☎ 电话未拨打或状态未回写</span>`
+      : "";
+  }
+  if (delivery.status === "succeeded") {
+    return `<span class="mc-phone-audit mc-phone-audit-ok">☎ 电话已拨打（${escapeHtml(String(delivery.callCount || 0))} 个号码）</span>`;
+  }
+  if (delivery.status === "failed") {
+    return `<span class="mc-phone-audit mc-phone-audit-error" title="${escapeHtml(delivery.error || "")}">☎ 电话拨打失败</span>`;
+  }
+  if (delivery.status === "pending") {
+    return `<span class="mc-phone-audit mc-phone-audit-warn">☎ 电话拨打中</span>`;
+  }
+  return `<span class="mc-phone-audit mc-phone-audit-muted" title="${escapeHtml(delivery.note || "")}">☎ 电话未拨打</span>`;
+}
+
 function renderMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
@@ -522,6 +541,7 @@ function renderMcResults(root) {
     const isTarget = Boolean(mcState.detailTarget
       && runCountry === mcState.detailTarget.country
       && String(run.id || "") === mcState.detailTarget.runId);
+    const phoneAudit = runCountry ? renderPhoneDelivery(run, runCountry) : "";
     const detailPanels = abnormal.map((c) => {
       const m = c.mismatches || [];
       const sql = c.sql || c.detailSql || "";
@@ -549,6 +569,7 @@ function renderMcResults(root) {
           ${runCountry ? `<button class="mc-copy-detail-link" data-run-id="${escapeHtml(String(run.id || ""))}" data-country="${escapeHtml(runCountry)}">复制详情链接</button>` : ""}
         </div>
         ${summaryLine ? `<div class="mc-run-countries">${summaryLine}</div>` : ""}
+        ${phoneAudit ? `<div class="mc-run-phone">${phoneAudit}</div>` : ""}
         ${bodyText ? `<div class="mc-run-summary">${escapeHtml(bodyText)}</div>` : ""}
         ${detailPanels}
       </article>
@@ -1329,6 +1350,8 @@ async function loadEntryHistoryPanel(container, id) {
     return;
   }
   body.innerHTML = list.map((run) => {
+    const country = normalizeMcCountry(run.countries?.[0]?.code || id.replace(/^mc_/, ""));
+    const phoneAudit = country ? renderPhoneDelivery(run, country) : "";
     const countryText = Array.isArray(run.countries)
       ? run.countries.map((c) => `${escapeHtml(c.label || c.code || "")}${Array.isArray(c.mismatches) && c.mismatches.length ? ` (${escapeHtml(c.mismatches.map((m) => m.check_item || "").join("/"))}=${c.mismatches.length})` : ""}`).join("、")
       : "";
@@ -1341,6 +1364,7 @@ async function loadEntryHistoryPanel(container, id) {
           <span class="mc-run-time">${escapeHtml(String(run.checkedAt || ""))}</span>
           <span class="mc-run-source">${escapeHtml(run.source || "")}</span>
         </div>
+        ${phoneAudit ? `<div class="mc-run-phone">${phoneAudit}</div>` : ""}
         <div class="mc-run-summary">${escapeHtml(run.text || run.summary || countryText || "-")}</div>
       </div>`;
   }).join("");

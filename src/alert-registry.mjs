@@ -462,9 +462,11 @@ function runCommandSync(runVia, command, options = {}) {
   });
 }
 
-export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}) {
+export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPhoneCaller } = {}) {
   const resolve = (name) => path.join(rootDir, name);
   let scriptAuditWrite = Promise.resolve();
+  let checkResultWrite = Promise.resolve();
+  const phoneDeliveryInFlight = new Map();
 
   async function registryPath() {
     await loadEnvFile(path.join(rootDir, ".env"));
@@ -807,6 +809,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
               text: countryResult.text || "",
               summary: countryResult.summary || null,
               detailKey: `${r.id || ""}:${code}`,
+              phoneDeliveries: (r.phoneDeliveries || []).filter((item) => item.country === code),
             });
             continue;
           }
@@ -1153,6 +1156,18 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return readJsonFile(file, DEFAULT_MULTI_COUNTRY_RESULTS);
   }
 
+  function queueCheckResultWrite(task) {
+    const current = checkResultWrite.then(task, task);
+    checkResultWrite = current.catch(() => {});
+    return current;
+  }
+
+  function buildMcDetailUrl(runId, country) {
+    const base = String(process.env.ALERT_PLATFORM_URL || "https://big-data-duty-management-platform.kuainiujinke.com")
+      .replace(/\/$/, "");
+    return `${base}/#/alert-registry?runId=${encodeURIComponent(runId)}&country=${encodeURIComponent(country)}`;
+  }
+
   /** 读取最近 7 次多国校验结果（最新在前）。 */
   async function listCheckResults() {
     const data = await loadResults();
@@ -1195,20 +1210,31 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     // repairTriggered: 本轮首次发现异常、已触发智能修复、暂不播报的国家。
     const broadcast = new Set((result.broadcast || []).map((x) => String(x).toLowerCase()));
     const repairTriggered = new Set((result.repairTriggered || []).map((x) => String(x).toLowerCase()));
+    const runId = result.id || randomUUID();
+    const prior = (data.runs || []).find((item) => String(item.id || "") === String(runId));
+    const countries = (Array.isArray(result.countries) ? result.countries : []).map((country) => {
+      const code = String(country.code || "").toLowerCase();
+      return { ...country, code, detailUrl: buildMcDetailUrl(runId, code) };
+    });
+    const detailLinks = Object.fromEntries(countries.map((country) => [country.code, country.detailUrl]));
     const run = {
-      id: result.id || randomUUID(),
+      id: runId,
       checkedAt: result.checkedAt || new Date().toISOString(),
       source: result.source || "multi-country",
-      countries: Array.isArray(result.countries) ? result.countries : [],
+      countries,
       hasAlert: Boolean(result.hasAlert),
       hasError: Boolean(result.hasError),
       text: result.text || "",
       summary: result.summary || null,
       broadcast: [...broadcast],
       repairTriggered: [...repairTriggered],
+      detailLinks,
+      phoneDeliveries: prior?.phoneDeliveries || result.phoneDeliveries || [],
     };
-    const runs = [run, ...(data.runs || [])].slice(0, MULTI_COUNTRY_RESULTS_KEEP);
+    const runs = [run, ...(data.runs || []).filter((item) => String(item.id || "") !== String(runId))]
+      .slice(0, MULTI_COUNTRY_RESULTS_KEEP);
     await writeJsonFileAtomic(await resultsPath(), { runs });
+    historyCache = null;
     // 维护每国连续异常计数（播报 +1，无异常归零），达到阈值且开启电话时标记 phoneNeeded。
     // 注意：只更新本次结果中实际校验过的国家（定时为全部启用国家；单国测试只含 1 国），
     // 未参与本次校验的国家计数保持不变 —— 否则单国测试会把其他国家的计数误清零。
@@ -1217,13 +1243,15 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     const strike = await loadMcStrike();
     const counts = { ...strike.counts };
     const checkedCodes = new Set((run.countries || []).map((x) => String(x.code || "").toLowerCase()));
-    for (const code of MC_COUNTRIES) {
-      if (!checkedCodes.has(code)) continue;
-      const c = run.countries.find((x) => (x.code || "").toLowerCase() === code);
-      const hasMismatch = Boolean(c && Array.isArray(c.mismatches) && c.mismatches.length > 0);
-      counts[code] = hasMismatch && broadcast.has(code) ? (counts[code] || 0) + 1 : 0;
+    if (!prior) {
+      for (const code of MC_COUNTRIES) {
+        if (!checkedCodes.has(code)) continue;
+        const c = run.countries.find((x) => (x.code || "").toLowerCase() === code);
+        const hasMismatch = Boolean(c && Array.isArray(c.mismatches) && c.mismatches.length > 0);
+        counts[code] = hasMismatch && broadcast.has(code) ? (counts[code] || 0) + 1 : 0;
+      }
+      await writeJsonFileAtomic(await strikePath(), { counts });
     }
-    await writeJsonFileAtomic(await strikePath(), { counts });
     // 电话策略：每一次播报都打电话 —— 只要该国家本轮进入 broadcast（持续异常需播报群）
     // 且该国家开启电话，就触发电话，不再依赖连续次数累计。
     const phoneNeeded = MC_COUNTRIES.filter((code) => {
@@ -1231,6 +1259,93 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
       return broadcast.has(code) && cfg.phone !== false;
     });
     return { ok: true, kept: runs.length, limit: MULTI_COUNTRY_RESULTS_KEEP, run, phoneNeeded, strikes: counts };
+  }
+
+  async function persistPhoneDelivery(runId, delivery) {
+    return queueCheckResultWrite(async () => {
+      const data = await loadResults();
+      const runs = (data.runs || []).map((run) => {
+        if (String(run.id || "") !== String(runId)) return run;
+        const phoneDeliveries = [
+          ...(run.phoneDeliveries || []).filter((item) => item.country !== delivery.country),
+          delivery,
+        ];
+        return { ...run, phoneDeliveries };
+      });
+      await writeJsonFileAtomic(await resultsPath(), { runs });
+      historyCache = null;
+      return delivery;
+    });
+  }
+
+  async function deliverPhoneForCountry(run, country) {
+    const mismatches = Array.isArray(country.mismatches) ? country.mismatches : [];
+    const attemptedAt = new Date().toISOString();
+    await persistPhoneDelivery(run.id, { country: country.code, status: "pending", attemptedAt });
+    try {
+      const response = await (mcPhoneCaller || callMcPhone)({
+        checkedAt: run.checkedAt,
+        targets: [{
+          code: country.code,
+          label: country.label || country.code,
+          n: mismatches.length,
+          items: mismatches.map((item) => item.check_item).filter(Boolean),
+        }],
+      });
+      const calls = Array.isArray(response?.calls) ? response.calls : [];
+      const failedCount = calls.filter((call) => call.ok === false).length;
+      const status = response?.ok === false || failedCount > 0
+        ? "failed"
+        : (calls.length === 0 ? "skipped" : "succeeded");
+      return persistPhoneDelivery(run.id, {
+        country: country.code,
+        status,
+        attemptedAt,
+        completedAt: new Date().toISOString(),
+        callCount: calls.length,
+        failedCount,
+        note: response?.note || "",
+      });
+    } catch (error) {
+      return persistPhoneDelivery(run.id, {
+        country: country.code,
+        status: "failed",
+        attemptedAt,
+        completedAt: new Date().toISOString(),
+        callCount: 0,
+        failedCount: 1,
+        error: String(error?.message || error).slice(0, 160),
+      });
+    }
+  }
+
+  /** 保存校验结果，并对本次 broadcast 国家执行一次幂等电话投递。 */
+  async function ingestCheckResult(result = {}) {
+    const appended = await appendCheckResult(result);
+    const deliveries = [];
+    for (const code of appended.phoneNeeded) {
+      const existing = (appended.run.phoneDeliveries || []).find((item) => item.country === code);
+      if (existing) {
+        deliveries.push({ ...existing, deduplicated: true });
+        continue;
+      }
+      const key = `${appended.run.id}:${code}`;
+      const inFlight = phoneDeliveryInFlight.get(key);
+      if (inFlight) {
+        deliveries.push({ ...(await inFlight), deduplicated: true });
+        continue;
+      }
+      const country = appended.run.countries.find((item) => item.code === code);
+      if (!country) continue;
+      const delivery = deliverPhoneForCountry(appended.run, country);
+      phoneDeliveryInFlight.set(key, delivery);
+      try {
+        deliveries.push(await delivery);
+      } finally {
+        phoneDeliveryInFlight.delete(key);
+      }
+    }
+    return { ...appended, detailLinks: appended.run.detailLinks, phoneDeliveries: deliveries };
   }
 
   // ---- 多国校验 · 电话通知配置（页面可调） ----
@@ -1969,6 +2084,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     listCheckResults,
     getCheckResultDetail,
     appendCheckResult,
+    ingestCheckResult,
     getMcSchedule,
     setMcSchedule,
     getMcSql,
