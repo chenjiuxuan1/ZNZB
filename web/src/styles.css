@@ -8849,6 +8849,21 @@ select.ar-field {
   gap: 6px;
   line-height: 1.6;
 }
+.mc-run-error-detail {
+  align-items: flex-start;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  color: #9a3412;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  line-height: 1.6;
+  margin-top: 7px;
+  padding: 7px 10px;
+  word-break: break-word;
+}
+.mc-run-error-detail strong { flex: 0 0 auto; }
 .mc-badge {
   display: inline-block;
   padding: 2px 8px;

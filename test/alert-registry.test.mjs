@@ -123,9 +123,34 @@ test("empty-like country error values do not mark healthy results as errors", as
   assert.equal(byEntry.mc_cn.hasError, false);
   assert.equal(byEntry.mc_id.hasError, false);
   assert.equal(byEntry.mc_mx.hasError, true);
+  assert.equal(byEntry.mc_cn.errorMessage, "");
+  assert.equal(byEntry.mc_id.errorMessage, "");
+  assert.equal(byEntry.mc_mx.errorMessage, "gateway timeout");
   assert.equal((await registry.getCheckResultDetail("run-error", "cn")).hasError, false);
   assert.equal((await registry.getCheckResultDetail("run-error", "id")).hasError, false);
-  assert.equal((await registry.getCheckResultDetail("run-error", "mx")).hasError, true);
+  const mxDetail = await registry.getCheckResultDetail("run-error", "mx");
+  assert.equal(mxDetail.hasError, true);
+  assert.equal(mxDetail.errorMessage, "gateway timeout");
+});
+
+test("multi-country execution errors expose a safe readable reason", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  await registry.create({ id: "mc_cn", name: "中国校验", country: "CN" });
+  await registry.appendCheckResult({
+    id: "run-safe-error",
+    countries: [{
+      code: "cn",
+      label: "中国",
+      mismatches: [],
+      error: { message: "connection failed password=plain-secret", detail: "host unavailable" },
+    }],
+  });
+
+  const [history] = await registry.listAllHistory();
+  assert.equal(history.hasError, true);
+  assert.match(history.errorMessage, /connection failed/);
+  assert.match(history.errorMessage, /password=\[REDACTED\]/);
+  assert.doesNotMatch(history.errorMessage, /plain-secret/);
 });
 
 test("multi-country detail lookup resolves one run and one country", async (t) => {

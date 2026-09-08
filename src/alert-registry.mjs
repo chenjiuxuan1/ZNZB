@@ -77,6 +77,32 @@ function hasMeaningfulError(value) {
   return Boolean(value);
 }
 
+function getMeaningfulErrorMessage(value) {
+  if (!hasMeaningfulError(value)) return "";
+  let message = "";
+  if (typeof value === "string") {
+    message = value.trim();
+  } else if (Array.isArray(value)) {
+    message = value.map(getMeaningfulErrorMessage).filter(Boolean).join("；");
+  } else if (typeof value === "object") {
+    const preferred = [value.message, value.error, value.detail, value.reason]
+      .map(getMeaningfulErrorMessage)
+      .find(Boolean);
+    if (preferred) {
+      message = preferred;
+    } else {
+      try {
+        message = JSON.stringify(value);
+      } catch {
+        message = String(value);
+      }
+    }
+  } else {
+    message = String(value);
+  }
+  return sanitizeAuditError(message);
+}
+
 // 多国校验 · 发送群配置（群 chat id + 各国家负责人 @ 清单，有报警时在通知末尾 @ 对应负责人）
 // 负责人默认留空，由用户在页面「通知配置」里自行填写。
 const MC_GROUP_FILE = "config/mc-group.json";
@@ -809,6 +835,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
             );
             if (!countryResult) continue;
             const mismatches = Array.isArray(countryResult.mismatches) ? countryResult.mismatches : [];
+            const errorMessage = getMeaningfulErrorMessage(countryResult.error);
             all.push({
               ...r,
               entryId: entry.id,
@@ -816,7 +843,8 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
               country: code.toUpperCase(),
               countries: [countryResult],
               hasAlert: mismatches.length > 0,
-              hasError: hasMeaningfulError(countryResult.error),
+              hasError: Boolean(errorMessage),
+              errorMessage,
               text: countryResult.text || "",
               summary: countryResult.summary || null,
               detailKey: `${r.id || ""}:${code}`,
@@ -1202,11 +1230,13 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
       (item) => String(item.code || "").toLowerCase() === code
     );
     if (!countryResult) return null;
+    const errorMessage = getMeaningfulErrorMessage(countryResult.error);
     return {
       ...run,
       countries: [countryResult],
       hasAlert: Array.isArray(countryResult.mismatches) && countryResult.mismatches.length > 0,
-      hasError: hasMeaningfulError(countryResult.error),
+      hasError: Boolean(errorMessage),
+      errorMessage,
       detailKey: `${run.id || ""}:${code}`,
     };
   }

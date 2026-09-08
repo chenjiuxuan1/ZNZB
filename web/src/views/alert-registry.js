@@ -103,6 +103,28 @@ function runIdMatches(actual, requested) {
   return Boolean(actual && requested && (String(actual) === requested || String(actual).startsWith(requested)));
 }
 
+function formatMcError(value) {
+  if (value == null || value === false || value === 0) return "";
+  let message = "";
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["", "false", "null", "undefined", "none", "0", "{}", "[]"].includes(normalized)) return "";
+    message = value.trim();
+  } else if (Array.isArray(value)) {
+    message = value.map(formatMcError).filter(Boolean).join("；");
+  } else if (typeof value === "object") {
+    message = [value.message, value.error, value.detail, value.reason]
+      .map(formatMcError)
+      .find(Boolean) || JSON.stringify(value);
+  } else {
+    message = String(value);
+  }
+  return message
+    .replace(/\bBearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
+    .replace(/\b(token|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=[REDACTED]")
+    .slice(0, 500);
+}
+
 /** 加载全部告警历史日志（按时间范围取数 + 筛选 + 分页）。 */
 async function loadMcResults(root) {
   const el = root.querySelector("#mc-results");
@@ -542,6 +564,7 @@ function renderMcResults(root) {
     const entryBadge = (run.entryName || run.entryId)
       ? `<span class="mc-entry-badge" title="${escapeHtml(run.entryId || "")}">${escapeHtml(run.entryName || run.entryId)}</span>`
       : "";
+    const errorMessage = formatMcError(run.errorMessage || run.countries?.[0]?.error);
     const bodyText = (run.text || run.summary || "").trim();
     const runCountry = normalizeMcCountry(run.country || run.countries?.[0]?.code);
     const isTarget = Boolean(mcState.detailTarget
@@ -564,7 +587,11 @@ function renderMcResults(root) {
         </details>
       `;
     }).join("");
-    const summaryLine = summary || (hasCountries && !abnormal.length ? `<span class="mc-badge mc-badge-gray">无异常</span>` : "");
+    const summaryLine = summary || (run.hasError
+      ? `<span class="mc-badge mc-badge-red">校验执行失败，未产出异常明细</span>`
+      : hasCountries && !abnormal.length
+        ? `<span class="mc-badge mc-badge-gray">无异常</span>`
+        : "");
     return `
       <article class="mc-run ${(start + idx) === 0 ? "mc-run-latest" : ""} ${isTarget ? "mc-run-target" : ""}" data-detail-run="${escapeHtml(String(run.id || ""))}" data-detail-country="${escapeHtml(runCountry)}">
         <div class="mc-run-head">
@@ -575,6 +602,7 @@ function renderMcResults(root) {
           ${runCountry ? `<button class="mc-copy-detail-link" data-run-id="${escapeHtml(String(run.id || ""))}" data-country="${escapeHtml(runCountry)}">复制详情链接</button>` : ""}
         </div>
         ${summaryLine ? `<div class="mc-run-countries">${summaryLine}</div>` : ""}
+        ${errorMessage ? `<div class="mc-run-error-detail"><strong>校验错误：</strong><span>${escapeHtml(errorMessage)}</span></div>` : ""}
         ${phoneAudit ? `<div class="mc-run-phone">${phoneAudit}</div>` : ""}
         ${bodyText ? `<div class="mc-run-summary">${escapeHtml(bodyText)}</div>` : ""}
         ${detailPanels}
