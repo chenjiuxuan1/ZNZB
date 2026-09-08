@@ -595,6 +595,12 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/multi-country/check-results") {
     return sendJson(response, 200, await alertRegistry.listCheckResults());
   }
+  if (method === "GET" && /^\/api\/multi-country\/check-results\/[^/]+\/[^/]+$/.test(url.pathname)) {
+    const [, , , , runId, country] = url.pathname.split("/");
+    const detail = await alertRegistry.getCheckResultDetail(runId, country);
+    if (!detail) return sendJson(response, 404, { error: "未找到对应的告警详情" });
+    return sendJson(response, 200, detail);
+  }
   if (method === "POST" && url.pathname === "/api/multi-country/check-results") {
     const body = await readBody(request, {});
     return sendJson(response, 201, await alertRegistry.appendCheckResult(body || {}));

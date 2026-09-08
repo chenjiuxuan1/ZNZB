@@ -16,3 +16,9 @@ test("server exposes the alert script audit read route", async () => {
   assert.match(source, /GET" && url\.pathname === "\/api\/alert-registry\/script-audit"/);
   assert.match(source, /alertRegistry\.listScriptAudit\(\)/);
 });
+
+test("server exposes a country-scoped multi-country result detail route", async () => {
+  const source = await fs.readFile(new URL("../src/server.mjs", import.meta.url), "utf8");
+  assert.ok(source.includes('/^\\/api\\/multi-country\\/check-results\\/[^/]+\\/[^/]+$/.test(url.pathname)'));
+  assert.match(source, /alertRegistry\.getCheckResultDetail\(runId, country\)/);
+});
