@@ -102,6 +102,25 @@ test("aggregated multi-country history keeps only the entry country", async (t) 
   assert.equal(byEntry.mc_id.hasAlert, true);
 });
 
+test("multi-country detail lookup resolves one run and one country", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  await registry.appendCheckResult({
+    id: "run-detail-abcdef",
+    checkedAt: "2026-09-08T00:55:12.000Z",
+    countries: [
+      { code: "cn", label: "中国", mismatches: [] },
+      { code: "id", label: "印尼", sql: "select 1", mismatches: [{ check_item: "fee_amt", mismatch_cnt: 2 }] },
+    ],
+  });
+
+  const detail = await registry.getCheckResultDetail("run-detail", "id");
+  assert.equal(detail.id, "run-detail-abcdef");
+  assert.equal(detail.detailKey, "run-detail-abcdef:id");
+  assert.deepEqual(detail.countries.map((item) => item.code), ["id"]);
+  assert.equal(await registry.getCheckResultDetail("missing", "id"), null);
+  await assert.rejects(() => registry.getCheckResultDetail("run-detail", "xx"), /不支持的国家/);
+});
+
 test("normalizeEntry fills defaults and preserves enabled flag", async (t) => {
   const { registry } = await tmpRegistry(t);
   const entry = registry.normalizeEntry({ id: "x", name: "X" });

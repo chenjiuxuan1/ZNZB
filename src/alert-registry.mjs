@@ -1159,6 +1159,32 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     return data.runs || [];
   }
 
+  /** 读取一次运行中单个国家的详情；短 run id 仅在唯一匹配时生效。 */
+  async function getCheckResultDetail(runId, country) {
+    const code = String(country || "").toLowerCase();
+    if (!MC_COUNTRIES.includes(code)) {
+      throw Object.assign(new Error(`不支持的国家：${country || ""}`), { statusCode: 400 });
+    }
+    const requestedId = String(runId || "").trim();
+    if (!requestedId) return null;
+    const runs = await listCheckResults();
+    const exact = runs.find((run) => String(run.id || "") === requestedId);
+    const prefixMatches = exact ? [] : runs.filter((run) => String(run.id || "").startsWith(requestedId));
+    const run = exact || (prefixMatches.length === 1 ? prefixMatches[0] : null);
+    if (!run) return null;
+    const countryResult = (run.countries || []).find(
+      (item) => String(item.code || "").toLowerCase() === code
+    );
+    if (!countryResult) return null;
+    return {
+      ...run,
+      countries: [countryResult],
+      hasAlert: Array.isArray(countryResult.mismatches) && countryResult.mismatches.length > 0,
+      hasError: Boolean(countryResult.error),
+      detailKey: `${run.id || ""}:${code}`,
+    };
+  }
+
   /**
    * 追加一次多国校验结果，保留最近 7 次（超出的旧记录丢弃）。
    * result: { checkedAt?, id?, countries: [{code, label, mismatches: [{check_item, mismatch_cnt}]}], hasAlert, hasError, text? }
@@ -1864,6 +1890,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     normalizeEntry,
     resolveEnv,
     listCheckResults,
+    getCheckResultDetail,
     appendCheckResult,
     getMcSchedule,
     setMcSchedule,
