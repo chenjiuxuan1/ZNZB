@@ -9357,6 +9357,15 @@ select.ar-field {
   align-items: center;
   gap: 4px;
 }
+.mc-sql-textarea {
+  width: 100%;
+  min-height: 96px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #344054;
+  resize: vertical;
+}
 .mc-notify-actions {
   display: flex;
   align-items: center;
