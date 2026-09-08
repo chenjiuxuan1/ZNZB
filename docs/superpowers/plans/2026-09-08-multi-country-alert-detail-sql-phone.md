@@ -60,7 +60,7 @@ git commit -m "fix: isolate multi-country alert history"
 - Modify: `src/alert-registry.mjs`
 - Modify: `src/server.mjs`
 - Test: `test/alert-registry.test.mjs`
-- Test: `test/server-static.test.mjs`
+- Test: `test/server-startup.test.mjs`
 
 - [ ] **Step 1: Write failing detail lookup tests**
 
@@ -77,7 +77,7 @@ Add a source assertion for `GET /api/multi-country/check-results/:runId/:country
 
 - [ ] **Step 2: Run the focused tests and confirm RED**
 
-Run: `node --test test/alert-registry.test.mjs test/server-static.test.mjs`
+Run: `node --test test/alert-registry.test.mjs test/server-startup.test.mjs`
 
 - [ ] **Step 3: Implement lookup and route**
 
@@ -85,12 +85,12 @@ Validate country against `MC_COUNTRIES`, locate a run by exact ID or a unique ID
 
 - [ ] **Step 4: Run focused tests and confirm GREEN**
 
-Run: `node --test test/alert-registry.test.mjs test/server-static.test.mjs`
+Run: `node --test test/alert-registry.test.mjs test/server-startup.test.mjs`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/alert-registry.mjs src/server.mjs test/alert-registry.test.mjs test/server-static.test.mjs
+git add src/alert-registry.mjs src/server.mjs test/alert-registry.test.mjs test/server-startup.test.mjs
 git commit -m "feat: expose scoped alert run details"
 ```
 
@@ -201,7 +201,7 @@ git commit -m "feat: edit validation SQL per country"
 - Modify: `src/alert-registry.mjs`
 - Modify: `src/server.mjs`
 - Test: `test/mc-two-round.test.mjs`
-- Test: `test/server-static.test.mjs`
+- Test: `test/server-startup.test.mjs`
 
 - [ ] **Step 1: Write failing delivery tests**
 
@@ -215,7 +215,7 @@ assert.equal(retry.phoneDeliveries.every((item) => item.deduplicated), true);
 
 - [ ] **Step 2: Run phone tests and confirm RED**
 
-Run: `node --test test/mc-two-round.test.mjs test/server-static.test.mjs`
+Run: `node --test test/mc-two-round.test.mjs test/server-startup.test.mjs`
 
 - [ ] **Step 3: Implement `ingestCheckResult`**
 
@@ -233,12 +233,12 @@ Change only `POST /api/multi-country/check-results` to call `ingestCheckResult`;
 
 - [ ] **Step 5: Run focused tests and confirm GREEN**
 
-Run: `node --test test/mc-two-round.test.mjs test/server-static.test.mjs`
+Run: `node --test test/mc-two-round.test.mjs test/server-startup.test.mjs`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/alert-registry.mjs src/server.mjs test/mc-two-round.test.mjs test/server-static.test.mjs
+git add src/alert-registry.mjs src/server.mjs test/mc-two-round.test.mjs test/server-startup.test.mjs
 git commit -m "feat: deliver one phone alert per broadcast"
 ```
 
