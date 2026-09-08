@@ -789,6 +789,27 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
         for (const r of runs) {
           const ts = Date.parse(r.checkedAt || "");
           if (cutoff && (!Number.isFinite(ts) || ts < cutoff)) continue;
+          if (isMcEntry(entry.id)) {
+            const code = String(entry.id).replace(/^mc_?/, "").toLowerCase();
+            const countryResult = (r.countries || []).find(
+              (item) => String(item.code || "").toLowerCase() === code
+            );
+            if (!countryResult) continue;
+            const mismatches = Array.isArray(countryResult.mismatches) ? countryResult.mismatches : [];
+            all.push({
+              ...r,
+              entryId: entry.id,
+              entryName: entry.name,
+              country: code.toUpperCase(),
+              countries: [countryResult],
+              hasAlert: mismatches.length > 0,
+              hasError: Boolean(countryResult.error),
+              text: countryResult.text || "",
+              summary: countryResult.summary || null,
+              detailKey: `${r.id || ""}:${code}`,
+            });
+            continue;
+          }
           all.push({
             entryId: entry.id,
             entryName: entry.name,

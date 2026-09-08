@@ -80,6 +80,28 @@ test("create rejects duplicate id", async (t) => {
   await assert.rejects(() => registry.create({ id: "dup", name: "B" }), /已存在/);
 });
 
+test("aggregated multi-country history keeps only the entry country", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  await registry.create({ id: "mc_cn", name: "中国校验", country: "CN" });
+  await registry.create({ id: "mc_id", name: "印尼校验", country: "ID" });
+  await registry.appendCheckResult({
+    id: "run-country-scope",
+    checkedAt: "2026-09-08T00:55:12.000Z",
+    hasAlert: true,
+    countries: [
+      { code: "cn", label: "中国", mismatches: [] },
+      { code: "id", label: "印尼", mismatches: [{ check_item: "user_flag", mismatch_cnt: 3 }] },
+    ],
+  });
+
+  const history = await registry.listAllHistory();
+  const byEntry = Object.fromEntries(history.map((run) => [run.entryId, run]));
+  assert.deepEqual(byEntry.mc_cn.countries.map((item) => item.code), ["cn"]);
+  assert.deepEqual(byEntry.mc_id.countries.map((item) => item.code), ["id"]);
+  assert.equal(byEntry.mc_cn.hasAlert, false);
+  assert.equal(byEntry.mc_id.hasAlert, true);
+});
+
 test("normalizeEntry fills defaults and preserves enabled flag", async (t) => {
   const { registry } = await tmpRegistry(t);
   const entry = registry.normalizeEntry({ id: "x", name: "X" });
