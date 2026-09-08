@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPost, apiPut } from "../api.js";
+import { state } from "../state.js";
 import { escapeHtml } from "../view-utils.js";
 import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-banner.js";
 
@@ -12,6 +13,15 @@ import { renderLegacyMigrationBanner } from "./alert-center/legacy-migration-ban
  *   4. 「测试命令」：新增前先用任意命令验证（动态添加测试代码入口）
  */
 export function renderAlertRegistry(root) {
+  const linkedCountry = normalizeMcCountry(state.routeQuery?.country);
+  const linkedRunId = String(state.routeQuery?.runId || "").trim();
+  mcState.detailTarget = linkedCountry && linkedRunId
+    ? { runId: linkedRunId, country: linkedCountry, scrolled: false, missing: false }
+    : null;
+  if (mcState.detailTarget) {
+    mcState.entryId = `mc_${linkedCountry}`;
+    mcState.page = 1;
+  }
   root.innerHTML = `
     <div class="page-header ar-console-header">
       <div class="ar-console-heading">
@@ -81,7 +91,17 @@ export function renderAlertRegistry(root) {
 }
 
 // 全部告警历史日志状态（筛选 + 分页）
-const mcState = { entryId: "", onlyAlert: false, days: 1, page: 1, pageSize: 10, runs: [] };
+const MC_COUNTRY_CODES = ["cn", "id", "mx", "th", "ph", "pk"];
+const mcState = { entryId: "", onlyAlert: false, days: 1, page: 1, pageSize: 10, runs: [], detailTarget: null };
+
+function normalizeMcCountry(value) {
+  const code = String(value || "").toLowerCase();
+  return MC_COUNTRY_CODES.includes(code) ? code : "";
+}
+
+function runIdMatches(actual, requested) {
+  return Boolean(actual && requested && (String(actual) === requested || String(actual).startsWith(requested)));
+}
 
 /** 加载全部告警历史日志（按时间范围取数 + 筛选 + 分页）。 */
 async function loadMcResults(root) {
@@ -103,6 +123,21 @@ async function loadMcResults(root) {
     return;
   }
   mcState.runs = runs;
+  if (mcState.detailTarget) {
+    const target = mcState.detailTarget;
+    const matches = runs.filter((run) => run.entryId === `mc_${target.country}` && runIdMatches(run.id, target.runId));
+    if (matches.length !== 1 && mcState.days !== 0) {
+      mcState.days = 0;
+      return loadMcResults(root);
+    }
+    target.missing = matches.length !== 1;
+    if (matches.length === 1) {
+      target.runId = String(matches[0].id);
+      const filteredForCountry = runs.filter((run) => run.entryId === `mc_${target.country}`);
+      const targetIndex = filteredForCountry.findIndex((run) => String(run.id) === target.runId);
+      mcState.page = Math.floor(Math.max(0, targetIndex) / mcState.pageSize) + 1;
+    }
+  }
   // 绑定筛选控件事件
   const onlyAlert = root.querySelector("#mc-only-alert");
   if (onlyAlert) {
@@ -410,7 +445,9 @@ const MC_DETAIL_MAX = 200;
 /** 渲染单个国家的差异明细表（含明细分页，每页 20 条，最多 200 条）。 */
 function renderMcDetailBlock(c) {
   const dets = (c.details || []).slice(0, MC_DETAIL_MAX);
-  if (!dets.length) return "";
+  if (!dets.length) {
+    return `<div class="mc-detail-empty">该历史记录只保存了异常数量，未保存具体差异。</div>`;
+  }
   const key = (c.runId || "") + "|" + (c.code || c.label || "");
   if (!(key in mcDetailPage)) mcDetailPage[key] = 1;
   const totalPages = Math.max(1, Math.ceil(dets.length / MC_DETAIL_PAGE_SIZE));
@@ -481,6 +518,10 @@ function renderMcResults(root) {
       ? `<span class="mc-entry-badge" title="${escapeHtml(run.entryId || "")}">${escapeHtml(run.entryName || run.entryId)}</span>`
       : "";
     const bodyText = (run.text || run.summary || "").trim();
+    const runCountry = normalizeMcCountry(run.country || run.countries?.[0]?.code);
+    const isTarget = Boolean(mcState.detailTarget
+      && runCountry === mcState.detailTarget.country
+      && String(run.id || "") === mcState.detailTarget.runId);
     const detailPanels = abnormal.map((c) => {
       const m = c.mismatches || [];
       const sql = c.sql || c.detailSql || "";
@@ -489,27 +530,28 @@ function renderMcResults(root) {
         ? `<div class="mc-summary">异常 ${m.length} 项：${m.map((x) => `${escapeHtml(x.check_item)}（${escapeHtml(x.mismatch_cnt)} 条）`).join("、")}</div>`
         : "";
       return `
-        <details class="mc-detail">
+        <details class="mc-detail" ${isTarget ? "open" : ""}>
           <summary>📄 ${escapeHtml(c.label || c.code || "")} · 校验语句与差异明细</summary>
           ${summaryHtml}
-          ${sql ? `<div class="mc-sql-title">校验语句（${escapeHtml(String(c.code || ""))}）<button class="mc-copy-btn" data-copy-sql="${escapeHtml(sql)}" title="复制校验语句">📋 复制</button></div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : ""}
+          ${sql ? `<div class="mc-sql-title">校验语句（${escapeHtml(String(c.code || ""))}）<button class="mc-copy-btn" data-copy-sql="${escapeHtml(sql)}" title="复制校验语句">📋 复制</button></div><pre class="mc-sql">${escapeHtml(sql)}</pre>` : `<div class="mc-detail-empty">该历史记录未保存本次校验 SQL。</div>`}
           ${renderMcDetailBlock({ ...c, runId: run.id })}
         </details>
       `;
     }).join("");
     const summaryLine = summary || (hasCountries && !abnormal.length ? `<span class="mc-badge mc-badge-gray">无异常</span>` : "");
     return `
-      <div class="mc-run ${(start + idx) === 0 ? "mc-run-latest" : ""}">
+      <article class="mc-run ${(start + idx) === 0 ? "mc-run-latest" : ""} ${isTarget ? "mc-run-target" : ""}" data-detail-run="${escapeHtml(String(run.id || ""))}" data-detail-country="${escapeHtml(runCountry)}">
         <div class="mc-run-head">
           <span class="mc-run-id">#${escapeHtml(run.id ? String(run.id).slice(0, 8) : String(start + idx + 1))}</span>
           <span class="mc-run-ts">${escapeHtml(ts)}</span>
           ${entryBadge}
           ${stateMark}
+          ${runCountry ? `<button class="mc-copy-detail-link" data-run-id="${escapeHtml(String(run.id || ""))}" data-country="${escapeHtml(runCountry)}">复制详情链接</button>` : ""}
         </div>
         ${summaryLine ? `<div class="mc-run-countries">${summaryLine}</div>` : ""}
         ${bodyText ? `<div class="mc-run-summary">${escapeHtml(bodyText)}</div>` : ""}
         ${detailPanels}
-      </div>
+      </article>
     `;
   }).join("");
   // 复制校验语句按钮（事件委托，覆盖局部重渲染）
@@ -535,6 +577,26 @@ function renderMcResults(root) {
       setTimeout(() => { btn.textContent = original; btn.classList.remove("copied"); }, 1500);
     });
   });
+  el.querySelectorAll(".mc-copy-detail-link").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const hash = `#/alert-registry?runId=${encodeURIComponent(btn.dataset.runId || "")}&country=${encodeURIComponent(btn.dataset.country || "")}`;
+      const link = `${window.location.origin}${window.location.pathname}${hash}`;
+      const original = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(link);
+        btn.textContent = "已复制";
+      } catch {
+        btn.textContent = "复制失败";
+      }
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    });
+  });
+  if (mcState.detailTarget?.missing) {
+    el.insertAdjacentHTML("afterbegin", `<div class="sandbox-status error"><strong>未找到告警详情</strong><span>运行记录可能已过期或链接参数无效。</span></div>`);
+  } else if (mcState.detailTarget && !mcState.detailTarget.scrolled) {
+    mcState.detailTarget.scrolled = true;
+    requestAnimationFrame(() => el.querySelector(".mc-run-target")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
   renderMcPager(root, totalPages);
   renderMcEmpty(filtered.length);
 }
