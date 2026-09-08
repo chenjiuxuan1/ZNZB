@@ -49,17 +49,34 @@
 - **TV**：`POST https://tv-service-alert.kuainiu.chat/alert/v2/array`
   - body: `{"botId":"f82292a5-45c5-42ea-84da-272b4c81ebcc","message":"...","mentions":["adamyu@kn.group"]}`
 
-## 最近 7 次校验结果（ZNZB 告警注册页）
+## 校验结果、详情链接与电话投递（ZNZB 告警注册页）
 
 - 每次 n8n 校验完成后，`6国校验` Code 节点会把本次结果回写到平台：
   `POST http://172.19.0.1:28787/api/multi-country/check-results`
-  - 请求体：`{ source, checkedAt, countries: [{code,label,mismatches,error}], hasAlert, hasError, text }`
-  - 平台只保留**最近 7 次**（先进先出，超出丢弃旧记录），存储于 `config/multi-country-check-results.json`（gitignore）。
-- 前端：`告警注册` 页底部「多国一致性校验 · 最近 7 次结果」区块，每次刷新展示最近 7 次；
-  有异常（`mismatch_cnt > 0`）的国家标红并列出明细。
-- 后端：`src/alert-registry.mjs` `listCheckResults()` / `appendCheckResult()`；
+  - 请求体：`{ id, source, checkedAt, broadcast, repairTriggered, countries: [{code,label,mismatches,sql,details,detailsTruncated,error}], hasAlert, hasError, text }`
+  - `id` 必须在同一次回调重试中保持不变，用作历史和电话投递幂等键。
+  - `sql` 保存本次实际执行的校验语句；`details` 保存具体差异行；旧记录若没有这些字段，页面会明确提示无法还原。
+  - 平台保留最近 200 次，存储于 `config/multi-country-check-results.json`（gitignore）。
+- 回调响应给每个国家返回 `detailLinks` / `country.detailUrl`，格式为
+  `#/alert-registry?runId=<运行ID>&country=<国家代码>`；通知工作流应使用这个链接，不再只链接告警注册首页。
+- 前端按 `mc_cn / mc_id / mc_mx / mc_th / mc_ph / mc_pk` 隔离历史，详情自动定位并展开对应国家的 SQL、异常数量、具体差异和电话投递状态。
+- 后端：`src/alert-registry.mjs` `listCheckResults()` / `ingestCheckResult()`；
   路由 `src/server.mjs` `GET/POST /api/multi-country/check-results`。
 - 平台内网回调地址：`http://172.19.0.1:28787`（ZNZB Docker 容器宿主网关，n8n 服务器可达）。
+
+## 页面编辑校验 SQL
+
+- `GET /api/multi-country/sql/:country` 只读取当前国家在 n8n `6国校验` Code 节点中的 SQL。
+- `PUT /api/multi-country/sql/:country` 只更新当前国家，保存后保持工作流原激活状态。
+- 服务端仅接受一条以 `SELECT` 或 `WITH` 开头、包含 `FROM` 的只读查询，拒绝 DDL/DML 和多语句。
+
+## 电话策略
+
+- 首次异常进入 `repairTriggered`：只触发修复，不发正式播报，也不打电话。
+- 持续异常进入 `broadcast`：该国家电话开关开启时，每次正式播报触发一次电话。
+- 幂等键为 `runId + country`。平台会先保存 `pending`，结束后写入 `succeeded / failed / skipped`，相同回调重试不会重复拨号。
+- `skipped` 表示语音停用、没有联系人或语音配置不完整；页面历史会显示最终状态。
+- 安全要求：生产回调必须由反向代理或应用层令牌/HMAC 限制为 n8n 可调用，不能把回调端口直接暴露给不可信网络。
 
 ## 平台告警注册条目
 
@@ -69,6 +86,6 @@
 
 ## 待办
 
-- [ ] 电话告警（夜莺 ali-voice）：脚本校验异常 → 推送事件到夜莺 → ali-voice 规则电话。接收人待用户提供。
+- [ ] 为多国结果回调增加独立应用层 Bearer/HMAC 校验，并在 n8n 同步配置凭据。
 - [ ] 印尼 298 条 repaid_fee_amt 异常、巴基斯坦 7 项异常：数据侧需排查修复。
 - [ ] 确认是否部署 6 国平台条目到生产并启用。
