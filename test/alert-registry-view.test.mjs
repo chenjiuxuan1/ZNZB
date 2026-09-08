@@ -47,3 +47,10 @@ test("alert history supports exact deep links and legacy detail fallbacks", asyn
   assert.match(source, /该历史记录只保存了异常数量，未保存具体差异/);
   assert.match(source, /scrollIntoView/);
 });
+
+test("SQL editor loads and saves only the selected multi-country entry", async () => {
+  const source = await fs.readFile(viewUrl, "utf8");
+  assert.match(source, /\^mc_\(cn\|id\|mx\|th\|ph\|pk\)\$/);
+  assert.match(source, /\/api\/multi-country\/sql\/\$\{encodeURIComponent\(country\)\}/);
+  assert.doesNotMatch(source, /const order = \["cn", "id", "mx", "th", "ph", "pk"\];[\s\S]{0,1800}ar-ep-sql-save/);
+});
