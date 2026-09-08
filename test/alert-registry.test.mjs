@@ -185,27 +185,65 @@ test("normalizeEntry fills defaults and preserves enabled flag", async (t) => {
   assert.equal(disabled.enabled, false);
 });
 
-test("runTestByCommand runs local command and captures output", async (t) => {
-  const { registry } = await tmpRegistry(t);
-  const result = await registry.runTestByCommand({ runVia: "local", command: "echo hello-world" });
+test("runTestByCommand runs a dry-run alert script and captures output", async (t) => {
+  const { registry, dir } = await tmpRegistry(t);
+  await fs.mkdir(path.join(dir, "alert"), { recursive: true });
+  await fs.writeFile(path.join(dir, "alert", "run_alert.py"), "print('hello-world')\n");
+  const result = await registry.runTestByCommand({
+    runVia: "local",
+    command: `cd '${dir}' && python3 alert/run_alert.py --dry-run`,
+  });
   assert.equal(result.ok, true);
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /hello-world/);
 });
 
-test("runTestByCommand reports non-zero exit for failing command", async (t) => {
-  const { registry } = await tmpRegistry(t);
-  const result = await registry.runTestByCommand({ runVia: "local", command: `"${process.execPath}" -e "process.exit(3)"` });
+test("runTestByCommand reports non-zero exit for a failing dry-run alert script", async (t) => {
+  const { registry, dir } = await tmpRegistry(t);
+  await fs.mkdir(path.join(dir, "alert"), { recursive: true });
+  await fs.writeFile(path.join(dir, "alert", "run_alert.py"), "raise SystemExit(3)\n");
+  const result = await registry.runTestByCommand({
+    runVia: "local",
+    command: `cd '${dir}' && python3 alert/run_alert.py --dry-run`,
+  });
   assert.equal(result.ok, false);
   assert.equal(result.exitCode, 3);
 });
 
 test("runTest runs a stored entry's command", async (t) => {
-  const { registry } = await tmpRegistry(t);
-  const created = await registry.create({ id: "runme", name: "Run", command: `"${process.execPath}" -e "console.log('out=42')"`, runVia: "local" });
+  const { registry, dir } = await tmpRegistry(t);
+  await fs.mkdir(path.join(dir, "alert"), { recursive: true });
+  await fs.writeFile(path.join(dir, "alert", "run_alert.py"), "print('out=42')\n");
+  const created = await registry.create({
+    id: "runme",
+    name: "Run",
+    command: `cd '${dir}' && python3 alert/run_alert.py --dry-run`,
+    runVia: "local",
+  });
   const result = await registry.runTest(created.id);
   assert.equal(result.ok, true);
   assert.match(result.stdout, /out=42/);
+});
+
+test("command tests reject arbitrary shell execution and environment expansion injection", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  await assert.rejects(
+    () => registry.runTestByCommand({ runVia: "local", command: "echo arbitrary-command" }),
+    (error) => error.statusCode === 400 && /dry-run/.test(error.message),
+  );
+
+  process.env.ALERT_TEST_INJECTION = "; touch /tmp/should-not-exist";
+  try {
+    await assert.rejects(
+      () => registry.runTestByCommand({
+        runVia: "ssh",
+        command: "cd /root/starrocks-pl-monitor-tv-alert && python3 alert/run_alert.py --note ${ALERT_TEST_INJECTION} --dry-run",
+      }),
+      (error) => error.statusCode === 400 && /安全校验/.test(error.message),
+    );
+  } finally {
+    delete process.env.ALERT_TEST_INJECTION;
+  }
 });
 
 test("runTest on missing id rejects with 404", async (t) => {
@@ -260,7 +298,12 @@ test("runTestByCommand with runVia=ssh degrades gracefully when N8N_BASE_URL mis
   const previous = process.env.N8N_BASE_URL;
   delete process.env.N8N_BASE_URL;
   try {
-    const result = await registry.runTestByCommand({ runVia: "ssh", sshHost: "root@10.20.47.14", sshPort: 36000, command: "echo hi" });
+    const result = await registry.runTestByCommand({
+      runVia: "ssh",
+      sshHost: "root@10.20.47.14",
+      sshPort: 36000,
+      command: "cd /root/starrocks-pl-monitor-tv-alert && python3 alert/run_alert.py --dry-run",
+    });
     assert.equal(result.ok, false);
     assert.equal(result.exitCode, -1);
     assert.match(result.stderr, /N8N_BASE_URL/);
@@ -289,10 +332,11 @@ test("runTestByCommand with runVia=ssh forwards command through n8n webhook", as
   const previous = process.env.N8N_BASE_URL;
   process.env.N8N_BASE_URL = `http://127.0.0.1:${port}`;
   try {
-    const result = await registry.runTestByCommand({ runVia: "ssh", sshHost: "root@10.20.47.14", sshPort: 36000, command: "echo hi" });
+    const command = "cd /root/starrocks-pl-monitor-tv-alert && python3 alert/run_alert.py --dry-run";
+    const result = await registry.runTestByCommand({ runVia: "ssh", sshHost: "root@10.20.47.14", sshPort: 36000, command });
     assert.equal(result.ok, true);
     assert.equal(result.exitCode, 0);
-    assert.match(result.stdout, /^mock-run:root@10\.20\.47\.14:36000:echo hi$/);
+    assert.equal(result.stdout, `mock-run:root@10.20.47.14:36000:${command}`);
   } finally {
     if (previous !== undefined) process.env.N8N_BASE_URL = previous;
     else delete process.env.N8N_BASE_URL;
@@ -339,15 +383,26 @@ test("multi-country SQL API reads and updates one country across code formatting
   const { registry } = await tmpRegistry(t);
   const before = await registry.getMcSql("id");
   assert.deepEqual(before, { ok: true, country: "id", sql: "select check_item, mismatch_cnt from id_check", node: "6国校验" });
-  const updated = await registry.setMcSql("id", { sql: "with x as (select 1) select check_item, mismatch_cnt from id_check_v2" });
+  const updated = await registry.setMcSql("id", {
+    sql: "with x as (select 1) select check_item, mismatch_cnt from id_check_v2 where etl_update_time < DATE_SUB(NOW(), INTERVAL 12 HOUR)",
+  });
   assert.equal(updated.ok, true);
   assert.equal(updated.country, "id");
   const code = workflow.nodes[0].parameters.jsCode;
   assert.match(code, /id_check_v2/);
+  assert.match(code, /INTERVAL 12 HOUR/);
   assert.match(code, /cn_check/);
   assert.match(code, /pk_check/);
 
   await assert.rejects(() => registry.getMcSql("xx"), /不支持的国家/);
   await assert.rejects(() => registry.setMcSql("id", { sql: "delete from id_check" }), /只允许只读 SELECT/);
   await assert.rejects(() => registry.setMcSql("id", { sql: "select 1; drop table x" }), /只允许单条/);
+});
+
+test("multi-country SQL updates require the 12-hour data stability guard", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  await assert.rejects(
+    () => registry.setMcSql("cn", { sql: "select check_item, mismatch_cnt from cross_check" }),
+    /12 小时防误报过滤/,
+  );
 });

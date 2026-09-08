@@ -17,8 +17,9 @@ import { renderDsScheduler } from "./views/ds-scheduler.js?v=20260725-ds-v8";
 import { renderDsSchedulerUsage } from "./views/ds-scheduler-usage.js?v=20260828-workspace-v1";
 import { renderHiveScheduler } from "./views/hive-scheduler.js?v=20260811-hive-v1";
 import { renderDsFailureLogs } from "./views/ds-failure-logs.js?v=20260902-n8n-repair-status-v7";
-import { renderAlertCenter } from "./views/alert-center.js?v=20260907-alert-operations-v2";
+import { renderAlertCenter } from "./views/alert-center.js?v=20260908-security-ui-v3";
 import { renderAlertRegistry } from "./views/alert-registry.js?v=20260907-mc-sql-edit";
+import { renderDataGovernance } from "./views/data-governance.js?v=20260908-gov-v2";
 
 const routes = [
   { path: "/dashboard", label: "总览", short: "总", render: renderDashboard },
@@ -37,6 +38,7 @@ const routes = [
   { path: "/ds-failure-logs", label: "DS失败任务日志", short: "错", render: renderDsFailureLogs },
   { path: "/ds-scheduler-usage", label: "DS网关使用统计", short: "用", render: renderDsSchedulerUsage },
   { path: "/hive-scheduler", label: "HIVE调度监控", short: "仓", render: renderHiveScheduler },
+  { path: "/data-governance", label: "数据治理", short: "治", render: renderDataGovernance },
 ];
 
 window.addEventListener("hashchange", () => {
