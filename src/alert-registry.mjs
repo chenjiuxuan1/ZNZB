@@ -66,6 +66,17 @@ const DEFAULT_TEST_TIMEOUT_MS = 25_000;
 const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
 
+function hasMeaningfulError(value) {
+  if (value == null || value === false || value === 0) return false;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return !["", "false", "null", "undefined", "none", "0", "{}", "[]"].includes(normalized);
+  }
+  if (Array.isArray(value)) return value.some(hasMeaningfulError);
+  if (typeof value === "object") return Object.values(value).some(hasMeaningfulError);
+  return Boolean(value);
+}
+
 // 多国校验 · 发送群配置（群 chat id + 各国家负责人 @ 清单，有报警时在通知末尾 @ 对应负责人）
 // 负责人默认留空，由用户在页面「通知配置」里自行填写。
 const MC_GROUP_FILE = "config/mc-group.json";
@@ -805,7 +816,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
               country: code.toUpperCase(),
               countries: [countryResult],
               hasAlert: mismatches.length > 0,
-              hasError: Boolean(countryResult.error),
+              hasError: hasMeaningfulError(countryResult.error),
               text: countryResult.text || "",
               summary: countryResult.summary || null,
               detailKey: `${r.id || ""}:${code}`,
@@ -1195,7 +1206,7 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
       ...run,
       countries: [countryResult],
       hasAlert: Array.isArray(countryResult.mismatches) && countryResult.mismatches.length > 0,
-      hasError: Boolean(countryResult.error),
+      hasError: hasMeaningfulError(countryResult.error),
       detailKey: `${run.id || ""}:${code}`,
     };
   }
