@@ -8862,6 +8862,35 @@ select.ar-field {
 .mc-badge-red { background: #fee2e2; color: #b91c1c; }
 .mc-badge-gray { background: #f1f5f9; color: #475569; }
 
+.mc-run-target {
+  background: #f7faff;
+  border-color: #75a7ff;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.12);
+  scroll-margin-top: 18px;
+}
+
+.mc-copy-detail-link {
+  background: transparent;
+  border: 0;
+  color: #2563eb;
+  font-size: 12px;
+  margin-left: auto;
+  min-height: 28px;
+  padding: 3px 7px;
+}
+
+.mc-detail-empty {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  color: #9a3412;
+  font-size: 12px;
+  margin-top: 8px;
+  padding: 8px 10px;
+}
+
+.mc-detail-body { overflow-x: auto; }
+
 /* ---- 通用条目能力面板 · 历史记录卡片 ---- */
 .mc-run-card {
   border: 1px solid #e4e7ec;

@@ -35,3 +35,15 @@ test("history markup escapes identifiers and fallback timestamps", async () => {
   assert.match(source, /escapeHtml\(run\.id \? String\(run\.id\)\.slice\(0, 8\) : String\(start \+ idx \+ 1\)\)/);
   assert.match(source, /escapeHtml\(ts\)/);
 });
+
+test("alert history supports exact deep links and legacy detail fallbacks", async () => {
+  const source = await fs.readFile(viewUrl, "utf8");
+  assert.match(source, /state\.routeQuery\?\.runId/);
+  assert.match(source, /state\.routeQuery\?\.country/);
+  assert.match(source, /data-detail-run=/);
+  assert.match(source, /data-detail-country=/);
+  assert.match(source, /mc-copy-detail-link/);
+  assert.match(source, /该历史记录未保存本次校验 SQL/);
+  assert.match(source, /该历史记录只保存了异常数量，未保存具体差异/);
+  assert.match(source, /scrollIntoView/);
+});
