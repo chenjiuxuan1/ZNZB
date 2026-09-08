@@ -102,6 +102,32 @@ test("aggregated multi-country history keeps only the entry country", async (t) 
   assert.equal(byEntry.mc_id.hasAlert, true);
 });
 
+test("empty-like country error values do not mark healthy results as errors", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  await registry.create({ id: "mc_cn", name: "中国校验", country: "CN" });
+  await registry.create({ id: "mc_id", name: "印尼校验", country: "ID" });
+  await registry.create({ id: "mc_mx", name: "墨西哥校验", country: "MX" });
+  await registry.appendCheckResult({
+    id: "run-error-normalization",
+    hasAlert: false,
+    hasError: true,
+    countries: [
+      { code: "cn", label: "中国", mismatches: [], error: "false" },
+      { code: "id", label: "印尼", mismatches: [], error: {} },
+      { code: "mx", label: "墨西哥", mismatches: [], error: "gateway timeout" },
+    ],
+  });
+
+  const history = await registry.listAllHistory();
+  const byEntry = Object.fromEntries(history.map((run) => [run.entryId, run]));
+  assert.equal(byEntry.mc_cn.hasError, false);
+  assert.equal(byEntry.mc_id.hasError, false);
+  assert.equal(byEntry.mc_mx.hasError, true);
+  assert.equal((await registry.getCheckResultDetail("run-error", "cn")).hasError, false);
+  assert.equal((await registry.getCheckResultDetail("run-error", "id")).hasError, false);
+  assert.equal((await registry.getCheckResultDetail("run-error", "mx")).hasError, true);
+});
+
 test("multi-country detail lookup resolves one run and one country", async (t) => {
   const { registry } = await tmpRegistry(t);
   await registry.appendCheckResult({
