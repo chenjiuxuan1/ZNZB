@@ -45,6 +45,7 @@ test("alert history supports exact deep links and legacy detail fallbacks", asyn
   assert.match(source, /mc-copy-detail-link/);
   assert.match(source, /该历史记录未保存本次校验 SQL/);
   assert.match(source, /该历史记录只保存了异常数量，未保存具体差异/);
+  assert.match(source, /未找到这条告警详情/);
   assert.match(source, /scrollIntoView/);
 });
 

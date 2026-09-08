@@ -498,10 +498,11 @@ function renderMcResults(root) {
   const el = root.querySelector("#mc-results");
   if (!el) return;
   if (!mcState.runs.length) {
+    const missingDetail = mcState.detailTarget?.missing;
     el.innerHTML = `<div class="mc-empty">
-      <div class="mc-empty-icon">📊</div>
-      <div class="mc-empty-title">暂无告警历史记录</div>
-      <div class="mc-empty-desc">告警条目执行（定时校验 / 测试触发）后会自动记录到这里。</div>
+      <div class="mc-empty-icon">${missingDetail ? "🔎" : "📊"}</div>
+      <div class="mc-empty-title">${missingDetail ? "未找到这条告警详情" : "暂无告警历史记录"}</div>
+      <div class="mc-empty-desc">${missingDetail ? "记录可能已超过保留期限，或链接中的运行 ID / 国家不正确。" : "告警条目执行（定时校验 / 测试触发）后会自动记录到这里。"}</div>
     </div>`;
     renderMcPager(root, 0);
     return;
@@ -512,6 +513,11 @@ function renderMcResults(root) {
     if (mcState.entryId && run.entryId !== mcState.entryId) return false;
     return true;
   });
+  if (!filtered.length && mcState.detailTarget?.missing) {
+    el.innerHTML = `<div class="mc-empty"><div class="mc-empty-icon">🔎</div><div class="mc-empty-title">未找到这条告警详情</div><div class="mc-empty-desc">记录可能已超过保留期限，或链接中的运行 ID / 国家不正确。</div></div>`;
+    renderMcPager(root, 0);
+    return;
+  }
   const totalPages = Math.max(1, Math.ceil(filtered.length / mcState.pageSize));
   if (mcState.page > totalPages) mcState.page = totalPages;
   const start = (mcState.page - 1) * mcState.pageSize;
