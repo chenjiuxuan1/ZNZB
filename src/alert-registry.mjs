@@ -2,7 +2,7 @@
  * 告警注册表（Alert Registry）。
  *
  * 把 n8n / 夜莺等来源的告警抽象为可配置条目，支持动态新增 / 编辑 / 删除，
- * 以及"测试执行"（SSH 到目标机跑 dry-run，或本地执行任意命令）。
+ * 以及"测试执行"（SSH 到目标机或本地运行受限的告警 dry-run 脚本）。
  *
  * 持久化：config/alert-registry.json（运行时文件，已 gitignore）。
  * 示例：config/alert-registry.example.json（入库，含 PL / 墨西哥 / 投放 DWD 三个预置条目）。
@@ -65,6 +65,99 @@ const DEFAULT_MC_NOTIFY = {
 const DEFAULT_TEST_TIMEOUT_MS = 25_000;
 const DEFAULT_SSH_HOST = "root@10.20.47.14";
 const DEFAULT_SSH_PORT = 36000;
+const SAFE_COMMAND_ENV_NAMES = new Set([
+  "SR_HOST",
+  "SR_PORT",
+  "SR_DB",
+  "SR_USERNAME",
+  "SR_PASSWORD",
+  "SR_BACKUP_USERNAME",
+  "SR_BACKUP_PASSWORD",
+]);
+
+function unsafeCommandError() {
+  return Object.assign(new Error("命令未通过安全校验：仅允许执行 alert 目录下 Python 告警脚本，且必须包含 --dry-run"), { statusCode: 400 });
+}
+
+/**
+ * 拆分平台支持的受限 shell 命令。这里只识别引号和唯一允许的 &&；任何可构造
+ * 子命令、管道、重定向或多条语句的字符都会在交给 shell/n8n 前被拒绝。
+ */
+function tokenizeSafeCommand(command) {
+  const tokens = [];
+  let token = "";
+  let quote = "";
+  let escaped = false;
+  const flush = () => {
+    if (token) tokens.push(token);
+    token = "";
+  };
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    const next = command[index + 1] || "";
+    if (escaped) {
+      token += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) {
+        quote = "";
+        continue;
+      }
+      if (quote === '"' && (char === "`" || (char === "$" && next === "("))) throw unsafeCommandError();
+      token += char;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      flush();
+      continue;
+    }
+    if (char === "&" && next === "&") {
+      flush();
+      tokens.push("&&");
+      index += 1;
+      continue;
+    }
+    if (";&|<>`".includes(char) || char === "\0" || char === "#" || (char === "$" && next === "(")) {
+      throw unsafeCommandError();
+    }
+    token += char;
+  }
+  if (quote || escaped) throw unsafeCommandError();
+  flush();
+  return tokens;
+}
+
+function assertSafeTestCommand(command) {
+  const value = String(command || "").trim();
+  if (!value || value.length > 20_000 || /[\r\n]/.test(value)) throw unsafeCommandError();
+  const tokens = tokenizeSafeCommand(value);
+  if (tokens[0] !== "cd" || !/^\/[A-Za-z0-9_./ -]+$/.test(tokens[1] || "") || tokens[2] !== "&&") {
+    throw unsafeCommandError();
+  }
+  let index = 3;
+  while (index < tokens.length && /^[A-Z][A-Z0-9_]*=/.test(tokens[index])) {
+    const name = tokens[index].slice(0, tokens[index].indexOf("="));
+    if (!SAFE_COMMAND_ENV_NAMES.has(name)) throw unsafeCommandError();
+    index += 1;
+  }
+  if (!/^(?:python|python3)$/.test(tokens[index] || "")) throw unsafeCommandError();
+  index += 1;
+  if (!/^alert\/[A-Za-z0-9][A-Za-z0-9_.-]*\.py$/.test(tokens[index] || "") || tokens[index].includes("..")) {
+    throw unsafeCommandError();
+  }
+  if (!tokens.slice(index + 1).includes("--dry-run") || tokens.slice(index + 1).includes("&&")) throw unsafeCommandError();
+}
 
 function hasMeaningfulError(value) {
   if (value == null || value === false || value === 0) return false;
@@ -1076,7 +1169,9 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
     if (!entry.command) {
       throw Object.assign(new Error(`告警条目 ${entry.name} 未配置 command 且未绑定 n8n 工作流`), { statusCode: 400 });
     }
+    assertSafeTestCommand(entry.command);
     const command = resolveEnv(entry.command);
+    assertSafeTestCommand(command);
     const result = await runCommandSync(entry.runVia || "local", command, {
       sshHost: entry.sshHost,
       sshPort: entry.sshPort,
@@ -1095,12 +1190,14 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
     return { ...result, id, name: entry.name, mode: "command" };
   }
 
-  /** 任意命令测试：不落库，直接跑，用于新增条目前验证。 */
+  /** 告警 dry-run 命令测试：不落库，用于新增条目前验证。 */
   async function runTestByCommand({ runVia, command, sshHost, sshPort, timeoutMs } = {}) {
     if (!command) {
       throw Object.assign(new Error("command 不能为空"), { statusCode: 400 });
     }
+    assertSafeTestCommand(command);
     const resolvedCommand = resolveEnv(command);
+    assertSafeTestCommand(resolvedCommand);
     const result = await runCommandSync(runVia || "local", resolvedCommand, {
       sshHost,
       sshPort,
@@ -2015,6 +2112,14 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
     }
     if (!/\bfrom\b/i.test(withoutTrailingTerminator)) {
       throw Object.assign(new Error(`${country} 的校验语句必须包含 FROM`), { statusCode: 400 });
+    }
+    const withoutComments = withoutTrailingTerminator
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/--[^\r\n]*/g, " ");
+    const hasStabilityGuard = /\betl_update_time\s*<\s*date_sub\s*\(\s*now\s*\(\s*\)\s*,\s*interval\s+12\s+hour\s*\)/i
+      .test(withoutComments);
+    if (!hasStabilityGuard) {
+      throw Object.assign(new Error(`${country} 的校验语句必须保留 12 小时防误报过滤：etl_update_time < DATE_SUB(NOW(), INTERVAL 12 HOUR)`), { statusCode: 400 });
     }
     return withoutTrailingTerminator;
   }

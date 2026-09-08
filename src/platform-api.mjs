@@ -18,6 +18,7 @@ import { parsePublicDashboardUrl } from "./metabase-public-client.mjs";
 import { buildPublicCheckMessages, notifyText } from "./notifier.mjs";
 import { readJsonFile } from "./utils.mjs";
 import { fetchCompatible } from "./fetch-compatible.mjs";
+import { preserveSchedulerSecrets } from "./scheduler-secrets.mjs";
 import { analyzeMetabaseAnomaly, analyzeMetabaseAnomalyBatch, normalizeMetabaseAnomalyAnalysis, isMetabaseVerdictMissingAnalysis, getMetabaseAnomalyAgentSettings } from "./metabase-anomaly-agent.mjs";
 import { createBoundedTaskQueue, getMetabaseAnomalyAccelerationSettings } from "./metabase-anomaly-acceleration.mjs";
 import {
@@ -2585,7 +2586,8 @@ export function createPlatformApi({
     },
 
     async saveHiveSchedulerConfig(input = {}) {
-      return saveHiveSchedulerConfig(rootDir, input);
+      const current = await loadHiveSchedulerConfig(rootDir);
+      return saveHiveSchedulerConfig(rootDir, preserveSchedulerSecrets(input, current));
     },
 
     async checkAllHiveCountries() {
@@ -2652,7 +2654,7 @@ export function createPlatformApi({
     async saveDsSchedulerConfig(config) {
       const current = await this.getDsSchedulerConfig();
       return saveDsSchedulerConfig(rootDir, {
-        ...config,
+        ...preserveSchedulerSecrets(config, current),
         alerts: current.alerts,
       });
     },

@@ -50,7 +50,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer REDACTED_BY_SECURITY_FIX"
+              "value": "=Bearer REPLACE_WITH_DIFY_API_KEY"
             },
             {
               "name": "Content-Type",
@@ -111,7 +111,7 @@
             },
             {
               "name": "Authorization",
-              "value": "=Bearer REDACTED_BY_SECURITY_FIX"
+              "value": "=Bearer REPLACE_WITH_CALLBACK_TOKEN"
             }
           ]
         },

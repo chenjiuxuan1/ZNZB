@@ -6811,6 +6811,14 @@ body {
   font-size: 13px;
 }
 
+.gov-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.gov-table-wrap .data-table { min-width: 760px; }
+
 .data-table th,
 .data-table td {
   padding: 8px 10px;
@@ -8829,7 +8837,7 @@ select.ar-field {
   gap: 10px;
   margin-bottom: 6px;
 }
-".mc-run-id {
+.mc-run-id {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   color: #475467;
@@ -9090,7 +9098,7 @@ select.ar-field {
   gap: 8px;
   margin-left: auto;
 }
-".mc-page-btn {
+.mc-page-btn {
   padding: 4px 10px;
   border: 1px solid #d0d5dd;
   border-radius: 6px;

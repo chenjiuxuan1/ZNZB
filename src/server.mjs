@@ -13,6 +13,16 @@ import { loadEnvFile, readJsonRequestBody } from "./utils.mjs";
 import { assertWarehouseLineageToolAuthorized, proxyWarehouseLineageRequest } from "./warehouse-lineage-proxy.mjs";
 import { assertMetabaseAgentCallbackAuthorized } from "./metabase-agent-callback-auth.mjs";
 import { proxyWattrelQuery, proxyDsSchedulerRequest, proxySrQuery } from "./evidence-tool-proxy.mjs";
+import { redactSchedulerSecrets } from "./scheduler-secrets.mjs";
+import {
+  runDataGovernanceScan,
+  queryDataGovernance,
+  exportDataGovernance,
+  dropSqlDataGovernance,
+  bucketCheckDataGovernance,
+  countriesDataGovernance,
+  healthDataGovernance,
+} from "./data-governance.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -232,10 +242,10 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await api.sendNotifyTest(await readBody(request, {})));
   }
   if (method === "GET" && url.pathname === "/api/hive-scheduler/config") {
-    return sendJson(response, 200, await api.getHiveSchedulerConfig());
+    return sendJson(response, 200, redactSchedulerSecrets(await api.getHiveSchedulerConfig()));
   }
   if (method === "PUT" && url.pathname === "/api/hive-scheduler/config") {
-    return sendJson(response, 200, await api.saveHiveSchedulerConfig(await readBody(request, {})));
+    return sendJson(response, 200, redactSchedulerSecrets(await api.saveHiveSchedulerConfig(await readBody(request, {}))));
   }
   if (method === "POST" && url.pathname === "/api/hive-scheduler/check") {
     return sendJson(response, 200, await api.checkAllHiveCountries());
@@ -253,10 +263,10 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, await api.getHiveHistory(Object.fromEntries(url.searchParams.entries())));
   }
   if (method === "GET" && url.pathname === "/api/ds-scheduler/config") {
-    return sendJson(response, 200, await api.getDsSchedulerConfig());
+    return sendJson(response, 200, redactSchedulerSecrets(await api.getDsSchedulerConfig()));
   }
   if (method === "PUT" && url.pathname === "/api/ds-scheduler/config") {
-    return sendJson(response, 200, await api.saveDsSchedulerConfig(await readBody(request)));
+    return sendJson(response, 200, redactSchedulerSecrets(await api.saveDsSchedulerConfig(await readBody(request))));
   }
   if (method === "POST" && url.pathname === "/api/ds-scheduler/check") {
     return sendJson(response, 200, await api.checkAllDsCountries());
@@ -665,6 +675,29 @@ async function handleApi(request, response, url) {
   if (method === "PUT" && url.pathname === "/api/multi-country/message") {
     const body = await readBody(request);
     return sendJson(response, 200, await alertRegistry.setMcMessage(body));
+  }
+
+  // ── 数据治理（Pi 包接入）──
+  if (method === "GET" && url.pathname === "/api/data-governance/health") {
+    return sendJson(response, 200, healthDataGovernance());
+  }
+  if (method === "GET" && url.pathname === "/api/data-governance/countries") {
+    return sendJson(response, 200, await countriesDataGovernance({}, { env: process.env }));
+  }
+  if (method === "POST" && url.pathname === "/api/data-governance/scan") {
+    return sendJson(response, 200, await runDataGovernanceScan(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/data-governance/query") {
+    return sendJson(response, 200, await queryDataGovernance(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/data-governance/export") {
+    return sendJson(response, 200, await exportDataGovernance(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/data-governance/drop") {
+    return sendJson(response, 200, await dropSqlDataGovernance(await readBody(request, {})));
+  }
+  if (method === "POST" && url.pathname === "/api/data-governance/bucket-check") {
+    return sendJson(response, 200, await bucketCheckDataGovernance(await readBody(request, {})));
   }
   return sendJson(response, 404, { error: `Not found: ${method} ${url.pathname}` });
 }
