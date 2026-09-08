@@ -63,3 +63,10 @@ test("history shows auditable phone delivery status", async () => {
   assert.match(source, /电话拨打失败/);
   assert.match(source, /电话未拨打/);
 });
+
+test("history distinguishes execution failures from healthy checks", async () => {
+  const source = await fs.readFile(viewUrl, "utf8");
+  assert.match(source, /校验执行失败，未产出异常明细/);
+  assert.match(source, /校验错误：/);
+  assert.match(source, /escapeHtml\(errorMessage\)/);
+});
