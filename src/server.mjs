@@ -606,6 +606,13 @@ async function handleApi(request, response, url) {
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.setMcSchedule(body || {}));
   }
+  if (method === "GET" && url.pathname === "/api/multi-country/sql") {
+    return sendJson(response, 200, await alertRegistry.getMcSql());
+  }
+  if (method === "PUT" && url.pathname === "/api/multi-country/sql") {
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.setMcSql(body || {}));
+  }
   if (method === "GET" && url.pathname === "/api/multi-country/notify") {
     return sendJson(response, 200, await alertRegistry.getMcNotify());
   }

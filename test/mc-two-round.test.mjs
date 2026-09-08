@@ -39,7 +39,7 @@ test("两轮制：首次异常(repairTriggered)不计数 strike，持续异常(b
     hasAlert: true,
   });
   assert.equal(r2.strikes.cn, 1, "持续异常应计 strike 1");
-  assert.deepEqual(r2.phoneNeeded, [], "strike=1 未达阈值 6 不电话");
+  assert.ok(r2.phoneNeeded.includes("cn"), "每次播报都打电话：broadcast 即触发电话");
 
   // 第 3 轮：cn 恢复（无 mismatch）→ strike 归零
   const r3 = await registry.appendCheckResult({
@@ -53,32 +53,32 @@ test("两轮制：首次异常(repairTriggered)不计数 strike，持续异常(b
   assert.equal(r3.strikes.cn, 0, "恢复正常 strike 归零");
 });
 
-test("两轮制：连续 6 次持续异常达到阈值触发 phoneNeeded", async (t) => {
+test("每次播报都打电话：broadcast 即触发 phoneNeeded，首次异常(repair)不触发", async (t) => {
   const { registry } = await tmpRegistry(t);
 
-  for (let i = 1; i <= 5; i++) {
-    const r = await registry.appendCheckResult({
-      source: "multi-country",
-      checkedAt: `2026-09-07T${String(i * 4).padStart(2, "0")}:00:00.000Z`,
-      broadcast: ["cn"],
-      repairTriggered: [],
-      countries: [{ code: "cn", label: "中国", mismatches: [{ check_item: "user_flag", mismatch_cnt: 1 }] }],
-      hasAlert: true,
-    });
-    assert.equal(r.strikes.cn, i, `第 ${i} 次持续异常 strike=${i}`);
-    assert.deepEqual(r.phoneNeeded, [], `strike=${i} 未达阈值`);
-  }
-
-  const r6 = await registry.appendCheckResult({
+  // 第 1 次：cn 首次异常（repairTriggered，不 broadcast）→ 不电话
+  const r1 = await registry.appendCheckResult({
     source: "multi-country",
-    checkedAt: "2026-09-07T20:00:00.000Z",
+    checkedAt: "2026-09-07T04:00:00.000Z",
+    broadcast: [],
+    repairTriggered: ["cn"],
+    countries: [{ code: "cn", label: "中国", mismatches: [{ check_item: "user_flag", mismatch_cnt: 1 }] }],
+    hasAlert: true,
+  });
+  assert.deepEqual(r1.phoneNeeded, [], "首次异常不触发电话");
+  assert.equal(r1.strikes.cn, 0);
+
+  // 第 2 次：cn 持续异常（broadcast）→ 立即触发电话（无需累计）
+  const r2 = await registry.appendCheckResult({
+    source: "multi-country",
+    checkedAt: "2026-09-07T08:00:00.000Z",
     broadcast: ["cn"],
     repairTriggered: [],
     countries: [{ code: "cn", label: "中国", mismatches: [{ check_item: "user_flag", mismatch_cnt: 1 }] }],
     hasAlert: true,
   });
-  assert.equal(r6.strikes.cn, 6);
-  assert.ok(r6.phoneNeeded.includes("cn"), "第 6 次持续异常应触发电话");
+  assert.equal(r2.strikes.cn, 1);
+  assert.ok(r2.phoneNeeded.includes("cn"), "每次播报都打电话：首次 broadcast 即触发电话");
 });
 
 test("两轮制：无异常国家计数不受他国影响", async (t) => {
