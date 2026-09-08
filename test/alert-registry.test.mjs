@@ -247,3 +247,56 @@ test("runTestByCommand with runVia=ssh forwards command through n8n webhook", as
     else delete process.env.N8N_BASE_URL;
   }
 });
+
+test("multi-country SQL API reads and updates one country across code formatting variants", async (t) => {
+  const http = await import("node:http");
+  const definitions = [
+    `{ sql: "select check_item, mismatch_cnt from cn_check", label: '中国', code: "cn" }`,
+    `{label:'印尼', code:'id', sql:'select check_item, mismatch_cnt from id_check'}`,
+    `{code:'mx',sql:"select check_item, mismatch_cnt from mx_check"}`,
+    `{ code: "th", sql: "select check_item, mismatch_cnt from th_check" }`,
+    `{code:'ph', sql:'select check_item, mismatch_cnt from ph_check'}`,
+    `{sql:"select check_item, mismatch_cnt from pk_check",code:'pk'}`,
+  ];
+  let workflow = {
+    name: "多国一致性校验告警",
+    active: true,
+    settings: {},
+    connections: {},
+    nodes: [{ name: "6国校验", type: "n8n-nodes-base.code", parameters: { jsCode: `const countries = [${definitions.join(",")}];` } }],
+  };
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      if (request.method === "PUT") workflow = JSON.parse(body || "{}");
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(request.url.endsWith("/activate") ? { active: true } : workflow));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const previousBase = process.env.N8N_BASE_URL;
+  const previousKey = process.env.N8N_API_KEY;
+  process.env.N8N_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.N8N_API_KEY = "test-key";
+  t.after(() => {
+    if (previousBase === undefined) delete process.env.N8N_BASE_URL; else process.env.N8N_BASE_URL = previousBase;
+    if (previousKey === undefined) delete process.env.N8N_API_KEY; else process.env.N8N_API_KEY = previousKey;
+  });
+
+  const { registry } = await tmpRegistry(t);
+  const before = await registry.getMcSql("id");
+  assert.deepEqual(before, { ok: true, country: "id", sql: "select check_item, mismatch_cnt from id_check", node: "6国校验" });
+  const updated = await registry.setMcSql("id", { sql: "with x as (select 1) select check_item, mismatch_cnt from id_check_v2" });
+  assert.equal(updated.ok, true);
+  assert.equal(updated.country, "id");
+  const code = workflow.nodes[0].parameters.jsCode;
+  assert.match(code, /id_check_v2/);
+  assert.match(code, /cn_check/);
+  assert.match(code, /pk_check/);
+
+  await assert.rejects(() => registry.getMcSql("xx"), /不支持的国家/);
+  await assert.rejects(() => registry.setMcSql("id", { sql: "delete from id_check" }), /只允许只读 SELECT/);
+  await assert.rejects(() => registry.setMcSql("id", { sql: "select 1; drop table x" }), /只允许单条/);
+});

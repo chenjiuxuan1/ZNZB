@@ -615,9 +615,18 @@ async function handleApi(request, response, url) {
   if (method === "GET" && url.pathname === "/api/multi-country/sql") {
     return sendJson(response, 200, await alertRegistry.getMcSql());
   }
+  if (method === "GET" && /^\/api\/multi-country\/sql\/[^/]+$/.test(url.pathname)) {
+    const country = url.pathname.split("/").pop();
+    return sendJson(response, 200, await alertRegistry.getMcSql(country));
+  }
   if (method === "PUT" && url.pathname === "/api/multi-country/sql") {
     const body = await readBody(request, {});
     return sendJson(response, 200, await alertRegistry.setMcSql(body || {}));
+  }
+  if (method === "PUT" && /^\/api\/multi-country\/sql\/[^/]+$/.test(url.pathname)) {
+    const country = url.pathname.split("/").pop();
+    const body = await readBody(request, {});
+    return sendJson(response, 200, await alertRegistry.setMcSql(country, body || {}));
   }
   if (method === "GET" && url.pathname === "/api/multi-country/notify") {
     return sendJson(response, 200, await alertRegistry.getMcNotify());

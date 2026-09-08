@@ -769,10 +769,10 @@ function renderRow(item) {
           <summary>⏰ 定时配置（每小时第 N 分钟触发）</summary>
           <div class="mc-notify-body" data-ep-body="schedule"></div>
         </div>
-        <div class="mc-notify">
+        ${/^mc_(cn|id|mx|th|ph|pk)$/.test(item.id) ? `<div class="mc-notify">
           <summary>🧪 校验语句（6 国校验 SQL，可编辑，保存后同步到 n8n 定时校验）</summary>
           <div class="mc-notify-body" data-ep-body="sql"></div>
-        </div>
+        </div>` : ""}
         <div class="mc-notify">
           <summary>📜 历史记录（最近执行结果）</summary>
           <div class="mc-notify-body" data-ep-body="history"></div>
@@ -858,7 +858,7 @@ function toggleEntryPanel(root, id) {
   loadEntryNotifyPanel(row, id);
   loadEntryVoicePanel(row, id);
   loadEntrySchedulePanel(row, id);
-  loadEntrySqlPanel(row, id);
+  if (/^mc_(cn|id|mx|th|ph|pk)$/.test(id)) loadEntrySqlPanel(row, id);
   loadEntryHistoryPanel(row, id);
 }
 
@@ -1263,10 +1263,12 @@ async function loadEntrySchedulePanel(container, id) {
 async function loadEntrySqlPanel(container, id) {
   const body = container.querySelector('[data-ep-body="sql"]');
   if (!body) return;
+  const country = /^mc_(cn|id|mx|th|ph|pk)$/.exec(id)?.[1] || "";
+  if (!country) return;
   body.innerHTML = `<div class="mc-loading">⏳ 正在加载校验语句…</div>`;
   let data;
   try {
-    data = await apiGet("/api/multi-country/sql");
+    data = await apiGet(`/api/multi-country/sql/${encodeURIComponent(country)}`);
   } catch (e) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml(e.message || String(e))}</span></div>`;
     return;
@@ -1275,26 +1277,16 @@ async function loadEntrySqlPanel(container, id) {
     body.innerHTML = `<div class="sandbox-status error"><strong>加载失败</strong><span>${escapeHtml((data && data.error) || "未知错误")}</span></div>`;
     return;
   }
-  const countries = data.countries || {};
   const countryNames = { cn: "中国", id: "印尼", mx: "墨西哥", th: "泰国", ph: "菲律宾", pk: "巴基斯坦" };
-  const order = ["cn", "id", "mx", "th", "ph", "pk"];
-  const rows = order
-    .map((code) => {
-      const sql = countries[code] || "";
-      return `
-        <div class="mc-notify-row" style="align-items:flex-start;flex-direction:column;gap:6px">
-          <span class="mc-notify-country">${escapeHtml(countryNames[code] || code)}</span>
-          <textarea class="mc-notify-contacts ar-sql-block mc-sql-textarea" data-sql-code="${escapeHtml(code)}" rows="6" spellcheck="false" placeholder="该国家校验 SQL（需包含 SELECT 和 FROM）">${escapeHtml(sql)}</textarea>
-        </div>
-      `;
-    })
-    .join("");
+  const sql = data.sql || "";
   body.innerHTML = `
     <div class="mc-group-chat">
-      <span class="mc-group-chat-label">校验语句（SQL）</span>
-      <span class="mc-group-chat-hint">6 国共用同一套跨库对比 SQL（各国通过不同库/过滤条件区分）。修改保存后，下一次 n8n 定时校验即使用新语句。</span>
+      <span class="mc-group-chat-label">${escapeHtml(countryNames[country] || country)}校验语句（SQL）</span>
+      <span class="mc-group-chat-hint">这里只修改当前国家；保存成功后，下一次 n8n 定时校验立即使用新语句。</span>
     </div>
-    <div class="mc-notify-rows">${rows}</div>
+    <div class="mc-notify-row mc-sql-editor-row">
+      <textarea class="mc-notify-contacts ar-sql-block mc-sql-textarea" data-sql-code="${escapeHtml(country)}" rows="12" spellcheck="false" placeholder="该国家校验 SQL（只允许一条只读 SELECT/WITH 查询）">${escapeHtml(sql)}</textarea>
+    </div>
     <div class="mc-notify-actions">
       <button class="mc-page-btn" id="ar-ep-sql-save">保存校验语句</button>
       <span class="mc-schedule-status" id="ar-ep-sql-status"></span>
@@ -1305,13 +1297,9 @@ async function loadEntrySqlPanel(container, id) {
     if (entryPanelState.saving) return;
     entryPanelState.saving = true;
     if (status) { status.textContent = "保存中…"; status.className = "mc-schedule-status"; }
-    const next = {};
-    for (const code of order) {
-      const ta = body.querySelector(`textarea[data-sql-code="${code}"]`);
-      if (ta) next[code] = ta.value;
-    }
+    const sql = body.querySelector(`textarea[data-sql-code="${country}"]`)?.value || "";
     try {
-      const res = await apiPut("/api/multi-country/sql", { countries: next });
+      const res = await apiPut(`/api/multi-country/sql/${encodeURIComponent(country)}`, { sql });
       if (res && res.ok) {
         if (status) { status.textContent = "✅ 已保存校验语句（n8n 已同步）"; status.className = "mc-schedule-status ok"; }
       } else {

@@ -1783,34 +1783,116 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
   // ---- 多国校验 · 校验语句（SQL 可编辑，写入 n8n 工作流 code 节点） ----
 
   const MC_SQL_NODE_NAME = "6国校验";
-  // 匹配 jsCode 里的 {label:'中国', code:'cn', sql: "..."}，sql 是 JS 字符串字面量（含 \n 转义）
-  const MC_SQL_RE = (code) => new RegExp(`(code:'${code}', sql: )("(?:[^"\\\\]|\\\\.)*")`);
 
-  /** 从 n8n 工作流 code 节点读取 6 国当前校验 SQL。 */
-  async function getMcSql() {
+  function assertMcCountry(country) {
+    const code = String(country || "").toLowerCase();
+    if (!MC_COUNTRIES.includes(code)) {
+      throw Object.assign(new Error(`不支持的国家：${country || ""}`), { statusCode: 400 });
+    }
+    return code;
+  }
+
+  function decodeJsStringLiteral(literal) {
+    if (literal.startsWith('"')) return JSON.parse(literal);
+    let value = "";
+    for (let index = 1; index < literal.length - 1; index += 1) {
+      const char = literal[index];
+      if (char !== "\\") { value += char; continue; }
+      const next = literal[++index];
+      const escapes = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v", "0": "\0" };
+      if (next === "x") {
+        value += String.fromCharCode(Number.parseInt(literal.slice(index + 1, index + 3), 16));
+        index += 2;
+      } else if (next === "u") {
+        value += String.fromCharCode(Number.parseInt(literal.slice(index + 1, index + 5), 16));
+        index += 4;
+      } else {
+        value += escapes[next] ?? next;
+      }
+    }
+    return value;
+  }
+
+  function findMcSqlLiteral(jsCode, country) {
+    const objectPattern = /\{[^{}]*\}/g;
+    for (const match of jsCode.matchAll(objectPattern)) {
+      const objectSource = match[0];
+      const codeMatch = /\bcode\s*:\s*(['"])([a-z]{2})\1/i.exec(objectSource);
+      if (!codeMatch || codeMatch[2].toLowerCase() !== country) continue;
+      const sqlMatch = /\bsql\s*:\s*/i.exec(objectSource);
+      if (!sqlMatch) return null;
+      const literalStart = sqlMatch.index + sqlMatch[0].length;
+      const quote = objectSource[literalStart];
+      if (quote !== '"' && quote !== "'") return null;
+      let escaped = false;
+      let literalEnd = -1;
+      for (let index = literalStart + 1; index < objectSource.length; index += 1) {
+        const char = objectSource[index];
+        if (!escaped && char === quote) { literalEnd = index + 1; break; }
+        if (!escaped && char === "\\") escaped = true;
+        else escaped = false;
+      }
+      if (literalEnd < 0) return null;
+      const literal = objectSource.slice(literalStart, literalEnd);
+      return {
+        start: match.index + literalStart,
+        end: match.index + literalEnd,
+        sql: decodeJsStringLiteral(literal),
+      };
+    }
+    return null;
+  }
+
+  function assertReadOnlyMcSql(sql, country) {
+    const value = String(sql || "").trim();
+    if (!value) throw Object.assign(new Error(`${country} 的校验语句不能为空`), { statusCode: 400 });
+    if (value.length > 500_000) throw Object.assign(new Error(`${country} 的校验语句过长`), { statusCode: 400 });
+    if (!/^(select|with)\b/i.test(value)) {
+      throw Object.assign(new Error(`${country} 的校验语句只允许只读 SELECT`), { statusCode: 400 });
+    }
+    const withoutTrailingTerminator = value.replace(/;\s*$/, "");
+    if (withoutTrailingTerminator.includes(";")) {
+      throw Object.assign(new Error(`${country} 的校验语句只允许单条查询`), { statusCode: 400 });
+    }
+    if (/\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|call)\b|\binto\s+outfile\b/i.test(withoutTrailingTerminator)) {
+      throw Object.assign(new Error(`${country} 的校验语句只允许只读 SELECT`), { statusCode: 400 });
+    }
+    if (!/\bfrom\b/i.test(withoutTrailingTerminator)) {
+      throw Object.assign(new Error(`${country} 的校验语句必须包含 FROM`), { statusCode: 400 });
+    }
+    return withoutTrailingTerminator;
+  }
+
+  async function loadMcSqlWorkflow() {
     const base = process.env.N8N_BASE_URL || "";
     const apiKey = process.env.N8N_API_KEY || "";
     if (!base || !apiKey) {
-      return { ok: false, error: "生产平台未配置 N8N_BASE_URL / N8N_API_KEY" };
+      throw new Error("生产平台未配置 N8N_BASE_URL / N8N_API_KEY");
     }
+    const getResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
+      headers: { "X-N8N-API-KEY": apiKey },
+    });
+    if (!getResp.ok) throw new Error(`读取 n8n 工作流失败（HTTP ${getResp.status}）`);
+    const wf = await getResp.json();
+    const codeNode = (wf.nodes || []).find((n) => n.name === MC_SQL_NODE_NAME && n.type === "n8n-nodes-base.code");
+    if (!codeNode) throw new Error(`n8n 工作流中未找到代码节点「${MC_SQL_NODE_NAME}」`);
+    return { base, apiKey, wf, codeNode };
+  }
+
+  /** 从 n8n 工作流 code 节点读取一个国家（或兼容读取全部国家）的当前校验 SQL。 */
+  async function getMcSql(country = "") {
+    const requestedCountry = country ? assertMcCountry(country) : "";
     try {
-      const getResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
-        headers: { "X-N8N-API-KEY": apiKey },
-      });
-      if (!getResp.ok) return { ok: false, error: `读取 n8n 工作流失败（HTTP ${getResp.status}）` };
-      const wf = await getResp.json();
-      const codeNode = (wf.nodes || []).find((n) => n.name === MC_SQL_NODE_NAME && n.type === "n8n-nodes-base.code");
-      if (!codeNode) return { ok: false, error: `n8n 工作流中未找到代码节点「${MC_SQL_NODE_NAME}」` };
+      const { codeNode } = await loadMcSqlWorkflow();
       const jsCode = String(codeNode.parameters.jsCode || "");
+      if (requestedCountry) {
+        const found = findMcSqlLiteral(jsCode, requestedCountry);
+        if (!found) return { ok: false, error: `工作流代码中未找到 ${requestedCountry} 的 SQL 定义` };
+        return { ok: true, country: requestedCountry, sql: found.sql, node: MC_SQL_NODE_NAME };
+      }
       const countries = {};
       for (const code of MC_COUNTRIES) {
-        const m = MC_SQL_RE(code).exec(jsCode);
-        if (!m) { countries[code] = null; continue; }
-        try {
-          countries[code] = JSON.parse(m[2]); // JS 字符串字面量 ≈ JSON 字符串
-        } catch {
-          countries[code] = m[2];
-        }
+        countries[code] = findMcSqlLiteral(jsCode, code)?.sql ?? null;
       }
       return { ok: true, countries, node: MC_SQL_NODE_NAME };
     } catch (error) {
@@ -1818,35 +1900,28 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
     }
   }
 
-  /** 保存 6 国校验 SQL（写入 n8n 工作流 code 节点，保持激活）。countries: {cn: sql, id: sql, ...}。 */
-  async function setMcSql({ countries } = {}) {
-    const base = process.env.N8N_BASE_URL || "";
-    const apiKey = process.env.N8N_API_KEY || "";
-    if (!base || !apiKey) {
-      return { ok: false, error: "生产平台未配置 N8N_BASE_URL / N8N_API_KEY，无法更新校验语句" };
-    }
-    const next = countries || {};
-    for (const code of MC_COUNTRIES) {
-      const sql = String(next[code] || "").trim();
-      if (!sql) throw Object.assign(new Error(`${code} 的校验语句不能为空`), { statusCode: 400 });
-      if (!/\bselect\b/i.test(sql) || !/\bfrom\b/i.test(sql)) {
-        throw Object.assign(new Error(`${code} 的校验语句必须包含 SELECT 和 FROM`), { statusCode: 400 });
-      }
+  /** 保存一个国家（或兼容保存全部国家）的 SQL，写入 n8n 工作流 code 节点并保持激活。 */
+  async function setMcSql(countryOrConfig, config = {}) {
+    const singleCountry = typeof countryOrConfig === "string" ? assertMcCountry(countryOrConfig) : "";
+    const rawUpdates = singleCountry ? { [singleCountry]: config.sql } : (countryOrConfig?.countries || {});
+    const updates = Object.fromEntries(Object.entries(rawUpdates).map(([code, sql]) => {
+      const normalizedCode = assertMcCountry(code);
+      return [normalizedCode, assertReadOnlyMcSql(sql, normalizedCode)];
+    }));
+    if (!Object.keys(updates).length) {
+      throw Object.assign(new Error("至少提供一个国家的校验语句"), { statusCode: 400 });
     }
     try {
-      const getResp = await fetchCompatible(`${base}/api/v1/workflows/${MC_WORKFLOW_ID}`, {
-        headers: { "X-N8N-API-KEY": apiKey },
-      });
-      if (!getResp.ok) return { ok: false, error: `读取 n8n 工作流失败（HTTP ${getResp.status}）` };
-      const wf = await getResp.json();
-      const codeNode = (wf.nodes || []).find((n) => n.name === MC_SQL_NODE_NAME && n.type === "n8n-nodes-base.code");
-      if (!codeNode) return { ok: false, error: `n8n 工作流中未找到代码节点「${MC_SQL_NODE_NAME}」` };
+      const { base, apiKey, wf, codeNode } = await loadMcSqlWorkflow();
       let jsCode = String(codeNode.parameters.jsCode || "");
-      for (const code of MC_COUNTRIES) {
-        const literal = JSON.stringify(String(next[code]).trim());
-        const re = MC_SQL_RE(code);
-        if (!re.test(jsCode)) return { ok: false, error: `工作流代码中未找到 ${code} 的 SQL 定义` };
-        jsCode = jsCode.replace(re, `$1${literal}`);
+      const replacements = [];
+      for (const [code, sql] of Object.entries(updates)) {
+        const found = findMcSqlLiteral(jsCode, code);
+        if (!found) return { ok: false, error: `工作流代码中未找到 ${code} 的 SQL 定义` };
+        replacements.push({ ...found, literal: JSON.stringify(sql) });
+      }
+      for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
+        jsCode = jsCode.slice(0, replacement.start) + replacement.literal + jsCode.slice(replacement.end);
       }
       codeNode.parameters.jsCode = jsCode;
       const srcSettings = wf.settings || {};
@@ -1868,7 +1943,9 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile } = {}
           headers: { "X-N8N-API-KEY": apiKey },
         });
       }
-      return { ok: true, countries: Object.fromEntries(MC_COUNTRIES.map((c) => [c, String(next[c]).trim()])), active };
+      return singleCountry
+        ? { ok: true, country: singleCountry, sql: updates[singleCountry], active }
+        : { ok: true, countries: updates, active };
     } catch (error) {
       if (error && error.statusCode) throw error;
       return { ok: false, error: String(error && error.message || error) };
