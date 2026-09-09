@@ -20,6 +20,46 @@ test("parseRetryLogOutcome classifies the async repair final status", () => {
   assert.equal(parseRetryLogOutcome("no clear marker").status, "unknown");
 });
 
+test("parseRetryLogOutcome parses the retry program JSON status object", () => {
+  // Unknown-error manual review (e.g. killed-by-kill-statement) must surface as
+  // failed instead of unknown, so the page shows "重跑后仍失败" not "无状态".
+  const manual = parseRetryLogOutcome(JSON.stringify({
+    attempts: 0,
+    failure_reason: "5025 (HY000): killed by kill statement : KILL QUERY '4afec208-ac10-11f1-aabe-fa163ed414eb'",
+    retry_required: false,
+    state: "FAILURE",
+    status: "unknown_error_manual_review",
+    success: false,
+    task_name: "dws_mkt_activity_convert_h",
+  }));
+  assert.equal(manual.status, "failed");
+  assert.match(manual.reason, /5025/);
+  assert.match(manual.reason, /killed by kill statement/);
+
+  const sqlError = parseRetryLogOutcome(JSON.stringify({ status: "sql_error_manual_fix", state: "FAILURE", success: false, failure_reason: "syntax error" }));
+  assert.equal(sqlError.status, "failed");
+
+  const recovered = parseRetryLogOutcome(JSON.stringify({ status: "recovered", state: "SUCCESS", success: true, failure_reason: "" }));
+  assert.equal(recovered.status, "recovered");
+
+  const running = parseRetryLogOutcome(JSON.stringify({ status: "running", state: "RUNNING_EXECUTION", success: false }));
+  assert.equal(running.status, "running");
+
+  const timeout = parseRetryLogOutcome(JSON.stringify({ status: "timeout_needs_owner", state: "FAILURE", success: false, failure_reason: "观察超时" }));
+  assert.equal(timeout.status, "timeout_needs_owner");
+
+  const maxAttempts = parseRetryLogOutcome(JSON.stringify({ status: "failed_after_max_attempts", state: "FAILURE", success: false }));
+  assert.equal(maxAttempts.status, "failed");
+
+  // JSON embedded inside a larger log tail (SSH wrapper) still parses.
+  const wrapped = parseRetryLogOutcome(`[LOG-PATH]: /root/x.log\n{"status": "unknown_error_manual_review", "state": "FAILURE", "success": false, "failure_reason": "killed"}\n`);
+  assert.equal(wrapped.status, "failed");
+  assert.match(wrapped.reason, /killed/);
+
+  // Non-JSON garbage still falls back to unknown.
+  assert.equal(parseRetryLogOutcome("unstructured output only").status, "unknown");
+});
+
 test("resolveAutoRepairLogPath reconstructs unresolved legacy n8n paths", () => {
   assert.equal(
     resolveAutoRepairLogPath({

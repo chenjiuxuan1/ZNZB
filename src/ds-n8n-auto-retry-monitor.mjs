@@ -437,11 +437,18 @@ async function readAutoRepairLogViaGateway(rootDir, country, logPath) {
 
 /**
  * Parse the final outcome from the auto-repair retry log. The tail of the log
- * is scanned for the async program's final status keywords.
+ * is scanned for the async program's final status keywords, or parsed as the
+ * JSON status object that tools/ds_failed_auto_retry.py prints at exit
+ * (e.g. {"status": "unknown_error_manual_review", "state": "FAILURE", ...}).
  */
 export function parseRetryLogOutcome(content = "") {
   const text = String(content || "").trim();
   if (!text) return { status: "unknown", reason: "" };
+  // The retry program writes a final JSON status object to its log. Prefer the
+  // structured fields over keyword matching so manual-review / SQL-error /
+  // stopped outcomes are surfaced instead of showing "unknown".
+  const jsonOutcome = parseRetryLogJsonOutcome(text);
+  if (jsonOutcome) return jsonOutcome;
   if (/(?:恢复成功|已恢复|修复成功|重跑.*成功|成功.*恢复|已成功修复)/i.test(text)) {
     return { status: "recovered", reason: "远端日志显示恢复成功" };
   }
@@ -452,6 +459,79 @@ export function parseRetryLogOutcome(content = "") {
     return { status: "running", reason: "远端日志显示仍在重跑" };
   }
   return { status: "unknown", reason: "" };
+}
+
+/**
+ * Attempt to parse the retry program's JSON status object from a log tail.
+ * The JSON may be wrapped inside a larger text blob (e.g. SSH headers), so the
+ * last JSON object literal is extracted before decoding.
+ */
+function parseRetryLogJsonOutcome(text) {
+  if (!text || typeof text !== "string") return null;
+  let decoded = null;
+  // Fast path: whole log is the JSON status object.
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object") decoded = parsed;
+  } catch {
+    // fall through to the scan below
+  }
+  if (!decoded) {
+    const match = text.match(/\{[\s\S]*\}/g);
+    if (match) {
+      for (let index = match.length - 1; index >= 0; index -= 1) {
+        try {
+          const parsed = JSON.parse(match[index]);
+          if (parsed && typeof parsed === "object") { decoded = parsed; break; }
+        } catch {
+          // keep scanning earlier candidates
+        }
+      }
+    }
+  }
+  if (!decoded || typeof decoded !== "object") return null;
+  const status = String(decoded.status || "").trim();
+  const state = String(decoded.state || "").trim().toUpperCase();
+  const failureReason = String(decoded.failure_reason || decoded.failureReason || decoded.reason || "").trim();
+  const reason = failureReason
+    ? `远端日志显示处理结果：${failureReason}`
+    : status
+      ? `远端日志显示处理状态：${status}`
+      : "远端日志返回结构化处理结果";
+  const manualReview = status === "unknown_error_manual_review"
+    || /unknown_error|manual_review/i.test(status);
+  const sqlError = status === "sql_error_manual_fix";
+  const stopped = status === "stopped_by_operator"
+    || status === "stopped_workflow_offline"
+    || status === "stopped_crossed_day";
+  const maxAttempts = status === "max_attempts_reached"
+    || status === "max_attempts_already_notified"
+    || status === "failed_after_max_attempts"
+    || status === "final_result_already_notified";
+  const timeout = status === "timeout_needs_owner";
+  const circuitOpen = status === "country_circuit_open";
+  const alreadyRunning = status === "already_running";
+  if (status === "recovered" || decoded.success === true || ["SUCCESS", "SUCCESS_EXECUTION"].includes(state)) {
+    return { status: "recovered", reason: "远端日志显示恢复成功" };
+  }
+  // Explicit status values from tools/ds_failed_auto_retry.py take precedence
+  // over state/success inference.
+  if (alreadyRunning || status === "running" || status === "retrying") {
+    return { status: "running", reason: status === "already_running" ? "远端日志显示任务已在运行" : "远端日志显示仍在重跑" };
+  }
+  if (timeout) {
+    return { status: "timeout_needs_owner", reason };
+  }
+  if (sqlError || manualReview || stopped || maxAttempts || circuitOpen) {
+    return { status: "failed", reason };
+  }
+  if (["FAILURE", "FAILED"].includes(state) || decoded.success === false) {
+    return { status: "failed", reason };
+  }
+  if (["RUNNING", "RUNNING_EXECUTION"].includes(state)) {
+    return { status: "running", reason: "远端日志显示仍在重跑" };
+  }
+  return null;
 }
 
 /**
