@@ -99,7 +99,7 @@ test("SR query proxy maps ine to id and forwards read-only SQL to the gateway", 
     { country: "ine", sql: "SELECT grant_cnt_1d FROM ads.ads_3003_user_smmary_d WHERE stat_date='2026-07-31'" },
     { env: { FUXI_SR_TOKEN: "test-token" }, fetchFn },
   );
-  assert.match(capturedUrl, /\/api\/rust\/v1\/sr-sandboxes\/sql-executions$/);
+  assert.equal(capturedUrl, "https://data-map-dev.kuainiu.io/api/rust/v1/sr-sandboxes/sql-executions");
   assert.equal(capturedBody.country, "id");
   assert.equal(capturedBody.sqlMode, "query");
   assert.equal(capturedHeaders.Authorization, "Bearer test-token");

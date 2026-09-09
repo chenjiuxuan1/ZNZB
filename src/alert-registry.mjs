@@ -170,6 +170,23 @@ function hasMeaningfulError(value) {
   return Boolean(value);
 }
 
+function normalizeBooleanFlag(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+  return Boolean(value);
+}
+
+function normalizeHistoryRunFlags(run = {}) {
+  return {
+    ...run,
+    hasAlert: normalizeBooleanFlag(run.hasAlert),
+    hasError: normalizeBooleanFlag(run.hasError),
+  };
+}
+
 function getMeaningfulErrorMessage(value) {
   if (!hasMeaningfulError(value)) return "";
   let message = "";
@@ -865,7 +882,9 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
       return runs;
     }
     const data = await loadEntryData(id);
-    return Array.isArray(data.history && data.history.runs) ? data.history.runs.slice(0, limit) : [];
+    return Array.isArray(data.history && data.history.runs)
+      ? data.history.runs.slice(0, limit).map(normalizeHistoryRunFlags)
+      : [];
   }
 
   /** 追加条目执行历史（最新在前，保留最近 N 次）。普通条目独立文件；mc_* 走多国校验结果。 */
@@ -875,16 +894,16 @@ export function createAlertRegistry({ rootDir = process.cwd(), configFile, mcPho
     }
     const data = await loadEntryData(id);
     const history = data.history || { runs: [] };
-    const run = {
+    const run = normalizeHistoryRunFlags({
       id: result.id || randomUUID(),
       checkedAt: result.checkedAt || new Date().toISOString(),
       source: result.source || "entry",
-      hasAlert: Boolean(result.hasAlert),
-      hasError: Boolean(result.hasError),
+      hasAlert: result.hasAlert,
+      hasError: result.hasError,
       text: result.text || "",
       summary: result.summary || null,
       detail: result.detail || null,
-    };
+    });
     history.runs = [run, ...(history.runs || [])].slice(0, ENTRY_HISTORY_KEEP);
     data.history = history;
     await saveEntryData(id, data);

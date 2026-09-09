@@ -80,6 +80,47 @@ test("create rejects duplicate id", async (t) => {
   await assert.rejects(() => registry.create({ id: "dup", name: "B" }), /已存在/);
 });
 
+test("plain alert history treats n8n string false flags as healthy", async (t) => {
+  const { registry } = await tmpRegistry(t);
+  await registry.create({ id: "plain-alert", name: "普通告警" });
+  await registry.appendEntryHistory("plain-alert", {
+    hasAlert: "false",
+    hasError: "false",
+    text: "TV告警发送成功 (HTTP 202)",
+  });
+
+  const [run] = await registry.getEntryHistory("plain-alert");
+  assert.equal(run.hasAlert, false);
+  assert.equal(run.hasError, false);
+  const [aggregated] = await registry.listAllHistory();
+  assert.equal(aggregated.hasAlert, false);
+  assert.equal(aggregated.hasError, false);
+});
+
+test("plain alert history normalizes previously stored string flags when read", async (t) => {
+  const { registry, dir } = await tmpRegistry(t);
+  await registry.create({ id: "legacy-alert", name: "旧告警" });
+  await fs.mkdir(path.join(dir, "config", "alerts"), { recursive: true });
+  await fs.writeFile(path.join(dir, "config", "alerts", "legacy_alert.json"), JSON.stringify({
+    history: {
+      runs: [{
+        id: "legacy-run",
+        checkedAt: "2026-09-08T09:41:03.000Z",
+        hasAlert: "false",
+        hasError: "false",
+        text: "TV告警发送成功 (HTTP 202)",
+      }],
+    },
+  }));
+
+  const [run] = await registry.getEntryHistory("legacy-alert");
+  assert.equal(run.hasAlert, false);
+  assert.equal(run.hasError, false);
+  const [aggregated] = await registry.listAllHistory();
+  assert.equal(aggregated.hasAlert, false);
+  assert.equal(aggregated.hasError, false);
+});
+
 test("aggregated multi-country history keeps only the entry country", async (t) => {
   const { registry } = await tmpRegistry(t);
   await registry.create({ id: "mc_cn", name: "中国校验", country: "CN" });
