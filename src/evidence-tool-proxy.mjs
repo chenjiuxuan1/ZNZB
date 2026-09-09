@@ -127,7 +127,7 @@ export async function proxyDsSchedulerRequest(body = {}, { env = process.env, fe
 
 const SR_COUNTRY_MAP = { cn: "cn", ine: "id", ph: "ph", th: "th", pk: "pk", mx: "mx" };
 const DEFAULT_SR_GATEWAY_URL = "https://data-map-dev.kuainiu.io";
-const SR_QUERY_TIMEOUT_MS = 60_000;
+const SR_QUERY_TIMEOUT_MS = 130_000;
 const READONLY_SQL_PREFIXES = ["select", "with", "show", "desc", "describe", "explain"];
 
 function validateReadOnlySql(sql) {
@@ -205,7 +205,7 @@ export async function proxySrQuery(body = {}, { env = process.env, fetchFn = fet
         sql,
         page: 1,
         pageSize: limit,
-        timeoutSec: 55,
+        timeoutSec: 120,
       }),
       signal: controller?.signal,
     });

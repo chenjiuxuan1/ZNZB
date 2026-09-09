@@ -102,6 +102,7 @@ test("SR query proxy maps ine to id and forwards read-only SQL to the gateway", 
   assert.equal(capturedUrl, "https://data-map-dev.kuainiu.io/api/rust/v1/sr-sandboxes/sql-executions");
   assert.equal(capturedBody.country, "id");
   assert.equal(capturedBody.sqlMode, "query");
+  assert.equal(capturedBody.timeoutSec, 120);
   assert.equal(capturedHeaders.Authorization, "Bearer test-token");
   assert.deepEqual(result.columns, ["stat_date", "grant_cnt_1d"]);
   assert.equal(result.rows.length, 1);
