@@ -19,3 +19,15 @@ config/ds-scheduler.config.json
 n8n-metabase-anomaly-agent.json
 n8n-metabase-anomaly-evidence-agent.local.json
 n8n-wattrel-query-gateway.local.json
+
+# --- 安全（2026-09 密钥泄露事故后新增）---
+# 含真实凭据的导出/配置文件一律禁止提交；确需提交时须先用环境变量替换。
+# 配套提交前拦截：.git/hooks/pre-commit（pre-commit-secret-guard）
+*.credentials.json
+*.secret.json
+n8n-*.credentials.json
+.env.*
+!.env.example
+# worktree 目录不得入库（内含指向主仓库的 .git 文件与绝对路径）
+.claude/
+.worktrees/
