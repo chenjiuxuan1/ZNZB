@@ -23,7 +23,7 @@ test("usage-report workflow queries the audit table with column names and reads 
   assert.match(parse.parameters.jsCode, /--column-names/);
   assert.match(parse.parameters.jsCode, /auditPassword/);
   assert.match(parse.parameters.jsCode, /JSON_EXTRACT\(request_payload, \\'\$\.ds_token\\'\)/);
-  assert.doesNotMatch(parse.parameters.jsCode, /***REMOVED***/);
+  assert.doesNotMatch(parse.parameters.jsCode, /shellQuote\('[A-Za-z0-9]{6,}'\)/);
 });
 
 test("usage-report workflow chains webhook -> ssh -> respond", async () => {
